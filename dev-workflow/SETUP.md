@@ -31,7 +31,8 @@ That's it. `/init_workflow` scans your repos and populates the memory files.
 4. **Creates Claude Code symlinks** — links each skill into `<project>/.claude/skills/` so Claude recognizes the commands
 5. **Sets up CLAUDE.md** — adds a reference to the workflow rules in your root CLAUDE.md
 6. **Generates QUICKSTART.md** — command reference card
-7. **Configures .gitignore** — excludes session/daily files (they're local-only)
+7. **Configures permissions** — creates `.claude/settings.json` with auto-approved permissions for reading, git, and search operations
+8. **Configures .gitignore** — excludes session/daily files (they're local-only)
 
 ## Prerequisites
 

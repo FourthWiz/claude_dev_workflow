@@ -282,8 +282,58 @@ QS_EOF
 
 success "Generated QUICKSTART.md"
 
-# ── Step 7: Add .gitignore entries ──
-header "Step 7: Configuring .gitignore..."
+# ── Step 7: Configure default permissions ──
+header "Step 7: Configuring Claude Code permissions..."
+
+CLAUDE_SETTINGS="$TARGET_DIR/.claude/settings.json"
+
+if [ -f "$CLAUDE_SETTINGS" ]; then
+  info "Existing .claude/settings.json found — skipping (review manually if needed)"
+else
+  cat > "$CLAUDE_SETTINGS" << 'SETTINGS_EOF'
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash(git status)",
+      "Bash(git status *)",
+      "Bash(git diff)",
+      "Bash(git diff *)",
+      "Bash(git log)",
+      "Bash(git log *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git branch)",
+      "Bash(git branch *)",
+      "Bash(git checkout *)",
+      "Bash(git push *)",
+      "Bash(git pull *)",
+      "Bash(git stash *)",
+      "Bash(git rebase *)",
+      "Bash(git merge *)",
+      "Bash(git rev-parse *)",
+      "Bash(git show *)",
+      "Bash(git remote *)",
+      "Bash(find *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(mkdir *)"
+    ]
+  }
+}
+SETTINGS_EOF
+  success "Created .claude/settings.json with default permissions"
+fi
+
+# ── Step 8: Add .gitignore entries ──
+header "Step 8: Configuring .gitignore..."
 
 GITIGNORE="$TARGET_DIR/.gitignore"
 
@@ -313,6 +363,7 @@ echo ""
 echo -e "  ${GREEN}$SKILL_COUNT skills${NC} installed"
 echo -e "  ${GREEN}$LINKED symlinks${NC} created in .claude/skills/"
 echo -e "  ${GREEN}memory/${NC} structure ready"
+echo -e "  ${GREEN}permissions${NC} configured (read, git, search auto-approved)"
 echo ""
 echo -e "  ${BOLD}Next steps:${NC}"
 echo ""
