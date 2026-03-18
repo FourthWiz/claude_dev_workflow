@@ -88,14 +88,28 @@ Also auto-capture lessons if:
 - The review requested changes (what did /implement miss?)
 - A rollback happened during this task (what went wrong?)
 
-### Step 5: Update session state
+### Step 5: Archive task artifacts
+
+Move the task's artifact folder to `implemented/`:
+
+- **Task within a feature:** move `<feature-folder>/<task-name>/` → `<feature-folder>/implemented/<task-name>/`
+- **Standalone task:** move `<project-folder>/<task-name>/` → `<project-folder>/implemented/<task-name>/`
+
+Create the `implemented/` directory if it doesn't exist yet.
+
+After moving, check if this was the last active task in a feature (no remaining task subfolders outside `implemented/`). If so, ask the user:
+> "All tasks in `<feature-name>` are complete. Move the entire feature to `implemented/`?"
+
+If yes, move `<project-folder>/<feature-name>/` → `<project-folder>/implemented/<feature-name>/`.
+
+### Step 6: Update session state
 
 Update `memory/sessions/<date>-<task-name>.md`:
 - Set status to `completed`
 - Record the final branch name and commit hash
 - Note any lessons captured
 
-### Step 6: Report
+### Step 7: Report
 
 Tell the user:
 
@@ -107,6 +121,7 @@ Commits: <N> commits
 Tests: all passing
 Review: APPROVED
 
+Archived: <task-name>/ → implemented/<task-name>/
 Lessons captured: <yes/no>
 Session marked as completed.
 

@@ -8,12 +8,53 @@ This workspace uses a multi-repo layout. Multiple repositories are cloned side-b
 
 ## Task subfolder convention
 
-All planning and review artifacts are stored in the project folder under a descriptive task subfolder:
+### Feature → Task hierarchy
+
+Large work is organized as **features** containing **tasks**. Each feature gets a top-level folder, and each task within it gets a subfolder:
+
+```
+<project-folder>/<feature-name>/
+├── architecture.md              ← feature-level architecture
+├── <task-1>/
+│   ├── current-plan.md
+│   ├── critic-response-1.md
+│   ├── review-1.md
+│   └── ...
+├── <task-2>/
+│   └── ...
+└── implemented/                 ← completed tasks move here
+    ├── <task-1>/
+    └── ...
+```
+
+For standalone tasks (no parent feature), the structure is flat:
 ```
 <project-folder>/<task-name>/
 ```
 
-Task names are descriptive, kebab-case, derived from the task description (e.g., `auth-refactor`, `payment-v2-migration`, `api-rate-limiting`). Ask the user for a name when it's not obvious from context.
+### Archiving completed work
+
+When a **task** within a feature is finalized (`/end_of_task`), its artifact folder moves to `<feature-folder>/implemented/`.
+
+When an entire **feature** is complete (all tasks done), the feature folder moves to `<project-folder>/implemented/`.
+
+```
+<project-folder>/
+├── <active-feature>/            ← in-progress feature
+│   ├── <active-task>/
+│   └── implemented/
+│       └── <done-task>/
+├── <active-standalone-task>/    ← standalone task
+└── implemented/                 ← completed features and standalone tasks
+    ├── <done-feature>/
+    └── <done-standalone-task>/
+```
+
+This keeps the project root clean — only active work is visible at the top level.
+
+### Naming
+
+Names are descriptive, kebab-case, derived from the description (e.g., `auth-refactor`, `payment-v2-migration`, `api-rate-limiting`). Ask the user for a name when it's not obvious from context.
 
 When running parallel tasks, each gets its own subfolder. Never mix artifacts from different tasks in the same folder.
 

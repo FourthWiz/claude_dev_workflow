@@ -43,14 +43,28 @@ Ivan works with multiple repositories cloned side-by-side in the project folder 
 
 ## Task artifacts
 
-All planning artifacts go in descriptive subfolders:
+Large work uses a **feature → task** hierarchy. Each feature has a folder with task subfolders inside:
+
 ```
-<project-folder>/<task-name>/
-├── architecture.md
-├── current-plan.md
-├── critic-response-1.md ... critic-response-N.md
-├── review-1.md ... review-N.md
+<project-folder>/<feature-name>/
+├── architecture.md                  ← feature-level
+├── <task-name>/
+│   ├── current-plan.md
+│   ├── critic-response-1.md ... N
+│   └── review-1.md ... N
+├── implemented/                     ← completed tasks archived here
+│   └── <done-task>/
 ```
+
+Standalone tasks (no parent feature) use a flat structure: `<project-folder>/<task-name>/`.
+
+### Archiving completed work
+
+- **Task done** → moves to `<feature-folder>/implemented/<task-name>/`
+- **Feature done** (all tasks complete) → moves to `<project-folder>/implemented/<feature-name>/`
+- **Standalone task done** → moves to `<project-folder>/implemented/<task-name>/`
+
+This keeps only active work visible at the project root.
 
 Task names are descriptive kebab-case derived from the task (e.g., `auth-refactor`). Ask Ivan for a name when not obvious.
 
