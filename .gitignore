@@ -16,3 +16,6 @@ dev-workflow/memory/sessions/
 # Environment
 .env
 .env.local
+memory/
+.claude/
+

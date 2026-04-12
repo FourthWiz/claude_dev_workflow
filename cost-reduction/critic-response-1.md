@@ -1,0 +1,90 @@
+# Critic Response — Round 1
+
+## Verdict: REVISE
+
+## Summary
+
+The architecture is well-organized, frames the cost problem clearly, and the staging order (measure → free wins → loop discipline → model tiering → triage) is sound. However, several load-bearing claims about the Claude Code execution model are unverified or incorrect, the cost table conflates input and output costs in ways that distort the conclusions, and the Section E "full role isolation" recommendation rests on assumptions about subagent semantics that need validation before being treated as a "net win essentially always." Stage 0 is the right thing to do first, but several stages cannot be safely scoped until Stage 0 also answers the harness-behavior questions the document defers.
+
+## Issues
+
+### Critical (blocks good decision-making)
+
+- **[CRIT-1] E0 economics rest on an unverified model of subagent context.**
+  The document claims (Section 3, E0) that "the orchestrator currently carries the full planning context across all rounds" and that spawning `/plan` and `/revise` as subagents will save tokens because the orchestrator stays small. This is a load-bearing claim and it is not verified against how Claude Code actually launches sub-skills. Two unknowns are stuffed into one sentence:
+  1. Whether invoking `/plan`/`/revise` "inline" actually means the orchestrator literally inlines their full system prompts and reads into its own context window, or whether the harness already isolates them.
+  2. Whether spawning a subagent in Claude Code costs only "one system-prompt re-send" (~SKILL.md size) or whether it also re-sends `~/.claude/CLAUDE.md`, the workflow CLAUDE.md, the entire tool registry, and any auto-loaded skill descriptions for the harness — which together are typically 10–50× larger than a single SKILL.md.
+  If (2) is true, spawning four subagents per `/thorough_plan` run pays 4× the base-prompt overhead, which can plausibly *exceed* the inline savings on short tasks. The document's "Net win essentially always" is therefore overconfident.
+  **Why it matters:** E0 is the Section E cornerstone and is referenced by E3 and E4. If the underlying claim is wrong, the whole subagent strategy needs re-shaping. **Suggestion:** Add a Stage 0 sub-task that explicitly measures (a) the per-spawn fixed prompt cost in this harness, (b) whether `/plan`/`/revise` invoked from `/thorough_plan` today already run in isolated context. Treat E0 as conditional on those numbers, not as foundational.
+
+- **[CRIT-2] The current state description of `/revise` is wrong in one direction and right in another — and the architecture doesn't notice.**
+  The architecture says `/revise` runs "in the orchestrator's own session, sharing its accumulated context" (E0 preamble). Looking at `dev-workflow/skills/thorough_plan/SKILL.md:62-65`, the orchestrator does say "Invoke in the original session context (it needs to understand the plan's intent)." However `dev-workflow/skills/revise/SKILL.md:13` explicitly says "This skill may run in a fresh session." So the source contradicts itself, and the architecture only notices half of it. More importantly, the document's recommended fix (E0: spawn `/revise` as its own subagent with only `(plan, critic-response, targeted files)`) directly conflicts with the orchestrator's stated reason for keeping `/revise` inline ("it needs to understand the plan's intent"). The document does not engage with that conflict at all. **Why it matters:** A migration that ignores the original design rationale is likely to hit the failure mode the rationale was protecting against (revisions that lose plan intent across iterations). **Suggestion:** Either argue that the "needs plan intent" rationale is wrong (revisions can be bootstrapped from `current-plan.md` because the plan IS the intent), or add an explicit handoff artifact (e.g. an `intent.md` produced by `/plan` and read by `/revise`). Don't leave this gap.
+
+- **[CRIT-3] The cost table mislabels "1 unit" and double-counts in places — undermining the headline conclusion.**
+  Section 4's table defines "1 unit" as "the input+output cost of one Opus operation that reads the codebase, lessons-learned, and writes a substantial document." Then it scores `/plan` round 1 as `1` and `/critic` round 1 as `1`. But `/critic` reads almost the same content `/plan` does — if "1 unit" already amortizes the read, then the second `1` for critic re-includes it. Worse, the table assumes Sonnet ≈ 0.2 units, which is the *price ratio* for the same workload, but mixes that with cached input ≈ 0.1 units, which is a *per-token discount on inputs only*. You cannot multiply a workload-unit by an input-only discount and read off a total cost. The result: the "Proposal D" row showing caching alone capturing ~40% of the savings is plausible directionally but is not what the math in the table actually says. **Why it matters:** Proposal D is the document's headline "free lunch" claim and the table is its only support. **Suggestion:** Rewrite the table with explicit input vs output token columns (even at the level of "small / medium / large prefix"), so the cache discount only applies to the input column, and so that re-reads vs first reads are visible. The qualitative ranking (D and C are best, B beats A) will probably survive — but the specific percentages need to come from a real model, not an undefined unit.
+
+- **[CRIT-4] "Critic must remain unbiased" is asserted as a constraint but Stage 3 tiers the critic.**
+  Section 1 lists "Critic must remain unbiased — fresh sessions for /critic are non-negotiable" as a constraint. Stage 3 then proposes running the round-1 critic on Sonnet and only escalating to Opus if the verdict is REVISE. The "fresh session" property is preserved, but the "leverage role of the critic" argument used to defend keeping the critic on Opus in Section 3 (A2) is contradicted in Section 5 (Stage 3) when the round-1 critic gets demoted. The document needs to pick one position. As stated, Stage 3 weakens the very thing Section 3 says is the highest-leverage role. **Why it matters:** This is the central quality risk of the whole rollout, and the document handles it inconsistently. **Suggestion:** Either (a) explicitly argue that Sonnet round-1 critic is acceptable because Opus round-2 will catch what Sonnet round 1 missed (and accept that this assumes round-1 misses don't anchor round 2), or (b) keep all critic rounds on Opus and only tier the planner side. Don't paper over the inconsistency.
+
+### Major (significant gap, should address)
+
+- **[MAJ-1] No discussion of flat-rate plans until Open Question #1.**
+  Open Question #1 ("are you on a flat-rate plan?") is the single biggest input to the entire cost calculus, and the architecture surfaces it only in the last section. If the user is on Pro/Max, large parts of the document (the entire A-series, much of D, and the cost table) become irrelevant — the binding constraint is rate-limit / context-window, not dollars. **Suggestion:** Move this question to Section 1 ("Constraints") and make it gate the rest of the document. Add a one-paragraph alternate framing for the flat-rate case ("here's what changes if cost = rate-limit-headroom").
+
+- **[MAJ-2] C1 (caching) is the headline lever and it is not verified.**
+  Section 3 calls C1 "potentially the single largest lever" and Section 5 puts it as Stage 1 ("free wins"). But the document acknowledges in the Caveats that whether Claude Code already caches across orchestrator → subagent boundaries is "unknown to me from inside the harness." This is a 5-minute Anthropic-docs check that should have been done before publishing the architecture. The Anthropic SDK's `cache_control` semantics, the 5-minute / 1-hour TTL behavior, and how Claude Code propagates cache markers across spawned tools are all documented. **Suggestion:** Use context7 / WebFetch to pull current Anthropic prompt-caching docs and answer the question now, then re-rank Stage 1 in light of what's actually cacheable. The current "audit then decide" framing is correct as a fallback, but the architect should have done the doc-read step before producing this document.
+
+- **[MAJ-3] C2 ("targeted critic on rounds 2+") underestimates a real failure mode.**
+  C2 says round 2+ critics only re-read files the previous critic flagged. The risk register (R3) calls this "Low likelihood, High impact" with mitigation "C2 only kicks in on rounds ≥ 2, only scoped to files the previous critic itself flagged." The mitigation is the description of the change — it is not a mitigation. The actual risk is: round-1 critic missed a class of issues (say, a security regression in a file it didn't flag), so round 2 critic — by construction — will never look at it either. This is a classic blind-spot-amplifier. **Why it matters:** The whole point of multiple critic rounds is to catch what an earlier round missed; C2 turns it into "catch what the earlier round already saw." **Suggestion:** Either (a) keep round 2+ at full read but with caching (which subsumes most of C2's benefit anyway) or (b) have round 2 read flagged-files-plus-a-random-sample-of-unflagged-files. Don't claim mitigation that isn't.
+
+- **[MAJ-4] B2 ("smarter convergence rule") is not in any stage.**
+  Section 3 lists B2 as "PASS if no CRITICAL remain even with MAJORs, *and* /review will catch the same class." That's a real lever and the document explicitly notes it's risky-but-needs-measurement. Then it disappears — neither Stage 2 nor Stage 3 picks it up. Either kill it from Section 3 or schedule it (probably as "Stage 2.5" gated on the same measurement that Stage 3 needs). **Suggestion:** Either drop B2 from the design space or include it in Stage 2 with an explicit decision criterion ("only adopt if measurement shows /review historically catches the issue classes that round-N+1 critics would have").
+
+- **[MAJ-5] The "lessons-learned re-read" tax (C3) is described as bigger than it probably is.**
+  The architecture treats lessons-learned as a meaningful component of the per-round cost. But `memory/lessons-learned.md` for any new project starts empty and grows by ~2-4 lines per task. Even after a year of heavy use, this file is unlikely to exceed a few KB — small relative to the codebase reads that dominate. C3 is correct as a principle (don't re-read what hasn't changed) but its dollar impact is probably <5% of the bill, not the implied "meaningful component." **Suggestion:** Either drop C3 from Stage 1's headline savings or note explicitly that its value is correctness/cleanliness, not cost.
+
+- **[MAJ-6] No mention of `/discover` and `/architect` in the cost-reduction analysis even though Section 2.1 lists them as the highest-cost skills.**
+  Section 2.1 says `/discover` is "High (rare)" and `/architect` is "High" — the two heaviest non-loop skills. C5 (skip discover for unchanged repos) is the only lever that touches them, and there's no `/architect`-specific lever at all. `/architect` does "deep file reads" + "web search" + "cross-repo exploration" — every one of those is a token-spend hotspot. **Suggestion:** Add at least one `/architect`-specific lever: e.g. cache architecture.md as a long-TTL prefix for downstream skills, or split `/architect` into a "scan" pass (Sonnet, parallel) and a "synthesize" pass (Opus, serial) so the bulk file-reading doesn't happen at Opus rates.
+
+- **[MAJ-7] Stage 3's `--strict` flag is described but not specified.**
+  Stage 3 says "Add a `--strict` flag (or equivalent prompt argument) that forces the today-style all-Opus path." Skills in this workflow take user prompts, not CLI flags — there's no obvious place to put `--strict`. The implementer would need to figure out the invocation pattern. **Suggestion:** Replace with "If the user includes the word 'strict' in their `/thorough_plan` invocation (e.g. `/thorough_plan strict: handle this carefully`), the orchestrator forces all-Opus and max_rounds=5." Or specify any other concrete protocol.
+
+- **[MAJ-8] Stages don't reference the actual SKILL.md edits a developer would need to make.**
+  The criterion of "could a developer write the concrete SKILL.md edits from this stage description" fails for several stages:
+  - Stage 1 / C1: "add explicit cache-control hints in the skill prompts" — but skill prompts are markdown, and `cache_control` is an API-level construct. A SKILL.md edit cannot directly attach `cache_control`. The implementer would need to know whether Claude Code reads cacheability hints from markdown frontmatter, comments, or not at all.
+  - Stage 3: tiering the critic round-by-round requires the orchestrator to tell each spawned `/critic` agent which model to use. SKILL.md frontmatter pins a single `model:` per skill — there's no documented mechanism in this workflow for "spawn /critic on Sonnet for round 1, Opus for round 2." The implementer would need to invent that mechanism (probably two skill files: `/critic-fast` and `/critic`).
+  - Stage 4: "single-pass plan mode" implies a `/plan-light` skill or a mode flag — neither exists.
+  **Suggestion:** Either add an "open mechanism questions" section per stage or, better, prototype the smallest version of each (one-line edit, one-skill-file proof of concept) before declaring it "Implementable."
+
+### Minor (improvement, use judgment)
+
+- **[MIN-1] Section 2.2 omits the orchestrator's own per-round token cost.** The "four expensive Opus operations" miss the orchestrator session itself — especially relevant because E0 argues the orchestrator carries large context.
+- **[MIN-2] The link syntax `[file](file#L54-L58)` does not render in plain markdown viewers.** Use a different convention or drop the line ranges.
+- **[MIN-3] Caveats notes the architect ran on Sonnet, not Opus.** Worth a more specific call-out: which sections specifically would benefit from Opus re-validation? "Stage 3" is named, but CRIT-1 (subagent economics) is the one that most needs rigorous re-thought.
+- **[MIN-4] R7 ("workflow drift") is real but unrelated to cost reduction.** Worth dropping from this risk register and tracking elsewhere — including it dilutes the focus on cost-specific risks.
+- **[MIN-5] "Sonnet ≈ 0.2 units" is the price ratio at list pricing, but Anthropic's pricing has changed historically.** Note the date/source of the price ratio so the table can be re-derived.
+- **[MIN-6] The "convergence in 1 round" fast path is mentioned (correctly) as a pushback on Proposal A.** It would strengthen the document to note how often convergence-in-1 actually happens in practice. If it's rare (most plans need ≥2 rounds), Proposal A's "padding" critique loses force.
+- **[MIN-7] No mention of `/review` cost anywhere in the table.** It is listed as Opus-class in Section 2.1 but the savings analysis ignores it. C4 (diff-only review) appears in Section 3 then vanishes from the stages. Either commit to optimizing `/review` or explicitly defer it.
+- **[MIN-8] Stage 5 notes Haiku for state skills but the heading says "Sonnet for state-management skills (A4)".** Section/heading mismatch.
+
+## What's good
+
+- **The framing of "where does the money go" (Section 2.3, three biggest cost drivers) is sharp.** Re-reading the same context across fresh sessions is correctly identified as the dominant input cost; ordering everything else against that anchor is the right move.
+- **Stage 0 (measure first) is the most important architectural decision in the document.** Refusing to make risky changes before baselining is exactly the right discipline, and the architecture states this clearly and early.
+- **The pushback on the user's "always run 3 rounds" framing is correct and well-argued.** Distinguishing "lower the cap" from "force the floor" is a real distinction that the user's proposal blurred.
+- **The escalation ladder (Proposal B / Stage 3 logic, modulo CRIT-4) is the right architectural shape.** Cheap-first with escalation is a strictly better default than fixed model assignments.
+- **Risk register is structured well** and the staging order (free wins → discipline → tiering → triage) correctly defers risky changes behind safe ones.
+- **Open questions section is genuinely useful** — especially Q1 about flat-rate billing, which (per MAJ-1) should have been Q0.
+- **The architecture is honest about its own caveats** — admitting the architect ran on Sonnet, that the cost numbers are illustrative, and that harness behavior is unknown is the right disposition. The fix is to do the harness investigation now, not to remove the honesty.
+
+## Scorecard
+
+| Criterion | Score | Notes |
+|---|---|---|
+| Correctness | fair | E0's claim about how `/plan`/`/revise` are run today is half-right; the cost-table units are not internally consistent (CRIT-1, CRIT-3). |
+| Completeness | fair | `/architect`-specific levers missing (MAJ-6); B2 dropped without explanation (MAJ-4); flat-rate framing buried (MAJ-1); `/review` cost ignored after Section 3 (MIN-7). |
+| Logic | fair | Stage 3 contradicts the Section 1 "critic on Opus" constraint (CRIT-4); R3 mitigation is circular (MAJ-3). The overall staging order is sound. |
+| Risk coverage | fair | R-table is structured but R3 mitigation is not actually a mitigation, and the failure mode of subagent overhead exceeding inline savings (CRIT-1) isn't in the register at all. |
+| Implementability | poor | Several stages (1/C1, 3, 4) describe edits that don't map cleanly onto SKILL.md mechanisms; the implementer would have to invent infrastructure (MAJ-8). |
+| Subagent strategy (E) | fair | Direction is plausible and probably right for E2 and E4. E0 is overconfident given unverified harness assumptions (CRIT-1). E3 is good. The conflict between E0 and the original "revise needs plan intent" rationale is unaddressed (CRIT-2). |
+| Cost table plausibility | poor | Directionally the ranking is probably right (D/C beat B beats A beats today), but the units are not internally consistent and the headline "Proposal D captures ~40%" is not supported by the math as written (CRIT-3). |
