@@ -349,27 +349,28 @@ Implements B1, B3, and the E0 session-isolation fix — risk-free configuration 
 
 The model-swap risk, gated on Stage 0 baseline + Stages 1–2 in production for at least one real task. **Critic stays on Opus every round** — this preserves Section 1.1's "critic is the highest-leverage role" constraint, which Round 1's version of this stage violated.
 
-- Update `/thorough_plan` to invoke `/plan` (round 1 only) and `/revise` (rounds 2 and 3) on Sonnet by default.
-- **Round 4 (final allowed):** `/revise` escalates to Opus. Note: round 4 never runs a fresh `/plan` — the round-1 plan carries forward and `/revise` updates it. Re-running `/plan` from scratch in a late round would discard the accumulated work; the loop's semantics are "one `/plan`, many `/revise`s," not "fresh `/plan` every round."
+- **Round 1 `/plan` stays on Opus.** The initial plan sets the structural foundation — task decomposition, integration strategy, risk analysis — that all subsequent rounds iterate on. A strong Opus-quality first plan reduces the number of critic/revise rounds needed to converge, likely offsetting the cost of not using Sonnet here.
+- Update `/thorough_plan` to invoke `/revise` (rounds 2+) on Sonnet by default.
 - `/critic` stays on Opus for every round. Never tiered.
-- Convergence-driven termination — cap lowered from 5 to 4, don't pad to a fixed round count. (The same inline `max_rounds: N` override introduced in Stage 2 continues to work in Stage 3; `strict:` mode defaults the cap to 5, overridable by `max_rounds: N` as usual — `max_rounds: N` is always the single cap-control mechanism; `strict:` controls model selection only.)
+- **No `/plan-fast` skill needed.** Since round 1 always uses Opus `/plan`, the Sonnet variant of `/plan` is eliminated. This simplifies the two-skill infrastructure to only `/revise` + `/revise-fast`.
+- Convergence-driven termination — cap lowered from 5 to 4, don't pad to a fixed round count. (The same inline `max_rounds: N` override introduced in Stage 2 continues to work in Stage 3; `strict:` mode defaults the cap to 5, overridable by `max_rounds: N` as usual — `max_rounds: N` is always the single cap-control mechanism; `strict:` controls model selection for `/revise` rounds only, since `/plan` is already Opus.)
 
 **"strict mode" escape hatch (concrete protocol — MAJ-7 fix):**
 
-Skills take user prompts, not CLI flags, so the escape hatch must be a prompt convention. The rule: **if the user's `/thorough_plan` invocation begins with the literal token `strict:` (case-insensitive), the orchestrator forces all-Opus for every role and defaults `max_rounds` to 5** (the user can still raise or lower the cap via `max_rounds: N` in the same invocation). Example: `/thorough_plan strict: handle the auth migration carefully`. `/thorough_plan` parses the leading `strict:` token, sets the "strict mode" flag, strips the token from the task description, and proceeds. If the token is not present, the default tiered behavior applies.
+Skills take user prompts, not CLI flags, so the escape hatch must be a prompt convention. The rule: **if the user's `/thorough_plan` invocation begins with the literal token `strict:` (case-insensitive), the orchestrator forces all-Opus for `/revise` rounds and defaults `max_rounds` to 5** (the user can still raise or lower the cap via `max_rounds: N` in the same invocation). `/plan` (round 1) is already Opus in both modes; `strict:` affects `/revise` rounds (2+), upgrading them from Sonnet to Opus. Example: `/thorough_plan strict: handle the auth migration carefully`. `/thorough_plan` parses the leading `strict:` token, sets the "strict mode" flag, strips the token from the task description, and proceeds. If the token is not present, the default tiered behavior applies.
 
 **Per-round model tiering mechanism (MAJ-8 fix):**
 
-SKILL.md frontmatter pins one `model:` per skill file. There is no documented mechanism in this workflow for "spawn `/plan` on Sonnet for round 1, Opus for round 3" from a single skill file. The concrete approach is **two skill files per tiered role**:
+SKILL.md frontmatter pins one `model:` per skill file. The concrete approach is **one new skill file for the tiered role** (`/revise-fast`), since `/plan` stays on Opus in all modes:
 
-- [dev-workflow/skills/plan/SKILL.md](dev-workflow/skills/plan/SKILL.md) — `model: opus` (the existing file, unchanged in content; used only when `strict:` mode forces Opus on round 1, which is rare — round 1 is the one round that runs `/plan` rather than `/revise`, and in default tiered mode it uses `/plan-fast`).
-- `dev-workflow/skills/plan-fast/SKILL.md` — new file, `model: sonnet`. Body is a content copy of `plan/SKILL.md` with the model frontmatter changed to `model: sonnet`. Used for round 1 in default tiered mode.
-- [dev-workflow/skills/revise/SKILL.md](dev-workflow/skills/revise/SKILL.md) — `model: opus` (the existing file). Used for round 4 (the final allowed round) and for strict-mode runs of every round.
-- `dev-workflow/skills/revise-fast/SKILL.md` — new file, `model: sonnet`. Used for rounds 2 and 3 in default tiered mode.
-- `/thorough_plan` selects which skill to spawn based on (round number, strict flag). The selection rule is: strict mode → always Opus variant; non-strict → `/plan-fast` for round 1, `/revise-fast` for rounds 2 and 3, `/revise` (Opus) for round 4.
+- [dev-workflow/skills/plan/SKILL.md](dev-workflow/skills/plan/SKILL.md) — `model: opus` (the existing file, unchanged). Used for round 1 in **both** normal and strict modes. The initial plan is always Opus-quality.
+- ~~`dev-workflow/skills/plan-fast/SKILL.md`~~ — **eliminated.** No longer needed since round 1 `/plan` is always Opus.
+- [dev-workflow/skills/revise/SKILL.md](dev-workflow/skills/revise/SKILL.md) — `model: opus` (the existing file). Used for strict-mode runs of every `/revise` round.
+- `dev-workflow/skills/revise-fast/SKILL.md` — new file, `model: sonnet`. Used for rounds 2+ in default (non-strict) mode.
+- `/thorough_plan` selects which skill to spawn based on (round number, strict flag). The selection rule is: round 1 → always `/plan` (Opus); rounds 2+ → strict mode uses `/revise` (Opus), non-strict uses `/revise-fast` (Sonnet).
 - `/critic` is not split — always Opus, always the existing skill file.
 
-This is explicit infrastructure that does not exist today and must be created as part of Stage 3's implementation. The Round 1 critic was correct that Round 1's description glossed over this — it is not a one-line config change, it is a new skill file per tiered role plus orchestrator changes.
+This simplifies Stage 3's infrastructure compared to the original design: only one new skill file (`/revise-fast`) instead of two (`/plan-fast` + `/revise-fast`), and the orchestrator's selection logic is simpler since round 1 has no mode branching.
 
 **Why not tier the critic:** Section 1.1 says "the critic is the highest-leverage role per token." Section 3.A says "moving the critic off Opus is the biggest quality risk in the whole design space." Round 1 of this document then contradicted both by putting the round-1 critic on Sonnet in Stage 3. The Round 1 critic was correct to flag this as incoherent. Stage 3 reverts to "critic is always Opus"; the user's original Proposal A was right about this. If the team later decides they want to try a Sonnet round-1 critic to capture more savings, that is a separate future stage that should be explicitly labeled "Stage 3b — risky critic tiering experiment" and gated on its own measurement, not smuggled into the main rollout.
 
@@ -379,7 +380,7 @@ Implements D1, D2, D3 once Stages 0-3 are in production and there's confidence i
 
 - Add a "task profile" prompt at the top of `/thorough_plan`: Small / Medium / Large.
 - Small → `/plan` (Sonnet) + `/implement` + `/review` (Sonnet, smoke gate). No critic loop.
-- Medium → Stage-3 escalation (Sonnet planners, Opus critic, max 4, convergence-driven).
+- Medium → Stage-3 escalation (Opus planner, Sonnet revisers, Opus critic, max 4, convergence-driven).
 - Large → `strict:` mode (all Opus, max 5).
 - Document the triage criteria in [dev-workflow/CLAUDE.md](dev-workflow/CLAUDE.md).
 - **Update `dev-workflow/CLAUDE.md`'s workflow sequence section** to reflect that Small-profile tasks use `/plan` → `/implement` → `/review` without `/thorough_plan`. Today CLAUDE.md says small tasks "can skip `/architect` and go straight to `/thorough_plan`" — Stage 4's Small profile skips `/thorough_plan` entirely, which is a meaningful change to the stated workflow. Without this update, CLAUDE.md and the triage profiles would contradict each other.
@@ -408,7 +409,7 @@ Each stage modifies one or more `SKILL.md` files. The integrations to worry abou
 | B3 tighter loop detection | `/thorough_plan` | False positive — escalates to user when round would have converged | Cost of a false positive is one user prompt; cheap |
 | E0 session-isolation fix (Stage 2) | `/thorough_plan`, `/revise` | `/revise` in a fresh session loses context the inline version had (mitigated: `current-plan.md` IS the plan intent — see E0) | Ships in Stage 2 as a correctness fix; if quality degrades, revert the line change in `thorough_plan/SKILL.md` |
 | E0 full subagent isolation (Stage 3) | `/thorough_plan`, `/plan`, `/revise` | Per-spawn overhead eats the Stage-3 savings (CRIT-1 from Round 1 critic) | Stage 0 measurement sizes per-spawn cost before Stage 3 commits; E1 (tighten SKILL.md) offsets |
-| Stage 3 planner tiering via two-skill mechanism | `/plan`, `/plan-fast`, `/revise`, `/revise-fast`, `/thorough_plan` | Sonnet plans force more rounds → net cost neutral or worse; two-skill-file drift | Stage 0 baseline + post-rollout measurement; `strict:` escape hatch; add a CI/lint rule that the -fast variant stays in content-sync with the Opus version |
+| Stage 3 reviser tiering via `/revise-fast` | `/plan`, `/revise`, `/revise-fast`, `/thorough_plan` | Sonnet revisions force more rounds → net cost neutral or worse; skill-file drift between `/revise` and `/revise-fast` | Stage 0 baseline + post-rollout measurement; `strict:` escape hatch; CI/lint rule that `/revise-fast` stays in content-sync with `/revise` |
 | Stage 3 `strict:` prefix protocol | `/thorough_plan` | User forgets prefix on a high-stakes task → gets cheap path silently | Document in QUICKSTART; triage prompt (Stage 4) asks explicitly |
 | Stage 4 task triage | `/thorough_plan` | Wrong size classification → wrong profile | User confirms classification at the start of each task |
 | Stage 5 Haiku for state skills | `/end_of_day`, `/start_of_day`, etc. | Output quality regression | Side-by-side comparison for one week before committing |
@@ -429,7 +430,7 @@ The most fragile change is **Stage 3** (model tiering — new two-skill infrastr
 | R6 | Haiku for state skills produces lower-quality daily caches → context loss across sessions | Low | Medium | One-week side-by-side validation before committing |
 | R7 | (Was: workflow drift between source and `~/.claude/skills/`. This is a general workflow concern, not specific to cost reduction. Tracked elsewhere.) | N/A | N/A | N/A |
 | R8 | **E0's per-spawn base-prompt overhead exceeds the Stage-3 model-tiering savings** (the CRIT-1 concern — "spawning four subagents per run pays 4× base-prompt overhead, which can plausibly exceed the inline savings on short tasks") | Medium | Medium | Stage 0 measures per-spawn cost; E1 (tighten SKILL.md to remove duplication with CLAUDE.md) mitigates; if measurement shows net negative, fall back to keeping `/plan` and `/revise` inline and achieve tiering a different way (e.g., a single `/thorough_plan` that reads an env var and branches model selection) |
-| R9 | **Two-skill-file drift between `/plan` and `/plan-fast`.** Over time the fast variant lags the Opus version in content updates, producing silently worse plans | Medium | Medium | CI/lint rule that diffs `/plan-fast/SKILL.md` against `/plan/SKILL.md` on commit and fails if they diverge beyond the model frontmatter line; documented in dev-workflow README |
+| R9 | **Skill-file drift between `/revise` and `/revise-fast`.** Over time the fast variant lags the Opus version in content updates, producing silently worse revisions | Medium | Medium | CI/lint rule that diffs `/revise-fast/SKILL.md` against `/revise/SKILL.md` on commit and fails if they diverge beyond the model frontmatter line; documented in dev-workflow README. Risk reduced vs original design: only one fast variant to keep in sync instead of two. |
 
 ---
 
@@ -440,7 +441,7 @@ The most fragile change is **Stage 3** (model tiering — new two-skill infrastr
 3. **Keep escape hatches.** `strict:` prefix (force Opus everywhere), `max_rounds` override, manual triage override. The defaults get cheaper; the maximums stay available.
 4. **`/review` is the second safety net.** Whatever the planner loop misses, the `/review` step (still on Opus, still full plan) is supposed to catch. Cost optimizations of the planner loop are partially insured by leaving `/review` strong.
 5. **Re-measure after each stage.** Cost should drop monotonically. If it doesn't, the stage is rolled back.
-6. **For Stage 3 specifically:** before committing the two-skill-file infrastructure, prototype the smallest version — one `/plan-fast` file that is a content-sync copy of `/plan` with the model pinned to Sonnet, and `/thorough_plan` branching on round number. Run it once, compare plan quality end-to-end against an all-Opus run on the same task. Only commit to the rollout if the comparison passes a human sanity check.
+6. **For Stage 3 specifically:** before committing the skill-file infrastructure, prototype the smallest version — one `/revise-fast` file that is a content-sync copy of `/revise` with the model pinned to Sonnet, and `/thorough_plan` branching on round number. Run it once, compare plan quality end-to-end against an all-Opus run on the same task. Only commit to the rollout if the comparison passes a human sanity check.
 
 ---
 
@@ -451,7 +452,7 @@ The most fragile change is **Stage 3** (model tiering — new two-skill infrastr
 | 0 | Measure baseline cost on one real `/thorough_plan` run AND one `/architect` run; answer harness-behavior questions (per-spawn overhead, actual caching, inline-vs-subagent today); produce `cost-reduction/baseline.md` | S | None | None — pure measurement |
 | 1 | Caching audit + hygiene (C1), context discipline (C3, C4, C5, C6), `/architect` scan/synthesize split (C7) | M-L (C7 alone is M-L — real new subagent infra in `/architect`; consider splitting into 1a = C1/C3/C4/C5/C6 hygiene and 1b = C7 `/architect` split if planning shows the combined scope is too large) | Stage 0 | C7 missing something a unified pass would catch (mitigated: targeted re-scan) |
 | 2 | Loop discipline + `/revise` session-isolation fix: max_rounds 5→4, inline `max_rounds: N` override, tighter loop detection (B1, B3), E0 prerequisite fix (drop inline `/revise` instruction from `thorough_plan/SKILL.md`) | S | Stage 0 | Hard plans don't converge in 4 rounds (mitigated: inline override; `strict:` when Stage 3 ships); `/revise` quality regression from fresh session (mitigated: `current-plan.md` is the plan intent) |
-| 3 | Planner-side model tiering via two-skill-file mechanism (`/plan` + `/plan-fast`, `/revise` + `/revise-fast`), critic stays all-Opus, `strict:` escape hatch, convergence-driven max-4 | M-L | Stages 0, 1, 2 in prod for ≥ 1 task; Stage 0 must have sized E0/E1 spawn overhead | Sonnet plans slow convergence (R1); per-spawn overhead eats savings (R8); two-skill-file drift (R9) |
+| 3 | Reviser-side model tiering: `/plan` stays Opus (round 1), `/revise-fast` (Sonnet) for rounds 2+, critic stays all-Opus, `strict:` forces Opus `/revise`, convergence-driven max-4 | M | Stages 0, 1, 2 in prod for ≥ 1 task; Stage 0 must have sized E0/E1 spawn overhead | Sonnet revisions slow convergence (R1); per-spawn overhead eats savings (R8); skill-file drift (R9, reduced — only `/revise-fast` to sync) |
 | 4 | Task triage — Small/Medium/Large profiles, single-pass mode for Small | M | Stage 3 stable | Misclassification (R5) |
 | 5 | Haiku for low-risk state skills (A4) | S | None hard, but lowest priority | Output quality regression (R6) |
 
@@ -510,8 +511,8 @@ The most fragile change is **Stage 3** (model tiering — new two-skill infrastr
 - **[MAJ-4]** B2 ("PASS if only MAJORs remain because /review will catch them") dropped, with an explicit "until Stage 0 shows /review catches the same issue classes, no rule change" revisit trigger.
 - **[MAJ-5]** C3 reframed as a **correctness/hygiene item**, not a headline cost lever. Lessons-learned is a few KB; the value is "don't re-pay for content that can't have changed," not meaningful money.
 - **[MAJ-6]** Added **C7** — `/architect`-specific scan/synthesize split — as a lever in Stage 1. `/architect` is now called out in Section 2.1 as the single heaviest skill per invocation, in Section 2.3 as an exception to the three-biggest-cost-drivers frame, and in Stage 0 as a separate measurement target.
-- **[MAJ-7]** `--strict` replaced with a concrete `strict:` prefix protocol: if the user's `/thorough_plan` invocation begins with the literal token `strict:` (case-insensitive), the orchestrator forces all-Opus and `max_rounds = 5`. Documented in Stage 3.
-- **[MAJ-8]** Stage 3's per-round model tiering mechanism specified concretely as **two skill files per tiered role** (`/plan` + `/plan-fast`, `/revise` + `/revise-fast`), with `/thorough_plan` selecting by round number and strict-mode flag. Added R9 to the risk register for two-skill-file drift, and added a pre-commit CI/lint-rule mitigation.
+- **[MAJ-7]** `--strict` replaced with a concrete `strict:` prefix protocol: if the user's `/thorough_plan` invocation begins with the literal token `strict:` (case-insensitive), the orchestrator forces all-Opus `/revise` and `max_rounds = 5`. `/plan` (round 1) is already Opus in both modes. Documented in Stage 3.
+- **[MAJ-8]** Stage 3's per-round model tiering mechanism specified concretely. Round 1 `/plan` stays Opus (strong foundation reduces iteration); only `/revise` is tiered via `/revise-fast` (Sonnet). `/thorough_plan` selects by round number and strict-mode flag. Added R9 to the risk register for skill-file drift (reduced scope — only `/revise-fast` to sync), and added a pre-commit CI/lint-rule mitigation.
 
 **MINOR issues addressed:**
 
@@ -543,7 +544,7 @@ The most fragile change is **Stage 3** (model tiering — new two-skill infrastr
 
 - **[MIN-1]** Section 3.C TTL bullet corrected: heavy `/thorough_plan` runs can take 30–60+ minutes, so the 5-minute default TTL may expire between rounds and silently turn cache writes into wasted surcharge. Whether the harness uses the 1-hour TTL is unknown from inside the harness. Stage 0's C1 audit now explicitly must check (a) which TTL the harness sets and (b) whether cross-round cache-hit rates are actually non-zero on real runs.
 - **[MIN-2]** Proposal D math corrected in two places. Section 4's Proposal D explanation now says the byte-identical cross-round prefix is ~6–8k (system prompt + lessons-learned), not the full 12k, because `current-plan.md` is rewritten by `/revise` between rounds. The "Savings vs today" breakdown bullets were updated from 3 reasons to 4, and the headline savings dropped from "~2%" to "~1–2%" to reflect the smaller cacheable surface.
-- **[MIN-3]** Round 3 / late-round terminology fixed in both Proposal B (Section 4) and Stage 3 (Section 5). Late rounds run `/revise` only — they do NOT re-run `/plan` from scratch, because that would discard the accumulated plan. Proposal B's escalation ladder and Stage 3's round-4 description now say `/revise` (not `/plan`/`/revise`). The two-skill-file mechanism section was updated to note that `/plan-fast` is only used in round 1 (the one round that runs `/plan`), while `/revise-fast` is used in rounds 2–3.
+- **[MIN-3]** Round 3 / late-round terminology fixed in both Proposal B (Section 4) and Stage 3 (Section 5). Late rounds run `/revise` only — they do NOT re-run `/plan` from scratch, because that would discard the accumulated plan. Proposal B's escalation ladder and Stage 3's round-4 description now say `/revise` (not `/plan`/`/revise`).
 - **[MIN-4]** Stage 1's complexity rating in the Stage Summary Table changed from "M" to "M-L", with a parenthetical noting that C7 alone is M-L and Stage 1 can be split into 1a (hygiene: C1/C3/C4/C5/C6) and 1b (`/architect` split: C7) if combined scope proves too large during Stage 1's `/thorough_plan`.
 - **[MIN-5]** Section 1.0's flat-rate bullet corrected: Stage 1's caching hygiene produces ~2% token savings, far too small to meaningfully move Pro/Max rate limits. The honest framing for flat-rate plans is latency and context-window pressure (C7), not rate-limit headroom.
 
@@ -554,7 +555,7 @@ The most fragile change is **Stage 3** (model tiering — new two-skill infrastr
 - Section 4 "What's good" bullet on Proposal A: "5 to 3" → "5 to 4".
 - Section 4 "What I'd push back on": "5 to 3" → "5 to 4".
 - Section 5 Stage 2: default cap 5 → 4, plus the new inline `max_rounds: N` override paragraph.
-- Section 5 Stage 3: default cap 5 → 4; round 4 is the final allowed round; `/plan` runs only in round 1 (`/plan-fast` by default, `/plan` under strict); `/revise-fast` covers rounds 2–3; Opus `/revise` covers round 4 and strict-mode runs.
+- Section 5 Stage 3: default cap 5 → 4; `/plan` (Opus) runs in round 1 in both modes; `/revise-fast` (Sonnet) covers rounds 2+ in normal mode; Opus `/revise` covers strict-mode runs.
 - Section 5 Stage 4 (triage): Medium profile's "max 3" → "max 4".
 - Section 6 integration-analysis table: B1 row updated to "5→4" and the mitigation now names the inline-override and `strict:` escape hatches.
 - Section 7 R4: updated cap from 5→3 to 5→4; mitigation now includes the inline override.
@@ -577,7 +578,7 @@ The most fragile change is **Stage 3** (model tiering — new two-skill infrastr
 - **[MIN-1]** `strict:` "unconditionally" wording fixed. Stage 3's convergence line now says "`strict:` mode defaults the cap to 5, overridable by `max_rounds: N` as usual." The `strict:` protocol description now says `strict:` "defaults `max_rounds` to 5 (the user can still raise or lower the cap via `max_rounds: N`)." `max_rounds: N` is now the single cap-control mechanism throughout; `strict:` controls model selection only.
 - **[MIN-2]** Caveats section updated: the "most needing Opus re-validation" note for CRIT-1 is replaced with an acknowledgment that E0's direction has been validated across three Opus critic rounds. The remaining caveat is empirical: Stage 0 must still confirm per-spawn overhead numbers before Stage 3 commits.
 - **[MIN-3]** Stage 0 gains a **measurement methodology** paragraph: token counts and cache-hit ratios from Anthropic Console usage view or API response metadata (`usage.input_tokens`, `usage.cache_read_input_tokens`, etc.); Claude Code's session cost display gives aggregates but not per-skill breakdowns.
-- **[MIN-4]** `plan-fast` "sources the Opus version's content" language replaced with "content copy of `plan/SKILL.md` with the model frontmatter changed to `model: sonnet`." R9's mitigation updated to match: "CI/lint rule that diffs `/plan-fast/SKILL.md` against `/plan/SKILL.md` on commit and fails if they diverge beyond the model frontmatter line."
+- **[MIN-4]** `/plan-fast` eliminated — round 1 `/plan` stays Opus in all modes (strong foundation reduces iteration). R9 scope reduced to only `/revise-fast` drift tracking. CI/lint rule updated to diff `/revise-fast/SKILL.md` against `/revise/SKILL.md`.
 - **[MIN-5]** Stage 4 gains an explicit bullet: "Update `dev-workflow/CLAUDE.md`'s workflow sequence section to reflect that Small-profile tasks skip `/thorough_plan`." Notes the contradiction between CLAUDE.md's current "small tasks go to `/thorough_plan`" and Stage 4's "Small → no critic loop."
 
 **Issues noted but deferred:** None — all 1 MAJOR + 5 MINORs were addressed.
