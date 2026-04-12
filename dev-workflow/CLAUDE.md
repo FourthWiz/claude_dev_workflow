@@ -273,10 +273,12 @@ Keep questions specific and pointed. Don't ask "what do you want?" — ask "shou
 |-------|-------|-----------|
 | /discover | Opus | Cross-repo scanning, understanding how services connect |
 | /architect | Opus | Deep exploration, complex reasoning, cross-repo analysis |
-| /plan | Opus | Detailed planning requires strong reasoning |
-| /critic | Opus | Finding real issues requires deep understanding |
-| /revise | Opus | Addressing critic feedback requires strong reasoning |
-| /thorough_plan | Opus | Orchestrates plan→critic→revise loop |
+| /plan | Opus | Detailed planning requires strong reasoning (used in strict mode and standalone) |
+| /plan-fast | Sonnet | Cost-efficient planning (used by /thorough_plan in normal mode, round 1) |
+| /critic | Opus | Finding real issues requires deep understanding (never tiered) |
+| /revise | Opus | Addressing critic feedback requires strong reasoning (used in strict mode and final round) |
+| /revise-fast | Sonnet | Cost-efficient revision (used by /thorough_plan in normal mode, rounds 2-3) |
+| /thorough_plan | Opus | Orchestrates plan→critic→revise loop (tiers planner/reviser to Sonnet by default; use strict: for all-Opus) |
 | /implement | Sonnet | Efficient code generation, plan already defines what to do |
 | /review | Opus | Thorough analysis, integration safety, risk assessment |
 | /gate | Sonnet | Automated checks and human approval checkpoint |
