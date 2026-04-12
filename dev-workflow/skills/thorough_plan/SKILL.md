@@ -1,6 +1,6 @@
 ---
 name: thorough_plan
-description: "Orchestrates the full plan→critic→revise cycle for thorough implementation planning using the strongest model (Opus). Use this skill for: /thorough_plan, 'plan this thoroughly', 'detailed plan with review', 'plan and critique', 'full planning cycle'. Runs /plan to create the initial plan, then /critic in a fresh session for unbiased review, then /revise to address issues — repeating up to 5 rounds until convergence. Use this when you want the highest-quality plan, not just a quick one."
+description: "Orchestrates the full plan→critic→revise cycle for thorough implementation planning using the strongest model (Opus). Use this skill for: /thorough_plan, 'plan this thoroughly', 'detailed plan with review', 'plan and critique', 'full planning cycle'. Runs /plan to create the initial plan, then /critic in a fresh session for unbiased review, then /revise to address issues — repeating up to 4 rounds until convergence (override with max_rounds: N). Use this when you want the highest-quality plan, not just a quick one."
 model: opus
 ---
 
@@ -27,6 +27,14 @@ Collect and pass to `/plan`:
 - Paths to all relevant repositories in the project folder
 - Any constraints, preferences, or context the user mentioned
 
+### 3. Parse runtime overrides
+
+Before starting the loop, scan the user's task description for runtime overrides:
+
+- **`max_rounds: N`** (case-insensitive, N = positive integer): If found, use N as the maximum round cap for this run. Strip the `max_rounds: N` token from the description before passing it to `/plan`. If not found, use the default cap of 4. If the value is not a positive integer (e.g., zero, negative, or non-numeric), ignore the override and use the default.
+
+Example: `/thorough_plan max_rounds: 6 this migration is gnarly, give it room` sets the cap to 6 and passes "this migration is gnarly, give it room" to `/plan`.
+
 ## The loop
 
 ```
@@ -44,7 +52,7 @@ Round 2:
   If verdict = PASS → done
   If verdict = REVISE → continue
 
-...repeat up to Round 5
+...repeat up to Round 4 (or max_rounds if overridden)
 ```
 
 ### Invoking each agent
@@ -60,8 +68,8 @@ Round 2:
 - Output: `<task-folder>/critic-response-<round>.md`
 
 **`/revise` (rounds 2+)**
-- Invoke in the original session context (it needs to understand the plan's intent)
-- Pass: path to `current-plan.md`, path to latest `critic-response-<N>.md`
+- **MUST spawn as a new agent session** (same mechanism used for /critic above) — fresh context prevents anchoring on prior orchestrator chatter. The plan document (`current-plan.md`) encodes the plan's intent; a fresh reviser reading it + critic feedback is strictly better than one carrying stale context.
+- Pass: path to `current-plan.md`, path to latest `critic-response-<N>.md`, and paths to any files the critic flagged as needing re-examination
 - Output: updated `current-plan.md` (in place)
 
 ### Convergence rules
@@ -69,15 +77,15 @@ Round 2:
 The loop stops when ANY of these is true:
 
 1. **Critic gives PASS** — no CRITICAL or MAJOR issues. Plan is ready.
-2. **5 rounds reached** — inform the user of remaining issues. The plan may have inherent constraints.
-3. **Stuck in a loop** — the critic flags the same issues repeatedly despite revisions. Escalate to the user — this usually means a requirement is ambiguous or there's a genuine tradeoff to decide.
+2. **Max rounds reached (default: 4)** — inform the user of remaining issues. The plan may have inherent constraints.
+3. **Stuck in a loop** — if round N's critic flags the same top-level issue category as round N-1 (same CRITICAL or MAJOR issue title reappearing despite revision), escalate to the user with the specific repeated issues and ask whether to continue or accept the plan as-is. This usually means a requirement is ambiguous or there's a genuine tradeoff to decide.
 
 ### Between rounds
 
 After each critic round, before continuing:
 
 - Read the critic response yourself (as orchestrator)
-- Check if the same issues keep appearing (loop detection)
+- Check if the same issues keep appearing (loop detection: compare round N's CRITICAL/MAJOR issue titles against round N-1's — if any title reappears, flag it)
 - Briefly inform the user: "Round N complete — critic found X critical, Y major issues. Proceeding to revise." or "Round N complete — critic passed. Plan is ready."
 
 ## Final output
@@ -119,5 +127,5 @@ After the gate, inform the user:
 - **You are the orchestrator, not the planner.** Don't produce plan content yourself — invoke `/plan`, `/critic`, `/revise`.
 - **Critic MUST be a fresh session.** This is non-negotiable. Same-agent critique is biased and weak.
 - **Keep the user informed.** Brief status updates between rounds. Don't go silent for 10 minutes.
-- **Detect loops early.** If round 3's critic response looks like round 1's, stop and involve the user.
+- **Detect loops early.** After each critic round, compare CRITICAL/MAJOR issue titles against the previous round. If any title reappears, stop and present the repeated issues to the user — ask whether to continue revising or accept the plan as-is.
 - **Pass context explicitly.** Each agent starts with limited knowledge. Give them the file paths and repo locations they need.

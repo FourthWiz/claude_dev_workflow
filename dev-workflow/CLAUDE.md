@@ -63,7 +63,7 @@ Each stage feeds into the next, with `/gate` checkpoints requiring explicit huma
   - `/plan` produces the initial `current-plan.md` with implementable tasks
   - `/critic` (fresh session) reviews plan against actual codebase → `critic-response-N.md`
   - `/revise` addresses critic feedback → updates `current-plan.md`
-  - Loop repeats up to 5 rounds until convergence
+  - Loop repeats up to 4 rounds until convergence (override with max_rounds: N)
 - **GATE** — automated checks (plan completeness, risk coverage), user reviews plan, explicitly approves
 - `/implement` executes tasks from the converged plan, writing code and tests
 - **GATE** — automated checks (tests, lint, typecheck, no debug code, no secrets), user reviews
