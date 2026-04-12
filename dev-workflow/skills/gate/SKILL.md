@@ -15,6 +15,46 @@ You are a quality gate between workflow phases. You run automated checks, presen
 2. Human reviews the gate summary
 3. Human explicitly says "go" or invokes the next skill
 
+## Gate levels
+
+Gates run at three intensity levels depending on the task profile and the phase transition:
+
+### Smoke gate
+Lightweight checks for plan completeness. Used after planning phases.
+- Plan artifact exists and is non-empty
+- Plan has tasks with file paths and acceptance criteria
+- (For Medium/Large) Convergence summary present with PASS verdict
+
+### Standard gate
+Moderate checks for implementation correctness. Used after `/implement` for Small and Medium tasks.
+- Run linter if configured
+- Run only tests affected by the changes (use git diff to identify changed files, then run tests that import/reference those files)
+- No debug code (console.log, debugger, print, TODO: remove)
+- No secrets in diff
+- No uncommitted changes
+
+### Full gate
+Comprehensive checks. Used after `/implement` for Large tasks and after `/review` for all task sizes (pre-merge).
+- Everything in Standard gate, PLUS:
+- Full test suite (not just affected tests)
+- Type checker if applicable
+- All planned tasks are implemented (cross-reference plan task list)
+- Branch is up to date with base branch
+- No merge conflicts
+- Review verdict is APPROVED (for post-review gates only)
+
+## Determining the gate level
+
+Read the task profile from the convergence summary at the top of `current-plan.md` (look for "Task profile: Small/Medium/Large"), or from the session state file. Then apply:
+
+| Previous phase | Next phase | Small | Medium | Large |
+|---------------|-----------|-------|--------|-------|
+| /thorough_plan (or /plan) | /implement | Smoke | Smoke | Smoke |
+| /implement | /review | Standard | Standard | Full |
+| /review | /end_of_task | Full | Full | Full |
+
+If the task profile cannot be determined, default to **Full** (safe fallback).
+
 ## When gates run
 
 Gates are invoked between every major phase transition:
@@ -40,32 +80,38 @@ Identify what the *next* phase would be.
 
 Based on what exists and what's next, run the appropriate checks:
 
-**After /architect → before /thorough_plan:**
+**After /architect → before /thorough_plan (no gate level concept — always full architecture check):**
 - [ ] `architecture.md` exists and is non-empty
 - [ ] Architecture covers: objective, constraints, service map, integration points, stages
 - [ ] Stages are decomposed with clear boundaries
 
-**After /thorough_plan → before /implement:**
-- [ ] `current-plan.md` exists with PASS verdict from critic
-- [ ] Plan has: tasks with file paths, acceptance criteria, integration analysis, risk analysis, testing strategy
-- [ ] Task dependencies are acyclic (no circular deps)
-- [ ] All tasks have effort estimates
-- [ ] Integration analysis covers all affected service boundaries
-- [ ] Risk mitigations are concrete (not "we'll handle this later")
+**After /architect or /thorough_plan → before /implement (Smoke gate):**
+- [ ] Plan artifact (`current-plan.md`) exists and is non-empty
+- [ ] Plan has: tasks with file paths, acceptance criteria
+- [ ] (Medium/Large only) Convergence summary with PASS verdict from critic
+- [ ] (Large only) Integration analysis covers all affected service boundaries
+- [ ] (Large only) Risk mitigations are concrete
 
-**After /implement → before /review:**
+**After /implement → before /review (Standard or Full gate — determined by task profile):**
+
+*Standard gate (Small and Medium tasks):*
+- [ ] Run linter if configured
+- [ ] Run affected tests only (identify from git diff)
+- [ ] No debug code (console.log, debugger, print, TODO: remove)
+- [ ] No secrets in diff
+- [ ] No uncommitted changes
+
+*Full gate (Large tasks) — includes everything in Standard, plus:*
 - [ ] All planned tasks are implemented (cross-reference plan task list)
-- [ ] Run test suite: `npm test`, `go test ./...`, `pytest`, etc. (detect from project)
-- [ ] Run linter if configured: `eslint`, `golint`, `ruff`, etc.
-- [ ] Run type checker if applicable: `tsc --noEmit`, `mypy`, etc.
-- [ ] No uncommitted changes left behind
-- [ ] No debug code (search for `console.log`, `debugger`, `print(`, `TODO: remove`)
-- [ ] No secrets in diff (`grep -i "password\|secret\|api_key\|token" --include="*.ts" --include="*.py" ...`)
+- [ ] Run full test suite
+- [ ] Run type checker if applicable
+- [ ] Verify no unrelated file changes
 
-**After /review → before merge/PR:**
+**After /review → before /end_of_task (Full gate — always, all task sizes):**
 - [ ] Review verdict is APPROVED
 - [ ] All CRITICAL and MAJOR issues are resolved
-- [ ] Tests pass (run again — code may have changed during review fixes)
+- [ ] Run full test suite (re-run — code may have changed during review fixes)
+- [ ] Run type checker if applicable
 - [ ] Branch is up to date with base branch
 - [ ] No merge conflicts
 

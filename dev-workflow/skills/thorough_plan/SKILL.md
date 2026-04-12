@@ -1,12 +1,12 @@
 ---
 name: thorough_plan
-description: "Orchestrates the full plan→critic→revise cycle for thorough implementation planning. Uses Sonnet for planning/revision and Opus for critique by default; use 'strict:' prefix for all-Opus. Use this skill for: /thorough_plan, 'plan this thoroughly', 'detailed plan with review', 'plan and critique', 'full planning cycle'. Runs /plan to create the initial plan, then /critic in a fresh session for unbiased review, then /revise to address issues — repeating up to 4 rounds until convergence (override with max_rounds: N, or 'strict:' for all-Opus + 5 rounds). Use this when you want the highest-quality plan, not just a quick one."
+description: "Triages tasks by size (Small/Medium/Large) and orchestrates the appropriate planning path. Small tasks get a single-pass /plan (no critic loop). Medium tasks run the plan→critic→revise cycle with Sonnet revision. Large tasks (or 'strict:' prefix) run all-Opus with up to 5 rounds. Use this skill for: /thorough_plan, 'plan this', 'plan this thoroughly', 'detailed plan with review', 'plan and critique', 'full planning cycle'. Supports size tags (small:/medium:/large:), strict: prefix, and max_rounds: N override. Always the entry point for planned work — routes automatically based on task size."
 model: opus
 ---
 
 # Thorough Plan — Orchestrator
 
-This skill orchestrates the planning convergence loop by invoking sub-skills — `/plan` (or `/plan-fast`), `/critic`, and `/revise` (or `/revise-fast`) — based on mode and round. See "Model selection per round" for details. It does not do the planning, critiquing, or revising itself — it coordinates the agents that do.
+This skill orchestrates the planning convergence loop by invoking sub-skills — `/plan`, `/critic`, and `/revise` (or `/revise-fast`) — based on mode and round. See "Model selection per round" for details. It does not do the planning, critiquing, or revising itself — it coordinates the agents that do.
 
 ## Setup
 
@@ -27,18 +27,68 @@ Collect and pass to `/plan`:
 - Paths to all relevant repositories in the project folder
 - Any constraints, preferences, or context the user mentioned
 
-### 3. Parse runtime overrides
+### 3. Parse runtime overrides and determine task profile
 
 Before starting the loop, scan the user's task description for runtime overrides. Parse in this order:
 
-1. **`strict:`** (case-insensitive): If the task description begins with the literal token `strict:`, enable strict mode for this run. Strip the `strict:` token from the description. Strict mode forces all-Opus model selection (see "Model selection per round" below) and defaults `max_rounds` to 5 (instead of the normal default of 4). The user can still override `max_rounds` via the `max_rounds: N` token even in strict mode.
+1. **`strict:`** (case-insensitive): If the task description begins with the literal token `strict:`, enable strict mode for this run. Strip the `strict:` token from the description. Strict mode is equivalent to the Large task profile (all-Opus model selection, `max_rounds` defaults to 5). The user can still override `max_rounds` via the `max_rounds: N` token even in strict mode. If `strict:` is present, set task profile to **Large** and skip step 1b.
 
-2. **`max_rounds: N`** (case-insensitive, N = positive integer): If found, use N as the maximum round cap for this run. Strip the `max_rounds: N` token from the description before passing it to the planner skill. If not found, use the default cap (4 in normal mode, 5 in strict mode). If the value is not a positive integer (e.g., zero, negative, or non-numeric), ignore the override and use the default.
+1b. **Task profile tag** (`small:`, `medium:`, `large:`, case-insensitive): If the task description begins with one of these tokens, set the task profile accordingly and strip the token. If `large:` is specified, it is equivalent to `strict:` (all-Opus, max 5). If no profile tag is found and `strict:` was not found, proceed to step 1c.
+
+1c. **Auto-classification** (only if no explicit tag from steps 1 or 1b): Based on the task description and any available context (architecture docs, referenced files), classify the task as Small, Medium, or Large using the triage criteria (see "Task triage criteria" section below). Present the classification to the user with a brief rationale and ask for confirmation. If the user disagrees, use their choice. If the user does not respond or says "ok" / "yes" / "go", use the auto-classification. **When in doubt, default to Medium** — it is the safe middle ground.
+
+2. **`max_rounds: N`** (case-insensitive, N = positive integer): If found, use N as the maximum round cap for this run. Strip the `max_rounds: N` token from the description before passing it to the planner skill. If not found, use the default cap (4 for Medium, 5 for Large/strict). If the value is not a positive integer (e.g., zero, negative, or non-numeric), ignore the override and use the default.
+
+3. **Apply task profile defaults.** Based on the determined profile, set defaults that were not already overridden:
+
+   | Profile | Model mode | Default max_rounds | Critic loop | Gate level |
+   |---------|-----------|-------------------|-------------|------------|
+   | Small | N/A (single pass) | N/A | Skip | Smoke (plan) + Standard (post-implement) + Full (pre-merge) |
+   | Medium | Normal (Opus /plan, Sonnet /revise-fast, Opus /critic) | 4 | Full | Smoke (plan) + Standard (post-implement) + Full (pre-merge) |
+   | Large | Strict (all Opus) | 5 | Full | Smoke (plan) + Full (post-implement) + Full (pre-merge) |
+
+   If `max_rounds: N` was explicitly provided, it overrides the profile's default.
+
+   **Important:** For Small-profile tasks, `max_rounds` is ignored — there is no critic loop and therefore no round cap applies. If `max_rounds: N` was parsed in step 2, discard it when the profile is Small.
+
+   **Note on auto-classification latency:** Auto-classification (step 1c) adds one user confirmation round-trip before planning begins. Users who want to skip this delay can use explicit tags (`small:`, `medium:`, `large:`).
 
 Examples:
-- `/thorough_plan max_rounds: 6 this migration is gnarly` — normal mode, cap = 6
-- `/thorough_plan strict: handle the auth migration carefully` — strict mode, cap = 5
-- `/thorough_plan strict: max_rounds: 3 quick but safe` — strict mode, cap = 3
+- `/thorough_plan fix the null check in auth.ts` — auto-classifies (likely Small), asks for confirmation
+- `/thorough_plan small: fix the null check in auth.ts` — Small profile, single-pass plan, no critic loop
+- `/thorough_plan medium: add retry logic to the payment client` — Medium profile, standard critic loop (max 4)
+- `/thorough_plan large: redesign the auth token refresh flow` — Large profile (= strict mode), all-Opus, max 5
+- `/thorough_plan max_rounds: 6 this migration is gnarly` — auto-classified, cap overridden to 6
+- `/thorough_plan strict: handle the auth migration carefully` — Large profile (strict mode), cap = 5
+- `/thorough_plan strict: max_rounds: 3 quick but safe` — Large profile, cap = 3
+- `/thorough_plan small: max_rounds: 2 add the config endpoint` — Small profile; max_rounds parsed then discarded (no loop)
+
+### 3b. Task triage criteria
+
+Use these criteria when auto-classifying a task (step 1c above) or when verifying a user's explicit tag makes sense:
+
+**Small** — Single-concern, localized changes with no integration risk:
+- Touches 1-3 closely related files in a single module
+- No integration points affected (no API contract changes, no cross-service calls)
+- Well-understood pattern: bug fix, config change, add simple endpoint, rename, typo fix
+- Failure is localized — affects one feature, easy to detect and revert
+- No data model changes, no auth changes, no shared-state modifications
+
+**Medium** — Multi-file changes with moderate complexity or some integration risk:
+- Touches multiple files across 1-2 modules or services
+- May affect integration points but contracts remain backward-compatible
+- Some unknowns but similar work has been done in this codebase before
+- Failure affects a subsystem but is contained and recoverable
+- Includes adding a new feature with tests, refactoring a module, adding retry/resilience logic
+
+**Large** — Cross-cutting, high-risk, or architecturally significant changes:
+- Touches multiple services, repos, or architectural layers
+- Affects data consistency, authentication, authorization, or multi-service contracts
+- Significant unknowns, new patterns, or involves migration of existing data/systems
+- Failure could affect multiple services or all users
+- Includes database migrations, auth overhauls, API versioning, payment flow changes
+
+**When the classification is ambiguous, choose the more cautious (larger) profile.** A Medium task that runs the full critic loop costs a few extra dollars; a Large task misclassified as Small can ship bugs.
 
 ### 4. Model selection per round
 
@@ -46,20 +96,28 @@ The orchestrator selects which skill variant to spawn based on the round number 
 
 | Round | Role | Normal mode (default) | Strict mode |
 |-------|------|-----------------------|-------------|
-| 1 | Planner | `/plan-fast` (Sonnet) | `/plan` (Opus) |
+| 1 | Planner | `/plan` (Opus) | `/plan` (Opus) |
 | 1 | Critic | `/critic` (Opus) | `/critic` (Opus) |
-| 2-3 | Reviser | `/revise-fast` (Sonnet) | `/revise` (Opus) |
-| 2-3 | Critic | `/critic` (Opus) | `/critic` (Opus) |
-| 4+ (final) | Reviser | `/revise` (Opus) | `/revise` (Opus) |
-| 4+ (final) | Critic | `/critic` (Opus) | `/critic` (Opus) |
+| 2+ | Reviser | `/revise-fast` (Sonnet) | `/revise` (Opus) |
+| 2+ | Critic | `/critic` (Opus) | `/critic` (Opus) |
 
 **Key rules:**
+- `/plan` (round 1) is ALWAYS Opus, in every mode. The initial plan sets the structural foundation; a strong first plan reduces iteration.
 - `/critic` is ALWAYS Opus, every round, in every mode. Never tiered.
-- In normal mode, only the final allowed round escalates `/revise` to Opus. If `max_rounds` is overridden to a value less than 4, the final round still uses Opus `/revise`.
-- In strict mode, every role uses its Opus variant. This is the "pay full price for maximum quality" option.
-- The `-fast` variants (`/plan-fast`, `/revise-fast`) are content-identical to their Opus counterparts — same instructions, same output format, different model.
+- In normal mode, `/revise` rounds (2+) use Sonnet via `/revise-fast`. In strict mode, they use Opus `/revise`.
+- The `-fast` variant (`/revise-fast`) is content-identical to its Opus counterpart — same instructions, same output format, different model.
 
-## The loop
+## Small-profile routing (no loop)
+
+If the task profile is Small, do NOT enter the critic loop. Instead:
+
+1. Invoke `/plan` (Opus) — same as round 1 of the normal loop. Output: `current-plan.md`.
+2. Run a smoke gate (plan artifact exists, has tasks with file paths and acceptance criteria).
+3. Add the convergence summary to the top of `current-plan.md` with `Task profile: Small`, `Rounds: 1`, and `Key revisions: N/A — single-pass plan`.
+4. Inform the user: "Task classified as Small — single-pass plan produced. Plan is ready at `<task-folder>/current-plan.md`."
+5. **STOP.** Do not invoke `/implement`. Wait for the user.
+
+## Medium and Large profiles (critic loop)
 
 ```
 Round 1:
@@ -83,8 +141,8 @@ Round 2:
 
 ### Invoking each agent
 
-**`/plan` or `/plan-fast` (Round 1 only)**
-- Spawn `/plan-fast` (Sonnet) in normal mode, or `/plan` (Opus) in strict mode — see "Model selection per round" table above
+**`/plan` (Round 1 only)**
+- Always spawn `/plan` (Opus) — the initial plan is always Opus-quality regardless of mode
 - Pass all context: architecture docs, user requirements, repo paths
 - Output: `<task-folder>/current-plan.md`
 
@@ -96,7 +154,7 @@ Round 2:
 
 **`/revise` or `/revise-fast` (rounds 2+)**
 - **MUST spawn as a new agent session** (same mechanism used for /critic above) — fresh context prevents anchoring on prior orchestrator chatter
-- Spawn `/revise-fast` (Sonnet) for rounds 2 through max_rounds-1, or `/revise` (Opus) for the final allowed round — see "Model selection per round" table above. In strict mode, always `/revise` (Opus).
+- Spawn `/revise-fast` (Sonnet) in normal mode, or `/revise` (Opus) in strict mode — see "Model selection per round" table above.
 - Pass: path to `current-plan.md`, path to latest `critic-response-<N>.md`, and paths to any files the critic flagged as needing re-examination
 - Output: updated `current-plan.md` (in place)
 
@@ -122,11 +180,14 @@ When converged, add a convergence summary to the top of `current-plan.md`:
 
 ```markdown
 ## Convergence Summary
-- **Rounds:** <N>
+- **Task profile:** <Small | Medium | Large>
+- **Rounds:** <N> (Small tasks: 1, single pass)
 - **Final verdict:** PASS
-- **Key revisions:** <what the main themes of revision were across rounds>
+- **Key revisions:** <what the main themes of revision were across rounds, or "N/A — single-pass plan" for Small>
 - **Remaining concerns:** <any MINOR issues not addressed, or none>
 ```
+
+For Small-profile tasks that took the single-pass path, the convergence summary still appears at the top of `current-plan.md` but with `Rounds: 1` and `Key revisions: N/A — single-pass plan`. This signals to downstream skills that the plan was not critic-reviewed.
 
 Then run `/gate` to present automated checks and a summary to the user.
 
@@ -152,7 +213,7 @@ After the gate, inform the user:
 
 ## Important behaviors
 
-- **You are the orchestrator, not the planner.** Don't produce plan content yourself — invoke `/plan` (or `/plan-fast`), `/critic`, `/revise` (or `/revise-fast`).
+- **You are the orchestrator, not the planner.** Don't produce plan content yourself — invoke `/plan`, `/critic`, `/revise` (or `/revise-fast`).
 - **Critic MUST be a fresh session.** This is non-negotiable. Same-agent critique is biased and weak.
 - **Keep the user informed.** Brief status updates between rounds. Don't go silent for 10 minutes.
 - **Detect loops early.** After each critic round, compare CRITICAL/MAJOR issue titles against the previous round. If any title reappears, stop and present the repeated issues to the user — ask whether to continue revising or accept the plan as-is.

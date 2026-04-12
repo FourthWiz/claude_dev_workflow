@@ -48,31 +48,56 @@ This keeps the project root clean — only active work is visible at the top lev
 
 ## Workflow sequence
 
-The intended flow is:
+The intended flow depends on the task profile (Small / Medium / Large). `/thorough_plan` is the universal entry point — it triages and routes automatically.
+
+### Full flow (Medium and Large tasks)
 
 ```
 /discover → /architect → GATE → /thorough_plan → GATE → /implement → GATE → /review → GATE → /end_of_task
 ```
+
+### Shortcut flow (Small tasks)
+
+```
+/thorough_plan (auto-routes to single-pass /plan) → GATE → /implement → GATE → /review → GATE → /end_of_task
+```
+
+Small tasks skip `/architect` and the critic loop. `/thorough_plan` detects the Small profile (via `small:` tag or auto-classification) and runs a single `/plan` pass without critic review.
+
+### Task profiles
+
+| Profile | Triggered by | Planning | Critic loop | Gate intensity | Typical cost |
+|---------|-------------|----------|-------------|---------------|-------------|
+| **Small** | `small:` prefix, or auto-classified + confirmed | Single `/plan` pass (Opus) | Skipped | Smoke → Standard → Full | ~$2.49 |
+| **Medium** | `medium:` prefix, auto-classified, or no tag (default) | `/plan` (Opus) + critic loop with Sonnet `/revise-fast` | Up to 4 rounds | Smoke → Standard → Full | ~$2.99–$4.00 |
+| **Large** | `large:` or `strict:` prefix | `/plan` (Opus) + critic loop with Opus `/revise` | Up to 5 rounds | Smoke → Full → Full | ~$4.65+ |
+
+**Triage criteria at a glance:**
+- **Small** — 1-3 files, single module, no integration risk, well-understood pattern (bug fix, config change, simple endpoint)
+- **Medium** — multiple files across 1-2 modules, moderate complexity, some integration points
+- **Large** — cross-service/cross-repo, high risk, data migrations, auth changes, significant unknowns
+
+When in doubt, default to Medium. The user can always override with an explicit tag.
 
 Each stage feeds into the next, with `/gate` checkpoints requiring explicit human approval:
 - `/init_workflow` bootstraps the workflow in a new project. Creates `memory/` structure, configures permissions, runs `/discover`, generates quickstart guide. Run once per project. (Skills and rules are installed separately via `bash install.sh`.)
 - `/discover` scans all repos and saves inventory, architecture overview, and dependency map to `memory/`. Run once on setup, re-run when repos change.
 - `/architect` produces `architecture.md` with stages decomposed for planning (uses `/discover` output as baseline context)
 - **GATE** — user reviews architecture, explicitly approves
-- `/thorough_plan` orchestrates the plan→critic→revise convergence loop:
-  - `/plan` produces the initial `current-plan.md` with implementable tasks
-  - `/critic` (fresh session) reviews plan against actual codebase → `critic-response-N.md`
-  - `/revise` addresses critic feedback → updates `current-plan.md`
-  - Loop repeats up to 4 rounds until convergence (override with max_rounds: N)
+- `/thorough_plan` triages the task and routes accordingly:
+  - **Small:** runs `/plan` (Opus) as a single pass → produces `current-plan.md` → smoke gate → done
+  - **Medium:** runs the plan→critic→revise convergence loop (Opus plan, Sonnet revise, Opus critic, max 4 rounds)
+  - **Large:** runs the convergence loop in strict mode (all Opus, max 5 rounds)
+  - Override with `max_rounds: N` for any profile (ignored for Small)
 - **GATE** — automated checks (plan completeness, risk coverage), user reviews plan, explicitly approves
 - `/implement` executes tasks from the converged plan, writing code and tests
-- **GATE** — automated checks (tests, lint, typecheck, no debug code, no secrets), user reviews
-- `/review` verifies implementation against the plan, checking quality and safety
-- **GATE** — review verdict is APPROVED, tests pass, no conflicts, user approves
+- **GATE** — automated checks (scope depends on task profile — Standard for Small/Medium, Full for Large)
+- `/review` verifies implementation against the plan, checking quality and safety (always Opus)
+- **GATE** — Full checks: review verdict is APPROVED, full test suite passes, no conflicts, user approves
 - `/end_of_task` — user explicitly accepts the work. Commits remaining changes, pushes branch to remote, prompts for lessons learned, marks task complete. Does NOT create a PR — that's a separate explicit action.
 - `/rollback` is available at any point to safely undo implementation work
 
-Not every task needs every stage. Small, well-understood changes can skip `/architect` and go straight to `/thorough_plan`. Bug fixes might only need `/implement` + `/review`. But gates ALWAYS run between phases.
+Not every task needs every stage. Small tasks typically skip `/architect` entirely. Bug fixes might only need `/implement` + `/review` (bypassing `/thorough_plan` entirely). But gates ALWAYS run between phases.
 
 **CRITICAL RULE: `/implement` and `/end_of_task` require explicit user commands.** No skill may auto-invoke either. After `/thorough_plan` converges, the workflow STOPS and waits for `/implement`. After `/review` approves and the gate passes, the workflow STOPS and waits for `/end_of_task`. The user must consciously decide to start writing code AND to ship it.
 
@@ -82,6 +107,33 @@ Session lifecycle:
 - `/weekly_review` — aggregates the week's progress into a structured review. Run on Friday (or whenever you want a week-level summary). Saves to `memory/weekly/`.
 
 Multiple sessions can run in a day (parallel tasks). Each session writes its own state to `memory/sessions/`. `/end_of_day` rolls unfinished sessions into `memory/daily/<date>.md`.
+
+## Task triage criteria
+
+These criteria guide the auto-classification in `/thorough_plan` and help users choose the right explicit tag.
+
+### Small
+- Touches 1-3 closely related files in a single module
+- No integration points affected (no API contract changes, no cross-service calls)
+- Well-understood pattern: bug fix, config change, add simple endpoint, rename, typo fix
+- Failure is localized — affects one feature, easy to detect and revert
+- No data model changes, no auth changes, no shared-state modifications
+
+### Medium (default when uncertain)
+- Touches multiple files across 1-2 modules or services
+- May affect integration points but contracts remain backward-compatible
+- Some unknowns but similar work has been done in this codebase before
+- Failure affects a subsystem but is contained and recoverable
+- Adding a new feature with tests, refactoring a module, adding retry/resilience logic
+
+### Large
+- Touches multiple services, repos, or architectural layers
+- Affects data consistency, authentication, authorization, or multi-service contracts
+- Significant unknowns, new patterns, or involves migration of existing data/systems
+- Failure could affect multiple services or all users
+- Database migrations, auth overhauls, API versioning, payment flow changes
+
+**Rule: when the classification is ambiguous, choose Medium.** It is the safe default — the critic loop catches issues that a single-pass plan might miss, at a modest cost premium.
 
 ## Session independence
 
@@ -273,12 +325,11 @@ Keep questions specific and pointed. Don't ask "what do you want?" — ask "shou
 |-------|-------|-----------|
 | /discover | Opus | Cross-repo scanning, understanding how services connect |
 | /architect | Opus | Deep exploration, complex reasoning, cross-repo analysis |
-| /plan | Opus | Detailed planning requires strong reasoning (used in strict mode and standalone) |
-| /plan-fast | Sonnet | Cost-efficient planning (used by /thorough_plan in normal mode, round 1) |
+| /plan | Opus | Detailed planning requires strong reasoning (always Opus — strong foundation reduces iteration) |
 | /critic | Opus | Finding real issues requires deep understanding (never tiered) |
-| /revise | Opus | Addressing critic feedback requires strong reasoning (used in strict mode and final round) |
-| /revise-fast | Sonnet | Cost-efficient revision (used by /thorough_plan in normal mode, rounds 2-3) |
-| /thorough_plan | Opus | Orchestrates plan→critic→revise loop (tiers planner/reviser to Sonnet by default; use strict: for all-Opus) |
+| /revise | Opus | Addressing critic feedback requires strong reasoning (used in strict mode) |
+| /revise-fast | Sonnet | Cost-efficient revision (used by /thorough_plan in normal mode, rounds 2+) |
+| /thorough_plan | Opus | Orchestrates task triage and plan→critic→revise loop. Routes Small tasks to single-pass /plan; Medium uses Sonnet /revise-fast; Large/strict: uses all-Opus. Critic always Opus. |
 | /implement | Sonnet | Efficient code generation, plan already defines what to do |
 | /review | Opus | Thorough analysis, integration safety, risk assessment |
 | /gate | Sonnet | Automated checks and human approval checkpoint |
