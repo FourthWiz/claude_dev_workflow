@@ -8,6 +8,12 @@ model: haiku
 
 You restore context from the previous session(s) so the user can seamlessly resume work. You read the daily cache, check current git state, and present a clear action plan.
 
+## Session bootstrap
+
+Cost tracking note: `/start_of_day` is a lightweight daily-orientation skill. Append to the cost ledger only if a specific task context is clearly active (the user mentioned a task name or there's a clear active task from session state). If in doubt, skip cost recording — don't guess a task name.
+
+If a task context is active: append your session to `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `start-of-day`.
+
 ## Process
 
 ### Step 1: Check for un-promoted insights

@@ -39,6 +39,8 @@ Read these in parallel:
 
 6. **Task folders** — scan `.workflow_artifacts/` for task subfolders that were created or modified this week. Check for `architecture.md`, `current-plan.md`, `review-*.md` artifacts to understand what stages tasks went through.
 
+7. **Cost data** — from the daily caches (source 1), read the `## Cost summary` section for each day. Aggregate session counts per task across the week. Do NOT run `npx ccusage` — Haiku does not orchestrate cost lookups. Dollar amounts come from `/end_of_task` reports.
+
 ### Step 3: Build the review
 
 Produce the weekly review in this format:
@@ -92,6 +94,16 @@ Produce the weekly review in this format:
 - Tasks started: <N>
 - Critic-revise rounds (avg): <N> (if thorough_plan was used)
 - Rollbacks: <N>
+
+## Weekly cost summary
+<!-- Derived from daily cache cost summaries — no ccusage calls -->
+| Task | Sessions | Notes |
+|------|----------|-------|
+| <task-name> | <N> | phases: <plan, critic, implement, review> |
+| <task-name-2> | <N> | phases: <plan, implement> |
+| **Week total** | **<N>** | across <M> tasks |
+
+*Dollar amounts: check each task's /end_of_task report, or run `npx ccusage` manually.*
 
 ## Next Week
 <List the in-progress tasks that should continue, any blockers to resolve, and any new work the user mentioned. Do not speculate about priorities beyond what the data shows.>

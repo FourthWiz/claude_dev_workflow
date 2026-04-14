@@ -153,7 +153,7 @@ These criteria guide the auto-classification in `/thorough_plan` and help users 
 **Recommended session pattern:**
 - One command per session for heavy work (`/architect`, `/thorough_plan`, `/implement`, `/review`)
 - **`/run` gets its own session.** It orchestrates subagent sessions for each phase, so it stays lean — but start it fresh so the orchestrator has maximum context for managing the full pipeline.
-- **Always run `/end_of_task` in a fresh session** if the current session has been through heavy work. The skill has 7 sequential steps that must all complete — context compaction mid-skill can silently skip steps like archiving.
+- **Always run `/end_of_task` in a fresh session** if the current session has been through heavy work. The skill has 8 sequential steps that must all complete — context compaction mid-skill can silently skip steps like archiving.
 - Short flows can share a session (`/plan` → `/implement` → `/review` for a small bug fix)
 - Use your judgment: when context feels heavy, close and start fresh
 
@@ -321,6 +321,55 @@ Every skill that does meaningful work (architect, plan, critic, revise, implemen
 At minimum, update the `Current stage`, `Completed in this session`, and `Unfinished work` sections as tasks complete. This way, if the session is interrupted, `/end_of_day` (or the next `/start_of_day`) has accurate state to work from.
 
 Don't obsess over keeping this perfectly up to date on every micro-step — update it at natural checkpoints (after completing a plan, finishing a critic round, implementing a task, etc.).
+
+The session state file template includes a `## Cost` section:
+
+```markdown
+## Cost
+- Session UUID: <UUID obtained from JSONL filename approach — see Cost tracking rules>
+- Phase: <phase>
+- Recorded in cost ledger: yes/no
+```
+
+This is informational — the cost ledger (`.workflow_artifacts/<task-name>/cost-ledger.md`) is the source of truth for per-session costs.
+
+### Cost tracking
+
+Every skill that does meaningful work should record its session to the task's cost ledger at the start of the session. This enables `/end_of_task` to aggregate the total cost of a task across all sessions, including sessions that crashed or were force-closed.
+
+**Step 1: Obtain the session UUID (JSONL filename approach — primary method)**
+
+The Claude Code runtime writes a JSONL file for the active session at `~/.claude/projects/<project-hash>/`. The filename is `<uuid>.jsonl`. Since the active session's JSONL is written to continuously, it is always the most recently modified file:
+
+```bash
+# Determine project hash: project folder path with / replaced by -
+# Example: /Users/alice/projects/myapp → Users-alice-projects-myapp
+ls -t ~/.claude/projects/<project-hash>/*.jsonl 2>/dev/null | head -1
+# Extract UUID: strip directory path and .jsonl extension
+```
+
+If no `.jsonl` file is found (rare — session hasn't made an API call yet), use `unknown-<ISO-timestamp>` as the UUID. If the `CLAUDE_SESSION_ID` environment variable is set (future Claude Code versions may add this), use it as an alternative — but do not depend on it being present.
+
+**Step 2: Append to the cost ledger**
+
+Append one line to `.workflow_artifacts/<task-name>/cost-ledger.md`:
+
+```
+<session-uuid> | <YYYY-MM-DD> | <phase> | <primary-model> | task | <brief note>
+```
+
+If the ledger file doesn't exist yet, create it with the header line first:
+```
+# Cost Ledger — <task-name>
+```
+
+**Phase values:** `discover`, `architect`, `plan`, `critic`, `revise`, `implement`, `review`, `gate`, `end-of-task`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `ad-hoc`
+
+**Category:** Always write `task`. The user may manually edit the ledger to change a row to `off-topic` if a session drifted from the task. Skills do NOT auto-detect off-topic work.
+
+**The cost ledger is append-only during a task.** Never delete or rewrite rows.
+
+**Conditional skills:** `/discover`, `/gate`, `/start_of_day`, and `/capture_insight` should only record to the cost ledger if a task name is clearly determinable from context (a task folder path or explicit task name was passed). If no task context is active, skip cost recording silently.
 
 ### Asking questions
 

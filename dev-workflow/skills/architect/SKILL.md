@@ -18,7 +18,8 @@ This skill may run in a fresh chat session with no prior context. On start:
 1. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights
 2. Read `.workflow_artifacts/memory/sessions/` for any active session state for this task
 3. Read the task subfolder if it exists (prior `architecture.md`, `current-plan.md`)
-4. Then proceed with the work below
+4. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `architect`
+5. Then proceed with the work below
 
 ## How you work
 

@@ -1,16 +1,16 @@
 ---
 name: end_of_task
-description: "Finalizes a completed task: ensures all changes are committed, pushes branch to remote, prompts for lessons learned, and marks the task as complete. Requires /review to have been run first. Does NOT create a PR — that's a separate explicit action. Use this skill for: /end_of_task, 'finalize this', 'we're done', 'ship it', 'task complete', 'wrap up this task'. This is the explicit user acceptance of completed, reviewed work — the last step before moving on."
+description: "Finalizes a completed task: ensures all changes are committed, pushes branch to remote, prompts for lessons learned, aggregates task cost across all sessions, and marks the task as complete. Requires /review to have been run first. Does NOT create a PR — that's a separate explicit action. Use this skill for: /end_of_task, 'finalize this', 'we're done', 'ship it', 'task complete', 'wrap up this task'. This is the explicit user acceptance of completed, reviewed work — the last step before moving on."
 model: sonnet
 ---
 
 # End of Task
 
-You finalize a completed task. This is the user's explicit acceptance that the work is done — reviewed, approved, and ready to ship. You handle the git ceremony (commit, push to branch), capture lessons, and close out the task cleanly. **You do NOT create a PR** — that's a separate, explicit action the user takes when they're ready.
+You finalize a completed task. This is the user's explicit acceptance that the work is done — reviewed, approved, and ready to ship. You handle the git ceremony (commit, push to branch), capture lessons, aggregate task cost, and close out the task cleanly. **You do NOT create a PR** — that's a separate, explicit action the user takes when they're ready.
 
 **CRITICAL: You must verify that `/review` was run before proceeding.** If no `review-*.md` file exists in the task folder, STOP and tell the user to run `/review` first.
 
-**IMPORTANT: Fresh session recommended.** This skill has 7 sequential steps that must all complete (pre-flight, commit, push, lessons, session state, archive, report). If the current session has been through heavy work (`/thorough_plan`, `/implement`, `/review`), start a fresh session for `/end_of_task` — context compaction mid-skill can silently skip steps.
+**IMPORTANT: Fresh session recommended.** This skill has 8 sequential steps that must all complete (pre-flight, commit, push, lessons, session state, cost aggregation, archive, report). If the current session has been through heavy work (`/thorough_plan`, `/implement`, `/review`), start a fresh session for `/end_of_task` — context compaction mid-skill can silently skip steps like archiving.
 
 ## When to use
 
@@ -21,7 +21,7 @@ Only after:
 
 This skill is never auto-invoked. The user must consciously accept the work.
 
-**Exception: `/run` orchestrator.** When this skill is spawned by `/run` as a subagent, the user has already confirmed the finalization checkpoint ("yes, finalize and push"). This constitutes explicit user acceptance — the user consciously chose to run the full pipeline and confirmed at Checkpoint D. All preconditions (APPROVED review, passed gate) are still enforced. If you see evidence that you were spawned by `/run`, proceed normally through all 7 steps.
+**Exception: `/run` orchestrator.** When this skill is spawned by `/run` as a subagent, the user has already confirmed the finalization checkpoint ("yes, finalize and push"). This constitutes explicit user acceptance — the user consciously chose to run the full pipeline and confirmed at Checkpoint D. All preconditions (APPROVED review, passed gate) are still enforced. If you see evidence that you were spawned by `/run`, proceed normally through all 8 steps.
 
 ## Process
 
@@ -101,7 +101,44 @@ Update `.workflow_artifacts/memory/sessions/<date>-<task-name>.md`:
 - Record the final branch name and commit hash
 - Note any lessons captured
 
-### Step 6: Archive the task folder
+### Step 6: Cost aggregation
+
+Read `.workflow_artifacts/<task-name>/cost-ledger.md`.
+
+**If the file doesn't exist:** note "no cost ledger found — cost tracking was not active for this task" and proceed to Step 7.
+
+For each data line in the ledger (skip lines starting with `#` and blank lines), parse the pipe-delimited fields: `<uuid> | <date> | <phase> | <model> | <category> | <notes>`
+
+Run `npx ccusage session -i <UUID> --json` for each UUID, sequentially. Apply a 15-second timeout per call:
+
+```bash
+timeout 15 npx ccusage session -i <UUID> --json
+```
+
+**For tasks with 5 or more sessions**, prefer a single call to reduce overhead:
+
+```bash
+npx ccusage session --json --since <earliest-date-from-ledger>
+```
+
+Then filter the returned sessions against the UUIDs in the ledger.
+
+**Parse the JSON output.** The structure is:
+```json
+{"sessionId": "...", "totalCost": 1.23, "totalTokens": 123456, "entries": [...]}
+```
+
+From `entries`, aggregate per-model cost: group entries by the `model` field and sum `costUSD` per model. If all entry-level `costUSD` values are 0 (cached calls), use `totalCost` as the session total and mark model breakdown as "unavailable".
+
+**If a lookup times out or returns an error**, note "cost unknown" for that phase and continue.
+
+**Aggregate results (hold in memory for Step 8):**
+- Per-phase breakdown: sum `totalCost` by phase field from ledger
+- Per-model breakdown: sum across all sessions grouped by model
+- Task vs off-topic: separate totals for `task` and `off-topic` category entries
+- Grand total
+
+### Step 7: Archive the task folder
 
 Move the completed task folder into `.workflow_artifacts/finalized/` to keep the project root clean.
 
@@ -139,7 +176,7 @@ mv <task-folder> <target-finalized-dir>/
 
 **Note:** Only move planning/review artifacts (the task subfolder with `current-plan.md`, `architecture.md`, `review-*.md`, etc.). Never move source code repos — those stay where they are.
 
-### Step 7: Report
+### Step 8: Report
 
 Tell the user:
 
@@ -152,11 +189,28 @@ Tests: all passing
 Review: APPROVED
 Archived: <task-folder> → <finalized-path>
 
+Cost breakdown:
+  Phase          | Cost
+  ---------------|--------
+  plan           | $X.XX
+  critic (xN)    | $X.XX
+  implement      | $X.XX
+  review         | $X.XX
+  other          | $X.XX
+  ---------------|--------
+  Task total     | $X.XX
+  Off-topic      | $X.XX
+  Grand total    | $X.XX
+
+Model breakdown: opus: $X.XX | sonnet: $X.XX | haiku: $X.XX
+
 Lessons captured: <yes/no>
 Session marked as completed.
 
 Next: when you're ready, create a PR from the branch.
 ```
+
+If no cost ledger was found or all lookups failed, show: `Cost tracking: not available (ledger missing or all lookups failed)`
 
 Clean and done.
 
@@ -165,4 +219,5 @@ Clean and done.
 - **Run tests one last time.** Even if they passed 5 minutes ago. Code might have changed.
 - **Never force-push.** Use regular `git push`. If the branch has diverged, tell the user and let them decide how to resolve.
 - **No PR creation.** This skill pushes the branch only. The user creates the PR separately when they're ready. Remind them at the end.
+- **Cost aggregation runs before archive.** The ledger file is inside the task folder — it must be read before the folder is moved.
 - **This is a celebration, not a chore.** The task is done. Keep the output clean and satisfying.

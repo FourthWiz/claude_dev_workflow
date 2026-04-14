@@ -16,7 +16,8 @@ This skill should run in a fresh session for unbiased review (similar to /critic
 3. Read `.workflow_artifacts/<task-name>/architecture.md` if it exists
 4. Read prior `critic-response-*.md` to verify those issues were addressed
 5. Read the git diff AND the full modified files
-6. Then proceed with review
+6. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `review`
+7. Then proceed with review
 
 ## Model requirement
 

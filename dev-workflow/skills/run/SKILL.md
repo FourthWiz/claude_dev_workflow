@@ -20,6 +20,8 @@ When starting:
 3. Read `.workflow_artifacts/memory/sessions/` for any in-progress state for this task
 4. Check git state across all repos
 
+Note: The cost ledger is initialized during Setup (see "Initialize cost ledger" below). The orchestrator's own session is recorded there as the first entry.
+
 ## Setup
 
 ### Parse input and determine task profile
@@ -36,6 +38,19 @@ See `/thorough_plan` SKILL.md section 3 for full parsing rules and triage criter
 ### Determine task name
 
 Derive a descriptive kebab-case name from the task description (e.g., `auth-token-refresh`, `add-retry-logic`). Ask the user if it's not obvious. Create `.workflow_artifacts/<task-name>/`.
+
+### Initialize cost ledger
+
+After creating the task folder, initialize the cost ledger:
+
+1. Create `.workflow_artifacts/<task-name>/cost-ledger.md` with the header:
+   ```
+   # Cost Ledger — <task-name>
+   ```
+2. Record the orchestrator's own session as the first entry (see cost tracking rules in CLAUDE.md for UUID acquisition):
+   ```
+   <session-uuid> | <YYYY-MM-DD> | run-orchestrator | opus | task | /run pipeline start
+   ```
 
 ### Check git state
 
@@ -71,12 +86,16 @@ Also check for `repos-inventory.md` (plural) as secondary confirmation.
 - **If skipping:** tell the user "Discovery files are recent (<N> days old) — skipping /discover. Say 'rediscover' to force a fresh scan."
 - **If running:** spawn `/discover` as a subagent session (same mechanism as `/thorough_plan` uses for `/critic` — see its "Invoking each agent" section). Pass the project folder path. No gate runs after discover — it feeds directly into architect.
 
+After the phase, verify the cost ledger has a new entry for the `discover` phase. If not (subagent didn't record), append a best-effort entry: `unknown-discover-<timestamp> | <date> | discover | opus | task | /run subagent (no UUID recorded)`.
+
 ## Phase 2 — Architect (conditional)
 
 **Skip condition:** Task profile is Small.
 
 - **If Small:** tell the user "Small task — skipping /architect, proceeding directly to planning."
 - **If running:** spawn `/architect` as a subagent session, passing the task description and paths to discovery output files (`repos-inventory.md`, `architecture-overview.md`, `dependencies-map.md`).
+
+After the phase, verify the cost ledger has a new entry for the `architect` phase. If not, append a best-effort entry with `unknown-architect-<timestamp>`.
 
 After architect completes, run `/gate` (architecture gate).
 
@@ -105,6 +124,8 @@ Spawn `/thorough_plan` as a subagent session, passing:
 
 `/thorough_plan` handles its own internal plan→critic→revise loop and runs its own post-plan smoke gate.
 
+After the phase, verify the cost ledger has new entries for `thorough-plan`, `plan`, `critic`, and (if applicable) `revise` phases. If not, append best-effort entries with `unknown-<phase>-<timestamp>`.
+
 **Checkpoint B:**
 ```
 Phase complete: Planning
@@ -122,6 +143,8 @@ Continue to implementation? (yes / no / show plan)
 ## Phase 4 — Implement
 
 Spawn `/implement` as a subagent session, passing path to `current-plan.md` and all repo paths. Because the user invoked `/run` and confirmed at Checkpoint B, the `/run` exception in `implement/SKILL.md` applies.
+
+After the phase, verify the cost ledger has a new entry for the `implement` phase. If not, append a best-effort entry with `unknown-implement-<timestamp>`.
 
 After implement completes, run `/gate`:
 - Standard level for Small/Medium
@@ -152,6 +175,8 @@ Spawn `/review` as a **fresh subagent session** (unbiased assessment requires cl
 
 Read the review output (`review-*.md`) and check the verdict.
 
+After the phase, verify the cost ledger has a new entry for the `review` phase. If not, append a best-effort entry with `unknown-review-<timestamp>`.
+
 **If APPROVED:** run `/gate` (Full level, post-review). Proceed to Checkpoint D.
 
 **If CHANGES_REQUESTED:** present the issues to the user. Offer:
@@ -176,7 +201,7 @@ Finalize and push? (yes / no / show review)
 
 ## Phase 6 — End of Task
 
-Spawn `/end_of_task` as a subagent session. Because the user invoked `/run` and confirmed at Checkpoint D, the `/run` exception in `end_of_task/SKILL.md` applies. All 7 steps run as normal (pre-flight, commit, push, lessons, session state, archive, report).
+Spawn `/end_of_task` as a subagent session. Because the user invoked `/run` and confirmed at Checkpoint D, the `/run` exception in `end_of_task/SKILL.md` applies. All 8 steps run as normal (pre-flight, commit, push, lessons, session state, cost aggregation, archive, report).
 
 After completion, present the final report:
 ```
@@ -186,6 +211,7 @@ Branch: <branch-name> → pushed to origin
 Profile: <Small|Medium|Large>
 Phases: discover(<skipped|ran>), architect(<skipped|ran>), plan(<N> rounds), implement, review(APPROVED), finalized
 Archived: .workflow_artifacts/<task-name>/ → finalized/
+Cost ledger: .workflow_artifacts/<task-name>/cost-ledger.md (<N> sessions tracked)
 
 Next: create a PR from the branch when ready.
 ```
@@ -237,7 +263,7 @@ Multiple `/run` sessions can operate simultaneously on different tasks — each 
 
 ## Cost estimate
 
-`/run` adds orchestrator overhead (Opus, typically $0.25–$0.50) on top of per-skill costs:
+These are rough estimates based on typical usage. Actual costs are computed by `/end_of_task` from the cost ledger and presented in the final report.
 
 | Profile | Approximate total |
 |---------|------------------|

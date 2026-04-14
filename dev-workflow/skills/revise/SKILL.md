@@ -13,7 +13,8 @@ You are a technical planner revising an implementation plan based on critic feed
 This skill may run in a fresh session. On start:
 1. Read the task subfolder: `current-plan.md`, latest `critic-response-*.md`, and any prior critic responses
 2. Re-read relevant source code if the critic flagged incorrect assumptions
-3. Then proceed with revision
+3. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `revise`
+4. Then proceed with revision
 
 ## Model requirement
 

@@ -153,9 +153,18 @@ Write the daily cache to `.workflow_artifacts/memory/daily/<date>.md`:
 <High-level: N commits across M repos. Key changes: ...>
 <Reference .workflow_artifacts/memory/git-log.md for details>
 
+## Cost summary
+<!-- Session counts from cost-ledger.md files — no ccusage calls -->
+- **<task-name>**: <N> sessions tracked today (phases: <plan, implement, ...>)
+- **<task-name-2>**: <N> sessions tracked today (phases: ...)
+- **Day total**: <N> sessions across <M> tasks
+*Dollar amounts: run /end_of_task for each completed task to see the full cost breakdown.*
+
 ## Tomorrow's priorities
 <Based on what's unfinished, suggest what to tackle first>
 ```
+
+To populate the **Cost summary** section: for each active task today, check if `.workflow_artifacts/<task-name>/cost-ledger.md` exists. If it does, count the data lines (non-header, non-blank) where the date column matches today's date, and list the unique phase values. Do NOT run `npx ccusage` — Haiku does not orchestrate cost lookups. Just report counts and phases. Dollar amounts are computed by `/end_of_task`.
 
 ### Step 3b: Review and promote daily insights
 

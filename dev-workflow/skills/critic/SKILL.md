@@ -14,7 +14,8 @@ This skill ALWAYS runs in a fresh session (that's the whole point — unbiased r
 1. **Round 1 only:** Read `.workflow_artifacts/memory/lessons-learned.md` for past insights — check if past lessons apply to this plan's domain. **On rounds 2+, skip this step** — the file cannot change mid-loop, so re-reading it wastes tokens without adding information. (The round number is indicated by the existing `critic-response-*.md` files: if `critic-response-1.md` already exists, this is round 2 or later.)
 2. Read the task subfolder: `.workflow_artifacts/<task-name>/current-plan.md` and any prior `critic-response-*.md`
 3. Read the ACTUAL SOURCE CODE referenced by the plan (this is critical — don't trust the plan's claims)
-4. Then proceed with critique
+4. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `critic`
+5. Then proceed with critique
 
 ## Model requirement
 

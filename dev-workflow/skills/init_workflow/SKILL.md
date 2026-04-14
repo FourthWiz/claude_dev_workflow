@@ -18,6 +18,12 @@ You set up the complete development workflow system in a project folder. This is
 
 `install.sh` must have been run first. It installs skills to `~/.claude/skills/` and writes workflow rules to `~/.claude/CLAUDE.md`. This skill handles per-project initialization only — not the one-time machine setup.
 
+## Session bootstrap
+
+Note: `/init_workflow` initializes a project, not a task. Cost tracking requires a task context. Append to the cost ledger only if you were invoked as part of a task (e.g., via `/run`). Otherwise, skip cost recording.
+
+If a task context is active: append your session to `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `init-workflow`.
+
 ## Process
 
 ### Step 1: Ensure project is initialized with `/init`

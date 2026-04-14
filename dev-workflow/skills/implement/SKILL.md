@@ -21,7 +21,8 @@ This skill typically runs in a fresh session (clean context is a feature, not a 
 2. Read `.workflow_artifacts/memory/sessions/` for active session state (which tasks are done, where to resume)
 3. Read `.workflow_artifacts/<task-name>/current-plan.md` completely — this is your specification
 4. Read the actual source code you'll modify — understand existing patterns before changing anything
-5. Then proceed with implementation
+5. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `implement`
+6. Then proceed with implementation
 
 ## Model
 

@@ -14,7 +14,8 @@ This skill may run in a fresh chat session. On start:
 1. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights — apply relevant lessons
 2. Read `.workflow_artifacts/memory/sessions/` for active session state
 3. Read the task subfolder (`.workflow_artifacts/<task-name>/architecture.md`, any prior `current-plan.md`, `critic-response-*.md`)
-4. Then proceed with planning
+4. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `plan`
+5. Then proceed with planning
 
 ## Model requirement
 

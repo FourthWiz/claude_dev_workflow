@@ -12,6 +12,12 @@ You scan all repositories in the project folder and produce a structured invento
 
 Uses the strongest model (Opus) because understanding how services relate requires deep reasoning across multiple codebases.
 
+## Session bootstrap
+
+Cost tracking note: `/discover` can run standalone (no task context) or as part of a task via `/run`. Only append to the cost ledger if a task name was explicitly provided or is determinable from the invocation context. If running standalone, skip cost recording.
+
+If a task context is active: append your session to `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `discover`.
+
 ## What to scan
 
 ### Incremental scan — skip unchanged repos

@@ -8,6 +8,12 @@ model: haiku
 
 You log a single insight to the daily scratchpad immediately and return control to the user.
 
+## Session bootstrap
+
+Cost tracking note: `/capture_insight` is a lightweight note-taking skill. Append to the cost ledger only if a task context is clearly active. If in doubt, skip cost recording.
+
+If a task context is active: append your session to `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `capture-insight`.
+
 ## Process
 
 ### Step 1: Determine the insight

@@ -8,6 +8,12 @@ model: opus
 
 This skill orchestrates the planning convergence loop by invoking sub-skills — `/plan`, `/critic`, and `/revise` (or `/revise-fast`) — based on mode and round. See "Model selection per round" for details. It does not do the planning, critiquing, or revising itself — it coordinates the agents that do.
 
+## Session bootstrap
+
+On start:
+1. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights
+2. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `thorough-plan`
+
 ## Setup
 
 ### 1. Determine the task subfolder

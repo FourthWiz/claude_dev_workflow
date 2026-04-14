@@ -55,6 +55,10 @@ if ! command -v gh &>/dev/null; then
   warn "gh (GitHub CLI) not found — /end_of_task push will still work, but PR creation won't."
 fi
 
+if ! command -v npx &>/dev/null; then
+  warn "npx not found — cost tracking in /end_of_task requires npx (install Node.js from https://nodejs.org)."
+fi
+
 if [ ${#MISSING[@]} -gt 0 ]; then
   error "Missing required tools:"
   for tool in "${MISSING[@]}"; do
