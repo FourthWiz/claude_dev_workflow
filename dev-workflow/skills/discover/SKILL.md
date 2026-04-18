@@ -24,13 +24,20 @@ If a task context is active: append your session to `.workflow_artifacts/<task-n
 
 Before scanning each repo, check if a previous scan recorded the repo's HEAD commit:
 
-1. Read `.workflow_artifacts/memory/repo-heads.md` if it exists. This file maps repo names to their `git rev-parse HEAD` values from the last `/discover` run.
+1. Read `.workflow_artifacts/cache/_staleness.md` if it exists. If not found, fall back to `.workflow_artifacts/memory/repo-heads.md` for backward compatibility with pre-cache workflow versions. This file maps repo names to their `git rev-parse HEAD` values from the last `/discover` run.
 2. For each repo in the project folder, run `git rev-parse HEAD` and compare against the stored value.
 3. **If HEAD matches the stored value: skip the full scan for that repo.** Its inventory, dependencies, and API surface have not changed. Report to the user: "Skipping <repo-name> — unchanged since last scan (HEAD: <short-hash>)."
 4. **If HEAD differs or no stored value exists: perform the full scan** as described below.
-5. After completing all scans, overwrite `.workflow_artifacts/memory/repo-heads.md` with the current HEAD values for all repos (including unchanged ones).
+5. After completing all scans, write `.workflow_artifacts/cache/_staleness.md` with the current HEAD values for all repos (including unchanged ones). Create the `.workflow_artifacts/cache/` directory if it does not exist. Also write `.workflow_artifacts/memory/repo-heads.md` with the same data (backward compatibility — `/architect` and `/run` may still read it until they are updated in later stages).
 
-Format for `.workflow_artifacts/memory/repo-heads.md`:
+Format for `.workflow_artifacts/cache/_staleness.md`:
+
+| Repo | HEAD | Updated |
+|------|------|---------|
+| <repo-name-1> | <full-sha> | <ISO-timestamp> |
+| <repo-name-2> | <full-sha> | <ISO-timestamp> |
+
+The `repo-heads.md` backward-compat write uses the old 2-column format (no `Updated` column):
 
 | Repo | HEAD |
 |------|------|
@@ -244,6 +251,119 @@ Last updated: <datetime>
 
 Keep the last ~50 commits across all repos, newest first. The goal is that any skill reading this file understands the recent momentum and direction of the project.
 
+## Cache population
+
+In addition to the output files above, populate the knowledge cache tree under `.workflow_artifacts/cache/`. This cache provides structured per-file and per-module summaries that downstream skills can read instead of re-reading source files.
+
+### Scan subagent instructions
+
+When scanning repos in parallel, spawn a subagent per repo (or batch 2-3 small repos) with the following instructions. This is the complete instruction template — not an appendix to other instructions.
+
+> You are a read-only repo scanner for the `/discover` skill. Your job is to extract structured facts from this repository AND write structured cache entries. Do NOT do architectural analysis — just report and cache what you find.
+>
+> Repo path: <repo-path>
+> Project root: <project-folder>
+>
+> **Part 1 — Per-repo inventory (report back as text)**
+>
+> Scan and report the following:
+>
+> 1. IDENTITY
+>    - Repo name, primary language(s), framework(s), runtime, build system
+>    - Detected from: package.json, go.mod, Cargo.toml, requirements.txt, etc.
+>
+> 2. STRUCTURE
+>    - Key directories and what they contain
+>    - Entry points (main files, index files, server startup)
+>    - Configuration files and what they control
+>    - Test structure (where tests live, framework used)
+>
+> 3. EXTERNAL DEPENDENCIES
+>    - Key libraries/frameworks (important ones, not every transitive dep)
+>    - External services called (from config, env vars, client code)
+>    - Database connections (type, patterns)
+>    - Message queues, event buses, cache systems
+>
+> 4. API SURFACE
+>    - Exposed endpoints (REST routes, GraphQL schemas, gRPC protos)
+>    - Published events/messages
+>    - Shared libraries or packages exported
+>
+> **Part 2 — Cache output (write files directly)**
+>
+> In addition to reporting your findings above, write structured cache entries to `.workflow_artifacts/cache/<repo-name>/`. Create:
+>
+> - `_index.md` — repo summary (200-300 tokens)
+> - `_deps.md` — dependencies (100-200 tokens)
+> - `<dir>/_index.md` — for each key directory with 3+ source files (150-300 tokens each)
+> - `<dir>/<file-stem>.md` — for key files only: entry points, APIs, models, configs (50-150 tokens each)
+>
+> Use the cache entry format defined in CLAUDE.md (frontmatter with path/hash/updated/updated_by/tokens, then sections: Purpose, Key Exports, Dependencies, Patterns, Integration Points, Notes). Omit sections that don't apply.
+>
+> Only write cache entries for files you actually read. Do not invent summaries for files you did not examine. It is better to have a sparse cache than an inaccurate one.
+>
+> Directory creation: create the `.workflow_artifacts/cache/<repo-name>/` directory tree as needed (use `mkdir -p` via Bash or let the Write tool create parent directories).
+>
+> Token budget enforcement: after writing each cache entry, do a rough token count (word count / 0.75, plus ~20-30% for code-heavy entries). If the entry exceeds the budget by more than 50%, trim it — cut the least important section (usually Notes, then Patterns, then Integration Points).
+>
+> **Output constraint:** Keep your Part 1 text output under ~3,000 tokens. Be concise — include file paths and brief summaries, not full code excerpts.
+
+### What each scan subagent writes
+
+For each repo scanned, the subagent creates:
+
+1. **Repo index:** `.workflow_artifacts/cache/<repo-name>/_index.md`
+   - Derived from the per-repo inventory data (identity, structure, entry points, key dependencies)
+   - Target: 200-300 tokens
+   - Frontmatter: `path: <repo-name>`, `hash: <HEAD>`, `updated: <ISO>`, `updated_by: /discover`, `tokens: <N>`
+
+2. **Repo deps:** `.workflow_artifacts/cache/<repo-name>/_deps.md`
+   - Derived from the external dependencies and API surface data
+   - Target: 100-200 tokens
+   - Same frontmatter pattern
+
+3. **Module indexes:** `.workflow_artifacts/cache/<repo-name>/<dir-path>/_index.md`
+   - One per key directory that contains 3+ source files
+   - Summarize the directory's purpose, what files it contains, common patterns
+   - Target: 150-300 tokens
+   - Only create for directories the subagent actually examined — do not invent summaries for unread directories
+
+4. **File entries:** `.workflow_artifacts/cache/<repo-name>/<dir-path>/<file-stem>.md`
+   - Only for **key files**: entry points, API route definitions, model/schema definitions, configuration files, and files with complex business logic (>100 lines with non-trivial logic)
+   - Do NOT create file entries for: test files, type definition files, simple utility files (<50 lines), generated files, lock files, or files whose content is adequately captured in the module `_index.md`
+   - Target: 50-150 tokens per entry
+   - Use the standard cache entry format (see CLAUDE.md "Knowledge cache" section)
+
+### What the main `/discover` session writes
+
+After all subagents complete, verify cache writes (see below), then write the existing output files:
+
+1. **Root index:** `.workflow_artifacts/cache/_index.md`
+   - Lists all repos with their purpose (1 sentence each), primary language, and last-updated timestamp
+   - Derived from the repos-inventory.md content
+   - Target: 100-200 tokens
+   - Frontmatter: `path: .`, `hash: <latest HEAD across repos>`, `updated: <ISO>`, `updated_by: /discover`, `tokens: <N>`
+
+2. **Staleness file:** `.workflow_artifacts/cache/_staleness.md` (see incremental scan section above)
+
+### Cache write verification
+
+After all subagents complete, the main `/discover` session must verify that cache writes succeeded:
+
+For each repo that was scanned (not skipped), check that `.workflow_artifacts/cache/<repo-name>/_index.md` exists. If missing:
+- Include a warning in the user-facing summary: "WARNING: cache write failed for <repo-name> — cache entries may be incomplete for this repo"
+- Do NOT fail the `/discover` run. Cache is advisory; the scan output files (repos-inventory.md, etc.) are the authoritative output.
+- Proceed with writing the root `_index.md` and `_staleness.md` regardless.
+
+Report the warning counts in the "After scanning" summary (see below).
+
+### Incremental cache updates
+
+When `/discover` runs incrementally (some repos skipped because HEAD unchanged):
+- **Skipped repos:** Do NOT touch their cache entries. They are still valid.
+- **Scanned repos:** Overwrite all cache entries for that repo (the subagent produces fresh entries from its reads).
+- **Root index:** Always rewrite `_index.md` (it's small and includes all repos, even skipped ones — keep their existing entries and update the scanned repos).
+
 ## After scanning
 
 Tell the user:
@@ -253,6 +373,7 @@ Tell the user:
 - Any interesting findings (tight coupling, missing tests, potential risks observed)
 - These files are now available to `/architect`, `/plan`, `/critic`, `/review`, and `/start_of_day` as baseline context
 - Which repos were skipped (unchanged since last scan) and which were re-scanned
+- Knowledge cache populated under `.workflow_artifacts/cache/` — <N> repos cached, <N> module indexes, <N> file entries created (warnings: <N> repos with failed cache writes, if any)
 
 ## When to re-run
 

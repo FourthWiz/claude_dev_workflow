@@ -31,11 +31,11 @@ The goal of Phase 1 is to gather structured facts from the codebase WITHOUT doin
 
 **Check for /discover output first.** Before spawning scan agents, check `.workflow_artifacts/memory/` for existing `/discover` output (`repos-inventory.md`, `architecture-overview.md`, `dependencies-map.md`). If these exist:
 - Read them to understand the landscape baseline
-- Use `.workflow_artifacts/memory/repo-heads.md` (if it exists) to identify repos that have changed since the last `/discover` run
+- Use `.workflow_artifacts/cache/_staleness.md` (if it exists, otherwise fall back to `.workflow_artifacts/memory/repo-heads.md`) to identify repos that have changed since the last `/discover` run
 - Only spawn scan agents for repos that are (a) changed since last scan, or (b) specifically relevant to the current task
 - For unchanged repos, the `/discover` output IS the scan output — no need to re-scan
 
-**If /discover output does not exist**, scan all repos. (Use `.workflow_artifacts/memory/repo-heads.md` to detect per-repo staleness — do not skip repos just because `/discover` was run at some point.)
+**If /discover output does not exist**, scan all repos. (Use `.workflow_artifacts/cache/_staleness.md` (or `.workflow_artifacts/memory/repo-heads.md` as fallback) to detect per-repo staleness — do not skip repos just because `/discover` was run at some point.)
 
 #### Spawning scan agents
 
@@ -208,5 +208,5 @@ The scan/synthesize split exists to avoid paying Opus rates for bulk file readin
 - **Never read raw source files in the main Opus session for bulk exploration.** That is what scan agents are for. The only exception is targeted reads of specific files directly relevant to a specific synthesis question during Phase 2. Prefer reading individual files over spawning new scan agents for single-file needs.
 - **Spawn scan agents per-repo, not per-file.** Each agent pays ~41K tokens of base overhead. A per-file agent for a 200-line file is pure waste.
 - **Batch small repos.** If a repo has fewer than ~5 source files, batch it with another small repo into a single scan agent.
-- **Use /discover output when available.** If `.workflow_artifacts/memory/repos-inventory.md` exists and the repo HEAD has not changed (check `.workflow_artifacts/memory/repo-heads.md`), the /discover output IS the scan. Do not re-scan.
+- **Use /discover output when available.** If `.workflow_artifacts/memory/repos-inventory.md` exists and the repo HEAD has not changed (check `.workflow_artifacts/cache/_staleness.md` (or `.workflow_artifacts/memory/repo-heads.md`)), the /discover output IS the scan. Do not re-scan.
 - **Targeted re-scans during synthesis.** If Phase 2 reveals a gap in the scan findings (e.g., "I need to see the exact error handling in payment.service.ts"), read that specific file directly in the Opus session. Do NOT spawn a whole new scan agent for one file.

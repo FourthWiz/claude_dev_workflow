@@ -381,6 +381,93 @@ It's always better to ask than to assume. Use the AskUserQuestion tool when:
 
 Keep questions specific and pointed. Don't ask "what do you want?" — ask "should the retry logic use exponential backoff (safer, slower recovery) or fixed intervals (simpler, faster recovery)?"
 
+### Knowledge cache
+
+The workflow maintains a hierarchical file-based knowledge cache under `.workflow_artifacts/cache/`. This cache provides structured summaries of source code files and modules, enabling skills to navigate the codebase without re-reading unchanged source files.
+
+#### Cache directory structure
+
+````
+.workflow_artifacts/cache/
+├── _index.md                     ← Root index: repo list, last-updated timestamps
+├── _staleness.md                 ← Git HEAD tracking per repo (replaces repo-heads.md)
+├── <repo-name>/
+│   ├── _index.md                 ← Repo summary: purpose, stack, entry points, key patterns
+│   ├── _deps.md                  ← External deps + internal cross-module deps
+│   └── <directory>/
+│       ├── _index.md             ← Module/directory summary: purpose, exports, patterns
+│       └── <file-stem>.md        ← Per-file summary (key files only)
+````
+
+#### Cache entry format
+
+Every `_index.md` and `<file-stem>.md` uses this structure:
+
+````markdown
+---
+path: <relative path from project root to source file/directory>
+hash: <git hash of file at time of caching, or HEAD for directories>
+updated: <ISO timestamp>
+updated_by: <skill that wrote/updated this entry>
+tokens: <approximate token count of this cache entry>
+---
+
+## Purpose
+<1-2 sentences>
+
+## Key Exports
+- `name(params)` — description
+
+## Dependencies
+- imports from: <internal modules>
+- external: <key packages>
+
+## Patterns
+- <notable patterns>
+
+## Integration Points
+- exposes: <APIs, events, exports>
+- consumes: <APIs, events, imports>
+
+## Notes
+<gotchas, tech debt, non-obvious details>
+````
+
+Sections may be omitted when not applicable (e.g., a config file has no Key Exports).
+
+#### Token budgets
+
+| Entry type | Target tokens | When to create |
+|-----------|---------------|---------------|
+| Root `_index.md` | 100-200 | Always (one per project) |
+| Repo `_index.md` | 200-300 | Always (one per repo) |
+| Repo `_deps.md` | 100-200 | Always (one per repo) |
+| Module `_index.md` | 150-300 | Directories with 3+ source files |
+| File `<stem>.md` | 50-150 | Key files only: entry points, APIs, models, configs, complex logic |
+
+Rule of thumb: source files < 50 lines go into the module `_index.md` instead of getting their own entry. Source files > 500 lines may use up to 200 tokens.
+
+#### Staleness tracking
+
+`_staleness.md` tracks the git HEAD per repo at the time of last cache update:
+
+````markdown
+| Repo | HEAD | Updated |
+|------|------|---------|
+| <repo-name> | <full SHA> | <ISO timestamp> |
+````
+
+Skills check staleness by comparing `git rev-parse HEAD` against the stored value. If HEAD differs, `git diff --name-only <cached-head> <current-head>` identifies exactly which files changed. Cache entries for unchanged files remain valid.
+
+#### Behavioral rules
+
+1. **Cache is advisory, not authoritative.** Skills may always read source files directly. A missing or stale cache entry is never an error — the skill just reads from source (current behavior).
+2. **Any skill that reads a source file and finds the cache entry stale or missing SHOULD update the cache entry.** This is best-effort, not mandatory.
+3. **Cache writes must not block or fail the skill.** If a cache write fails (disk full, permission error), warn and continue.
+4. **Skills should load cache entries in deterministic order** (root index, then repo indexes, then module indexes) to maximize prompt cache hits.
+5. **`_staleness.md` is the successor to `repo-heads.md`.** Skills that previously read `repo-heads.md` should read `_staleness.md` instead. For backward compatibility, if `_staleness.md` does not exist, fall back to `repo-heads.md`.
+6. **Rollback:** Deleting `.workflow_artifacts/cache/` restores pre-cache behavior. No skill should fail if the cache directory is missing.
+
 ## Model assignments
 
 | Skill | Model | Reasoning |
