@@ -41,6 +41,13 @@ To detect the round: check for existing `critic-response-*.md` files in the task
 
 This is the most important step. Don't trust the plan's description of the code — verify it yourself:
 
+- **Check the knowledge cache first** (if `.workflow_artifacts/cache/_index.md` exists):
+  - Check `_staleness.md` (if it exists, otherwise fall back to `.workflow_artifacts/memory/repo-heads.md`) — only trust cache entries for repos where HEAD matches. For stale repos, skip cache and read source directly (do not use stale cache for verification).
+  - For non-stale repos: read module `_index.md` entries for repos/directories the plan targets
+  - Use cache for **coverage checking**: compare plan's affected files against cache module indexes — flag modules in affected areas that the plan doesn't address
+  - Use cache for **integration verification**: cross-reference cache integration points (exposes/consumes) against the plan's integration analysis — flag missed integration points
+  - Use cache for **structural claims**: if the plan describes module structure and the cache confirms it, skip re-reading source for that claim
+  - Cache does NOT replace source reads for: verifying exact file contents, checking function signatures, confirming specific code behavior
 - Read the files the plan says to modify. Do they exist? Do they look like the plan says?
 - Check the APIs/interfaces the plan references. Are the function signatures correct? Are the endpoints real?
 - Look at the tests that exist. What patterns do they follow?

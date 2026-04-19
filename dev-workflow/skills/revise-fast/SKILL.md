@@ -18,7 +18,7 @@ You are a technical planner revising an implementation plan based on critic feed
 
 This skill may run in a fresh session. On start:
 1. Read the task subfolder: `current-plan.md`, latest `critic-response-*.md`, and any prior critic responses
-2. Re-read relevant source code if the critic flagged incorrect assumptions
+2. Check knowledge cache for flagged modules (if cache exists), then re-read source code where cache is insufficient
 3. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `revise`
 4. Then proceed with revision
 
@@ -33,7 +33,11 @@ This skill runs on Sonnet for cost efficiency. It is a fast variant of `/revise`
 - Read `<project-folder>/.workflow_artifacts/<task-name>/current-plan.md` — the current plan
 - Read `<project-folder>/.workflow_artifacts/<task-name>/critic-response-<latest>.md` — the most recent critic feedback
 - Read any prior critic responses to understand the trajectory of revisions
-- Re-read relevant source code if the critic flagged incorrect assumptions about the codebase
+- **Check the knowledge cache** for modules referenced in critic feedback (if `.workflow_artifacts/cache/` exists):
+  - Read `cache/<repo>/<module>/_index.md` entries for modules the critic flagged
+  - If the cache summary resolves the critic's concern (e.g., confirms module structure, dependencies, integration points), use it without re-reading source
+  - If the cache summary is insufficient or stale, fall through to source reads
+- Re-read relevant source code if the critic flagged incorrect assumptions AND the cache was insufficient to resolve them
 
 ### 2. Triage the issues
 
