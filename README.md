@@ -28,7 +28,7 @@ Override with a prefix: `small: add health endpoint`, `large: rewrite auth layer
 
 ## Skills
 
-17 skills organized by workflow phase:
+20 skills organized by workflow phase:
 
 ### Planning & Design
 
@@ -52,6 +52,7 @@ Override with a prefix: `small: add health endpoint`, `large: rewrite auth layer
 | `/gate` | Quality checkpoint between phases | Sonnet |
 | `/rollback` | Safely undo implementation work | Sonnet |
 | `/end_of_task` | Commit, push branch, capture lessons | Sonnet |
+| `/run` | End-to-end pipeline orchestrator (discover → end_of_task) | Opus |
 
 ### Session Lifecycle
 
@@ -61,6 +62,8 @@ Override with a prefix: `small: add health endpoint`, `large: rewrite auth layer
 | `/end_of_day` | Save session state, consolidate work | Haiku |
 | `/weekly_review` | Aggregate week's progress into a review | Haiku |
 | `/capture_insight` | Log a pattern or gotcha to the daily scratchpad | Haiku |
+| `/cost_snapshot` | Live cost summary: today, lifetime, per-task | Haiku |
+| `/triage` | Route a natural-language prompt to the right workflow skill | Haiku |
 
 ### Model Strategy
 
@@ -84,7 +87,7 @@ bash claude_dev_workflow/dev-workflow/install.sh
 ```
 
 This is a one-time user-level setup that:
-1. Copies all 17 skills to `~/.claude/skills/` — available in every project
+1. Copies all 20 skills to `~/.claude/skills/` — available in every project
 2. Writes workflow rules to `~/.claude/CLAUDE.md` — auto-loaded by Claude Code everywhere
 
 Re-running is safe — it updates skills and rules idempotently.
@@ -185,7 +188,7 @@ your-project/.workflow_artifacts/finalized/auth-refactor/
 ```
 ~/.claude/                       ← user-level (shared across all projects)
 ├── CLAUDE.md                    ← workflow rules (auto-loaded everywhere)
-└── skills/                      ← all 17 workflow skills
+└── skills/                      ← all 20 workflow skills
     ├── init_workflow/SKILL.md
     ├── discover/SKILL.md
     ├── architect/SKILL.md
@@ -199,10 +202,13 @@ your-project/.workflow_artifacts/finalized/auth-refactor/
     ├── review/SKILL.md
     ├── rollback/SKILL.md
     ├── end_of_task/SKILL.md
+    ├── run/SKILL.md
     ├── start_of_day/SKILL.md
     ├── end_of_day/SKILL.md
     ├── weekly_review/SKILL.md
-    └── capture_insight/SKILL.md
+    ├── capture_insight/SKILL.md
+    ├── cost_snapshot/SKILL.md
+    └── triage/SKILL.md
 
 your-project/                    ← any project where you ran /init_workflow
 ├── .claude/

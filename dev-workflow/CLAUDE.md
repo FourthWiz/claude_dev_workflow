@@ -1,6 +1,6 @@
 # Development Workflow — Shared Rules
 
-This file defines the common rules and behaviors shared across all development workflow skills: `/init_workflow`, `/discover`, `/architect`, `/plan`, `/critic`, `/revise`, `/thorough_plan` (orchestrator), `/run` (end-to-end orchestrator), `/gate`, `/implement`, `/review`, `/rollback`, `/end_of_task`, `/end_of_day`, `/start_of_day`, `/weekly_review`, `/cost_snapshot`, and `/capture_insight`.
+This file defines the common rules and behaviors shared across all development workflow skills: `/init_workflow`, `/discover`, `/architect`, `/plan`, `/critic`, `/revise`, `/thorough_plan` (orchestrator), `/run` (end-to-end orchestrator), `/gate`, `/implement`, `/review`, `/rollback`, `/end_of_task`, `/end_of_day`, `/start_of_day`, `/weekly_review`, `/cost_snapshot`, `/capture_insight`, and `/triage`.
 
 ## Working Rules
 
@@ -363,13 +363,13 @@ If the ledger file doesn't exist yet, create it with the header line first:
 # Cost Ledger — <task-name>
 ```
 
-**Phase values:** `discover`, `architect`, `plan`, `critic`, `revise`, `implement`, `review`, `gate`, `end-of-task`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `ad-hoc`
+**Phase values:** `discover`, `architect`, `plan`, `critic`, `revise`, `implement`, `review`, `gate`, `end-of-task`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `triage`, `ad-hoc`
 
 **Category:** Always write `task`. The user may manually edit the ledger to change a row to `off-topic` if a session drifted from the task. Skills do NOT auto-detect off-topic work.
 
 **The cost ledger is append-only during a task.** Never delete or rewrite rows.
 
-**Conditional skills:** `/discover`, `/gate`, `/start_of_day`, and `/capture_insight` should only record to the cost ledger if a task name is clearly determinable from context (a task folder path or explicit task name was passed). If no task context is active, skip cost recording silently.
+**Conditional skills:** `/discover`, `/gate`, `/start_of_day`, `/capture_insight`, and `/triage` should only record to the cost ledger if a task name is clearly determinable from context (a task folder path or explicit task name was passed). If no task context is active, skip cost recording silently.
 
 ### Asking questions
 
@@ -538,3 +538,4 @@ Any skill that modifies, creates, or deletes source files should update the know
 | /weekly_review | Haiku | Aggregates weekly progress, decisions, and outcomes (template-driven) |
 | /capture_insight | Haiku | Quick insight logging to daily scratchpad during task work |
 | /cost_snapshot | Haiku | Read-only cost reporting from ledger files and ccusage (lightweight) |
+| /triage | Haiku | Lightweight routing: reads prompt, inspects state, proposes a skill. |
