@@ -15,9 +15,18 @@ This skill should run in a fresh session for unbiased review (similar to /critic
 2. Read `.workflow_artifacts/<task-name>/current-plan.md` — this is the spec to review against
 3. Read `.workflow_artifacts/<task-name>/architecture.md` if it exists
 4. Read prior `critic-response-*.md` to verify those issues were addressed
-5. Read the git diff AND the full modified files
-6. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `review`
-7. Then proceed with review
+5. **Check the knowledge cache** (if `.workflow_artifacts/cache/_index.md` exists):
+   - Read `.workflow_artifacts/cache/_staleness.md` (if it exists, otherwise fall back to `.workflow_artifacts/memory/repo-heads.md`) — compare each relevant repo's HEAD against cached hash
+   - Run `git diff --name-only <base-branch>...HEAD` to get the review's scope — the exact set of files changed by this implementation. (This is the same set step 6 reads diffs for, computed ahead of time so cache loads are precise.)
+   - Load cache entries in deterministic order for prompt cache efficiency: root `_index.md` → repo `_index.md` → module `_index.md` → file `<stem>.md`. Specifically:
+     - For each repo containing at least one changed file: read `cache/<repo>/_index.md` and `cache/<repo>/_deps.md` if not stale
+     - For each directory containing at least one changed file: read `cache/<repo>/<dir>/_index.md` (Tier 2 — surrounding module context) if not stale
+     - For each changed file: read `cache/<repo>/<dir>/<file-stem>.md` (Tier 3 — per-file summary) if it exists and the repo is not stale. If the repo IS stale and the file appears in `git diff --name-only <cached-head> <current-head>`, skip its cache entry — the source read in step 6 is authoritative for changed files.
+   - Cache entries are **context only**. They describe what the module/file normally does. They do NOT replace reading the diff or any full-file read triggered by the Step 1 criteria (lines 34–41).
+   - If no cache exists, skip this step — fall through to step 6 (current behavior preserved).
+6. Read the git diff (`git diff <base-branch>...HEAD`) — every line. Then selectively read full files per Step 1 criteria below. Do NOT read all modified files unconditionally.
+7. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `review`
+8. Then proceed with review
 
 ## Model requirement
 
@@ -30,8 +39,9 @@ This skill requires the strongest available model (currently Claude Opus). Revie
 1. **Read the plan** — find and read `current-plan.md` in the task subfolder. This is your specification.
 2. **Read the architecture** — if `architecture.md` exists, read it for the broader context.
 3. **Read the critic responses** — understand what issues were identified during planning and verify they were addressed.
-4. **Read the diff** — run `git diff <base-branch>...HEAD` to see all changes. Read every line carefully.
-5. **Selectively read full files** — do NOT read all modified files unconditionally. Instead, use the diff to determine which files need full-context reading. Pull the full file only when:
+4. **Consult cache entries for surrounding context** — the bootstrap (step 5) already loaded module `_index.md` and file `<stem>.md` entries for directories and files touched by the diff, when the cache was present and non-stale. Use those entries to understand "what does this module normally do" as you read the diff. Cache entries never replace the diff read or a full-file read — they inform your judgment about which full-file reads are necessary. If no cache exists, this step is a no-op.
+5. **Read the diff** — run `git diff <base-branch>...HEAD` to see all changes. Read every line carefully.
+6. **Selectively read full files** — do NOT read all modified files unconditionally. Instead, use the diff to determine which files need full-context reading. Pull the full file only when:
    - The diff shows changes to function signatures, class hierarchies, or module exports (structural changes whose safety depends on how callers use them)
    - The diff modifies error handling, authentication, or authorization logic (security-sensitive areas need full surrounding context)
    - The diff touches code that interacts with external services, databases, or message queues (integration points need full trace)
