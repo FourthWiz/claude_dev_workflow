@@ -20,9 +20,14 @@ This skill typically runs in a fresh session (clean context is a feature, not a 
 1. Read `.workflow_artifacts/memory/lessons-learned.md` for relevant insights
 2. Read `.workflow_artifacts/memory/sessions/` for active session state (which tasks are done, where to resume)
 3. Read `.workflow_artifacts/<task-name>/current-plan.md` completely — this is your specification
-4. Read the actual source code you'll modify — understand existing patterns before changing anything
-5. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `implement`
-6. Then proceed with implementation
+4. **Check the knowledge cache** for files you'll modify (if `.workflow_artifacts/cache/_index.md` exists):
+   - Read `_staleness.md` (if it exists, otherwise fall back to `.workflow_artifacts/memory/repo-heads.md`) — compare each relevant repo's HEAD against cached hash
+   - For non-stale repos: read file-level cache entries (`cache/<repo>/<dir>/<file-stem>.md`) for files the plan says to modify. These provide Purpose, Key Exports, Dependencies, Patterns, and Integration Points without reading full source.
+   - For stale repos: run `git diff --name-only <cached-head> <current-head>` to identify changed files. Trust cache entries for unchanged files; read source for changed files.
+   - If no cache exists, skip this step — fall through to source reads (current behavior)
+5. Read the actual source code you'll modify — but now **targeted**: skip source reads where the cache entry was fresh and sufficient for understanding context. Always read source immediately before modifying a file (cache aids understanding, not editing).
+6. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `implement`
+7. Then proceed with implementation
 
 ## Model
 
@@ -66,6 +71,72 @@ This skill uses Sonnet for fast, high-quality implementation. The architectural 
 - Each commit should leave the codebase in a working state
 - Run tests after each significant change
 - If a task is large, break it into sub-commits
+
+### Cache write-through
+
+After committing changes for a task, update the knowledge cache for files you modified, created, or deleted. This keeps the cache fresh for downstream skills (`/critic`, `/review`) without requiring a `/discover` re-scan.
+
+**When to update:** After each task commit (not after every file edit — batch updates per commit).
+
+**Skip entirely if:** `.workflow_artifacts/cache/` does not exist or has no `_index.md`. Cache writes only make sense when there's an existing cache to maintain.
+
+**For each modified file:**
+1. Read the file you just modified (you just wrote it, so the content is fresh in context)
+2. Write or overwrite the cache entry at `.workflow_artifacts/cache/<repo>/<dir>/<file-stem>.md`
+3. Use the standard cache entry format:
+
+   ```markdown
+   ---
+   path: <relative path from project root to source file>
+   hash: <commit SHA — run `git rev-parse HEAD` after the commit (repo-level commit hash, not per-file blob hash; this is a deliberate simplification — staleness is tracked at repo level via _staleness.md, so per-file blob hashes add complexity without benefit)>
+   updated: <ISO timestamp>
+   updated_by: /implement
+   tokens: <approximate token count of this cache entry>
+   ---
+
+   ## Purpose
+   <1-2 sentences: what this file does after your changes>
+
+   ## Key Exports
+   - `name(params)` — description
+
+   ## Dependencies
+   - imports from: <internal modules>
+   - external: <key packages>
+
+   ## Patterns
+   - <notable patterns>
+
+   ## Integration Points
+   - exposes: <APIs, events, exports>
+   - consumes: <APIs, events, imports>
+
+   ## Notes
+   <anything non-obvious about the changes>
+   ```
+
+4. Target density: 50-150 tokens. Summarize the file as it IS now, not what you changed.
+
+**For each newly created file:**
+- Create a new cache entry at the same path convention: `.workflow_artifacts/cache/<repo>/<dir>/<file-stem>.md`
+- Ensure the parent directory exists (create with `mkdir -p` if needed)
+- Same format and density as modified files
+
+**For each deleted file:**
+- Remove the cache entry: delete `.workflow_artifacts/cache/<repo>/<dir>/<file-stem>.md`
+- If this was the last file in a cache directory, leave the `_index.md` intact (module summary remains valid until `/discover` re-scans)
+
+**After all file cache entries are updated, update `_staleness.md`:**
+- If `.workflow_artifacts/cache/_staleness.md` does not exist, create it with the table header before updating:
+  ```markdown
+  | Repo | HEAD | Updated |
+  |------|------|---------|
+  ```
+- Read `.workflow_artifacts/cache/_staleness.md`
+- Update the row for the affected repo: set HEAD to `git rev-parse HEAD` (post-commit) and Updated to current ISO timestamp
+- If the repo doesn't have a row, add one
+
+**Error handling:** Cache writes are best-effort. If any cache write fails (disk error, permission issue, unexpected format), warn the user and continue. Implementation is the priority — a missed cache update is corrected on the next `/discover` run. Never fail a task or skip a commit because of a cache write error.
 
 ## Commit messages
 
