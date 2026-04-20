@@ -63,7 +63,7 @@ Override with a prefix: `small: add health endpoint`, `large: rewrite auth layer
 | `/weekly_review` | Aggregate week's progress into a review | Haiku |
 | `/capture_insight` | Log a pattern or gotcha to the daily scratchpad | Haiku |
 | `/cost_snapshot` | Live cost summary: today, lifetime, per-task | Haiku |
-| `/triage` | Route a natural-language prompt to the right workflow skill | Haiku |
+| `/triage` | Inspect a prompt + current state and propose which skill fits best (you type the command) | Haiku |
 
 ### Model Strategy
 
@@ -140,6 +140,12 @@ This handles all project-level setup:
 /end_of_day      # evening — saves state, promotes insights
 ```
 
+**Not sure which skill to run?**
+```
+/triage <your request in natural language>
+```
+`/triage` reads your prompt and the current workspace state, then proposes the best-fit skill. It never invokes anything on your behalf — you decide and type the command.
+
 ## Key Concepts
 
 ### Quality Gates
@@ -157,6 +163,16 @@ The workflow accumulates knowledge at three levels:
 - **Tier 1 — Daily scratchpad** (`.workflow_artifacts/memory/daily/insights-<date>.md`): Claude writes here automatically during task work — patterns, gotchas, decision rationale. Use `/capture_insight` to log something explicitly.
 - **Tier 2 — Lessons learned** (`.workflow_artifacts/memory/lessons-learned.md`): Promoted from Tier 1 at `/end_of_day` with your confirmation. Planning and review skills read this to avoid repeating past mistakes.
 - **Tier 3 — Workflow suggestions** (`.workflow_artifacts/memory/workflow-suggestions.md`): Insights about the workflow itself. Surfaced at `/end_of_day` for you to apply to the workflow repo manually.
+
+### Knowledge Cache
+
+The workflow maintains a hierarchical, file-based summary cache of your code under `.workflow_artifacts/cache/`. It gives planning and review skills a cheap way to navigate the codebase without re-reading unchanged source files on every run.
+
+- **Structure** — a root `_index.md` maps out the repos, each repo has its own `_index.md` and `_deps.md`, and directories with non-trivial logic get per-module and per-file summaries. `_staleness.md` tracks the git HEAD per repo.
+- **Who maintains it** — `/discover` populates the cache on first run. `/implement` updates entries for files it modifies via a write-through pattern. Other skills read from it; none require it.
+- **Advisory, not authoritative** — cache entries are hints. Skills that need exact code (e.g. `/implement` before editing, `/review` reading diffs) always read source directly.
+- **Safe to delete** — removing `.workflow_artifacts/cache/` restores pre-cache behavior. `/discover` rebuilds it on the next run.
+- **Measured benefit** — on a single-task `/run` lifecycle (plan → implement → review), the cache cuts input tokens by ~47% and estimated cost by ~43% vs. cache-off, by preventing wasteful exploratory reads (`README.md`, `SETUP.md`, tangential SKILL.md files) when the model is orienting itself.
 
 ### Plan-Critic-Revise Loop
 
@@ -223,9 +239,14 @@ your-project/                    ← any project where you ran /init_workflow
 │   │   ├── repos-inventory.md   ← populated by /discover
 │   │   ├── architecture-overview.md
 │   │   └── dependencies-map.md
+│   ├── cache/                   ← knowledge cache (populated by /discover, updated by /implement)
+│   │   ├── _index.md            ← root index: repo list
+│   │   ├── _staleness.md        ← per-repo git HEAD tracking
+│   │   └── <repo-name>/         ← per-repo summaries (_index, _deps, module/file entries)
 │   ├── my-feature/              ← active task artifacts
 │   │   ├── current-plan.md
-│   │   └── critic-response-1.md
+│   │   ├── critic-response-1.md
+│   │   └── cost-ledger.md       ← cross-session cost tracking for this task
 │   └── finalized/               ← completed tasks (archived by /end_of_task)
 ├── service-a/                   ← your repos (clean root!)
 ├── service-b/
@@ -255,6 +276,9 @@ Same as new machine. Clone the workflow repo, run `install.sh`. Each project's `
 
 ### Legacy project (old layout)
 Run `/init_workflow` in the project. It detects old layouts (`memory/` at root, task folders at root, `finalized/` at root, or the oldest `dev-workflow/memory/` layout) and offers to migrate everything into `.workflow_artifacts/` with your confirmation.
+
+### Cache got stale or noisy
+Delete `.workflow_artifacts/cache/` and run `/discover` again. Skills transparently fall back to direct source reads while the cache is missing, and `/discover` rebuilds the hierarchy from current `git HEAD`.
 
 ## Documentation
 
