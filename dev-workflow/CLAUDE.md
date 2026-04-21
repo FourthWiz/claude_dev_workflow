@@ -383,7 +383,10 @@ Keep questions specific and pointed. Don't ask "what do you want?" — ask "shou
 
 ### Knowledge cache
 
-The workflow maintains a hierarchical file-based knowledge cache under `.workflow_artifacts/cache/`. This cache provides structured summaries of source code files and modules, enabling skills to navigate the codebase without re-reading unchanged source files.
+The cache lives under `.workflow_artifacts/cache/`. Three rules govern all skills:
+- **(a) Cache is advisory, not authoritative** — a missing or stale cache entry is never an error; skills may always read source files directly.
+- **(b) Any skill that modifies source files MUST update the corresponding cache entry** (enforced per-skill in each skill's inline "Cache write-through" section). The `.workflow_artifacts/cache/` directory is the host.
+- **(c) Rollback by deletion** — deleting `.workflow_artifacts/cache/` fully restores pre-cache behavior; no skill should fail if the cache directory is absent.
 
 #### Cache directory structure
 
@@ -435,85 +438,13 @@ tokens: <approximate token count of this cache entry>
 
 Sections may be omitted when not applicable (e.g., a config file has no Key Exports).
 
-#### Token budgets
-
-| Entry type | Target tokens | When to create |
-|-----------|---------------|---------------|
-| Root `_index.md` | 100-200 | Always (one per project) |
-| Repo `_index.md` | 200-300 | Always (one per repo) |
-| Repo `_deps.md` | 100-200 | Always (one per repo) |
-| Module `_index.md` | 150-300 | Directories with 3+ source files |
-| File `<stem>.md` | 50-150 | Key files only: entry points, APIs, models, configs, complex logic |
-
-Rule of thumb: source files < 50 lines go into the module `_index.md` instead of getting their own entry. Source files > 500 lines may use up to 200 tokens.
-
 #### Staleness tracking
 
-`_staleness.md` tracks the git HEAD per repo at the time of last cache update:
+`_staleness.md` stores repo-level HEAD; skills read it to decide which cache entries are still valid; successor to `repo-heads.md` (fall back if absent).
 
-````markdown
-| Repo | HEAD | Updated |
-|------|------|---------|
-| <repo-name> | <full SHA> | <ISO timestamp> |
-````
+#### Per-skill patterns
 
-Skills check staleness by comparing `git rev-parse HEAD` against the stored value. If HEAD differs, `git diff --name-only <cached-head> <current-head>` identifies exactly which files changed. Cache entries for unchanged files remain valid.
-
-#### Behavioral rules
-
-1. **Cache is advisory, not authoritative.** Skills may always read source files directly. A missing or stale cache entry is never an error — the skill just reads from source (current behavior).
-2. **Any skill that **modifies** a source file MUST update the cache entry via the write-through pattern below. Skills that only read source MAY update a stale or missing cache entry as a side effect (best-effort), but are not required to.**
-3. **Cache writes must not block or fail the skill.** If a cache write fails (disk full, permission error), warn and continue.
-4. **Skills should load cache entries in deterministic order** (root index, then repo indexes, then module indexes) to maximize prompt cache hits.
-5. **`_staleness.md` is the successor to `repo-heads.md`.** Skills that previously read `repo-heads.md` should read `_staleness.md` instead. For backward compatibility, if `_staleness.md` does not exist, fall back to `repo-heads.md`.
-6. **Rollback:** Deleting `.workflow_artifacts/cache/` restores pre-cache behavior. No skill should fail if the cache directory is missing.
-
-See '**Cache-read bootstrap pattern**' and '**Cache write-through pattern**' below for the canonical instruction blocks that skills adapt into their SKILL.md.
-
-#### Cache-read bootstrap pattern
-
-Skills that consult the cache at session bootstrap should follow this pattern. The exact language in each SKILL.md may adapt it to the skill's context, but the logical steps must match.
-
-1. **Guard** — If `.workflow_artifacts/cache/_index.md` does not exist, skip all cache steps and fall through to direct source reads (preserves pre-cache behavior for new installs or after cache deletion).
-
-2. **Read staleness file** — Read `.workflow_artifacts/cache/_staleness.md`. If absent, fall back to `.workflow_artifacts/memory/repo-heads.md` for backward compatibility. If neither exists, treat all repos as stale.
-
-3. **Per-repo staleness check** — For each repo relevant to the current task, compare `git rev-parse HEAD` against the hash stored in `_staleness.md`.
-
-4. **Non-stale repos — load cache in deterministic order** — Read cache entries in this order: root `_index.md` → repo `_index.md` → repo `_deps.md` → module `_index.md` for task-relevant directories → file-level `<stem>.md` for task-relevant files. Deterministic order keeps the session prefix stable, maximizing Anthropic prompt-cache hit rates.
-
-5. **Stale repos — targeted source reads** — Run `git diff --name-only <cached-head> <current-head>` to identify changed files. Trust cache entries for files NOT in that set. Read source directly for files in the changed set that are relevant to the current task.
-
-Cache entries are context aids, not authoritative content. Skills that need exact code content (e.g., `/implement` before modifying a file, `/review` reading diffs) always read source regardless of cache state.
-
-**Note on per-skill copies:** Each skill's SKILL.md today contains its own inline version of this pattern, adapted to its job. This section is the canonical reference. When updating the pattern globally, update each SKILL.md individually — subagents read their own SKILL.md at startup, not CLAUDE.md (see lessons-learned 2026-04-13). Do not attempt to replace per-skill inline copies with a pointer to this section; they must remain self-contained.
-
-#### Cache write-through pattern
-
-Any skill that modifies, creates, or deletes source files should update the knowledge cache to match. Today only `/implement` does this; the pattern below is the shared reference for any future skill that also writes source.
-
-**When to update:** After each task commit (not after every individual file edit — batch by commit). Cache updates are best-effort; never block or fail a commit because of a cache write error.
-
-**Guard:** Skip entirely if `.workflow_artifacts/cache/` does not exist or `_index.md` is absent. Cache writes only make sense against an existing, initialized cache.
-
-**File operations:**
-
-- **Modified file:** After editing, read the file fresh (post-edit content). Write or overwrite the cache entry at `.workflow_artifacts/cache/<repo>/<dir>/<file-stem>.md` using the standard frontmatter + sections format defined in the "Cache entry format" section above. Use the post-commit `git rev-parse HEAD` (repo-level SHA, not per-file blob) as the `hash` field — staleness is tracked at repo level via `_staleness.md`. Set `updated_by` to the skill name. Target density: 50–150 tokens.
-
-- **New file:** Create the cache entry at the same path convention. Ensure the parent directory exists (`mkdir -p` via Bash or rely on the Write tool, which creates parent dirs automatically).
-
-- **Deleted file:** Delete the corresponding cache entry file. Leave the parent module `_index.md` intact — its content remains valid until the next `/discover` rescan.
-
-**`_staleness.md` update:** After all file-level cache writes, update the row for the affected repo in `.workflow_artifacts/cache/_staleness.md`. Set `HEAD` to the post-commit `git rev-parse HEAD` and `Updated` to the current ISO timestamp. If `_staleness.md` does not yet have a row for this repo, add one. If the file does not exist, create it with this header first:
-
-```
-| Repo | HEAD | Updated |
-|------|------|---------|
-```
-
-**Error handling:** Cache writes are best-effort. On any failure (disk full, permission error, etc.), log a warning and continue — never fail the task or skip a commit because of a cache write error.
-
-**Note on per-skill copies:** `/implement`'s SKILL.md (section "Cache write-through") is the concrete implementation of this pattern for the current workflow. Future skills that modify source must read this canonical section AND add their own inline cache-write instructions to their SKILL.md — subagents read their own SKILL.md, not CLAUDE.md (see lessons-learned 2026-04-13).
+Cache-read bootstrap and cache write-through patterns live inline in each skill's SKILL.md. Subagents read their own SKILL.md at startup, not this file — see lessons-learned 2026-04-13. Do not replace inline copies with a pointer.
 
 ## Model assignments
 
