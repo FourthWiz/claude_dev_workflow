@@ -326,7 +326,7 @@ The session state file template includes a `## Cost` section:
 
 ```markdown
 ## Cost
-- Session UUID: <UUID obtained from JSONL filename approach — see Cost tracking rules>
+- Session UUID: <UUID — see Cost tracking rules for acquisition>
 - Phase: <phase>
 - Recorded in cost ledger: yes/no
 ```
@@ -335,41 +335,19 @@ This is informational — the cost ledger (`.workflow_artifacts/<task-name>/cost
 
 ### Cost tracking
 
-Every skill that does meaningful work should record its session to the task's cost ledger at the start of the session. This enables `/end_of_task` to aggregate the total cost of a task across all sessions, including sessions that crashed or were force-closed.
+Every skill that does meaningful work should record its session to the task's cost ledger at the start of the session. This enables `/end_of_task` to aggregate total cost across all sessions, including crashed sessions.
 
-**Step 1: Obtain the session UUID (JSONL filename approach — primary method)**
+**Ledger path:** `.workflow_artifacts/<task-name>/cost-ledger.md`. Create with header `# Cost Ledger — <task-name>` if new.
 
-The Claude Code runtime writes a JSONL file for the active session at `~/.claude/projects/<project-hash>/`. The filename is `<uuid>.jsonl`. Since the active session's JSONL is written to continuously, it is always the most recently modified file:
+**Row format:** `<session-uuid> | <YYYY-MM-DD> | <phase> | <primary-model> | task | <brief note>`
 
-```bash
-# Determine project hash: project folder path with / replaced by -
-# Example: /Users/alice/projects/myapp → Users-alice-projects-myapp
-ls -t ~/.claude/projects/<project-hash>/*.jsonl 2>/dev/null | head -1
-# Extract UUID: strip directory path and .jsonl extension
-```
-
-If no `.jsonl` file is found (rare — session hasn't made an API call yet), use `unknown-<ISO-timestamp>` as the UUID. If the `CLAUDE_SESSION_ID` environment variable is set (future Claude Code versions may add this), use it as an alternative — but do not depend on it being present.
-
-**Step 2: Append to the cost ledger**
-
-Append one line to `.workflow_artifacts/<task-name>/cost-ledger.md`:
-
-```
-<session-uuid> | <YYYY-MM-DD> | <phase> | <primary-model> | task | <brief note>
-```
-
-If the ledger file doesn't exist yet, create it with the header line first:
-```
-# Cost Ledger — <task-name>
-```
+**UUID acquisition:** Most recently modified `<uuid>.jsonl` under `~/.claude/projects/<project-hash>/` (project-hash = project path with `/` replaced by `-`). Fall back to `unknown-<ISO-timestamp>` if none found.
 
 **Phase values:** `discover`, `architect`, `plan`, `critic`, `revise`, `implement`, `review`, `gate`, `end-of-task`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `triage`, `ad-hoc`
 
-**Category:** Always write `task`. The user may manually edit the ledger to change a row to `off-topic` if a session drifted from the task. Skills do NOT auto-detect off-topic work.
+**Category:** Always write `task`. The ledger is append-only — never delete or rewrite rows.
 
-**The cost ledger is append-only during a task.** Never delete or rewrite rows.
-
-**Conditional skills:** `/discover`, `/gate`, `/start_of_day`, `/capture_insight`, and `/triage` should only record to the cost ledger if a task name is clearly determinable from context (a task folder path or explicit task name was passed). If no task context is active, skip cost recording silently.
+**Conditional skills:** `/discover`, `/gate`, `/start_of_day`, `/capture_insight`, and `/triage` skip cost recording if no task context is active.
 
 ### Asking questions
 
