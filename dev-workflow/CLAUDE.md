@@ -207,34 +207,6 @@ PR creation is always an explicit, separate user action — never auto-created b
    - Accidental file inclusions (.env, node_modules, etc.)
 4. **Call the planner for tests if needed** — if significant new code lacks tests and writing them is non-trivial, escalate to `/thorough_plan` to plan the test strategy before writing them
 
-PR description format:
-```markdown
-## Summary
-<What this PR does in 2-3 sentences>
-
-## Changes
-- <Specific change 1>
-- <Specific change 2>
-
-## Testing
-- <What was tested and how>
-- <How to run the tests>
-
-## Integration impact
-- <Affected services/components>
-- <Deployment order if coordination needed>
-
-## Risk assessment
-- <What could break>
-- <How to verify>
-- <Rollback plan>
-
-## Related
-- Plan: .workflow_artifacts/<task-name>/current-plan.md
-- Architecture: .workflow_artifacts/<task-name>/architecture.md (if applicable)
-- Review: .workflow_artifacts/<task-name>/review-N.md (if applicable)
-```
-
 ### Web research
 
 When answering complex questions or designing systems:
