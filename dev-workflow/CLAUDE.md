@@ -116,12 +116,7 @@ Multiple sessions can run in a day (parallel tasks). Each session writes its own
 - Short flows can share a session (`/plan` → `/implement` → `/review` for a small bug fix)
 - Use your judgment: when context feels heavy, close and start fresh
 
-**Every skill must be self-bootstrapping.** When a skill starts in a fresh session, it must:
-1. Read `CLAUDE.md` for shared rules
-2. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights (planning/review skills)
-3. Read the task subfolder artifacts it needs (`.workflow_artifacts/<task-name>/current-plan.md`, `architecture.md`, `critic-response-N.md`, etc.)
-4. Read `.workflow_artifacts/memory/sessions/<latest>` for current session state if resuming
-5. Read actual source code — never rely on a previous session's memory of the code
+**Every skill must be self-bootstrapping:** on a fresh-session start, it reads CLAUDE.md, `.workflow_artifacts/memory/lessons-learned.md` (planning/review skills), the relevant task subfolder artifacts, the latest session state, and the actual source code — never relying on a previous session's memory. The per-skill SKILL.md lists the exact files for that skill.
 
 The user should never have to re-explain context that's already in the files. If a skill can't find what it needs, it asks the user — but the default is to read from disk.
 
