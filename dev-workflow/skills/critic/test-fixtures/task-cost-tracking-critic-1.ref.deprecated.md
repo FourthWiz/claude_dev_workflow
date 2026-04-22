@@ -1,8 +1,4 @@
-# DEPRECATED — Structural Fingerprint — task-cost-tracking / critic-response-1
-
-**DEPRECATED.** This fixture was used as a pre-change regression tripwire for TC1/TC2. It has been superseded by TC1's functional contract test approach (6 wire-contract checks) and TC2's same-baseline reproducibility approach. The fingerprint was captured from the OLD pre-revision `critic-response-1.md`, not from running `/critic` against the post-revision `current-plan.md`. Do not use as a test baseline. Retained for archaeology only.
-
----
+# Structural Fingerprint — task-cost-tracking / critic-response-1
 
 Captured from `.workflow_artifacts/finalized/task-cost-tracking/critic-response-1.md`
 before any changes to `critic/SKILL.md`. This is the pre-change reference.
