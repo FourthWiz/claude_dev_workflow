@@ -6,7 +6,7 @@
 |---------|-------------|
 | `/init_workflow` | One-time project bootstrap — creates .workflow_artifacts/, configures permissions, runs /discover |
 | `/discover` | Scans all repos, maps architecture and dependencies |
-| `/architect` | Designs solution architecture for a feature/change |
+| `/architect` | Designs solution architecture for a feature/change; runs architecture critic + up to 3 revision rounds before returning |
 | `/thorough_plan` | Creates detailed implementation plan (with critic review) |
 | `/implement` | Writes code from the plan (explicit command only) |
 | `/review` | Verifies implementation against the plan |
@@ -42,6 +42,7 @@
 3. **Each heavy command works best in its own chat session.** Context windows fill up — the file artifacts are the shared memory.
 4. **`/end_of_task` pushes the branch only.** Create your PR separately when ready.
 5. **Lessons accumulate.** The more you use the workflow, the smarter it gets about your codebase.
+6. **`/architect` now auto-runs a critic pass.** Expect 1–4 additional minutes and slightly higher cost per `/architect` run (roughly +$1 to +$4).
 
 ## Knowledge cache
 

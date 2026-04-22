@@ -104,10 +104,10 @@
   <tr><th>Command</th><th>What it does</th><th>Model</th></tr>
   <tr><td>/init_workflow</td><td>One-time project bootstrap. Creates <code>.workflow_artifacts/</code> structure, configures permissions, runs /discover.</td><td><span class="model model-opus">Opus</span></td></tr>
   <tr><td>/discover</td><td>Scans all repos, builds inventory, architecture map, and git log. Run once on setup. Also populates <code>.workflow_artifacts/cache/</code> with per-repo and per-module code summaries (knowledge cache) for faster subsequent skill runs.</td><td><span class="model model-opus">Opus</span></td></tr>
-  <tr><td>/architect</td><td>Deep system design. Spawns scan agents in parallel, then synthesizes on Opus. Produces <code>architecture.md</code>.</td><td><span class="model model-opus">Opus</span></td></tr>
+  <tr><td>/architect</td><td>Deep system design. Spawns scan agents in parallel, then synthesizes on Opus. Produces <code>architecture.md</code>. Auto-runs <code>/critic --target=architecture.md</code> as its final step, with up to 3 revision rounds before returning.</td><td><span class="model model-opus">Opus</span></td></tr>
   <tr><td>/thorough_plan</td><td>Orchestrates the plan-critic-revise loop. Auto-triages tasks as Small/Medium/Large.</td><td><span class="model model-opus">Opus</span></td></tr>
   <tr><td>/plan</td><td>Creates the initial detailed plan. Reads <code>lessons-learned.md</code>. Can be used standalone.</td><td><span class="model model-opus">Opus</span></td></tr>
-  <tr><td>/critic</td><td>Reviews plan in a <strong>fresh session</strong> against actual code. Reads <code>lessons-learned.md</code>.</td><td><span class="model model-opus">Opus</span></td></tr>
+  <tr><td>/critic</td><td>Reviews a document in a <strong>fresh session</strong> against actual code. Reads <code>lessons-learned.md</code>. Supports <code>--target=current-plan.md</code> (default, plan critique) and <code>--target=architecture.md</code> (architecture critique with 6-axis rubric).</td><td><span class="model model-opus">Opus</span></td></tr>
   <tr><td>/revise</td><td>Addresses critic feedback. Used in Large/strict mode (all-Opus).</td><td><span class="model model-opus">Opus</span></td></tr>
   <tr><td>/revise-fast</td><td>Addresses critic feedback. Used in Medium mode (cost-efficient).</td><td><span class="model model-sonnet">Sonnet</span></td></tr>
 </table>
@@ -172,7 +172,7 @@
   </tr>
 </table>
 
-<p><strong>Important:</strong> <code>/architect</code> is a separate, optional phase you run <em>before</em> <code>/thorough_plan</code> when the task needs system-level design. <code>/thorough_plan</code> does not call <code>/architect</code>. Typically only Large tasks need it.</p>
+<p><strong>Important:</strong> <code>/architect</code> is a separate, optional phase you run <em>before</em> <code>/thorough_plan</code> when the task needs system-level design. <code>/thorough_plan</code> does not call <code>/architect</code>. Typically only Large tasks need it. <code>/architect</code> invokes <code>/critic</code> at the end of its run and may invoke it up to 3 times across the revise loop. <code>/critic</code> does not invoke any other skill.</p>
 
 <hr>
 
@@ -200,6 +200,7 @@
 <div class="chat claude">[Asks 2-3 clarifying questions: partial refunds? refund window? admin override?]</div>
 <div class="chat user">Yes to partial refunds, 30-day window, admin can override the window.</div>
 <div class="chat claude">Architecture document saved to <code>.workflow_artifacts/refund-flow/architecture.md</code>. Decomposed into 3 stages: (1) Payment service refund logic + Stripe integration, (2) Gateway endpoint + validation, (3) Notification templates + Kafka consumer. Each stage is independently deployable.</div>
+<div class="chat claude">Running Phase 4: architecture critic… Spawning <code>/critic --target=architecture.md</code> in fresh session <span class="model model-opus">Opus</span>… Round 1 verdict: <strong>PASS</strong>. No critical or major issues. <code>architecture-critic-1.md</code> saved.</div>
 
 <h3>Step 2: Gate</h3>
 <div class="chat claude">Running gate: <strong>architect &rarr; thorough_plan</strong>. Architecture document exists and covers objective, service map, integration points, 3 decomposed stages. 6/6 checks passed.<br><br><strong>Action required:</strong> type <code>/thorough_plan</code> to proceed, or tell me what to adjust.</div>
@@ -365,7 +366,7 @@ Suggested priority: finish the tests (tasks 5-8), then /review. Want to resume w
 
 <div class="rule"><strong>2. Gates run between every phase.</strong> They run automated checks and present results. You approve before the next phase starts. Even if all checks pass, Claude waits. Gate intensity scales with task profile — smoke for Small, standard for Medium, full for Large.</div>
 
-<div class="rule"><strong>3. /critic always runs in a fresh session.</strong> This prevents bias from having just written the plan. It reads the actual code, not just the plan's claims about it.</div>
+<div class="rule"><strong>3. /critic always runs in a fresh session.</strong> This prevents bias from having just written the plan or architecture. It reads the actual code, not just the document's claims about it. Supports <code>--target=current-plan.md</code> (default) and <code>--target=architecture.md</code>.</div>
 
 <div class="rule"><strong>4. Lessons learned accumulate.</strong> /end_of_day prompts you for insights. /plan and /critic read them at the start. Over time, the workflow gets smarter about your specific codebase and patterns.</div>
 
@@ -399,7 +400,7 @@ Suggested priority: finish the tests (tasks 5-8), then /review. Want to resume w
 
 <table>
   <tr><th>Skill</th><th>Reads on startup</th></tr>
-  <tr><td>/architect</td><td>CLAUDE.md, <code>.workflow_artifacts/memory/lessons-learned.md</code>, /discover memory files, <code>.workflow_artifacts/&lt;task-name&gt;/</code></td></tr>
+  <tr><td>/architect</td><td>CLAUDE.md, <code>.workflow_artifacts/memory/lessons-learned.md</code>, /discover memory files, <code>.workflow_artifacts/&lt;task-name&gt;/</code> (including <code>architecture-critic-*.md</code> during the Phase 4 revision loop)</td></tr>
   <tr><td>/plan</td><td>CLAUDE.md, <code>.workflow_artifacts/memory/lessons-learned.md</code>, <code>.workflow_artifacts/&lt;task-name&gt;/architecture.md</code>, prior critic responses</td></tr>
   <tr><td>/critic</td><td>CLAUDE.md, <code>.workflow_artifacts/memory/lessons-learned.md</code>, <code>.workflow_artifacts/&lt;task-name&gt;/current-plan.md</code>, <strong>actual source code</strong></td></tr>
   <tr><td>/revise</td><td>CLAUDE.md, <code>.workflow_artifacts/&lt;task-name&gt;/current-plan.md</code>, latest critic-response</td></tr>
@@ -455,6 +456,14 @@ Suggested priority: finish the tests (tasks 5-8), then /review. Want to resume w
   <span class="cmd">/review</span> &rarr;
   <span class="gate">GATE</span> &rarr;
   <span class="cmd">/end_of_task</span>
+</div>
+
+<p><strong>Inside /architect (Phase 4 — architecture critic loop):</strong></p>
+<div class="flow">
+  <span class="cmd">/architect</span> writes <code>architecture.md</code> &rarr;
+  <span class="cmd">/critic --target=architecture.md</span> <span class="model model-opus">Opus</span> &rarr;
+  <span class="gate">PASS</span> → return
+  <small style="display:block; margin-top:4px;">On REVISE: revise <code>architecture.md</code> in place → critic again, up to 3 rounds · Cap-hit after round 3: writes <code>_architect-cap-hit.md</code>, escalates to user</small>
 </div>
 
 <p><strong>Medium/Small tasks (skip /architect):</strong></p>

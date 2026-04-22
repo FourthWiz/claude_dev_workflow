@@ -76,7 +76,7 @@ When in doubt, default to Medium. The user can always override with an explicit 
 Each stage feeds into the next, with `/gate` checkpoints requiring explicit human approval:
 - `/init_workflow` bootstraps the workflow in a new project. Creates `.workflow_artifacts/` structure, configures permissions, runs `/discover`, generates quickstart guide. Run once per project. (Skills and rules are installed separately via `bash install.sh`.)
 - `/discover` scans all repos and saves inventory, architecture overview, and dependency map to `.workflow_artifacts/memory/`. Run once on setup, re-run when repos change.
-- `/architect` produces `architecture.md` with stages decomposed for planning (uses `/discover` output as baseline context)
+- `/architect` produces `architecture.md` with stages decomposed for planning (uses `/discover` output as baseline context); as its final step, auto-runs `/critic --target=architecture.md` in a fresh session with up to 3 revision rounds before returning
 - **GATE** — user reviews architecture, explicitly approves
 - `/thorough_plan` triages the task and routes accordingly:
   - **Small:** runs `/plan` (Opus) as a single pass → produces `current-plan.md` → smoke gate → done
@@ -249,7 +249,7 @@ Every skill that does meaningful work should record its session to the task's co
 
 **UUID acquisition:** Most recently modified `<uuid>.jsonl` under `~/.claude/projects/<project-hash>/` (project-hash = project path with `/` replaced by `-`). Fall back to `unknown-<ISO-timestamp>` if none found.
 
-**Phase values:** `discover`, `architect`, `plan`, `critic`, `revise`, `implement`, `review`, `gate`, `end-of-task`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `triage`, `ad-hoc`
+**Phase values:** `discover`, `architect`, `plan`, `critic` (covers both plan-target and architecture-target critic runs — differentiated by the ledger's note column), `revise`, `implement`, `review`, `gate`, `end-of-task`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `triage`, `ad-hoc`
 
 **Category:** Always write `task`. The ledger is append-only — never delete or rewrite rows.
 
@@ -325,9 +325,9 @@ Cache-read bootstrap and cache write-through patterns live inline in each skill'
 | Skill | Model | Reasoning |
 |-------|-------|-----------|
 | /discover | Opus | Cross-repo scanning, understanding how services connect |
-| /architect | Opus | Deep exploration, complex reasoning, cross-repo analysis |
+| /architect | Opus | Deep exploration, complex reasoning, cross-repo analysis (auto-runs `/critic --target=architecture.md` at end, up to 3 rounds) |
 | /plan | Opus | Detailed planning requires strong reasoning (always Opus — strong foundation reduces iteration) |
-| /critic | Opus | Finding real issues requires deep understanding (never tiered) |
+| /critic | Opus | Finding real issues requires deep understanding (never tiered). Supports `--target=current-plan.md` (default) and `--target=architecture.md`. |
 | /revise | Opus | Addressing critic feedback requires strong reasoning (used in strict mode) |
 | /revise-fast | Sonnet | Cost-efficient revision (used by /thorough_plan in normal mode, rounds 2+) |
 | /thorough_plan | Opus | Orchestrates task triage and plan→critic→revise loop. Routes Small tasks to single-pass /plan; Medium uses Sonnet /revise-fast; Large/strict: uses all-Opus. Critic always Opus. |
