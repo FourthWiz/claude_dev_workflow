@@ -232,7 +232,7 @@ Before spawning the first critic, check for existing `architecture-critic-*.md` 
 - Start fresh at round 1.
 - Rationale: each `/architect` run is a fresh design pass; prior critic history is a historical artifact, not input to this pass.
 
-Note: if a rename fails (e.g., filesystem error), warn the user and proceed with the new run rather than aborting. The new files will have sequentially higher round numbers, which is harmless.
+Note: if a rename fails (e.g., filesystem error), warn the user and write the new run's outputs with a `.FRESH` suffix instead (e.g., `architecture-critic-1.FRESH.md`, `architecture-critic-2.FRESH.md`). The round loop detects rounds by counting files matching `architecture-critic-*.md` that lack a `.FRESH` or `.<timestamp>` suffix — so the new `.FRESH` files start a fresh round count and the old un-renamed files are ignored for round detection. The user can manually clean up the old files after the session. This avoids a spurious cap-hit on re-run when the rename itself failed.
 
 ### Spawning the critic
 
@@ -279,8 +279,9 @@ If 3 rounds elapse without convergence (PASS verdict):
 ### Subagent error handling
 
 If a critic subagent errors or fails to write `architecture-critic-<N>.md`:
-- Escalate to the user immediately (same path as cap-hit, not silent success).
-- Message: "Critic subagent failed in round N. Check `.workflow_artifacts/<task-name>/` for partial output. Retry with `/critic --target=architecture.md` or proceed manually."
+- **Retry once** after a 5-second wait. Transient failures (model timeout, network blip) often clear on a second attempt. Do NOT retry on a cap-hit verdict — that is a legitimate outcome, not an error.
+- If the retry also fails: escalate to the user (same path as cap-hit, not silent success).
+- Message: "Critic subagent failed in round N (including one retry). Check `.workflow_artifacts/<task-name>/` for partial output. Retry with `/critic --target=architecture.md` or proceed manually."
 - Set session state `Status` to `needs_user_decision`.
 
 ### Standalone manual invocation
