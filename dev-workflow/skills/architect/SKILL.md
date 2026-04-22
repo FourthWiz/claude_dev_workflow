@@ -221,13 +221,79 @@ At the end of the document, include a **Stage Summary Table**:
 
 And a section called **Next Steps** that explicitly says which stages are ready for `/thorough_plan` and in what order.
 
+## Phase 4: Critic auto-trigger + revise loop
+
+After `architecture.md` is written (end of Phase 3) and before writing session state, spawn `/critic --target=architecture.md` to get a fresh-eyes review of the architecture. This is the final step in every `/architect` run.
+
+### Re-run state handling
+
+Before spawning the first critic, check for existing `architecture-critic-*.md` files in the task folder. If any exist (from a prior `/architect` session on the same folder):
+- Rename each to `<original-name>.<ISO-timestamp>.md` (e.g., `architecture-critic-1.md` → `architecture-critic-1.2026-04-21T1200Z.md`).
+- Start fresh at round 1.
+- Rationale: each `/architect` run is a fresh design pass; prior critic history is a historical artifact, not input to this pass.
+
+Note: if a rename fails (e.g., filesystem error), warn the user and proceed with the new run rather than aborting. The new files will have sequentially higher round numbers, which is harmless.
+
+### Spawning the critic
+
+Spawn `/critic --target=architecture.md` as a **fresh subagent session** (same mechanism `/thorough_plan` uses for its critic). Use the Skill tool with `skill: critic` and pass:
+- Path to `.workflow_artifacts/<task-name>/architecture.md`
+- Path to the project folder (so the critic can read source)
+- The explicit `--target=architecture.md` argument
+- Model: Opus (the critic's model; do not let it default to a cheaper model)
+
+### Round loop (hard cap: 3 rounds)
+
+The architect orchestrates up to **3 rounds total** (including the first critic pass). This is a hard cap, not guidance.
+
+After each critic response, read `architecture-critic-<N>.md`:
+- **Verdict PASS** (no CRITICAL or MAJOR issues): stop the loop, proceed to session-state save, return.
+- **Verdict REVISE:**
+  - If round < 3: revise `architecture.md` in place (main-session Opus work — see revision mechanics below), then spawn `/critic --target=architecture.md` again for round N+1.
+  - If round == 3 and still REVISE: stop the loop and escalate (see cap-hit escalation below).
+
+### Revision mechanics
+
+When `/architect` revises `architecture.md` in response to a REVISE verdict:
+- Address only the CRITICAL and MAJOR issues from the latest `architecture-critic-<N>.md`. Do not rewrite the whole document.
+- Preserve the overall structure and the "What's good" items the critic called out.
+- Do NOT re-spawn scan agents (Phase 1 work is done).
+- **Per-revision read budget:** main-session Opus may read at most **5 source files** per revision round to address critic findings. If a critic issue requires more than 5 files to resolve, either (a) spawn a single targeted scan agent scoped to that module, or (b) escalate to the user that the critic issue exceeds the revision budget.
+- **Cache-first rule:** For each file needed in a revision read, check `.workflow_artifacts/cache/<repo>/` first (same rules as Phase 1/2). Use the cache entry for structural claims; read source directly only when the critic specifically calls out a behavioral claim the cache cannot verify.
+
+### Cap-hit escalation
+
+If 3 rounds elapse without convergence (PASS verdict):
+1. **Write a follow-up marker file** `.workflow_artifacts/<task-name>/_architect-cap-hit.md` containing the unresolved CRITICAL and MAJOR issue titles from `architecture-critic-3.md`. **In this PR the marker has no runtime effect** — neither `/run` nor `/gate` reads it. It exists as a forward-looking hook for a future `/run` Phase 2 update that can detect cap-hit by a filename check. Leading underscore signals "status artifact, not primary output."
+
+2. **Append a distinguishable row to the cost ledger** so `/cost_snapshot` and `/end_of_task` surface the cap-hit without opening the marker file. Row note text (verbatim): `/architect cap-hit (3 rounds elapsed, unresolved)`. Phase stays `critic`; category stays `task`.
+
+3. **Write the following message to stdout:**
+   > Architecture critic did not converge after 3 rounds. Unresolved issues:
+   > - [CRIT-N] <title> (from architecture-critic-3.md)
+   > - [MAJ-N] <title> (from architecture-critic-3.md)
+   > These may be genuine tradeoffs or ambiguities in requirements. Review `architecture-critic-3.md`, decide whether to accept the architecture as-is, adjust scope, or iterate manually. If proceeding via `/run`, type 'no' at Checkpoint A until you have reviewed `architecture-critic-3.md`.
+
+4. **Set session state `Status` to `needs_user_decision`.** Do NOT invoke `/thorough_plan` automatically. Return control to the user.
+
+### Subagent error handling
+
+If a critic subagent errors or fails to write `architecture-critic-<N>.md`:
+- Escalate to the user immediately (same path as cap-hit, not silent success).
+- Message: "Critic subagent failed in round N. Check `.workflow_artifacts/<task-name>/` for partial output. Retry with `/critic --target=architecture.md` or proceed manually."
+- Set session state `Status` to `needs_user_decision`.
+
+### Standalone manual invocation
+
+Users can run `/critic --target=architecture.md` manually outside `/architect`, for example after editing `architecture.md` by hand. That invocation uses the same rubric but does not include `/architect`'s revision loop — any revision is up to the user.
+
 ## Save session state
 
 Before finishing, write or update `.workflow_artifacts/memory/sessions/<date>-<task-name>.md` with:
-- **Status:** `in_progress`
+- **Status:** `in_progress` (normal completion) or `needs_user_decision` (cap-hit or critic subagent error — see Phase 4)
 - **Current stage:** `architect`
-- **Completed in this session:** what was explored and what `architecture.md` covers
-- **Unfinished work:** any open questions, unresolved risks, or areas needing spikes
+- **Completed in this session:** what was explored, what `architecture.md` covers, and how many critic rounds Phase 4 ran
+- **Unfinished work:** any open questions, unresolved risks, or areas needing spikes; if cap-hit, note the unresolved CRITICAL/MAJOR issue titles
 - **Decisions made:** key architectural choices and their rationale
 
 This is what `/end_of_day` reads to consolidate the day's work. Without it, this session is invisible to the daily rollup.
@@ -250,3 +316,4 @@ The scan/synthesize split exists to avoid paying Opus rates for bulk file readin
 - **Use /discover output when available.** If `.workflow_artifacts/memory/repos-inventory.md` exists and the repo HEAD has not changed (check `.workflow_artifacts/cache/_staleness.md` (or `.workflow_artifacts/memory/repo-heads.md`)), the /discover output IS the scan. Do not re-scan.
 - **Use cache entries when available.** If `.workflow_artifacts/cache/<repo-name>/_index.md` exists and the repo HEAD matches `_staleness.md`, load cache entries instead of spawning a scan agent. This eliminates the ~41K token base overhead per scan agent AND reduces scan output tokens from ~3,000–5,000 to ~500–1,500 per repo. Cache entries load in seconds; scan agents take minutes.
 - **Targeted re-scans during synthesis.** If Phase 2 reveals a gap in the scan findings (e.g., "I need to see the exact error handling in payment.service.ts"), read that specific file directly in the Opus session. Do NOT spawn a whole new scan agent for one file.
+- **Phase 4 adds cost.** The critic auto-trigger loop (Phase 4) adds up to 4 Opus invocations per `/architect` run — 1 critic pass + up to 3 revision passes, though revisions are typically short. Estimated range: +$1 to +$4 per `/architect` run. Per-revision source reads are bounded at 5 files per round and must hit the cache first (same discipline as Phase 1/2). If Phase 4 cost becomes unwelcome, a `--skip-critic` escape hatch can be added to `/architect` rather than reverting the default (deferred — only to be added if cost complaints materialize).
