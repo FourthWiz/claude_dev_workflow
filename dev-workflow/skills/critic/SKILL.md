@@ -97,6 +97,8 @@ Score the plan against each criterion:
 
 ### 4. Produce the critic response
 
+Write `critic-response-N.md` in terse style per `dev-workflow/memory/terse-rubric.md`.
+
 Save to `<project-folder>/.workflow_artifacts/<task-name>/critic-response-<round>.md`:
 
 ```markdown
