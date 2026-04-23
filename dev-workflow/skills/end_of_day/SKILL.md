@@ -34,6 +34,8 @@ Multiple sessions can run in a day (parallel tasks, or revisiting a task). Each 
 
 ### Step 1: Save current session state (skip if no active task)
 
+Write session-state files in terse style per `dev-workflow/memory/terse-rubric.md`. Write `daily/insights-<date>.md` updates in terse style per `dev-workflow/memory/terse-rubric.md`. `daily/<date>.md` (the rendered daily briefing) is Tier 1 English per architecture §3.2 — do not apply the rubric to `daily/<date>.md`. The rubric applies only to the insights scratchpad and session-state rows.
+
 **If this session has no active task** (e.g. you opened a fresh session just to run `/end_of_day`), skip this step entirely and proceed to Step 2. The existing session files on disk are the source of truth.
 
 **If there is active work in this session**, create or update a session file at:
