@@ -107,6 +107,8 @@ Use subagents to scan repos in parallel when possible.
 
 ## Output
 
+Write `repos-inventory.md`, `architecture-overview.md`, `dependencies-map.md`, and `git-log.md` in terse style per `dev-workflow/memory/terse-rubric.md`. Write all cache entries (`_index.md`, `_deps.md`, file-stem entries) in terse style per `dev-workflow/memory/terse-rubric.md`.
+
 Save all findings to `<project-folder>/.workflow_artifacts/memory/`:
 
 ### `repos-inventory.md`
