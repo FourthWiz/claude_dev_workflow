@@ -249,7 +249,7 @@ Every skill that does meaningful work should record its session to the task's co
 
 **UUID acquisition:** Most recently modified `<uuid>.jsonl` under `~/.claude/projects/<project-hash>/` (project-hash = project path with `/` replaced by `-`). Fall back to `unknown-<ISO-timestamp>` if none found.
 
-**Phase values:** `discover`, `architect`, `plan`, `critic`, `revise`, `implement`, `review`, `gate`, `end-of-task`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `triage`, `ad-hoc`
+**Phase values:** `discover`, `architect`, `plan`, `critic`, `revise`, `implement`, `review`, `gate`, `end-of-task`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `triage`, `expand`, `ad-hoc`
 
 **Category:** Always write `task`. The ledger is append-only — never delete or rewrite rows.
 
@@ -319,6 +319,36 @@ Sections may be omitted when not applicable (e.g., a config file has no Key Expo
 #### Per-skill patterns
 
 Cache-read bootstrap and cache write-through patterns live inline in each skill's SKILL.md. Subagents read their own SKILL.md at startup, not this file — see lessons-learned 2026-04-13. Do not replace inline copies with a pointer.
+
+### Tier 1 — files that always stay English (caveman-token-optimization carve-out)
+
+The caveman-token-optimization v2 architecture (see `.workflow_artifacts/caveman-token-optimization/architecture.md`) introduces terse-style writing for many workflow artifacts. The following files are explicitly **excluded** from terse-style writing — they stay in human-readable English at all times:
+
+**User-facing rendered output:**
+- Chat messages to the user (progress, questions, conclusions).
+- The `/gate` rendered checkpoint summary shown at each gate.
+
+**Hand-edited files:**
+- `dev-workflow/CLAUDE.md` (this file).
+- `dev-workflow/memory/lessons-learned.md`.
+- `dev-workflow/memory/terse-rubric.md` (the rubric itself — compressing it recreates the v1 CRIT-2 circular dependency).
+
+**Contract-approval files:**
+- `<task>/architecture.md`.
+- `<task>/review-<round>.md`.
+- `<task>/cost-ledger.md` (structured, not prose).
+
+**Rendered briefings:**
+- `memory/weekly/*.md`.
+- `memory/daily/<date>.md` (the rendered briefing — NOT `daily/insights-<date>.md`, which is Tier 3).
+
+**Source files:**
+- `MEMORY.md` (tiny — below any compression threshold).
+- `dev-workflow/skills/**/SKILL.md` (skill source, not artifact).
+
+Any other workflow artifact may be subject to terse-style writing (Tier 2 contract files use English + side-file; Tier 3 ephemeral files are terse-only with `/expand` for human reading).
+
+If you are adding a new file class and unsure which tier applies: hand-edited or contract-approved → Tier 1; ephemeral or machine-only → Tier 3; user-approves-but-machine-reads → Tier 2.
 
 ## Model assignments
 
