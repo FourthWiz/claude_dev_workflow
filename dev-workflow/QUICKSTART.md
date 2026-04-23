@@ -20,6 +20,7 @@
 | `/run` | End-to-end pipeline: discover → architect → plan → implement → review → end_of_task |
 | `/cost_snapshot` | Shows today's cost, project lifetime cost, and per-task breakdown |
 | `/triage` | Suggests which skill fits your request; type the command to confirm |
+| `/expand <path>` | Re-renders a terse workflow artifact in English. File-switch (instant) for files with a `.original.md` side-file; LLM re-expansion (lossy, banner-flagged) for ephemeral terse files. No-op for files that are already English. **Never use for contract-file approval — the `/gate` skill already handles that.** |
 
 ## Typical flows
 
@@ -50,6 +51,23 @@ The workflow maintains a structured summary cache of your code under `.workflow_
 - `/discover` populates the cache. `/implement` updates entries for files it modifies. Other skills read from it; none require it to exist.
 - Safe to delete at any time — skills fall back to reading source directly, and the next `/discover` rebuilds the cache.
 - Benefits on larger projects: faster `/architect` runs, reduced re-reads across planning rounds, lower token cost per lifecycle.
+
+## Reading terse artifacts (`/expand`)
+
+Several workflow artifacts (critic responses, session state, cache entries, `/discover` outputs) are written in a compressed "terse" style to save tokens — see `.workflow_artifacts/caveman-token-optimization/architecture.md` for the rationale. To read these in normal English:
+
+```
+/expand .workflow_artifacts/<task>/critic-response-1.md
+```
+
+The skill auto-detects the file class:
+- **Already-English files** (`architecture.md`, `lessons-learned.md`, etc.) → display as-is with a "Tier 1" banner.
+- **Files with a `.original.md` side-file** → display the `.original.md` content (instant, exact).
+- **Terse-only files** → invoke Sonnet to re-expand into English. This is **lossy** — the result may differ in nuance from the source. A warning banner is shown. **Never use this output to approve a contract file.**
+
+Optionally, `/expand <path> --save` writes the expansion to `<path>.expanded-<timestamp>.md` (gitignored). Use sparingly — these accumulate.
+
+Common use cases: reviewing a terse critic response; reading a compressed cache entry while debugging; spot-checking a session-state file.
 
 ## Files
 
