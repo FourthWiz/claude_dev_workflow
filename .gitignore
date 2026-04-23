@@ -22,3 +22,6 @@ artifact-consolidation/
 .env.local
 .claude/
 
+# /expand --save output files (scratch; use sparingly)
+*.expanded-*.md
+

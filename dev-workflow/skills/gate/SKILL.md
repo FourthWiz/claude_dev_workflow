@@ -184,4 +184,4 @@ If automated checks failed:
 - **You are a checkpoint, not a bottleneck.** Run checks fast, present clearly, get out of the way once approved.
 - **Never auto-approve.** Even if all checks pass, wait for the human.
 - **Be honest about what you can't check.** If there's no test suite configured, say so — don't pretend everything passed.
-- **Remember the gate result.** Save it to `.workflow_artifacts/<task-name>/gate-<phase>-<date>.md` for audit trail.
+- **Remember the gate result.** Save it to `.workflow_artifacts/<task-name>/gate-<phase>-<date>.md` for audit trail. Write `gate-<phase>-<date>.md` in terse style per `dev-workflow/memory/terse-rubric.md`. The user-rendered checkpoint summary shown to the user at each gate is Tier 1 English — never compressed. The rubric applies ONLY to the audit-log file written to disk.

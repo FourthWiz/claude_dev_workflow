@@ -74,6 +74,8 @@ This skill uses Sonnet for fast, high-quality implementation. The architectural 
 
 ### Cache write-through
 
+Write cache `_index.md` and `<file-stem>.md` entries in terse style per `dev-workflow/memory/terse-rubric.md`. Code, commit messages, and PR descriptions are NOT compressed — they are source artifacts, not workflow markdown.
+
 After committing changes for a task, update the knowledge cache for files you modified, created, or deleted. This keeps the cache fresh for downstream skills (`/critic`, `/review`) without requiring a `/discover` re-scan.
 
 **When to update:** After each task commit (not after every file edit — batch updates per commit).
@@ -225,6 +227,8 @@ After completing each task, update `current-plan.md` by marking the task as done
 ```
 
 ## Save session state
+
+Write session-state files in terse style per `dev-workflow/memory/terse-rubric.md`.
 
 After each task (or at natural stopping points), write or update `.workflow_artifacts/memory/sessions/<date>-<task-name>.md` with:
 - **Status:** `in_progress` (or `completed` if all plan tasks are done)

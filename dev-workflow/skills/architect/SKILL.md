@@ -250,3 +250,9 @@ The scan/synthesize split exists to avoid paying Opus rates for bulk file readin
 - **Use /discover output when available.** If `.workflow_artifacts/memory/repos-inventory.md` exists and the repo HEAD has not changed (check `.workflow_artifacts/cache/_staleness.md` (or `.workflow_artifacts/memory/repo-heads.md`)), the /discover output IS the scan. Do not re-scan.
 - **Use cache entries when available.** If `.workflow_artifacts/cache/<repo-name>/_index.md` exists and the repo HEAD matches `_staleness.md`, load cache entries instead of spawning a scan agent. This eliminates the ~41K token base overhead per scan agent AND reduces scan output tokens from ~3,000–5,000 to ~500–1,500 per repo. Cache entries load in seconds; scan agents take minutes.
 - **Targeted re-scans during synthesis.** If Phase 2 reveals a gap in the scan findings (e.g., "I need to see the exact error handling in payment.service.ts"), read that specific file directly in the Opus session. Do NOT spawn a whole new scan agent for one file.
+
+## Tier 3 critic outputs
+
+When `/architect` spawns `/critic --target=architecture.md` as a subagent (Phase 4), write `architecture-critic-N.md` in terse style per `dev-workflow/memory/terse-rubric.md`.
+
+`architecture.md` itself is Tier 1 (English) per architecture §3.2 — do not apply the rubric to it.

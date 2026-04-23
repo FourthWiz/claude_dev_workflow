@@ -189,6 +189,8 @@ If the verdict is APPROVED:
 
 ## Save session state
 
+Write session-state files in terse style per `dev-workflow/memory/terse-rubric.md`. `review-<round>.md` is Tier 1 (user reads at gate, English) per architecture §3.2 — do not apply the rubric to `review-<round>.md`.
+
 Before finishing, write or update `.workflow_artifacts/memory/sessions/<date>-<task-name>.md` with:
 - **Status:** `in_progress` (REVISE) or `completed` (APPROVED)
 - **Current stage:** `review`

@@ -91,13 +91,13 @@
   <h1>Development Workflow</h1>
   <div class="subtitle">User Guide</div>
   <p style="color: var(--gray); margin-top: 16px; font-size: 0.95rem;">
-    17 skills for structured, multi-phase development with Claude Code
+    18 skills for structured, multi-phase development with Claude Code
   </p>
 </div>
 
 <!-- ============ QUICK REFERENCE ============ -->
 <h1>Quick Reference</h1>
-<p>The workflow has 17 skills in five groups. Each runs on the model best suited to its job: <span class="model model-opus">Opus</span> for reasoning-heavy work, <span class="model model-sonnet">Sonnet</span> for efficient execution, <span class="model model-haiku">Haiku</span> for structured template tasks.</p>
+<p>The workflow has 18 skills in five groups. Each runs on the model best suited to its job: <span class="model model-opus">Opus</span> for reasoning-heavy work, <span class="model model-sonnet">Sonnet</span> for efficient execution, <span class="model model-haiku">Haiku</span> for structured template tasks.</p>
 
 <h2>Planning &amp; Design</h2>
 <table>
@@ -125,6 +125,7 @@
   <tr><th>Command</th><th>What it does</th><th>Model</th></tr>
   <tr><td>/gate</td><td>Runs automated checks (tests, lint, secrets scan) and <strong>STOPS</strong> for your approval between every phase.</td><td><span class="model model-sonnet">Sonnet</span></td></tr>
   <tr><td>/rollback</td><td>Maps commits to plan tasks. Shows what would revert. Requires your confirmation before acting.</td><td><span class="model model-sonnet">Sonnet</span></td></tr>
+  <tr><td>/expand</td><td>User-facing escape hatch to read terse workflow artifacts in English. Resolves <code>.original.md</code> side-files for contract artifacts, or does a lossy LLM re-expansion (banner-flagged) for ephemeral files. Invoke as <code>/expand &lt;path&gt;</code>.</td><td><span class="model model-sonnet">Sonnet</span></td></tr>
 </table>
 
 <h2>Session Management</h2>

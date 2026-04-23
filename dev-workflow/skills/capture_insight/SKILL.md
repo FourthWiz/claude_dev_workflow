@@ -38,6 +38,8 @@ For **workflow-friction** type, always set `Promote?: yes` — these are surface
 
 ### Step 3: Write to scratchpad
 
+Write `daily/insights-<date>.md` appends in terse style per `dev-workflow/memory/terse-rubric.md`.
+
 Append to `.workflow_artifacts/memory/daily/insights-<YYYY-MM-DD>.md` (today's date). Create the file with a header if it doesn't exist yet:
 
 ```markdown
