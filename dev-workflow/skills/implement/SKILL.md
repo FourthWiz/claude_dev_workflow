@@ -19,7 +19,19 @@ This skill MUST be explicitly invoked by the user typing `/implement`. No other 
 This skill typically runs in a fresh session (clean context is a feature, not a bug — implementation doesn't need planning back-and-forth). On start:
 1. Read `.workflow_artifacts/memory/lessons-learned.md` for relevant insights
 2. Read `.workflow_artifacts/memory/sessions/` for active session state (which tasks are done, where to resume)
-3. Read `.workflow_artifacts/<task-name>/current-plan.md` completely — this is your specification
+3. Read `.workflow_artifacts/<task-name>/current-plan.md` — this is your specification. Apply the §5.7.1 detection rule below before reading.
+
+# v3-format detection (architecture.md §5.7.1 — copy verbatim)
+# A file is v3-format iff:
+#   - the first 50 lines following the closing `---` of the YAML frontmatter
+#     contain a heading matching the regex ^## For human\s*$
+# Otherwise the file is v2-format.
+# On v3-format detection: read sections per format-kit.md for this artifact type.
+# On v2-format (or no frontmatter): read the whole file as legacy v2.
+# Detection MUST be string-comparison only — no LLM call (per lesson 2026-04-23
+# on LLM-replay non-determinism).
+
+If v3-format: read the body sections per format-kit.md §2 — the ## Tasks section is your task list; ignore the ## For human block (it's for humans, not implementers). If v2-format: read the whole file as the v2 mechanism did.
 4. **Check the knowledge cache** for files you'll modify (if `.workflow_artifacts/cache/_index.md` exists):
    - Read `_staleness.md` (if it exists, otherwise fall back to `.workflow_artifacts/memory/repo-heads.md`) — compare each relevant repo's HEAD against cached hash
    - For non-stale repos: read file-level cache entries (`cache/<repo>/<dir>/<file-stem>.md`) for files the plan says to modify. These provide Purpose, Key Exports, Dependencies, Patterns, and Integration Points without reading full source.
@@ -37,7 +49,7 @@ This skill uses Sonnet for fast, high-quality implementation. The architectural 
 
 1. **Check the gate passed.** Verify that a gate summary exists for the thorough_plan→implement transition. If not, run `/gate` first.
 
-2. **Read the plan.** Find and read `current-plan.md` in the task subfolder. Read it completely. Understand every task, its dependencies, acceptance criteria, and testing requirements.
+2. **Read the plan.** Find and read `current-plan.md` in the task subfolder. Read it completely. Understand every task, its dependencies, acceptance criteria, and testing requirements. Format detection rule applied at session bootstrap step 3 above (per architecture §5.7.1).
 
 3. **Read the relevant code.** Before modifying any file, read it. Understand the existing patterns, style, naming conventions, and architecture. Your changes must feel native to the codebase.
 

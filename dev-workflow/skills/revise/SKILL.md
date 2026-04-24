@@ -14,7 +14,8 @@ This skill may run in a fresh session. On start:
 1. Read the task subfolder: `current-plan.md`, latest `critic-response-*.md`, and any prior critic responses
 2. Check knowledge cache for flagged modules (if cache exists), then re-read source code where cache is insufficient
 3. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `revise`
-4. Then proceed with revision
+4. Read deployed v3 references at session start: `~/.claude/memory/format-kit.md` and `~/.claude/memory/glossary.md`
+5. Then proceed with revision
 
 ## Model requirement
 
@@ -33,6 +34,20 @@ This skill requires the strongest available model (currently Claude Opus).
   - If the cache summary is insufficient or stale, fall through to source reads
 - Re-read relevant source code if the critic flagged incorrect assumptions AND the cache was insufficient to resolve them
 
+Format detection: `current-plan.md` may be v2 or v3 format. Apply the §5.7.1 detection rule below before reading.
+
+# v3-format detection (architecture.md §5.7.1 — copy verbatim)
+# A file is v3-format iff:
+#   - the first 50 lines following the closing `---` of the YAML frontmatter
+#     contain a heading matching the regex ^## For human\s*$
+# Otherwise the file is v2-format.
+# On v3-format detection: read sections per format-kit.md for this artifact type.
+# On v2-format (or no frontmatter): read the whole file as legacy v2.
+# Detection MUST be string-comparison only — no LLM call (per lesson 2026-04-23
+# on LLM-replay non-determinism).
+
+If v3-format: read the body sections per format-kit.md §2 current-plan.md enumeration. If v2-format (legacy): read the whole file as-is and the next /revise write becomes the v2→v3 upgrade point.
+
 ### 2. Triage the issues
 
 From the critic response, categorize:
@@ -46,7 +61,7 @@ From the critic response, categorize:
 
 ### 3. Revise the plan
 
-Update `current-plan.md` with the following approach:
+First, perform the in-context revision:
 
 **For each CRITICAL and MAJOR issue:**
 1. Understand what the critic is really asking for (sometimes the stated issue points to a deeper problem)
@@ -64,25 +79,55 @@ Update `current-plan.md` with the following approach:
 
 **Don't over-correct.** If the critic said "this section needs more detail," add the right amount of detail — don't triple the length of every section in response. The plan should stay focused and readable.
 
+Then, write the updated plan using the §5.3 5-step Class B mechanism for `current-plan.md`:
+
+**Step 1: Body generation.**
+Reference files (apply HERE at the body-generation WRITE-SITE — per format-kit.md §1; this is the only place these references apply, per lesson 2026-04-23):
+- `~/.claude/memory/format-kit.md` — primitives + standard sections per artifact type
+- `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs
+- `~/.claude/memory/terse-rubric.md` — prose discipline (compose with format-kit per §5)
+
+Compose the format-aware body per format-kit.md §2 `current-plan.md` enumeration. Include the `## Revision history` section (terse numbered list or table per format-kit.md §2) with the new round's changelog appended inside it. DO NOT include the `## For human` block in the body — that's Steps 2–3. Write the body to `<plan-path>.body.tmp` using the Bash tool.
+
+**Step 2: Summary generation (with empty-output check).** Invoke:
+  `python3 ~/.claude/scripts/summarize_for_human.py <plan-path>.body.tmp`
+- If exit code is non-zero: treat as Step 2 failure → trigger Step 5 retry path.
+- If exit code is 0 BUT stdout (after stripping whitespace) is empty: treat as Step 2 failure → trigger Step 5 retry path.
+- Otherwise: proceed to Step 3 with the captured stdout as `summary_raw`.
+
+**Step 3: Compose and write the single file (with `## For human` heading dedup).**
+  (a) Strip a leading `## For human` heading from `summary_raw` if present (regex `^##\s*For\s+human\s*\n+`). Call the result `summary_body`.
+  (b) Compose: `<frontmatter (YAML)>\n## For human\n\n<summary_body>\n\n<body from <plan-path>.body.tmp>`.
+  (c) Write to `<plan-path>.tmp` using the Write tool.
+
+**Step 4: Structural validation.** Invoke:
+  `python3 ~/.claude/scripts/validate_artifact.py <plan-path>.tmp`
+Exit code 0 = PASS; non-zero = at least one invariant failed (stderr names which).
+
+**Step 5: Retry / English-fallback (failure-class-aware).**
+  - **Step 2 failure:** re-run Step 2 once; if still fails → English-fallback.
+  - **V-06/V-07 failures:** re-run Steps 2–4 once.
+  - **V-02/V-03/V-05 failures:** re-run Steps 1–4 once with explicit body-discipline instruction.
+  - **English-fallback:** v2-style write (no `## For human` block), log `format-kit-skipped` warning.
+
+**Step 6: Atomic rename.**
+  `mv <plan-path>.tmp <plan-path> && rm -f <plan-path>.body.tmp`
+
+The final `current-plan.md` contains the revised body. Do NOT write a `.original.md` side-file.
+
 ### 4. Add the changelog
 
-Append a changelog entry at the bottom of `current-plan.md`:
+The changelog entry is now part of the format-aware body produced in Step 1 of the §5.3 write procedure above. Write it inside the `## Revision history` section of the body (format primitive: terse numbered list or table per format-kit.md §2). Content format:
 
-```markdown
----
-
-## Revision history
-
-### Round <N> — <date>
-**Critic verdict:** REVISE
-**Issues addressed:**
-- [CRIT-1] <title> — <how it was addressed>
-- [MAJ-1] <title> — <how it was addressed>
-- [MAJ-2] <title> — <how it was addressed>
-**Issues noted but deferred:**
-- [MIN-1] <title> — <why deferred>
-**Changes summary:** <1-2 sentence overview of what changed>
 ```
+Round <N> — <date>
+Critic verdict: REVISE
+Issues addressed: [CRIT-1] <title> — <how>; [MAJ-1] <title> — <how>
+Issues deferred: [MIN-1] <title> — <why>
+Changes: <1-2 sentence overview>
+```
+
+Do NOT append the changelog as a trailing markdown block after the assembled file — it belongs inside the `## Revision history` body section written in Step 1, assembled into the single file by Step 3.
 
 ### 5. Signal readiness
 

@@ -12,7 +12,19 @@ You are a senior code reviewer using the strongest available model. Your job is 
 
 This skill should run in a fresh session for unbiased review (similar to /critic — fresh eyes catch more). On start:
 1. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights
-2. Read `.workflow_artifacts/<task-name>/current-plan.md` — this is the spec to review against
+2. Read `.workflow_artifacts/<task-name>/current-plan.md` — this is the spec to review against. Apply the §5.7.1 detection rule below before reading.
+
+# v3-format detection (architecture.md §5.7.1 — copy verbatim)
+# A file is v3-format iff:
+#   - the first 50 lines following the closing `---` of the YAML frontmatter
+#     contain a heading matching the regex ^## For human\s*$
+# Otherwise the file is v2-format.
+# On v3-format detection: read sections per format-kit.md for this artifact type.
+# On v2-format (or no frontmatter): read the whole file as legacy v2.
+# Detection MUST be string-comparison only — no LLM call (per lesson 2026-04-23
+# on LLM-replay non-determinism).
+
+If v3-format: read the body sections per format-kit.md §2 — ## Tasks is the spec to review against; the ## For human block is the user-facing summary (informational, not a review target). If v2-format: read the whole file as the v2 mechanism did.
 3. Read `.workflow_artifacts/<task-name>/architecture.md` if it exists
 4. Read prior `critic-response-*.md` to verify those issues were addressed
 5. **Check the knowledge cache** (if `.workflow_artifacts/cache/_index.md` exists):
@@ -36,7 +48,7 @@ This skill requires the strongest available model (currently Claude Opus). Revie
 
 ### Step 1: Gather context
 
-1. **Read the plan** — find and read `current-plan.md` in the task subfolder. This is your specification.
+1. **Read the plan** — find and read `current-plan.md` in the task subfolder. This is your specification. Format detection rule applied at session bootstrap step 2 above (per architecture §5.7.1).
 2. **Read the architecture** — if `architecture.md` exists, read it for the broader context.
 3. **Read the critic responses** — understand what issues were identified during planning and verify they were addressed.
 4. **Consult cache entries for surrounding context** — the bootstrap (step 5) already loaded module `_index.md` and file `<stem>.md` entries for directories and files touched by the diff, when the cache was present and non-stale. Use those entries to understand "what does this module normally do" as you read the diff. Cache entries never replace the diff read or a full-file read — they inform your judgment about which full-file reads are necessary. If no cache exists, this step is a no-op.
