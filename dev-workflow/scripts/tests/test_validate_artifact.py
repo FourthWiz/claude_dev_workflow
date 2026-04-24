@@ -228,3 +228,77 @@ def test_multiple_failures_reported():
     assert rc == 1
     assert 'FAIL V-02' in stderr
     assert 'FAIL V-05' in stderr
+
+
+# ── T-10: current-plan v2/v3 fixture tests ────────────────────────────────────
+
+def test_v3_current_plan_fixture_passes():
+    """v3-current-plan.md must pass all validator checks (auto-detected as current-plan)."""
+    rc, stderr = run_validator(artifact=fixture('v3-current-plan.md'))
+    assert rc == 0, f"v3 fixture failed:\n{stderr}"
+
+
+def test_v2_current_plan_fixture_fails_v02_v06_v07():
+    """current-plan-v2.md must fail V-02, V-06, and V-07 (auto-detected as current-plan)."""
+    rc, stderr = run_validator(artifact=fixture('current-plan-v2.md'))
+    assert rc == 1
+    assert 'FAIL V-02' in stderr, f"Expected V-02 in:\n{stderr}"
+    assert 'FAIL V-06' in stderr, f"Expected V-06 in:\n{stderr}"
+    assert 'FAIL V-07' in stderr, f"Expected V-07 in:\n{stderr}"
+
+
+def test_v3_current_plan_summary_block_position():
+    """## For human must appear within the first 50 lines after frontmatter."""
+    import pathlib
+    content = pathlib.Path(fixture('v3-current-plan.md')).read_text()
+    lines = content.splitlines()
+    # Skip frontmatter (between first and second ---)
+    in_frontmatter = False
+    body_start = 0
+    fence_count = 0
+    for i, line in enumerate(lines):
+        if line.strip() == '---':
+            fence_count += 1
+            if fence_count == 2:
+                body_start = i + 1
+                break
+    body_lines = lines[body_start:]
+    for_human_pos = next(
+        (i for i, l in enumerate(body_lines) if l.strip() == '## For human'),
+        None
+    )
+    assert for_human_pos is not None, "## For human heading not found"
+    assert for_human_pos < 50, (
+        f"## For human appears at body line {for_human_pos} (must be < 50)"
+    )
+
+
+def test_v3_current_plan_summary_length_at_boundary():
+    """Exactly 12 non-blank summary lines PASS; 13 non-blank lines FAIL V-06."""
+    rc12, stderr12 = run_validator(artifact=fixture('current-plan-summary-12.md'))
+    assert rc12 == 0, f"12-line summary should pass:\n{stderr12}"
+
+    rc13, stderr13 = run_validator(artifact=fixture('current-plan-summary-13.md'))
+    assert rc13 == 1, "13-line summary should fail V-06"
+    assert 'FAIL V-06' in stderr13
+    assert 'exceeds 12 non-blank lines' in stderr13
+
+
+def test_assembled_file_no_duplicate_for_human_heading():
+    """A correctly assembled v3 file has exactly one ## For human heading.
+    The body.tmp has zero. This confirms the §5.3 Step 3(a) dedup is needed."""
+    import pathlib, re
+    v3 = pathlib.Path(fixture('v3-current-plan.md')).read_text()
+    body = pathlib.Path(fixture('v3-current-plan.body.tmp.md')).read_text()
+
+    pattern = re.compile(r'^## For human\s*$', re.MULTILINE)
+    v3_count = len(pattern.findall(v3))
+    body_count = len(pattern.findall(body))
+
+    assert v3_count == 1, (
+        f"Assembled v3 file must have exactly one '## For human', found {v3_count}"
+    )
+    assert body_count == 0, (
+        f"Body.tmp must have zero '## For human' headings (it has {body_count}); "
+        "Step 3(a) dedup is critical to prevent duplication on assembly"
+    )
