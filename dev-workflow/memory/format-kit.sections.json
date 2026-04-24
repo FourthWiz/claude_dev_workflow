@@ -1,0 +1,167 @@
+{
+  "artifact_types": {
+    "current-plan": {
+      "class": "B",
+      "match_paths": ["current-plan*.md", "**/current-plan*.md"],
+      "required_sections": [
+        "## For human",
+        "## State",
+        "## Tasks",
+        "## Risks"
+      ],
+      "allowed_sections": [
+        "## For human",
+        "## State",
+        "## Tasks",
+        "## Risks",
+        "## Decisions",
+        "## Procedures",
+        "## References",
+        "## Notes",
+        "## Acceptance",
+        "## Revision history"
+      ],
+      "notes": "format-kit.md §2 current-plan.md entry; allowed_sections explicitly bounded per v3 §5.3.2 Stage 1 deliverable note (legacy v2 headings excluded by design)"
+    },
+    "architecture": {
+      "class": "B",
+      "match_paths": ["architecture*.md", "**/architecture*.md"],
+      "required_sections": [
+        "## For human",
+        "## Context",
+        "## Current state",
+        "## Proposed architecture",
+        "## Risk register",
+        "## Stage decomposition"
+      ],
+      "allowed_sections": [
+        "## For human",
+        "## Context",
+        "## Current state",
+        "## Proposed architecture",
+        "## Integration analysis",
+        "## Risk register",
+        "## De-risking strategy",
+        "## Stage decomposition",
+        "## Stage Summary Table",
+        "## Next Steps",
+        "## Open questions",
+        "## Appendix",
+        "## Revision history"
+      ],
+      "notes": "format-kit.md §2 architecture.md entry; Stage 3 will rewrite the Tier 1 Contract-approval sub-section for this type"
+    },
+    "review": {
+      "class": "B",
+      "match_paths": ["review-*.md", "**/review-*.md"],
+      "required_sections": [
+        "## For human",
+        "## Summary",
+        "## Verdict",
+        "## Plan Compliance",
+        "## Issues Found",
+        "## Integration Safety",
+        "## Test Coverage",
+        "## Risk Assessment"
+      ],
+      "allowed_sections": [
+        "## For human",
+        "## Summary",
+        "## Verdict",
+        "## Plan Compliance",
+        "## Issues Found",
+        "## Integration Safety",
+        "## Test Coverage",
+        "## Risk Assessment",
+        "## Recommendations"
+      ],
+      "notes": "format-kit.md §2 review-N.md entry; Class B — requires Haiku For human block"
+    },
+    "critic-response": {
+      "class": "A",
+      "match_paths": ["critic-response-*.md", "**/critic-response-*.md"],
+      "required_sections": [
+        "## Verdict",
+        "## Summary",
+        "## Issues",
+        "## What's good",
+        "## Scorecard"
+      ],
+      "allowed_sections": [
+        "## Target",
+        "## Verdict",
+        "## Summary",
+        "## Issues",
+        "## What's good",
+        "## Scorecard"
+      ],
+      "notes": "format-kit.md §2 critic-response-N.md entry; Class A — no For human block required"
+    },
+    "session": {
+      "class": "A",
+      "match_paths": [
+        "session/*.md",
+        "**/sessions/*.md",
+        "**/memory/sessions/*.md"
+      ],
+      "required_sections": [
+        "## Status",
+        "## Current stage",
+        "## Completed in this session",
+        "## Unfinished work",
+        "## Cost"
+      ],
+      "allowed_sections": [
+        "## Status",
+        "## Current stage",
+        "## Completed in this session",
+        "## Architectural design summary",
+        "## Unfinished work",
+        "## Decisions made",
+        "## Open questions",
+        "## Cost"
+      ],
+      "notes": "format-kit.md §2 session/<date>-<task>.md entry; Class A — no For human block"
+    },
+    "gate": {
+      "class": "A",
+      "match_paths": ["gate-*.md", "**/gate-*.md"],
+      "required_sections": [
+        "## Automated checks",
+        "## Verdict"
+      ],
+      "allowed_sections": [
+        "## Automated checks",
+        "## Verdict",
+        "## Failures requiring attention",
+        "## Warnings (non-blocking)",
+        "## Summary of what was produced",
+        "## What's next"
+      ],
+      "notes": "format-kit.md §2 gate-<phase>-<date>.md entry; Class A — no For human block required"
+    }
+  },
+  "default": {
+    "class": "A",
+    "required_sections": [],
+    "allowed_sections": [
+      "## For human",
+      "## Summary",
+      "## Status",
+      "## State",
+      "## Context",
+      "## Tasks",
+      "## Decisions",
+      "## Risks",
+      "## Notes",
+      "## References",
+      "## Procedures",
+      "## Revision history",
+      "## Automated checks",
+      "## Verdict",
+      "## Issues",
+      "## Scorecard"
+    ],
+    "notes": "fallback for artifacts not matching any named type; broad allowed_sections to avoid spurious V-02 failures on ad-hoc files"
+  }
+}

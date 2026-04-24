@@ -333,6 +333,12 @@ The caveman-token-optimization v2 architecture (see `.workflow_artifacts/caveman
 - `dev-workflow/memory/lessons-learned.md`.
 - `dev-workflow/memory/terse-rubric.md` (the rubric itself — compressing it recreates the v1 CRIT-2 circular dependency).
 - `~/.claude/memory/terse-rubric.md` (deployed copy — read by skills at runtime; overwritten on re-install from the source above).
+- `dev-workflow/memory/format-kit.md` (v3 format-aware writing reference; content-type → primitive mapping; per artifact-format-architecture v3 §5.1).
+- `~/.claude/memory/format-kit.md` (deployed copy — overwritten on re-install).
+- `dev-workflow/memory/glossary.md` (v3 abbreviation whitelist + status glyphs; extends terse-rubric; per artifact-format-architecture v3 §5.2).
+- `~/.claude/memory/glossary.md` (deployed copy — overwritten on re-install).
+- `dev-workflow/memory/format-kit.sections.json` (v3 machine-readable sidecar enumerating allowed/required sections per artifact type; structured-not-prose; consumed by validate_artifact.py per v3 §5.3.2).
+- `~/.claude/memory/format-kit.sections.json` (deployed copy — overwritten on re-install).
 
 **Contract-approval files:**
 - `<task>/architecture.md`.

@@ -89,10 +89,13 @@ done
 
 success "Copied $SKILL_COUNT skills to ~/.claude/skills/"
 
-# ── Step 2b: Copy terse-rubric to ~/.claude/memory/ ──
-header "Step 2b: Copying terse-rubric to ~/.claude/memory/..."
+# ── Step 2b: Copy terse-rubric and v3 reference files to ~/.claude/memory/ and v3 scripts to ~/.claude/scripts/ ──
+header "Step 2b: Copying memory references and v3 scripts to ~/.claude/..."
 
 USER_MEMORY_DIR="$HOME/.claude/memory"
+USER_SCRIPTS_DIR="$HOME/.claude/scripts"
+
+# v2 terse-rubric (pre-existing — keep this block content-identical)
 RUBRIC_SRC="$SCRIPT_DIR/memory/terse-rubric.md"
 RUBRIC_DST="$USER_MEMORY_DIR/terse-rubric.md"
 
@@ -104,6 +107,42 @@ fi
 mkdir -p "$USER_MEMORY_DIR"
 cp "$RUBRIC_SRC" "$RUBRIC_DST"
 success "Copied terse-rubric.md to ~/.claude/memory/"
+
+# v3 reference files (NEW — mirror the rubric pattern exactly)
+for ref_file in format-kit.md glossary.md format-kit.sections.json; do
+  REF_SRC="$SCRIPT_DIR/memory/$ref_file"
+  REF_DST="$USER_MEMORY_DIR/$ref_file"
+  if [ ! -f "$REF_SRC" ]; then
+    error "Expected $ref_file at $REF_SRC but not found — aborting"
+    exit 1
+  fi
+  cp "$REF_SRC" "$REF_DST"
+  success "Copied $ref_file to ~/.claude/memory/"
+done
+
+# v3 scripts (NEW — separate destination directory ~/.claude/scripts/)
+mkdir -p "$USER_SCRIPTS_DIR"
+for script_file in summarize_for_human.py validate_artifact.py; do
+  SCRIPT_SRC="$SCRIPT_DIR/scripts/$script_file"
+  SCRIPT_DST="$USER_SCRIPTS_DIR/$script_file"
+  if [ ! -f "$SCRIPT_SRC" ]; then
+    error "Expected $script_file at $SCRIPT_SRC but not found — aborting"
+    exit 1
+  fi
+  cp "$SCRIPT_SRC" "$SCRIPT_DST"
+  chmod +x "$SCRIPT_DST"
+  success "Copied $script_file to ~/.claude/scripts/"
+done
+
+# Optional dep hint (architecture R-12 mitigation): print setup-friction reduction hints
+if ! python3 -c 'import anthropic' 2>/dev/null; then
+  warn "Python package 'anthropic' is not installed — summarize_for_human.py will fail at runtime."
+  warn "  Install with: pip install anthropic"
+fi
+if ! python3 -c 'import yaml' 2>/dev/null; then
+  warn "Python package 'pyyaml' is not installed — validate_artifact.py V-01 frontmatter check will fail at runtime."
+  warn "  Install with: pip install pyyaml"
+fi
 
 # ── Step 3: Write workflow rules to ~/.claude/CLAUDE.md ──
 header "Step 3: Writing workflow rules to ~/.claude/CLAUDE.md..."
@@ -147,6 +186,8 @@ echo ""
 echo -e "  ${GREEN}$SKILL_COUNT skills${NC} installed in ~/.claude/skills/"
 echo -e "  ${GREEN}Workflow rules${NC} written to ~/.claude/CLAUDE.md"
 echo -e "  ${GREEN}Terse rubric${NC} copied to ~/.claude/memory/terse-rubric.md"
+echo -e "  ${GREEN}v3 reference files${NC} copied to ~/.claude/memory/ (format-kit.md, glossary.md, format-kit.sections.json)"
+echo -e "  ${GREEN}v3 scripts${NC} copied to ~/.claude/scripts/ (validate_artifact.py, summarize_for_human.py)"
 echo ""
 echo -e "  ${BLUE}Tip:${NC} re-run bash install.sh to refresh skills, CLAUDE.md, and the rubric together."
 echo ""
