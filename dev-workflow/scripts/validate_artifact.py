@@ -143,6 +143,8 @@ def detect_type(filepath, type_override):
         return 'current-plan'
     if re.match(r'^architecture-critic-', name):
         return 'critic-response'   # architecture-critic-N.md uses critic-response section set
+    if re.match(r'^architecture-overview', name):
+        return 'architecture-overview'
     if re.match(r'^architecture', name):
         return 'architecture'
     if re.match(r'^review-', name):
@@ -153,6 +155,12 @@ def detect_type(filepath, type_override):
         return 'session'
     if re.match(r'^gate-', name):
         return 'gate'
+    if re.match(r'^repos-inventory', name):
+        return 'repos-inventory'
+    if re.match(r'^dependencies-map', name):
+        return 'dependencies-map'
+    if re.match(r'^git-log', name):
+        return 'git-log'
     return 'default'
 
 

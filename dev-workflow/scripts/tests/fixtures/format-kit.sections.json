@@ -140,6 +140,46 @@
         "## What's next"
       ],
       "notes": "format-kit.md §2 gate-<phase>-<date>.md entry; Class A — no For human block required"
+    },
+    "repos-inventory": {
+      "class": "A",
+      "match_paths": ["repos-inventory.md", "**/repos-inventory.md"],
+      "required_sections": [],
+      "allowed_sections": [],
+      "notes": "/discover output uses dynamic per-repo ## {name} headings; allowed_sections empty short-circuits V-02 per validate_artifact.py `if not allowed_sections: return`. V-01/V-03/V-04/V-05/V-06 still fire."
+    },
+    "architecture-overview": {
+      "class": "A",
+      "match_paths": ["architecture-overview.md", "**/architecture-overview.md"],
+      "required_sections": [],
+      "allowed_sections": [
+        "## System purpose",
+        "## Service map",
+        "## Communication patterns",
+        "## Request flows",
+        "## Key architectural decisions",
+        "## Deployment topology"
+      ],
+      "notes": "/discover output; headings per discover/SKILL.md template"
+    },
+    "dependencies-map": {
+      "class": "A",
+      "match_paths": ["dependencies-map.md", "**/dependencies-map.md"],
+      "required_sections": [],
+      "allowed_sections": [
+        "## Dependency graph",
+        "## Shared resources",
+        "## Deployment order constraints",
+        "## Integration risks"
+      ],
+      "notes": "/discover output; headings per the Cross-Service Dependencies template block in discover/SKILL.md"
+    },
+    "git-log": {
+      "class": "A",
+      "match_paths": ["git-log.md", "**/git-log.md"],
+      "required_sections": [],
+      "allowed_sections": [],
+      "notes": "/discover output uses dynamic per-repo ## {name} headings; allowed_sections empty short-circuits V-02. V-01/V-03/V-04/V-05/V-06 still fire."
     }
   },
   "default": {
