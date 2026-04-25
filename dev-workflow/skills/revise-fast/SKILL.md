@@ -93,6 +93,9 @@ Reference files (apply HERE at the body-generation WRITE-SITE — per format-kit
 - `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs
 - `~/.claude/memory/terse-rubric.md` — prose discipline (compose with format-kit per §5)
 
+# V-05 reminder: T-NN/D-NN/R-NN/F-NN/Q-NN/S-NN are FILE-LOCAL.
+# When referring to a sibling artifact's task or risk, use plain English (e.g., "the parent plan's T-04"), NOT a bare T-NN token. See format-kit.md §1 / glossary.md.
+**Step 1 pre-write sweep:** Before writing, clear stale leftovers from any prior aborted run: `(rm -f <plan-path>.body.tmp <plan-path>.tmp 2>/dev/null || true)`.
 Compose the format-aware body per format-kit.md §2 `current-plan.md` enumeration. Include the `## Revision history` section (terse numbered list or table per format-kit.md §2) with the new round's changelog appended inside it. DO NOT include the `## For human` block in the body — that's Steps 2–3. Write the body to `<plan-path>.body.tmp` using the Bash tool.
 
 **Step 2: Summary generation (with empty-output check).** Invoke:
@@ -114,10 +117,10 @@ Exit code 0 = PASS; non-zero = at least one invariant failed (stderr names which
   - **Step 2 failure:** re-run Step 2 once; if still fails → English-fallback.
   - **V-06/V-07 failures:** re-run Steps 2–4 once.
   - **V-02/V-03/V-05 failures:** re-run Steps 1–4 once with explicit body-discipline instruction.
-  - **English-fallback:** v2-style write (no `## For human` block), log `format-kit-skipped` warning.
+  - **English-fallback:** v2-style write (no `## For human` block), log `format-kit-skipped` warning. Clean up body.tmp: `(rm -f <plan-path>.body.tmp 2>/dev/null || true)`.
 
 **Step 6: Atomic rename.**
-  `mv <plan-path>.tmp <plan-path> && rm -f <plan-path>.body.tmp`
+  `mv <plan-path>.tmp <plan-path>; (rm -f <plan-path>.body.tmp <plan-path>.tmp 2>/dev/null || true)`
 
 The final `current-plan.md` contains the revised body. Do NOT write a `.original.md` side-file.
 

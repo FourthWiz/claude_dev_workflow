@@ -62,6 +62,9 @@ Reference files (apply HERE at the body-generation WRITE-SITE — per format-kit
 - `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs
 - `~/.claude/memory/terse-rubric.md` — prose discipline (compose with format-kit per §5)
 
+# V-05 reminder: T-NN/D-NN/R-NN/F-NN/Q-NN/S-NN are FILE-LOCAL.
+# When referring to a sibling artifact's task or risk, use plain English (e.g., "the parent plan's T-04"), NOT a bare T-NN token. See format-kit.md §1 / glossary.md.
+**Step 1 pre-write sweep:** Before writing, clear stale leftovers from any prior aborted run: `(rm -f <plan-path>.body.tmp <plan-path>.tmp 2>/dev/null || true)`.
 Compose the format-aware body for `current-plan.md` per format-kit.md §2 enumeration: `## State` (YAML), `## Tasks` (terse numbered list with status glyphs ✓ ✗ ⏳ 🚫 + acceptance bullets), `## Decisions` (caveman prose, only if non-trivial), `## Risks` (markdown table with id/risk/likelihood/impact/mitigation/rollback), `## Procedures` (pseudo-code, optional), `## References` (terse list, only if cross-refs exist). Apply `format-kit.md` §1 pick rules per section. DO NOT include the `## For human` block yet — that's Step 2 + Step 3. Write the body to a temp file using the Bash tool: `<plan-path>.body.tmp`.
 
 **Step 2: Summary generation (with empty-output check).** Invoke the deployed Haiku summary script via the Bash tool:
@@ -93,9 +96,9 @@ This guarantees the assembled file contains exactly one `## For human` line, reg
     (b) **V-02 / V-03 / V-05 failures:** re-run Steps 1–4 once with the explicit body-discipline instruction prepended: "all standard sections required, no inventions, summary 5–8 lines, do not output any heading".
     (c) **V-01 / V-04 failures:** treat as body issues (re-run Steps 1–4).
 
-  - **English-fallback (after retry also fails):** fall back to v2-style single-file write — regenerate the body using terse-rubric only (no format-kit, no `## For human` block). Write to `<plan-path>.tmp` directly. Skip Step 4 validation. Log a `format-kit-skipped` warning to the user with the failing invariant ID(s). The artifact still gets written; the safety property holds.
+  - **English-fallback (after retry also fails):** fall back to v2-style single-file write — regenerate the body using terse-rubric only (no format-kit, no `## For human` block). Write to `<plan-path>.tmp` directly. Skip Step 4 validation. Log a `format-kit-skipped` warning to the user with the failing invariant ID(s). Clean up body.tmp: `(rm -f <plan-path>.body.tmp 2>/dev/null || true)`. The artifact still gets written; the safety property holds.
 
-**Step 6: Atomic rename.** Move `<plan-path>.tmp` to `<plan-path>` (overwriting any prior `current-plan.md`). Clean up `<plan-path>.body.tmp`. Use the Bash tool: `mv <plan-path>.tmp <plan-path> && (rm -f <plan-path>.body.tmp 2>/dev/null || true)`.
+**Step 6: Atomic rename.** Move `<plan-path>.tmp` to `<plan-path>` (overwriting any prior `current-plan.md`). Clean up both temp files. Use the Bash tool: `mv <plan-path>.tmp <plan-path>; (rm -f <plan-path>.body.tmp <plan-path>.tmp 2>/dev/null || true)`.
 
 The final file at `<plan-path>` IS what `/critic`, `/implement`, `/review`, `/gate` will read. Do NOT write a `.original.md` side-file.
 

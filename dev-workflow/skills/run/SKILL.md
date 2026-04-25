@@ -97,7 +97,7 @@ After the phase, verify the cost ledger has a new entry for the `discover` phase
 
 After the phase, verify the cost ledger has a new entry for the `architect` phase. If not, append a best-effort entry with `unknown-architect-<timestamp>`.
 
-After architect completes, run `/gate` (architecture gate).
+After architect completes, spawn `/gate` as a subagent session (architecture gate — subagent dispatch required for audit-log persistence).
 
 **Checkpoint A:**
 ```
@@ -146,7 +146,7 @@ Spawn `/implement` as a subagent session, passing path to `current-plan.md` and 
 
 After the phase, verify the cost ledger has a new entry for the `implement` phase. If not, append a best-effort entry with `unknown-implement-<timestamp>`.
 
-After implement completes, run `/gate`:
+After implement completes, spawn `/gate` as a subagent session (never inline — the subagent must read gate/SKILL.md for Step 5 audit-log persistence to fire):
 - Standard level for Small/Medium
 - Full level for Large
 
@@ -177,7 +177,7 @@ Read the review output (`review-*.md`) and check the verdict.
 
 After the phase, verify the cost ledger has a new entry for the `review` phase. If not, append a best-effort entry with `unknown-review-<timestamp>`.
 
-**If APPROVED:** run `/gate` (Full level, post-review). Proceed to Checkpoint D.
+**If APPROVED:** spawn `/gate` as a subagent session (Full level, post-review — subagent dispatch required for audit-log persistence). Proceed to Checkpoint D.
 
 **If CHANGES_REQUESTED:** present the issues to the user. Offer:
 1. **"fix"** → spawn `/implement` again with the review issues as the spec. After fix-implement completes, re-run the post-implementation gate (same level as before). Then re-spawn `/review`. Cap at 3 review rounds to prevent infinite cycling.

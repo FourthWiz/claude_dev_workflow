@@ -217,6 +217,8 @@ Reference files (apply HERE at the body-generation WRITE-SITE — per format-kit
 - `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs
 - `~/.claude/memory/terse-rubric.md` — prose discipline (compose with format-kit per §5)
 
+# V-05 reminder: T-NN/D-NN/R-NN/F-NN/Q-NN/S-NN are FILE-LOCAL.
+# When referring to a sibling artifact's task or risk, use plain English (e.g., "the parent plan's T-04"), NOT a bare T-NN token. See format-kit.md §1 / glossary.md.
 Compose the format-aware body for `architecture.md` per format-kit.md §2 enumeration:
 - `## Context` — caveman prose: what are we solving and why, constraints, business context.
 - `## Current state` — caveman prose: how things work today, pain points.
@@ -231,7 +233,7 @@ Compose the format-aware body for `architecture.md` per format-kit.md §2 enumer
 - `## Appendix` — any supplementary material (optional).
 - `## Revision history` — terse changelog if this is a revision (optional).
 
-Apply `format-kit.md` §1 pick rules per section. DO NOT include the `## For human` block yet — that's Step 2 + Step 3. Write the body to a temp file: `<path>.body.tmp`.
+Apply `format-kit.md` §1 pick rules per section. DO NOT include the `## For human` block yet — that's Step 2 + Step 3. **Step 1 pre-write sweep:** `(rm -f <path>.body.tmp <path>.tmp 2>/dev/null || true)` — clear stale leftovers before writing. Write the body to a temp file: `<path>.body.tmp`.
 
 **Step 2: Summary generation (with empty-output check).** Invoke the deployed Haiku summary script via the Bash tool:
   `bash ~/.claude/scripts/with_env.sh python3 ~/.claude/scripts/summarize_for_human.py <path>.body.tmp`
@@ -262,9 +264,9 @@ Filename auto-detection identifies the type as `architecture` (matches `^archite
     (b) **V-02 / V-03 / V-05 failures** (body-section issues): re-run Steps 1–4 once with body-discipline instruction prepended.
     (c) **V-01 / V-04 failures** (frontmatter / code-fence): treat as body issues; re-run Steps 1–4.
 
-  - **English-fallback (after retry also fails):** fall back to v2-style write — regenerate body using terse-rubric only (no format-kit, no `## For human` block). Write to `<path>.tmp` directly. Skip Step 4. Log a `format-kit-skipped` warning to the user with the failing invariant ID(s).
+  - **English-fallback (after retry also fails):** fall back to v2-style write — regenerate body using terse-rubric only (no format-kit, no `## For human` block). Write to `<path>.tmp` directly. Skip Step 4. Log a `format-kit-skipped` warning to the user with the failing invariant ID(s). Clean up body.tmp: `(rm -f <path>.body.tmp 2>/dev/null || true)`.
 
-**Step 6: Atomic rename.** `mv <path>.tmp <path> && (rm -f <path>.body.tmp 2>/dev/null || true)`. The final file at `<path>` IS what `/critic`, `/thorough_plan`, `/gate` will read. Do NOT write a `.original.md` side-file.
+**Step 6: Atomic rename.** `mv <path>.tmp <path>; (rm -f <path>.body.tmp <path>.tmp 2>/dev/null || true)`. The final file at `<path>` IS what `/critic`, `/thorough_plan`, `/gate` will read. Do NOT write a `.original.md` side-file.
 
 ## Save session state
 

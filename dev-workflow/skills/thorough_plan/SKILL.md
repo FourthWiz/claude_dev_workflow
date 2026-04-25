@@ -195,7 +195,7 @@ When converged, add a convergence summary to the top of `current-plan.md`:
 
 For Small-profile tasks that took the single-pass path, the convergence summary still appears at the top of `current-plan.md` but with `Rounds: 1` and `Key revisions: N/A — single-pass plan`. This signals to downstream skills that the plan was not critic-reviewed.
 
-Then run `/gate` to present automated checks and a summary to the user.
+Then spawn `/gate` as a subagent session (never inline — subagent dispatch is required so gate/SKILL.md is read and Step 5 audit-log persistence fires) to present automated checks and a summary to the user.
 
 After the gate, inform the user:
 - The plan is ready at `.workflow_artifacts/<task-name>/current-plan.md`
