@@ -88,6 +88,7 @@ Based on what exists and what's next, run the appropriate checks:
 - [ ] `architecture.md` exists and is non-empty
 - [ ] Architecture covers: objective, constraints, service map, integration points, stages
 - [ ] Stages are decomposed with clear boundaries
+- [ ] Read the `## For human` summary block from `architecture.md` (per Step 3a below). Display as part of "Summary of what was produced" alongside the architecture deliverables. If `architecture.md` is v2-legacy (no block), fall back to first 2 KB display.
 
 **After /architect or /thorough_plan → before /implement (Smoke gate):**
 - [ ] Plan artifact (`current-plan.md`) exists and is non-empty
@@ -105,24 +106,31 @@ Based on what exists and what's next, run the appropriate checks:
 - [ ] No debug code (console.log, debugger, print, TODO: remove)
 - [ ] No secrets in diff
 - [ ] No uncommitted changes
+- [ ] Read the `## For human` summary block from `architecture.md` if it exists AND was modified this task (per Step 3a below). Display as part of "Summary of what was produced" alongside the implementation deliverables. If `architecture.md` is v2-legacy or does not exist, skip silently.
 
 *Full gate (Large tasks) — includes everything in Standard, plus:*
 - [ ] All planned tasks are implemented (cross-reference plan task list)
 - [ ] Run full test suite
 - [ ] Run type checker if applicable
 - [ ] Verify no unrelated file changes
+- [ ] Read the `## For human` summary block from `architecture.md` if it exists AND was modified this task (per Step 3a below). Display as part of "Summary of what was produced". If `architecture.md` is v2-legacy or does not exist, skip silently.
 
 **After /review → before /end_of_task (Full gate — always, all task sizes):**
 - [ ] Review verdict is APPROVED
+- [ ] Read the `## For human` summary block from `review-<latest-round>.md` (per Step 3a below). Display as part of "Summary of what was produced" alongside the verdict. If `review-<round>.md` is v2-legacy, fall back to first 2 KB display.
 - [ ] All CRITICAL and MAJOR issues are resolved
 - [ ] Run full test suite (re-run — code may have changed during review fixes)
 - [ ] Run type checker if applicable
 - [ ] Branch is up to date with base branch
 - [ ] No merge conflicts
 
-### Step 3a: Read summary for display (Checkpoint B only)
+### Step 3a: Read summary for display (Checkpoints A, B, C, D)
 
-For Checkpoint B (post-`/plan` → pre-`/implement`), determine the `current-plan.md` format and extract the human-facing summary using the §5.7.1 detection rule below.
+For Checkpoints A, B, C, and D, determine the relevant Class B artifact's format and extract the human-facing summary using the §5.7.1 detection rule below.
+- Checkpoint A (post-`/architect` → pre-`/thorough_plan`): read `architecture.md`.
+- Checkpoint B (post-`/plan` → pre-`/implement`): read `current-plan.md`.
+- Checkpoint C (post-`/implement` → pre-`/review`): read `architecture.md` if it exists and was modified this task (check `git log --oneline <path>` against HEAD).
+- Checkpoint D (post-`/review` → pre-`/end-of-task`): read `review-<latest-round>.md`.
 
 # v3-format detection (architecture.md §5.7.1 — copy verbatim)
 # A file is v3-format iff:
@@ -134,7 +142,7 @@ For Checkpoint B (post-`/plan` → pre-`/implement`), determine the `current-pla
 # Detection MUST be string-comparison only — no LLM call (per lesson 2026-04-23
 # on LLM-replay non-determinism).
 
-If v3-format: capture the lines from the line after `## For human` until the next `## ` heading; pass that text to Step 3 as the `Summary of what was produced` content. If v2-format: read the first 2 KB of the file as the summary content (legacy fallback).
+If v3-format: capture the lines from the line after `## For human` until the next `## ` heading; pass that text to Step 3 as the `Summary of what was produced` content. If v2-format: read the first 2 KB of the file as the summary content (legacy fallback). Apply this logic to whichever artifact corresponds to the current Checkpoint per the list above. If the Checkpoint-A or Checkpoint-C `architecture.md` does not exist (Small-task case where `/architect` was skipped), skip the architecture read and proceed.
 
 ### Step 3: Present the gate summary
 

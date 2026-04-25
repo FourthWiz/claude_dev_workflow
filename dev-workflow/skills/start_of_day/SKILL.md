@@ -48,6 +48,25 @@ Read these files in parallel:
    ```
    Check for uncommitted changes, stale branches, open PRs.
 
+### Step 3a: Detect daily-cache format (v2 vs v3)
+
+After reading the daily cache in Step 3, determine its format using the §5.7.1 detection rule below. This governs how to extract the human-facing summary for display in Step 5.
+
+# v3-format detection (architecture.md §5.7.1 — copy verbatim)
+# A file is v3-format iff:
+#   - the first 50 lines following the closing `---` of the YAML frontmatter
+#     contain a heading matching the regex ^## For human\s*$
+# Otherwise the file is v2-format.
+# On v3-format detection: read sections per format-kit.md for this artifact type.
+# On v2-format (or no frontmatter): read the whole file as legacy v2.
+# Detection MUST be string-comparison only — no LLM call (per lesson 2026-04-23
+# on LLM-replay non-determinism).
+
+Daily cache files have no YAML frontmatter — scan the first 50 lines of the file directly (no frontmatter to skip).
+
+- **v3-format** (file contains `## For human` within the first 50 lines): extract the lines from the line after `## For human` until the next `## ` heading. Pass this text to Step 5 as `<yesterday-summary>`.
+- **v2-format** (no `## For human` in the first 50 lines): use the first 2 KB of the file as `<yesterday-summary>` (legacy fallback).
+
 ### Step 4: Reconcile
 
 For each unfinished task from the daily cache, run these checks and report the result:
@@ -65,6 +84,9 @@ Output a clear, concise briefing:
 
 ```markdown
 # Good morning 👋
+
+## Yesterday's summary
+<yesterday-summary extracted from ## For human block (v3) or first 2 KB of daily cache (v2)>
 
 ## Since last session
 - <any new commits from others, PR reviews, CI results>
@@ -124,3 +146,4 @@ If nothing exists at all:
 - **Surface surprises.** If overnight CI broke, or someone force-pushed to a branch, or a PR got rejected — lead with that.
 - **Respect the user's time.** Don't make them re-read the entire plan. Summarize the resumption point in 2-3 sentences with the exact file/task/line to start at.
 - **Check git for real.** The daily cache is what *should* be true. Git state is what *is* true. Always reconcile.
+- **Prefer the `## For human` block.** If the daily cache is v3-format, display the `## For human` content as the primary orientation summary — it was written by the previous session's Haiku specifically to orient the next reader. Don't pad or paraphrase it; present it directly.

@@ -340,10 +340,10 @@ The caveman-token-optimization v2 architecture (see `.workflow_artifacts/caveman
 - `dev-workflow/memory/format-kit.sections.json` (v3 machine-readable sidecar enumerating allowed/required sections per artifact type; structured-not-prose; consumed by validate_artifact.py per v3 §5.3.2).
 - `~/.claude/memory/format-kit.sections.json` (deployed copy — overwritten on re-install).
 
-**Contract-approval files:**
-- `<task>/architecture.md`.
-- `<task>/review-<round>.md`.
-- `<task>/cost-ledger.md` (structured, not prose).
+**Contract-approval files (v3 format):**
+- `<task>/architecture.md` — has an English `## For human` summary block at the top (read by humans and `/gate`); body is format-aware structured per `dev-workflow/memory/format-kit.md` (read by skills).
+- `<task>/review-<round>.md` — same v3 format as architecture.md.
+- `<task>/cost-ledger.md` (structured, not prose; no v3 changes — append-only row format only).
 
 **Rendered briefings:**
 - `memory/weekly/*.md`.

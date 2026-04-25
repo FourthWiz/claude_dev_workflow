@@ -34,7 +34,7 @@ Multiple sessions can run in a day (parallel tasks, or revisiting a task). Each 
 
 ### Step 1: Save current session state (skip if no active task)
 
-Write session-state files in terse style per `~/.claude/memory/terse-rubric.md`. Write `daily/insights-<date>.md` updates in terse style per `~/.claude/memory/terse-rubric.md`. `daily/<date>.md` (the rendered daily briefing) is Tier 1 English per architecture §3.2 — do not apply the rubric to `daily/<date>.md`. The rubric applies only to the insights scratchpad and session-state rows.
+Write session-state files in terse style per `~/.claude/memory/terse-rubric.md`. Write `daily/insights-<date>.md` updates in terse style per `~/.claude/memory/terse-rubric.md`. `daily/<date>.md` (the rendered daily briefing) is Tier 1 English per CLAUDE.md §Rendered briefings — do not apply the rubric to `daily/<date>.md`. The file gets a `## For human` block prepended (composed directly by Haiku in the same generation as the body — no script invocation). The rubric applies only to the insights scratchpad and session-state rows.
 
 **If this session has no active task** (e.g. you opened a fresh session just to run `/end_of_day`), skip this step entirely and proceed to Step 2. The existing session files on disk are the source of truth.
 
@@ -125,6 +125,10 @@ Write the daily cache to `.workflow_artifacts/memory/daily/<date>.md`:
 
 ```markdown
 # Daily Cache — <YYYY-MM-DD>
+
+## For human
+
+<5-8 line plain-English summary: what was the day's focus; which tasks made progress; what is the biggest open blocker; what to do tomorrow. Written directly by the Haiku writer in the same generation as the body — NOT via summarize_for_human.py>
 
 ## Summary
 <1-2 sentences: what was the day's focus, what got done, what's left>

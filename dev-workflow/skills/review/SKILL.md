@@ -38,7 +38,8 @@ If v3-format: read the body sections per format-kit.md §2 — ## Tasks is the s
    - If no cache exists, skip this step — fall through to step 6 (current behavior preserved).
 6. Read the git diff (`git diff <base-branch>...HEAD`) — every line. Then selectively read full files per Step 1 criteria below. Do NOT read all modified files unconditionally.
 7. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `review`
-8. Then proceed with review
+8. Read deployed v3 references at session start: `~/.claude/memory/format-kit.md` and `~/.claude/memory/glossary.md`.
+9. Then proceed with review
 
 ## Model requirement
 
@@ -144,49 +145,53 @@ Save the review to:
 <project-folder>/.workflow_artifacts/<task-name>/review-<round>.md
 ```
 
-Structure:
+`review-<round>.md` is a Class B artifact per artifact-format-architecture v3 §4.1. Write it using the §5.3 5-step Class B mechanism:
 
-```markdown
-# Code Review — <task name>
+**Step 1: Body generation.**
+Reference files (apply HERE at the body-generation WRITE-SITE — per format-kit.md §1; this is the only place these references apply, per lesson 2026-04-23):
+- `~/.claude/memory/format-kit.md` — primitives + standard sections per artifact type
+- `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs
+- `~/.claude/memory/terse-rubric.md` — prose discipline (compose with format-kit per §5)
 
-## Summary
-<2-3 sentence summary of the review outcome>
+Compose the format-aware body per the `review` artifact-type sections in format-kit.md §2:
+- `## Summary` — caveman prose: 2-3 sentence review outcome summary.
+- `## Verdict` — one line: `APPROVED`, `CHANGES_REQUESTED`, or `BLOCKED`.
+- `## Plan Compliance` — caveman prose: how well implementation matches the plan; gaps.
+- `## Issues Found` — terse numbered list per severity (CRITICAL / MAJOR / MINOR), each item: description + Location (file:line) + Impact + Fix.
+- `## Integration Safety` — caveman prose: integration risk assessment.
+- `## Test Coverage` — caveman prose: test adequacy assessment.
+- `## Risk Assessment` — markdown table (columns: id / risk / status / notes).
+- `## Recommendations` — terse list: what to do next.
 
-## Verdict: APPROVED / CHANGES_REQUESTED / BLOCKED
+Apply `format-kit.md` §1 pick rules per section. DO NOT include the `## For human` block yet — that's Step 2 + Step 3. Write the body to `<path>.body.tmp`.
 
-## Plan Compliance
-<How well does the implementation match the plan? Any gaps?>
+**Step 2: Summary generation (with empty-output check).** Invoke the deployed Haiku summary script:
+  `python3 ~/.claude/scripts/summarize_for_human.py <path>.body.tmp`
+Capture stdout and exit code.
+- If exit code is non-zero: treat as Step 2 failure → trigger Step 5 retry path.
+- If exit code is 0 BUT stdout (after stripping whitespace) is empty: treat as Step 2 failure → trigger Step 5 retry path.
+- Otherwise: proceed to Step 3 with captured stdout as `summary_raw`.
 
-## Issues Found
+**Step 3: Compose and write the single file (with `## For human` heading dedup).**
+  (a) Take `summary_raw` from Step 2.
+  (b) Strip a leading `## For human` heading if present, using the regex `^##\s*For\s+human\s*\n+`. Call the result `summary_body`.
+  (c) Compose: `<frontmatter (YAML)>\n## For human\n\n<summary_body>\n\n<body content read from <path>.body.tmp>`.
+  (d) Write to `<path>.tmp`.
+This guarantees exactly one `## For human` line regardless of Haiku output shape.
 
-### Critical (blocks merge)
-- **[CRIT-1]** <description>
-  - Location: <file:line>
-  - Impact: <what breaks>
-  - Fix: <suggested resolution>
+**Step 4: Structural validation.**
+  `python3 ~/.claude/scripts/validate_artifact.py <path>.tmp`
+Filename auto-detection identifies type as `review` (matches `^review-` regex in `detect_type()`). Exit code 0 = PASS; non-zero = invariant failure.
 
-### Major (should fix before merge)
-- **[MAJ-1]** <description>
-  - Location: <file:line>
-  - Impact: <what's affected>
-  - Fix: <suggested resolution>
+**Step 5: Retry / English-fallback (failure-class-aware).**
 
-### Minor (nice to have)
-- **[MIN-1]** <description>
-  - Suggestion: <improvement>
+  - **Step 2 failure path:** Re-run ONLY Step 2 once. If re-run also fails: fall back to v2-style write.
+  - **Step 4 V-06/V-07 failures:** Re-run Steps 2–4 once.
+  - **Step 4 V-02/V-03/V-05 failures:** Re-run Steps 1–4 once with body-discipline instruction prepended.
+  - **Step 4 V-01/V-04 failures:** Treat as body issues; re-run Steps 1–4.
+  - **English-fallback (after retry also fails):** Fall back to v2-style write — regenerate body using terse-rubric only (no format-kit, no `## For human` block). Write to `<path>.tmp` directly. Skip Step 4. Log a `format-kit-skipped` warning with the failing invariant ID(s).
 
-## Integration Safety
-<Assessment of integration risks>
-
-## Test Coverage
-<Assessment of test adequacy>
-
-## Risk Assessment
-<Deployment risk analysis>
-
-## Recommendations
-<What to do next — fix issues, add tests, deploy with flags, etc.>
-```
+**Step 6: Atomic rename.** `mv <path>.tmp <path> && rm -f <path>.body.tmp`. Do NOT write a `.original.md` side-file.
 
 ## After the review
 
@@ -201,7 +206,7 @@ If the verdict is APPROVED:
 
 ## Save session state
 
-Write session-state files in terse style per `~/.claude/memory/terse-rubric.md`. `review-<round>.md` is Tier 1 (user reads at gate, English) per architecture §3.2 — do not apply the rubric to `review-<round>.md`.
+Write session-state files in terse style per `~/.claude/memory/terse-rubric.md`. `review-<round>.md` is **Class B** per artifact-format-architecture v3 §4.1 — the `## For human` summary block is English (Haiku-generated per Step 2 of the Output-format section above); the body is format-aware structured per `format-kit.md` §2. The terse-rubric applies inside prose sections only. Session state (`.workflow_artifacts/memory/sessions/<date>-<task>.md`) remains Class A and gets v2 terse-rubric style until Stage 4 retrofits it.
 
 Before finishing, write or update `.workflow_artifacts/memory/sessions/<date>-<task-name>.md` with:
 - **Status:** `in_progress` (REVISE) or `completed` (APPROVED)

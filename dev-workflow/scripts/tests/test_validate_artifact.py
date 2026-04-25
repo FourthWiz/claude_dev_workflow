@@ -302,3 +302,120 @@ def test_assembled_file_no_duplicate_for_human_heading():
         f"Body.tmp must have zero '## For human' headings (it has {body_count}); "
         "Step 3(a) dedup is critical to prevent duplication on assembly"
     )
+
+
+# ── T-06: architecture and review v2/v3 fixture round-trip tests ─────────────
+
+def test_v3_architecture_fixture_passes():
+    """architecture-v3.md must pass all validator checks (auto-detected as architecture)."""
+    rc, stderr = run_validator(artifact=fixture('architecture-v3.md'))
+    assert rc == 0, f"v3 architecture fixture failed:\n{stderr}"
+
+
+def test_v2_architecture_fixture_fails():
+    """architecture-v2.md must fail V-02, V-06, and V-07 (auto-detected as architecture).
+
+    Failure set empirically captured during T-02 implementation via:
+      python3 ~/.claude/scripts/validate_artifact.py architecture-v2.md
+    """
+    rc, stderr = run_validator(artifact=fixture('architecture-v2.md'))
+    assert rc == 1
+    # V-02: three disallowed headings (## Overview, ## Architecture, ## Risks)
+    assert 'FAIL V-02: heading "## Overview" not in allowed set' in stderr
+    assert 'FAIL V-02: heading "## Architecture" not in allowed set' in stderr
+    assert 'FAIL V-02: heading "## Risks" not in allowed set' in stderr
+    # V-06: ## For human missing
+    assert 'FAIL V-06' in stderr
+    # V-07: all six required sections absent
+    assert 'FAIL V-07: required section "## For human" missing' in stderr
+    assert 'FAIL V-07: required section "## Context" missing' in stderr
+    assert 'FAIL V-07: required section "## Current state" missing' in stderr
+    assert 'FAIL V-07: required section "## Proposed architecture" missing' in stderr
+    assert 'FAIL V-07: required section "## Risk register" missing' in stderr
+    assert 'FAIL V-07: required section "## Stage decomposition" missing' in stderr
+
+
+def test_v3_review_fixture_passes():
+    """review-v3-sample.md must pass all validator checks (auto-detected as review)."""
+    rc, stderr = run_validator(artifact=fixture('review-v3-sample.md'))
+    assert rc == 0, f"v3 review fixture failed:\n{stderr}"
+
+
+def test_v2_review_fixture_fails():
+    """review-v2-sample.md must fail V-02, V-06, and V-07 (auto-detected as review).
+
+    Failure set empirically captured during T-03 implementation.
+    """
+    rc, stderr = run_validator(artifact=fixture('review-v2-sample.md'))
+    assert rc == 1
+    # V-02: three disallowed headings
+    assert 'FAIL V-02: heading "## Overview" not in allowed set' in stderr
+    assert 'FAIL V-02: heading "## Approval" not in allowed set' in stderr
+    assert 'FAIL V-02: heading "## Comments" not in allowed set' in stderr
+    # V-06: ## For human missing
+    assert 'FAIL V-06' in stderr
+    # V-07: all eight required sections absent
+    assert 'FAIL V-07: required section "## For human" missing' in stderr
+    assert 'FAIL V-07: required section "## Summary" missing' in stderr
+    assert 'FAIL V-07: required section "## Verdict" missing' in stderr
+    assert 'FAIL V-07: required section "## Plan Compliance" missing' in stderr
+    assert 'FAIL V-07: required section "## Issues Found" missing' in stderr
+    assert 'FAIL V-07: required section "## Integration Safety" missing' in stderr
+    assert 'FAIL V-07: required section "## Test Coverage" missing' in stderr
+    assert 'FAIL V-07: required section "## Risk Assessment" missing' in stderr
+
+
+def test_architecture_allowed_section_set_matches_sidecar():
+    """Guard: architecture allowed_sections in the test sidecar matches the expected set.
+
+    Detects accidental sidecar edits that silently expand/shrink the allowed set.
+    Empirically frozen at T-06 implementation time from format-kit.sections.json.
+    """
+    import json
+    with open(TEST_SIDECAR) as f:
+        data = json.load(f)
+    arch = data['artifact_types']['architecture']
+    expected_allowed = [
+        '## For human',
+        '## Context',
+        '## Current state',
+        '## Proposed architecture',
+        '## Integration analysis',
+        '## Risk register',
+        '## De-risking strategy',
+        '## Stage decomposition',
+        '## Stage Summary Table',
+        '## Next Steps',
+        '## Open questions',
+        '## Appendix',
+        '## Revision history',
+    ]
+    assert arch['allowed_sections'] == expected_allowed, (
+        f"architecture allowed_sections drifted from expected:\n"
+        f"  expected: {expected_allowed}\n"
+        f"  actual:   {arch['allowed_sections']}"
+    )
+
+
+def test_review_allowed_section_set_matches_sidecar():
+    """Guard: review allowed_sections in the test sidecar matches the expected set."""
+    import json
+    with open(TEST_SIDECAR) as f:
+        data = json.load(f)
+    review = data['artifact_types']['review']
+    expected_allowed = [
+        '## For human',
+        '## Summary',
+        '## Verdict',
+        '## Plan Compliance',
+        '## Issues Found',
+        '## Integration Safety',
+        '## Test Coverage',
+        '## Risk Assessment',
+        '## Recommendations',
+    ]
+    assert review['allowed_sections'] == expected_allowed, (
+        f"review allowed_sections drifted from expected:\n"
+        f"  expected: {expected_allowed}\n"
+        f"  actual:   {review['allowed_sections']}"
+    )
