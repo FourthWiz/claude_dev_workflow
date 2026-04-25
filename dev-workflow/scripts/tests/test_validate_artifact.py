@@ -519,3 +519,63 @@ def test_detect_type_architecture_critic_returns_critic_response():
     spec.loader.exec_module(mod)
     assert mod.detect_type('architecture-critic-1.md', None) == 'critic-response'
     assert mod.detect_type('architecture.md', None) == 'architecture'
+
+
+# ── T-17: Class A round-trip fixture tests ─────────────────────────────────────
+
+def test_v3_critic_response_fixture_passes():
+    """critic-response-v3.md with all required sections must pass validator."""
+    rc, stderr = run_validator(artifact=fixture('critic-response-v3.md'))
+    assert rc == 0, f'Expected validator pass; stderr: {stderr}'
+    assert 'FAIL' not in stderr
+
+
+def test_v2_critic_response_fixture_fails():
+    """critic-response-v2.md missing required sections must fail V-07."""
+    rc, stderr = run_validator(artifact=fixture('critic-response-v2.md'))
+    assert rc == 1, f'Expected validator failure; stderr: {stderr}'
+    assert 'FAIL V-07' in stderr
+    assert '## Verdict' in stderr
+
+
+def test_v3_session_fixture_passes():
+    """v3 session fixture with all required sections including ## Cost must pass."""
+    rc, stderr = run_validator(artifact=fixture('session/2026-04-25-stage4-fixture.md'))
+    assert rc == 0, f'Expected validator pass; stderr: {stderr}'
+    assert 'FAIL' not in stderr
+
+
+def test_v2_session_fixture_fails():
+    """v2 session fixture missing ## Cost must fail V-07."""
+    rc, stderr = run_validator(artifact=fixture('session/2026-04-25-stage4-fixture-v2.md'))
+    assert rc == 1, f'Expected validator failure; stderr: {stderr}'
+    assert 'FAIL V-07' in stderr
+    assert '## Cost' in stderr
+
+
+def test_v3_gate_fixture_passes():
+    """gate-implement fixture with ## Automated checks + ## Verdict must pass."""
+    rc, stderr = run_validator(artifact=fixture('gate-implement-2026-04-25.md'))
+    assert rc == 0, f'Expected validator pass; stderr: {stderr}'
+    assert 'FAIL' not in stderr
+
+
+def test_v2_gate_fixture_fails():
+    """gate-implement v2 fixture missing required sections must fail V-07."""
+    rc, stderr = run_validator(artifact=fixture('gate-implement-2026-04-25-v2.md'))
+    assert rc == 1, f'Expected validator failure; stderr: {stderr}'
+    assert 'FAIL V-07' in stderr
+
+
+def test_architecture_overview_fixture_passes():
+    """architecture-overview-fixture.md with known heading set must pass — CRIT-1 guard."""
+    rc, stderr = run_validator(artifact=fixture('architecture-overview-fixture.md'))
+    assert rc == 0, f'Expected validator pass (CRIT-1 regression guard); stderr: {stderr}'
+    assert 'FAIL V-02' not in stderr
+
+
+def test_dependencies_map_fixture_passes():
+    """dependencies-map-fixture.md with known heading set must pass — CRIT-1 guard."""
+    rc, stderr = run_validator(artifact=fixture('dependencies-map-fixture.md'))
+    assert rc == 0, f'Expected validator pass (CRIT-1 regression guard); stderr: {stderr}'
+    assert 'FAIL V-02' not in stderr

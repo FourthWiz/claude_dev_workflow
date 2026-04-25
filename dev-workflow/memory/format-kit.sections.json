@@ -91,12 +91,14 @@
       "allowed_sections": [
         "## Target",
         "## Verdict",
+        "## Verdict: PASS",
+        "## Verdict: REVISE",
         "## Summary",
         "## Issues",
         "## What's good",
         "## Scorecard"
       ],
-      "notes": "format-kit.md §2 critic-response-N.md entry; Class A — no For human block required"
+      "notes": "format-kit.md §2 critic-response-N.md entry; Class A — no For human block required; ## Verdict: PASS and ## Verdict: REVISE allowed (heading-line-form per SKILL.md template)"
     },
     "session": {
       "class": "A",

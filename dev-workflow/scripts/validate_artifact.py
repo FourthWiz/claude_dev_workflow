@@ -403,7 +403,9 @@ def check_v07(text, required_sections, failures):
         if stripped.startswith('## '):
             found_headings.add(stripped.rstrip())
     for req in required_sections:
-        if req not in found_headings:
+        # Accept heading-line-form: "## Verdict: PASS" satisfies required "## Verdict"
+        satisfied = any(h == req or h.startswith(req + ':') or h.startswith(req + ' ') for h in found_headings)
+        if not satisfied:
             failures.append(
                 f'FAIL V-07: required section "{req}" missing for this artifact type'
             )
