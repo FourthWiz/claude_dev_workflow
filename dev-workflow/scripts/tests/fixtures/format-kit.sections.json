@@ -80,7 +80,7 @@
     },
     "critic-response": {
       "class": "A",
-      "match_paths": ["critic-response-*.md", "**/critic-response-*.md"],
+      "match_paths": ["critic-response-*.md", "**/critic-response-*.md", "architecture-critic-*.md", "**/architecture-critic-*.md"],
       "required_sections": [
         "## Verdict",
         "## Summary",

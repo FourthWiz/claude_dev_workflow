@@ -141,6 +141,8 @@ def detect_type(filepath, type_override):
     parent = os.path.basename(os.path.dirname(filepath))
     if re.match(r'^current-plan', name):
         return 'current-plan'
+    if re.match(r'^architecture-critic-', name):
+        return 'critic-response'   # architecture-critic-N.md uses critic-response section set
     if re.match(r'^architecture', name):
         return 'architecture'
     if re.match(r'^review-', name):

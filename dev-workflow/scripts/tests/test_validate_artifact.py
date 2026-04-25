@@ -507,3 +507,15 @@ def test_convergence_summary_heading_passes_validator():
     )
     assert rc == 0, f'Expected validator pass; stderr: {stderr}'
     assert 'FAIL V-02' not in stderr
+
+
+# ── T-08: detect_type ordering — architecture-critic- before architecture- ─────
+
+def test_detect_type_architecture_critic_returns_critic_response():
+    """architecture-critic-1.md must resolve to critic-response, not architecture."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('validate_artifact', VALIDATOR)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.detect_type('architecture-critic-1.md', None) == 'critic-response'
+    assert mod.detect_type('architecture.md', None) == 'architecture'
