@@ -19,7 +19,8 @@ This skill may run in a fresh chat session with no prior context. On start:
 2. Read `.workflow_artifacts/memory/sessions/` for any active session state for this task
 3. Read the task subfolder if it exists (prior `architecture.md`, `current-plan.md`)
 4. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `architect`
-5. Then proceed with the work below
+5. Read deployed v3 references at session start: `~/.claude/memory/format-kit.md` and `~/.claude/memory/glossary.md`.
+6. Then proceed with the work below
 
 ## How you work
 
@@ -201,25 +202,69 @@ For each stage, specify:
 
 ### Output format
 
-Save the architectural plan to the project folder as:
+Save the architectural plan to:
 ```
 <project-folder>/.workflow_artifacts/<task-name>/architecture.md
 ```
 
 Where `<task-name>` is a descriptive kebab-case name derived from the task (ask the user if unclear).
 
-The file should be a well-structured markdown document with all the sections above. Use mermaid diagrams where they help clarify component relationships or data flows.
+`architecture.md` is a Class B artifact per artifact-format-architecture v3 §4.1. Write it using the §5.3 5-step Class B mechanism:
 
-At the end of the document, include a **Stage Summary Table**:
+**Step 1: Body generation.**
+Reference files (apply HERE at the body-generation WRITE-SITE — per format-kit.md §1; this is the only place these references apply, per lesson 2026-04-23):
+- `~/.claude/memory/format-kit.md` — primitives + standard sections per artifact type
+- `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs
+- `~/.claude/memory/terse-rubric.md` — prose discipline (compose with format-kit per §5)
 
-```markdown
-| Stage | Description | Complexity | Dependencies | Key Risk |
-|-------|------------|------------|--------------|----------|
-| 1     | ...        | M          | None         | ...      |
-| 2     | ...        | L          | Stage 1      | ...      |
-```
+Compose the format-aware body for `architecture.md` per format-kit.md §2 enumeration:
+- `## Context` — caveman prose: what are we solving and why, constraints, business context.
+- `## Current state` — caveman prose: how things work today, pain points.
+- `## Proposed architecture` — prose + component diagrams (mermaid or ASCII where helpful).
+- `## Integration analysis` — table if ≥2 integration points, terse list otherwise (optional section).
+- `## Risk register` — markdown table (columns: id / risk / likelihood / impact / mitigation / rollback).
+- `## De-risking strategy` — caveman prose (optional section).
+- `## Stage decomposition` — terse numbered list with status glyphs (⏳) + acceptance bullets per stage; for each stage: scope, exclusions, prerequisites, complexity (S/M/L/XL), key risks, testing strategy, rollback plan.
+- `## Stage Summary Table` — markdown table (columns: Stage / Description / Complexity / Dependencies / Key Risk).
+- `## Next Steps` — terse list of which stages are ready for `/thorough_plan` and in what order.
+- `## Open questions` — terse list (optional; only if genuine ambiguities remain).
+- `## Appendix` — any supplementary material (optional).
+- `## Revision history` — terse changelog if this is a revision (optional).
 
-And a section called **Next Steps** that explicitly says which stages are ready for `/thorough_plan` and in what order.
+Apply `format-kit.md` §1 pick rules per section. DO NOT include the `## For human` block yet — that's Step 2 + Step 3. Write the body to a temp file: `<path>.body.tmp`.
+
+**Step 2: Summary generation (with empty-output check).** Invoke the deployed Haiku summary script via the Bash tool:
+  `python3 ~/.claude/scripts/summarize_for_human.py <path>.body.tmp`
+Capture stdout (the summary text) and exit code.
+- If exit code is non-zero: treat as Step 2 failure → trigger Step 5 retry path.
+- If exit code is 0 BUT stdout (after stripping whitespace) is empty: treat as Step 2 failure → trigger Step 5 retry path.
+- Otherwise: proceed to Step 3 with captured stdout as `summary_raw`.
+
+**Step 3: Compose and write the single file (with `## For human` heading dedup).** The Haiku prompt instructs Haiku to produce a `## For human` summary — Haiku may or may not emit the heading itself. To guarantee exactly one heading:
+  (a) Take `summary_raw` from Step 2.
+  (b) Strip a leading `## For human` heading if present, using the regex `^##\s*For\s+human\s*\n+`. Call the result `summary_body`.
+  (c) Compose the final `architecture.md` content as: `<frontmatter (YAML)>\n## For human\n\n<summary_body>\n\n<body content read from <path>.body.tmp>`.
+  (d) Write to `<path>.tmp` using the Write tool.
+This guarantees exactly one `## For human` line regardless of Haiku output shape.
+
+**Step 4: Structural validation.** Invoke the deployed validator:
+  `python3 ~/.claude/scripts/validate_artifact.py <path>.tmp`
+Filename auto-detection identifies the type as `architecture` (matches `^architecture` regex in `detect_type()`). Exit code 0 = PASS; non-zero = at least one V-01..V-07 invariant failed.
+
+**Step 5: Retry / English-fallback (failure-class-aware).** Differentiate by which step failed:
+
+  - **Step 2 failure path (Haiku non-zero exit OR empty stdout):**
+    (a) Re-run ONLY Step 2 once. Do NOT re-run Step 1 (body is fine; summary failed).
+    (b) If re-run also fails: fall back to v2-style single-file write (see fallback below).
+
+  - **Step 4 validation failure path:**
+    (a) **V-06 / V-07 failures** (summary-block issues): re-run Steps 2–4 once.
+    (b) **V-02 / V-03 / V-05 failures** (body-section issues): re-run Steps 1–4 once with body-discipline instruction prepended.
+    (c) **V-01 / V-04 failures** (frontmatter / code-fence): treat as body issues; re-run Steps 1–4.
+
+  - **English-fallback (after retry also fails):** fall back to v2-style write — regenerate body using terse-rubric only (no format-kit, no `## For human` block). Write to `<path>.tmp` directly. Skip Step 4. Log a `format-kit-skipped` warning to the user with the failing invariant ID(s).
+
+**Step 6: Atomic rename.** `mv <path>.tmp <path> && rm -f <path>.body.tmp`. The final file at `<path>` IS what `/critic`, `/thorough_plan`, `/gate` will read. Do NOT write a `.original.md` side-file.
 
 ## Save session state
 
@@ -255,4 +300,4 @@ The scan/synthesize split exists to avoid paying Opus rates for bulk file readin
 
 When `/architect` spawns `/critic --target=architecture.md` as a subagent (Phase 4), write `architecture-critic-N.md` in terse style per `~/.claude/memory/terse-rubric.md`.
 
-`architecture.md` itself is Tier 1 (English) per architecture §3.2 — do not apply the rubric to it.
+`architecture.md` itself is **Class B** per artifact-format-architecture v3 §4.1 — the `## For human` summary block at the top is English (written by Haiku per Step 2 above); the body is format-aware structured per `format-kit.md` §2 (tables, YAML, terse lists with glyphs, prose only where prose-shaped). The v2 terse-rubric applies inside prose sections only (composed with format-kit per §5.1). The `architecture-critic-N.md` sibling remains Class A and stays in v2 terse-rubric style (Stage 4 will add a format-kit reference to that write-site; Stage 3 does not).
