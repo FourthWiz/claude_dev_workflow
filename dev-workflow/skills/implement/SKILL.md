@@ -240,14 +240,15 @@ After completing each task, update `current-plan.md` by marking the task as done
 
 ## Save session state
 
-Write session-state files in terse style per `~/.claude/memory/terse-rubric.md`.
+Write session-state files in v3 format per the §5.4 Class A writer mechanism. Reference files (apply HERE at the body-generation write-site, per format-kit.md §1 / lesson 2026-04-23): `~/.claude/memory/format-kit.md` (primitives + section set per artifact type), `~/.claude/memory/glossary.md` (abbreviation whitelist + status glyphs), `~/.claude/memory/terse-rubric.md` (prose discipline). The session-state body uses the `session` artifact-type sections per format-kit §2: `## Status` (single word — `in_progress` / `completed` / `blocked`), `## Current stage` (caveman prose, 1 line), `## Completed in this session` (terse numbered list with status glyphs ✓/⏳/🚫 + commit hashes), `## Unfinished work` (terse numbered list), `## Cost` (YAML — Session UUID, Phase, Recorded in cost ledger), optional `## Decisions made` (terse numbered list), optional `## Open questions` (terse numbered list). After composing the body to `{session-path}.body.tmp`, run `python3 ~/.claude/scripts/validate_artifact.py {session-path}.tmp` (auto-detection → session type via the parent-directory check `parent in ('session', 'sessions')`). On validator failure: retry once with section-discipline reminder; on persistent failure, fall back to v2-style terse-rubric-only write. Atomic rename: `mv {session-path}.tmp {session-path} && (rm -f {session-path}.body.tmp 2>/dev/null || true)`.
 
-After each task (or at natural stopping points), write or update `.workflow_artifacts/memory/sessions/<date>-<task-name>.md` with:
-- **Status:** `in_progress` (or `completed` if all plan tasks are done)
-- **Current stage:** `implement` — note which task you're on (e.g. `implement task 4 of 7`)
-- **Completed in this session:** list of tasks finished with commit hashes
-- **Unfinished work:** remaining tasks with exact file/function to resume at
-- **Decisions made:** any deviations from the plan and why
+After each task (or at natural stopping points), write or update `.workflow_artifacts/memory/sessions/<date>-<task-name>.md` with these required sections:
+- **## Status:** `in_progress` (or `completed` if all plan tasks are done)
+- **## Current stage:** `implement` — note which task you're on (e.g. `implement task 4 of 7`)
+- **## Completed in this session:** list of tasks finished with status glyphs ✓/⏳/🚫 + commit hashes
+- **## Unfinished work:** remaining tasks with exact file/function to resume at
+- **## Cost:** YAML block with Session UUID, Phase, Recorded in cost ledger
+- **## Decisions made:** any deviations from the plan and why (optional)
 
 This is what `/end_of_day` reads to consolidate the day's work. Without it, this session is invisible to the daily rollup.
 

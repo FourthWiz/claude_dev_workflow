@@ -206,14 +206,15 @@ If the verdict is APPROVED:
 
 ## Save session state
 
-Write session-state files in terse style per `~/.claude/memory/terse-rubric.md`. `review-<round>.md` is **Class B** per artifact-format-architecture v3 §4.1 — the `## For human` summary block is English (Haiku-generated per Step 2 of the Output-format section above); the body is format-aware structured per `format-kit.md` §2. The terse-rubric applies inside prose sections only. Session state (`.workflow_artifacts/memory/sessions/<date>-<task>.md`) remains Class A and gets v2 terse-rubric style until Stage 4 retrofits it.
+Write session-state files in v3 format per the §5.4 Class A writer mechanism (mirrors the implement/SKILL.md pattern; reference format-kit.md / glossary.md / terse-rubric.md at the body write-site; validate via validate_artifact.py with auto-detection → session type; retry-once-then-English-fallback on V-failure; atomic rename with graceful .body.tmp cleanup). `review-{round}.md` remains **Class B** per artifact-format-architecture v3 §4.1 — the parent Stage 3 work wired its Class B writer mechanism in the Output-format section above; this Save-session-state section governs ONLY the Class A session file at `.workflow_artifacts/memory/sessions/{date}-{task}.md`.
 
-Before finishing, write or update `.workflow_artifacts/memory/sessions/<date>-<task-name>.md` with:
-- **Status:** `in_progress` (REVISE) or `completed` (APPROVED)
-- **Current stage:** `review`
-- **Completed in this session:** verdict and summary of what was verified
-- **Unfinished work:** if REVISE — list of issues that must be fixed before re-review
-- **Decisions made:** any significant risk assessments or integration concerns raised
+Before finishing, write or update `.workflow_artifacts/memory/sessions/<date>-<task-name>.md` with these required sections:
+- **## Status:** `in_progress` (REVISE) or `completed` (APPROVED)
+- **## Current stage:** `review`
+- **## Completed in this session:** verdict and summary of what was verified, with status glyphs ✓/✗
+- **## Unfinished work:** if REVISE — list of issues that must be fixed before re-review
+- **## Cost:** YAML block with Session UUID, Phase, Recorded in cost ledger
+- **## Decisions made:** any significant risk assessments or integration concerns raised (optional)
 
 This is what `/end_of_day` reads to consolidate the day's work. Without it, this session is invisible to the daily rollup.
 

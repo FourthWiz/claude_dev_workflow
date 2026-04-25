@@ -15,7 +15,8 @@ This skill ALWAYS runs in a fresh session (that's the whole point — unbiased r
 2. Read the task subfolder: `.workflow_artifacts/<task-name>/current-plan.md` and any prior `critic-response-*.md`
 3. Read the ACTUAL SOURCE CODE referenced by the plan (this is critical — don't trust the plan's claims)
 4. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `critic`
-5. Then proceed with critique
+5. Read deployed v3 references at session start: `~/.claude/memory/format-kit.md` and `~/.claude/memory/glossary.md`.
+6. Then proceed with critique
 
 ## Model requirement
 
@@ -109,13 +110,20 @@ Score the plan against each criterion:
 
 ### 4. Produce the critic response
 
-Write `critic-response-N.md` in terse style per `~/.claude/memory/terse-rubric.md`.
+Write `critic-response-{round}.md` using the §5.4 Class A writer mechanism:
 
-Save to `<project-folder>/.workflow_artifacts/<task-name>/critic-response-<round>.md`:
+**Step 1: Body generation.** Reference files (apply HERE at the body-generation write-site, per format-kit.md §1 / lesson 2026-04-23):
+- `~/.claude/memory/format-kit.md` — primitives + standard sections per artifact type.
+- `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs.
+- `~/.claude/memory/terse-rubric.md` — prose discipline (compose with format-kit per format-kit §5).
+
+Compose the format-aware body for `critic-response-{round}.md` per `format-kit.md` §2 `critic-response-N.md` enumeration. Apply format-kit §1 pick rules per section. Write the body to `{path}.body.tmp` using the Write tool.
+
+`{path}` is `{project-folder}/.workflow_artifacts/{task-name}/critic-response-{round}.md`. When invoked by `/architect` as a subagent, `{path}` is `{project-folder}/.workflow_artifacts/{task-name}/architecture-critic-{round}.md` instead (same body composition; T-08 ensures the validator detects it as critic-response type).
+
+Body content example (Step 1 output):
 
 ```markdown
-# Critic Response — Round <N>
-
 ## Verdict: PASS | REVISE
 
 ## Summary
@@ -154,6 +162,24 @@ Save to `<project-folder>/.workflow_artifacts/<task-name>/critic-response-<round
 | Implementability | good/fair/poor | <brief> |
 | De-risking | good/fair/poor | <brief> |
 ```
+
+**Step 2 [Class A]: SKIP** — no `## For human` block on Class A. Move directly to Step 3.
+
+**Step 3 [Class A]: Compose final file.** Read body content from `{path}.body.tmp`; compose final file as:
+```
+{frontmatter (YAML — round, date, target)}
+
+{body content}
+```
+Write to `{path}.tmp` using the Write tool. (No `## For human` heading; no Haiku call.)
+
+**Step 4: Structural validation.** Invoke the deployed validator via the Bash tool:
+  `python3 ~/.claude/scripts/validate_artifact.py {path}.tmp`
+(Filename auto-detection → critic-response type via T-08 match_paths extension.) Exit code 0 = PASS; non-zero = invariant failure.
+
+**Step 5: Retry / English-fallback.** On V-02/V-03/V-05 failures: re-run Steps 1, 3, 4 once with explicit "use only allowed sections per format-kit §2 critic-response; group issues by severity; verdict in heading-line form" instruction. On V-01/V-04 failures: same re-run path. After retry also fails: fall back to v2-style write — regenerate body using terse-rubric only (no format-kit; use heading-line `## Verdict: PASS | REVISE` form). Write to `{path}.tmp` directly. Skip Step 4. Log a `format-kit-skipped` warning to stderr with the failing invariant ID(s).
+
+**Step 6: Atomic rename.** `mv {path}.tmp {path} && (rm -f {path}.body.tmp 2>/dev/null || true)`
 
 ## Verdict rules
 

@@ -190,6 +190,29 @@ If automated checks failed:
 - Wait for the user to fix them or acknowledge them
 - Re-run the gate after fixes if needed
 
+### Step 5: Write audit log (after user approves)
+
+Once the user explicitly approves the gate (i.e., after the STOP-and-wait in Step 4 returns with approval), persist the gate result to disk as a Class A artifact at `{project-folder}/.workflow_artifacts/{task-name}/gate-{phase}-{date}.md`.
+
+If the user rejects the gate (asks to fix something), do NOT write the audit log. Wait until the gate is re-run and approved before writing.
+
+Use the §5.4 Class A writer mechanism. Reference files (apply HERE at the body-generation write-site, per format-kit.md §1 / lesson 2026-04-23):
+- `~/.claude/memory/format-kit.md` — primitives + standard sections per artifact type
+- `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs
+- `~/.claude/memory/terse-rubric.md` — prose discipline
+
+Compose the format-aware body per format-kit.md §2 `gate-{phase}-{date}.md` enumeration:
+- `## Automated checks` — REQUIRED — terse numbered list with status glyphs ✓/✗ per check, brief detail per row.
+- `## Verdict` — REQUIRED — single word `PASS` or `FAIL`.
+- `## Failures requiring attention` — OPTIONAL — terse numbered list of blocking failures with remediation.
+- `## Warnings (non-blocking)` — OPTIONAL — terse numbered list of non-blocking issues.
+- `## Summary of what was produced` — OPTIONAL — caveman prose, 2-3 sentences. (Reuse the `## For human` content already captured from Step 3a; do NOT re-read the source artifact.)
+- `## What's next` — OPTIONAL — caveman prose, 1-2 lines.
+
+Write the body to `{path}.body.tmp`; compose final file as `{frontmatter (YAML — task, phase, date, gate-level)}\n\n{body content}`; write to `{path}.tmp`. Validate via `python3 ~/.claude/scripts/validate_artifact.py {path}.tmp` (auto-detection → gate type via `^gate-` prefix). On V-failure: retry-once with section-discipline reminder; on persistent failure, fall back to v2-style terse-rubric-only write. Atomic rename: `mv {path}.tmp {path} && (rm -f {path}.body.tmp 2>/dev/null || true)`.
+
+The user-facing checkpoint summary rendered in Step 3 is Tier 1 English (per CLAUDE.md "User-facing rendered output" carve-out); the audit log written here is the disk-side Class A artifact. Both must convey the same verdict and failure set.
+
 ## Handling failures
 
 **Hard failures** (tests fail, lint errors, missing artifacts):
@@ -209,4 +232,4 @@ If automated checks failed:
 - **You are a checkpoint, not a bottleneck.** Run checks fast, present clearly, get out of the way once approved.
 - **Never auto-approve.** Even if all checks pass, wait for the human.
 - **Be honest about what you can't check.** If there's no test suite configured, say so — don't pretend everything passed.
-- **Remember the gate result.** Save it to `.workflow_artifacts/<task-name>/gate-<phase>-<date>.md` for audit trail. Write `gate-<phase>-<date>.md` in terse style per `~/.claude/memory/terse-rubric.md`. The user-rendered checkpoint summary shown to the user at each gate is Tier 1 English — never compressed. The rubric applies ONLY to the audit-log file written to disk.
+- **Remember the gate result.** The user-rendered checkpoint summary shown to the user at each gate is Tier 1 English — never compressed (per CLAUDE.md "User-facing rendered output" carve-out). The audit-log file at `.workflow_artifacts/{task}/gate-{phase}-{date}.md` is **Class A** per artifact-format-architecture v3 §4.1 — written via the §5.4 Class A mechanism in Step 5 above (AFTER user approval in Step 4); format-aware structured body per format-kit.md §2 gate enumeration; terse-rubric applies inside prose sections only.
