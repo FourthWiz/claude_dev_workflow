@@ -38,7 +38,7 @@ For **workflow-friction** type, always set `Promote?: yes` — these are surface
 
 ### Step 3: Write to scratchpad
 
-Write `daily/insights-<date>.md` appends in terse style per `~/.claude/memory/terse-rubric.md`.
+Write `daily/insights-{date}.md` appends in v3 format per the §5.4 Class A writer mechanism. Reference files (apply HERE at the body-generation write-site, per format-kit.md §1 / lesson 2026-04-23): `~/.claude/memory/format-kit.md` (primitives + section set), `~/.claude/memory/glossary.md` (status glyphs + abbreviation whitelist), `~/.claude/memory/terse-rubric.md` (prose discipline inside the Insight body). Entry structure: each insight is a `## {HH:MM} — {task-context or "ad-hoc"}` heading followed by a YAML-style key/value block (Type / Insight / Applies to / Promote?) per the template below. The terse-rubric applies inside the multi-sentence Insight value only (caveman prose for "why" content). After appending, run `python3 ~/.claude/scripts/validate_artifact.py {insights-path}` (auto-detection — file does not match a named-type prefix, falls through to `default`). On V-failure (rare for append-only structured entries): log a `format-kit-skipped` warning and continue (capture_insight is Haiku, must not block). No retry — append-only file already has the new entry.
 
 Append to `.workflow_artifacts/memory/daily/insights-<YYYY-MM-DD>.md` (today's date). Create the file with a header if it doesn't exist yet:
 
