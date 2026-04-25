@@ -191,7 +191,7 @@ Filename auto-detection identifies type as `review` (matches `^review-` regex in
   - **Step 4 V-01/V-04 failures:** Treat as body issues; re-run Steps 1–4.
   - **English-fallback (after retry also fails):** Fall back to v2-style write — regenerate body using terse-rubric only (no format-kit, no `## For human` block). Write to `<path>.tmp` directly. Skip Step 4. Log a `format-kit-skipped` warning with the failing invariant ID(s).
 
-**Step 6: Atomic rename.** `mv <path>.tmp <path> && rm -f <path>.body.tmp`. Do NOT write a `.original.md` side-file.
+**Step 6: Atomic rename.** `mv <path>.tmp <path> && (rm -f <path>.body.tmp 2>/dev/null || true)`. Do NOT write a `.original.md` side-file.
 
 ## After the review
 

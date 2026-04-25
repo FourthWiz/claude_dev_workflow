@@ -130,7 +130,8 @@ perms = settings.setdefault("permissions", {})
 allow = perms.setdefault("allow", [])
 deny = perms.setdefault("deny", [])
 
-for p in ["Read", "Glob", "Grep", "Bash(*)", "WebFetch", "WebSearch"]:
+for p in ["Read", "Glob", "Grep", "Bash(*)", "WebFetch", "WebSearch",
+          "Bash(rm:*.tmp)", "Bash(rm:*.body.tmp)"]:
     if p not in allow: allow.append(p)
 
 for p in [

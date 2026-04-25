@@ -95,7 +95,7 @@ This guarantees the assembled file contains exactly one `## For human` line, reg
 
   - **English-fallback (after retry also fails):** fall back to v2-style single-file write — regenerate the body using terse-rubric only (no format-kit, no `## For human` block). Write to `<plan-path>.tmp` directly. Skip Step 4 validation. Log a `format-kit-skipped` warning to the user with the failing invariant ID(s). The artifact still gets written; the safety property holds.
 
-**Step 6: Atomic rename.** Move `<plan-path>.tmp` to `<plan-path>` (overwriting any prior `current-plan.md`). Clean up `<plan-path>.body.tmp`. Use the Bash tool: `mv <plan-path>.tmp <plan-path> && rm -f <plan-path>.body.tmp`.
+**Step 6: Atomic rename.** Move `<plan-path>.tmp` to `<plan-path>` (overwriting any prior `current-plan.md`). Clean up `<plan-path>.body.tmp`. Use the Bash tool: `mv <plan-path>.tmp <plan-path> && (rm -f <plan-path>.body.tmp 2>/dev/null || true)`.
 
 The final file at `<plan-path>` IS what `/critic`, `/implement`, `/review`, `/gate` will read. Do NOT write a `.original.md` side-file.
 

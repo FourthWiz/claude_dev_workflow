@@ -264,7 +264,7 @@ Filename auto-detection identifies the type as `architecture` (matches `^archite
 
   - **English-fallback (after retry also fails):** fall back to v2-style write — regenerate body using terse-rubric only (no format-kit, no `## For human` block). Write to `<path>.tmp` directly. Skip Step 4. Log a `format-kit-skipped` warning to the user with the failing invariant ID(s).
 
-**Step 6: Atomic rename.** `mv <path>.tmp <path> && rm -f <path>.body.tmp`. The final file at `<path>` IS what `/critic`, `/thorough_plan`, `/gate` will read. Do NOT write a `.original.md` side-file.
+**Step 6: Atomic rename.** `mv <path>.tmp <path> && (rm -f <path>.body.tmp 2>/dev/null || true)`. The final file at `<path>` IS what `/critic`, `/thorough_plan`, `/gate` will read. Do NOT write a `.original.md` side-file.
 
 ## Save session state
 
