@@ -579,3 +579,83 @@ def test_dependencies_map_fixture_passes():
     rc, stderr = run_validator(artifact=fixture('dependencies-map-fixture.md'))
     assert rc == 0, f'Expected validator pass (CRIT-1 regression guard); stderr: {stderr}'
     assert 'FAIL V-02' not in stderr
+
+
+# ── V-07 prefix-match (heading-line-form) ─────────────────────────────────────
+# Dedicated coverage for the heading-line-form prefix-match logic added during
+# the fixture-test task (see review-1.md MAJ-2). The check_v07 function accepts
+# `## Verdict: PASS` as satisfying required `## Verdict` because critic-response
+# format-kit specifies the heading-line-form `## Verdict: PASS | REVISE`.
+
+def _load_validator_module():
+    """Helper: import validate_artifact.py as a module for direct function tests."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('validate_artifact', VALIDATOR)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_v07_prefix_match_heading_line_form_satisfies_required():
+    """`## Verdict: PASS` heading must satisfy required `## Verdict` (heading-line-form)."""
+    mod = _load_validator_module()
+    failures = []
+    text = (
+        '---\nfoo: bar\n---\n\n'
+        '## Verdict: PASS\n\n'
+        'body content\n'
+    )
+    mod.check_v07(text, ['## Verdict'], failures)
+    assert failures == [], (
+        f'## Verdict: PASS should satisfy required ## Verdict via prefix-match; '
+        f'got: {failures}'
+    )
+
+
+def test_v07_prefix_match_exact_heading_satisfies_required():
+    """`## Verdict` (exact) heading must satisfy required `## Verdict`."""
+    mod = _load_validator_module()
+    failures = []
+    text = (
+        '---\nfoo: bar\n---\n\n'
+        '## Verdict\n\n'
+        'PASS\n'
+    )
+    mod.check_v07(text, ['## Verdict'], failures)
+    assert failures == [], (
+        f'## Verdict (exact) should satisfy required ## Verdict; got: {failures}'
+    )
+
+
+def test_v07_prefix_match_rejects_heading_without_separator():
+    """`## Verdictian` must NOT satisfy required `## Verdict` (no `:` or ` ` separator)."""
+    mod = _load_validator_module()
+    failures = []
+    text = (
+        '---\nfoo: bar\n---\n\n'
+        '## Verdictian\n\n'
+        'body\n'
+    )
+    mod.check_v07(text, ['## Verdict'], failures)
+    assert len(failures) == 1, (
+        f'## Verdictian should NOT satisfy ## Verdict (no separator); '
+        f'expected 1 V-07 failure, got: {failures}'
+    )
+    assert 'FAIL V-07' in failures[0]
+    assert '## Verdict' in failures[0]
+
+
+def test_v07_prefix_match_with_space_separator():
+    """`## Verdict REVISE` (space-separator heading) must satisfy required `## Verdict`."""
+    mod = _load_validator_module()
+    failures = []
+    text = (
+        '---\nfoo: bar\n---\n\n'
+        '## Verdict REVISE\n\n'
+        'body\n'
+    )
+    mod.check_v07(text, ['## Verdict'], failures)
+    assert failures == [], (
+        f'## Verdict REVISE should satisfy required ## Verdict via space-separator '
+        f'prefix-match; got: {failures}'
+    )

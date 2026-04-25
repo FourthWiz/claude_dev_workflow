@@ -51,3 +51,33 @@ def test_sources_rc_file_when_key_missing():
         )
         assert rc == 0, f'with_env.sh exited {rc}'
         assert 'ANTHROPIC_API_KEY=test123' in stdout
+
+
+def test_handles_messy_rc_file_with_unset_var_references():
+    """Wrapper must tolerate rc files that reference unset variables (real-world case).
+
+    Pre-fix the wrapper used `set -eu`, and rc files referencing unset vars
+    (e.g., $NVM_DIR, theme vars) caused the wrapper to abort before exec.
+    Stage 4 smoke documented this as a deterministic hang. Post-fix the
+    wrapper uses `set -e` only, so unset-var references in rc files are
+    tolerated.
+    """
+    with tempfile.TemporaryDirectory() as mock_home:
+        zshrc = os.path.join(mock_home, '.zshrc')
+        # Real-world rc-file pattern: reference an unset variable. The bare
+        # `$UNSET_NVM_DIR` reference would abort with `set -u`. The
+        # `[ -z "${OTHER_UNSET-}" ]` test is a softer pattern that's still
+        # common in plugin-manager guards. Both must pass.
+        with open(zshrc, 'w') as f:
+            f.write('# messy rc file simulating real-world plugin guards\n')
+            f.write('echo "NVM_DIR=$UNSET_NVM_DIR" >&2\n')
+            f.write('[ -z "$UNSET_PLUGIN_GUARD" ] && true\n')
+            f.write('export ANTHROPIC_API_KEY=test-from-messy-rc\n')
+        rc, stdout = run_with_env(
+            env={'HOME': mock_home, 'SHELL': '/bin/zsh'}
+        )
+        assert rc == 0, (
+            f'with_env.sh aborted on messy rc file (set -u regression?); '
+            f'rc={rc}, stdout: {stdout[:200]}'
+        )
+        assert 'ANTHROPIC_API_KEY=test-from-messy-rc' in stdout
