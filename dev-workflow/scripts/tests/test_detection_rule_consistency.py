@@ -20,6 +20,7 @@ SKILL_FILES = [
     SKILLS_DIR / "review" / "SKILL.md",
     SKILLS_DIR / "revise" / "SKILL.md",
     SKILLS_DIR / "revise-fast" / "SKILL.md",
+    SKILLS_DIR / "start_of_day" / "SKILL.md",
 ]
 
 
