@@ -34,51 +34,20 @@ Multiple sessions can run in a day (parallel tasks, or revisiting a task). Each 
 
 ### Step 1: Save current session state (skip if no active task)
 
-Write session-state files in terse style per `~/.claude/memory/terse-rubric.md`. Write `daily/insights-<date>.md` updates in terse style per `~/.claude/memory/terse-rubric.md`. `daily/<date>.md` (the rendered daily briefing) is Tier 1 English per CLAUDE.md §Rendered briefings — do not apply the rubric to `daily/<date>.md`. The file gets a `## For human` block prepended (composed directly by Haiku in the same generation as the body — no script invocation). The rubric applies only to the insights scratchpad and session-state rows.
+Write session-state files in v3 format per the §5.4 Class A writer mechanism (reference format-kit.md / glossary.md / terse-rubric.md at the body write-site; session artifact type per format-kit §2; validate via validate_artifact.py with retry-once-then-English-fallback). Write `daily/insights-{date}.md` in v3 format per the §5.4 Class A mechanism — append-only structure (each insight as an entry per the template at Step 3 of /capture_insight); body uses caveman prose with terse-rubric for the entry content; no V-02 section-set strict-match (insights file uses the default minimal section set since each entry is its own implicit "section"); validate via validate_artifact.py and accept default fallback semantics on V-failure. `daily/{date}.md` (the rendered daily briefing) remains Class B per parent Stage 3 work — the file gets a `## For human` block prepended (composed directly by Haiku in the same generation as the body — no summarize_for_human.py invocation). The terse-rubric applies inside prose-shaped sections only (composed with format-kit per format-kit §5).
 
-**If this session has no active task** (e.g. you opened a fresh session just to run `/end_of_day`), skip this step entirely and proceed to Step 2. The existing session files on disk are the source of truth.
+**If this session has no active task** (e.g. you opened a fresh session just to run `/end_of_day`), skip the session-state write and proceed to Step 2. The existing session files on disk are the source of truth.
 
-**If there is active work in this session**, create or update a session file at:
-```
-.workflow_artifacts/memory/sessions/<date>-<task-name>.md
-```
+**If there is active work in this session**, create or update a session file at `.workflow_artifacts/memory/sessions/<date>-<task-name>.md`.
 
-The session file captures:
+The session file MUST include these required sections (per format-kit.sections.json session.required_sections):
+- **## Status:** `in_progress` | `completed` | `blocked`
+- **## Current stage:** which workflow step (architect / plan / critic / revise / implement / review)
+- **## Completed in this session:** terse numbered list with status glyphs ✓/⏳/🚫 + commit hashes
+- **## Unfinished work:** remaining tasks; where exactly to pick up (file paths, task numbers, branch names)
+- **## Cost:** YAML block — Session UUID, Phase, Recorded in cost ledger (see CLAUDE.md "Session state tracking")
 
-```markdown
-# Session: <task-name>
-**Date:** <YYYY-MM-DD>
-**Status:** in_progress | completed | blocked
-
-## What was worked on
-<Brief description of what this session accomplished>
-
-## Current stage
-<Which workflow step we're at: architect / plan / critic / revise / implement / review>
-**Round:** <if in critic-revise loop, which round>
-
-## Completed in this session
-- <specific things done — tasks implemented, files created, reviews passed>
-
-## Unfinished work
-- <what remains — specific tasks, next steps>
-- <where exactly to pick up: file paths, task numbers, branch names>
-
-## Decisions made
-- <important decisions and their rationale — these are easy to forget overnight>
-
-## Blockers
-- <anything blocking progress — waiting on someone, unclear requirement, technical issue>
-
-## Key context
-- <branch name>
-- <relevant file paths>
-- <open PR URLs if any>
-- <environment or config notes>
-
-## Recent commits in this session
-<list of commits made during this session with their messages and what they did>
-```
+Optional sections: `## Decisions made` (important decisions and rationale), `## Open questions` (blockers, unclear requirements).
 
 ### Step 2: Update git-log.md
 
