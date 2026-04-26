@@ -699,7 +699,7 @@ assert form_b_c_violations == [], (
      - matches in (d), (e) meet the lower bound (≥12, ≥1; round-4 MAJ-1 bumped from ≥11; round-3 CRIT-A had bumped from ≥10)
      - matches in (a2) all fall inside the bounded line range
 
-10. ⏳ T-10: Smoke-test the resolver against a real `/thorough_plan stage-N of <fixture>` invocation (HITL — last task; verifies the integration end-to-end)
+10. ✅ T-10: Smoke-test the resolver against a real `/thorough_plan stage-N of <fixture>` invocation (HITL — last task; verifies the integration end-to-end)
     - rationale: T-04 unit tests cover the resolver in isolation. T-08 e2e tests cover the structural agreement between resolver + SKILL.md + CLAUDE.md. T-10 is the live-loop smoke that confirms the SKILL.md prose (the actual instructions Claude Code reads) actually instructs the agent to call the resolver. This is the single live-LLM step, scoped MINIMALLY (one short orchestration; ~$0.50–$2 per architecture cost discipline).
     - procedure:
       a. create a throwaway fixture task folder: `.workflow_artifacts/_smoke-stage-resolve/architecture.md` (stub w/ `## Stage decomposition` listing two stage entries — names like "stage-one-name" and "stage-two-name") + empty parent dir.
