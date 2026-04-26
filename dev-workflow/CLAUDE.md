@@ -352,6 +352,8 @@ The caveman-token-optimization v2 architecture (see `.workflow_artifacts/caveman
 **Source files:**
 - `MEMORY.md` (tiny — below any compression threshold).
 - `dev-workflow/skills/**/SKILL.md` (skill source, not artifact).
+- `dev-workflow/scripts/tests/fixtures/quoin-stage-1-preamble.md` (Quoin Stage 1 §0 preamble template; hand-edited Tier 1; source of truth for the 12 cheap-tier SKILL.md preambles).
+- `dev-workflow/scripts/verify_subagent_dispatch.md` (Quoin Stage 1 subagent-dispatch verification template; hand-filled by user during T-00 pilot and T-09 smoke; lives at `dev-workflow/scripts/` only — NOT deployed to `~/.claude/scripts/` per round-3 MIN-1 fix; one-shot diagnostic, not a runtime tool).
 
 Any other workflow artifact may be subject to terse-style writing (Tier 2 contract files use English + side-file; Tier 3 ephemeral files are terse-only with `/expand` for human reading).
 
