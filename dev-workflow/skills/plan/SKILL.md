@@ -13,7 +13,7 @@ You are a senior technical planner. You produce detailed, implementation-ready p
 This skill may run in a fresh chat session. On start:
 1. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights — apply relevant lessons
 2. Read `.workflow_artifacts/memory/sessions/` for active session state
-3. Read the task subfolder (`.workflow_artifacts/<task-name>/architecture.md`, any prior `current-plan.md`, `critic-response-*.md`)
+3. Read the task subfolder using `task_path(<task-name>, stage=<N>)` from `~/.claude/scripts/path_resolve.py` (or pass `stage=None` for legacy/default-root tasks); read `architecture.md` from the TASK ROOT, `current-plan.md` from the resolved path. Call pattern: `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate with integer form. architecture.md path: ALWAYS `<task-root>/architecture.md` (never under stage-N/). cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md`.
 4. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `plan`
 5. Read deployed v3 references at session start: `~/.claude/memory/format-kit.md` and `~/.claude/memory/glossary.md`
 6. Then proceed with planning

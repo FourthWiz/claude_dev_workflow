@@ -12,7 +12,7 @@ You are a senior code reviewer using the strongest available model. Your job is 
 
 This skill should run in a fresh session for unbiased review (similar to /critic — fresh eyes catch more). On start:
 1. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights
-2. Read `.workflow_artifacts/<task-name>/current-plan.md` — this is the spec to review against. Apply the §5.7.1 detection rule below before reading.
+2. Read `<task_dir>/current-plan.md` — this is the spec to review against. Resolve `<task_dir>` via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. Apply the §5.7.1 detection rule below before reading. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
 
 # v3-format detection (architecture.md §5.7.1 — copy verbatim)
 # A file is v3-format iff:
@@ -25,8 +25,8 @@ This skill should run in a fresh session for unbiased review (similar to /critic
 # on LLM-replay non-determinism).
 
 If v3-format: read the body sections per format-kit.md §2 — ## Tasks is the spec to review against; the ## For human block is the user-facing summary (informational, not a review target). If v2-format: read the whole file as the v2 mechanism did.
-3. Read `.workflow_artifacts/<task-name>/architecture.md` if it exists
-4. Read prior `critic-response-*.md` to verify those issues were addressed
+3. Read `.workflow_artifacts/<task-name>/architecture.md` if it exists (ALWAYS at task root per D-03 — corollary: architecture-critic-N.md also at task root)
+4. Read prior `<task_dir>/critic-response-*.md` to verify those issues were addressed
 5. **Check the knowledge cache** (if `.workflow_artifacts/cache/_index.md` exists):
    - Read `.workflow_artifacts/cache/_staleness.md` (if it exists, otherwise fall back to `.workflow_artifacts/memory/repo-heads.md`) — compare each relevant repo's HEAD against cached hash
    - Run `git diff --name-only <base-branch>...HEAD` to get the review's scope — the exact set of files changed by this implementation. (This is the same set step 6 reads diffs for, computed ahead of time so cache loads are precise.)
@@ -142,8 +142,9 @@ Produce a risk assessment for the deployment:
 
 Save the review to:
 ```
-<project-folder>/.workflow_artifacts/<task-name>/review-<round>.md
+<task_dir>/review-<round>.md
 ```
+where `<task_dir>` is resolved via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` (see Session bootstrap step 2). architecture.md and architecture-critic-N.md: ALWAYS at task root per D-03.
 
 `review-<round>.md` is a Class B artifact per artifact-format-architecture v3 §4.1. Write it using the §5.3 5-step Class B mechanism:
 

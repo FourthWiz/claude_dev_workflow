@@ -29,7 +29,7 @@ This skill is never auto-invoked. The user must consciously accept the work.
 
 Before touching git, verify everything is clean:
 
-1. **Review status** — look for `.workflow_artifacts/<task-name>/review-*.md`. If no review file exists, STOP and tell the user: "No review found — please run `/review` first." If a review exists, read the latest one and confirm verdict is APPROVED. If not approved, stop and tell the user.
+1. **Review status** — resolve the artifact path via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` (or stage=None for legacy tasks), then look for `<task_dir>/review-*.md`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate. If no review file exists at the resolved path, STOP and tell the user: "No review found — please run `/review` first." If a review exists, read the latest one and confirm verdict is APPROVED. If not approved, stop and tell the user. (architecture.md and cost-ledger.md ALWAYS at task root per D-03 — see lines below.)
 2. **Tests pass** — run the test suite one final time. If anything fails, stop.
 3. **No uncommitted changes** — run `git status`. If there are unstaged/uncommitted changes:
    - Show them to the user

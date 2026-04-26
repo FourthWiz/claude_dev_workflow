@@ -12,7 +12,7 @@ You are a senior technical critic. Your job is to find real problems in implemen
 
 This skill ALWAYS runs in a fresh session (that's the whole point — unbiased review). On start:
 1. **Round 1 only:** Read `.workflow_artifacts/memory/lessons-learned.md` for past insights — check if past lessons apply to this plan's domain. **On rounds 2+, skip this step** — the file cannot change mid-loop, so re-reading it wastes tokens without adding information. (The round number is indicated by the existing `critic-response-*.md` files: if `critic-response-1.md` already exists, this is round 2 or later.)
-2. Read the task subfolder: `.workflow_artifacts/<task-name>/current-plan.md` and any prior `critic-response-*.md`
+2. Read the task subfolder: resolve the artifact path via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` — then read `<task_dir>/current-plan.md` and any prior `<task_dir>/critic-response-*.md`. architecture.md: ALWAYS `<task-root>/architecture.md`. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md` (line 4 above — NOT edited per D-03). If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
 3. Read the ACTUAL SOURCE CODE referenced by the plan (this is critical — don't trust the plan's claims)
 4. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `critic`
 5. Read deployed v3 references at session start: `~/.claude/memory/format-kit.md` and `~/.claude/memory/glossary.md`.
@@ -30,7 +30,7 @@ When invoked as part of `/thorough_plan`, you MUST run in a fresh agent session.
 
 ### 1. Read the plan
 
-Read `<project-folder>/.workflow_artifacts/<task-name>/current-plan.md` carefully and completely. Apply the §5.7.1 detection rule below to determine v2 vs v3 format BEFORE invoking the Read tool, so the read strategy matches the file shape.
+Read `<task_dir>/current-plan.md` carefully and completely, where `<task_dir>` is resolved via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` (see Session bootstrap step 2). Apply the §5.7.1 detection rule below to determine v2 vs v3 format BEFORE invoking the Read tool, so the read strategy matches the file shape.
 
 # v3-format detection (architecture.md §5.7.1 — copy verbatim)
 # A file is v3-format iff:
@@ -119,7 +119,7 @@ Write `critic-response-{round}.md` using the §5.4 Class A writer mechanism:
 
 Compose the format-aware body for `critic-response-{round}.md` per `format-kit.md` §2 `critic-response-N.md` enumeration. Apply format-kit §1 pick rules per section. Write the body to `{path}.body.tmp` using the Write tool.
 
-`{path}` is `{project-folder}/.workflow_artifacts/{task-name}/critic-response-{round}.md`. When invoked by `/architect` as a subagent, `{path}` is `{project-folder}/.workflow_artifacts/{task-name}/architecture-critic-{round}.md` instead (same body composition; T-08 ensures the validator detects it as critic-response type).
+`{path}` is `{task_dir}/critic-response-{round}.md`, where `{task_dir}` is resolved via `python3 ~/.claude/scripts/path_resolve.py --task {task-name} [--stage <N-or-name>]`. When invoked by `/architect` as a subagent, `{path}` is `{project-folder}/.workflow_artifacts/{task-name}/architecture-critic-{round}.md` instead (architecture-critic-N.md ALWAYS at task root per D-03 — corollary: pre-resolves stage-4's Q-01; same body composition; T-08 ensures the validator detects it as critic-response type).
 
 Body content example (Step 1 output):
 

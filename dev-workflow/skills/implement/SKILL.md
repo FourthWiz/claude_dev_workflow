@@ -19,7 +19,7 @@ This skill MUST be explicitly invoked by the user typing `/implement`. No other 
 This skill typically runs in a fresh session (clean context is a feature, not a bug — implementation doesn't need planning back-and-forth). On start:
 1. Read `.workflow_artifacts/memory/lessons-learned.md` for relevant insights
 2. Read `.workflow_artifacts/memory/sessions/` for active session state (which tasks are done, where to resume)
-3. Read `.workflow_artifacts/<task-name>/current-plan.md` — this is your specification. Apply the §5.7.1 detection rule below before reading.
+3. Read `<task_dir>/current-plan.md` — this is your specification. Resolve `<task_dir>` via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. Apply the §5.7.1 detection rule below before reading. architecture.md: ALWAYS `<task-root>/architecture.md`. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
 
 # v3-format detection (architecture.md §5.7.1 — copy verbatim)
 # A file is v3-format iff:
@@ -231,7 +231,7 @@ If during implementation you discover that:
 
 ## File tracking
 
-After completing each task, update `current-plan.md` by marking the task as done and noting any deviations:
+After completing each task, update `<task_dir>/current-plan.md` (where `<task_dir>` is resolved per Session bootstrap step 3) by marking the task as done and noting any deviations:
 
 ```markdown
 - [x] Task 3: Implement token refresh ✅ completed

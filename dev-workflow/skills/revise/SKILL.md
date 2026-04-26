@@ -11,7 +11,7 @@ You are a technical planner revising an implementation plan based on critic feed
 ## Session bootstrap
 
 This skill may run in a fresh session. On start:
-1. Read the task subfolder: `current-plan.md`, latest `critic-response-*.md`, and any prior critic responses
+1. Read the task subfolder: resolve the artifact path via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` — then read `<task_dir>/current-plan.md`, latest `<task_dir>/critic-response-*.md`, and any prior critic responses. architecture.md: ALWAYS `<task-root>/architecture.md`. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md` (line 3 above — NOT edited per D-03). If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
 2. Check knowledge cache for flagged modules (if cache exists), then re-read source code where cache is insufficient
 3. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `revise`
 4. Read deployed v3 references at session start: `~/.claude/memory/format-kit.md` and `~/.claude/memory/glossary.md`
@@ -25,8 +25,8 @@ This skill requires the strongest available model (currently Claude Opus).
 
 ### 1. Read the inputs
 
-- Read `<project-folder>/.workflow_artifacts/<task-name>/current-plan.md` — the current plan
-- Read `<project-folder>/.workflow_artifacts/<task-name>/critic-response-<latest>.md` — the most recent critic feedback
+- Read `<task_dir>/current-plan.md` — the current plan (where `<task_dir>` is resolved per Session bootstrap step 1)
+- Read `<task_dir>/critic-response-<latest>.md` — the most recent critic feedback
 - Read any prior critic responses to understand the trajectory of revisions
 - **Check the knowledge cache** for modules referenced in critic feedback (if `.workflow_artifacts/cache/` exists):
   - Read `cache/<repo>/<module>/_index.md` entries for modules the critic flagged
@@ -79,7 +79,7 @@ First, perform the in-context revision:
 
 **Don't over-correct.** If the critic said "this section needs more detail," add the right amount of detail — don't triple the length of every section in response. The plan should stay focused and readable.
 
-Then, write the updated plan using the §5.3 5-step Class B mechanism for `current-plan.md`:
+Then, write the updated plan using the §5.3 5-step Class B mechanism for `<task_dir>/current-plan.md` (where `<task_dir>` is resolved per Session bootstrap step 1):
 
 **Step 1: Body generation.**
 Reference files (apply HERE at the body-generation WRITE-SITE — per format-kit.md §1; this is the only place these references apply, per lesson 2026-04-23):

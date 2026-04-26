@@ -74,7 +74,9 @@ Within `/thorough_plan`, the orchestrator handles its own internal loop (plan→
 ### Step 1: Detect context
 
 Determine which phase just completed by reading:
-- The task subfolder for artifacts (all under `.workflow_artifacts/<task-name>/`: architecture.md, current-plan.md, critic responses, review docs)
+- The task root for parent-level artifacts: `<task-root>/architecture.md`, `<task-root>/architecture-critic-<N>.md`, `<task-root>/cost-ledger.md` (these always live at the task root regardless of stage layout — D-03).
+- The resolved task subfolder for stage-scoped artifacts: `<task_dir>/current-plan.md`, `<task_dir>/critic-response-<round>.md`, `<task_dir>/review-<round>.md`, `<task_dir>/gate-*.md` — where `<task_dir>` is computed via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` (see "Multi-stage tasks" in CLAUDE.md). For legacy / single-stage tasks, `<task_dir>` equals `<task-root>`.
+- On `path_resolve.py` exit code 2, display the stderr message verbatim, fall back to `<task-root>`, and ask the user to disambiguate by re-invoking with `stage <N> of <task>` (per the per-file edit template's error-handling clause).
 - Git state (branches, uncommitted changes, recent commits)
 - Session state file if it exists (`.workflow_artifacts/memory/sessions/<date>-<task-name>.md`)
 

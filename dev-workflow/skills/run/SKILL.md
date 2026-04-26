@@ -129,7 +129,7 @@ After the phase, verify the cost ledger has new entries for `thorough-plan`, `pl
 **Checkpoint B:**
 ```
 Phase complete: Planning
-Artifact: .workflow_artifacts/<task-name>/current-plan.md
+Artifact: <task_dir>/current-plan.md (where <task_dir> = `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`; architecture.md ALWAYS at task root per D-03)
 Profile: <Small|Medium|Large>, <N> round(s), verdict: PASS
 
 Summary:
@@ -142,7 +142,7 @@ Continue to implementation? (yes / no / show plan)
 
 ## Phase 4 — Implement
 
-Spawn `/implement` as a subagent session, passing path to `current-plan.md` and all repo paths. Because the user invoked `/run` and confirmed at Checkpoint B, the `/run` exception in `implement/SKILL.md` applies.
+Spawn `/implement` as a subagent session, passing path to `<task_dir>/current-plan.md` (where `<task_dir>` is resolved via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` in Setup §) and all repo paths. Because the user invoked `/run` and confirmed at Checkpoint B, the `/run` exception in `implement/SKILL.md` applies.
 
 After the phase, verify the cost ledger has a new entry for the `implement` phase. If not, append a best-effort entry with `unknown-implement-<timestamp>`.
 
@@ -189,7 +189,7 @@ After the phase, verify the cost ledger has a new entry for the `review` phase. 
 ```
 Phase complete: Review
 Verdict: APPROVED
-Artifact: .workflow_artifacts/<task-name>/review-<N>.md
+Artifact: <task_dir>/review-<N>.md (where <task_dir> = `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`; architecture.md ALWAYS at task root per D-03)
 Gate: PASSED
 
 Summary:

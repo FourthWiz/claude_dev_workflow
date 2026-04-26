@@ -17,7 +17,7 @@ This skill requires the strongest available model (currently Claude Opus). If yo
 This skill may run in a fresh chat session with no prior context. On start:
 1. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights
 2. Read `.workflow_artifacts/memory/sessions/` for any active session state for this task
-3. Read the task subfolder if it exists (prior `architecture.md`, `current-plan.md`)
+3. Read the task subfolder if it exists: architecture.md is ALWAYS at task root (`<task-root>/architecture.md`); for `current-plan.md`, resolve via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` and read `<task_dir>/current-plan.md`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md` (line 4 — NOT edited per D-03).
 4. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `architect`
 5. Read deployed v3 references at session start: `~/.claude/memory/format-kit.md` and `~/.claude/memory/glossary.md`.
 6. Then proceed with the work below
@@ -301,5 +301,6 @@ The scan/synthesize split exists to avoid paying Opus rates for bulk file readin
 ## Tier 3 critic outputs
 
 When `/architect` spawns `/critic --target=architecture.md` as a subagent (Phase 4), the resulting `architecture-critic-N.md` is **Class A** per artifact-format-architecture v3 §4.1, written via the §5.4 Class A writer mechanism per `/critic/SKILL.md` (Stage 4 wiring): format-aware body per format-kit §2 critic-response section set (verdict/summary/issues/what's good/scorecard); validator auto-detects type as critic-response via the T-08 match_paths extension to `architecture-critic-*.md`; retry-once-then-English-fallback on V-failure.
+<!-- architecture-critic-N.md ALWAYS at task root regardless of stage layout — corollary of D-03; pre-resolves stage-4's Q-01. path_resolve.py returns the stage subfolder for current-plan.md and other stage-scoped artifacts, but architecture-critic-N.md is parent-level and stays at .workflow_artifacts/<task-name>/ directly. -->
 
 `architecture.md` itself is **Class B** per artifact-format-architecture v3 §4.1 — the `## For human` summary block at the top is English (written by Haiku per Step 2 above); the body is format-aware structured per `format-kit.md` §2 (tables, YAML, terse lists with glyphs, prose only where prose-shaped). The v2 terse-rubric applies inside prose sections only (composed with format-kit per §5.1).

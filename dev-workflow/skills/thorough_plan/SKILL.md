@@ -16,13 +16,35 @@ On start:
 
 ## Setup
 
-### 1. Determine the task subfolder
+### 1. Determine the task subfolder and stage
 
 Before starting the loop, establish the working directory:
 
-- Ask the user for a descriptive name if not obvious
-- Use kebab-case: `auth-refactor`, `payment-migration`, `api-v2-endpoints`
-- Create the folder: `<project-folder>/.workflow_artifacts/<task-name>/`
+- Ask the user for a descriptive task name if not obvious. Use kebab-case
+  (`auth-refactor`, `payment-migration`, `api-v2-endpoints`).
+- Detect whether the user's invocation includes a stage qualifier:
+  - Explicit form: `stage <N> of <task>` (e.g., `stage 3 of quoin-foundation`)
+    → set `<stage>` = N (integer).
+  - Named form: `stage <name> of <task>` (e.g., `stage model-dispatch of quoin`)
+    → set `<stage>` = name (string); the resolver looks up N from
+    `<task-name>/architecture.md`'s `## Stage decomposition` section.
+  - No qualifier → `<stage>` = None (legacy / single-stage layout).
+- Compute the working directory by running:
+    `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`
+  This returns an absolute path. Create the folder if it doesn't exist:
+    `mkdir -p "<task_dir>"`
+- The architecture and cost-ledger always live at the task root, regardless of
+  stage: `.workflow_artifacts/<task-name>/architecture.md` and
+  `.workflow_artifacts/<task-name>/cost-ledger.md`.
+- Pass `<task_dir>` (NOT the bare task name) to `/plan`, `/critic`, `/revise`,
+  `/revise-fast` so they all write into the same resolved subfolder.
+
+Error handling: if `path_resolve.py` exits with code 2 (any rule-1/2/2a/2b/2c/2d
+ValueError), interpret the stderr message as "user-recoverable input ambiguity" and:
+  (a) display the stderr message verbatim to the user;
+  (b) fall back to the task root (rule-3 path: `<project_root>/.workflow_artifacts/<task-name>/`);
+  (c) ask the user to disambiguate by re-invoking with the integer form `stage <N> of <task>`.
+Do NOT abort the orchestration on exit-code-2.
 
 ### 2. Gather initial context
 
@@ -120,7 +142,7 @@ If the task profile is Small, do NOT enter the critic loop. Instead:
 1. Invoke `/plan` (Opus) — same as round 1 of the normal loop. Output: `current-plan.md`.
 2. Run a smoke gate (plan artifact exists, has tasks with file paths and acceptance criteria).
 3. Add the convergence summary to the top of `current-plan.md` with `Task profile: Small`, `Rounds: 1`, and `Key revisions: N/A — single-pass plan`.
-4. Inform the user: "Task classified as Small — single-pass plan produced. Plan is ready at `.workflow_artifacts/<task-name>/current-plan.md`."
+4. Inform the user: "Task classified as Small — single-pass plan produced. Plan is ready at `<task_dir>/current-plan.md`." (where `<task_dir>` was resolved in Setup §1 via `path_resolve.py`)
 5. **STOP.** Do not invoke `/implement`. Wait for the user.
 
 ## Medium and Large profiles (critic loop)
@@ -150,18 +172,18 @@ Round 2:
 **`/plan` (Round 1 only)**
 - Always spawn `/plan` (Opus) — the initial plan is always Opus-quality regardless of mode
 - Pass all context: architecture docs, user requirements, repo paths
-- Output: `.workflow_artifacts/<task-name>/current-plan.md`
+- Output: `<task_dir>/current-plan.md` (where `<task_dir>` was resolved in Setup §1 via `path_resolve.py`)
 
 **`/critic` (every round)**
 - **MUST spawn as a new agent session** — fresh context is essential for unbiased critique
 - Always Opus. Never tiered. This is non-negotiable.
 - Pass: path to `current-plan.md`, path to the project folder (so it can read actual code)
-- Output: `.workflow_artifacts/<task-name>/critic-response-<round>.md`
+- Output: `<task_dir>/critic-response-<round>.md`
 
 **`/revise` or `/revise-fast` (rounds 2+)**
 - **MUST spawn as a new agent session** (same mechanism used for /critic above) — fresh context prevents anchoring on prior orchestrator chatter
 - Spawn `/revise-fast` (Sonnet) in normal mode, or `/revise` (Opus) in strict mode — see "Model selection per round" table above.
-- Pass: path to `current-plan.md`, path to latest `.workflow_artifacts/<task-name>/critic-response-<N>.md`, and paths to any files the critic flagged as needing re-examination
+- Pass: path to `<task_dir>/current-plan.md`, path to latest `<task_dir>/critic-response-<N>.md`, and paths to any files the critic flagged as needing re-examination
 - Output: updated `current-plan.md` (in place)
 
 ### Convergence rules
@@ -198,7 +220,7 @@ For Small-profile tasks that took the single-pass path, the convergence summary 
 Then spawn `/gate` as a subagent session (never inline — subagent dispatch is required so gate/SKILL.md is read and Step 5 audit-log persistence fires) to present automated checks and a summary to the user.
 
 After the gate, inform the user:
-- The plan is ready at `.workflow_artifacts/<task-name>/current-plan.md`
+- The plan is ready at `<task_dir>/current-plan.md`
 - Summary of what was planned (high-level, 3-5 bullet points)
 - How many rounds it took and what the main themes were
 - Any remaining concerns or decisions the user needs to make

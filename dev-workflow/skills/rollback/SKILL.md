@@ -11,7 +11,7 @@ You safely undo implementation work by mapping commits to plan tasks and reverti
 ## Session bootstrap
 
 On start:
-1. Read `.workflow_artifacts/<task-name>/current-plan.md` to understand task structure
+1. Read `<task_dir>/current-plan.md` to understand task structure. Resolve `<task_dir>` via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. architecture.md: ALWAYS `<task-root>/architecture.md`. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md` (line 2 below — NOT edited per D-03). If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
 2. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `rollback`
 
 ## Core principle
@@ -23,7 +23,7 @@ On start:
 ### Step 1: Understand the state
 
 Read:
-1. **The plan** — `.workflow_artifacts/<task-name>/current-plan.md` to understand task structure
+1. **The plan** — `<task_dir>/current-plan.md` to understand task structure (where `<task_dir>` is resolved per Session bootstrap step 1 via `python3 ~/.claude/scripts/path_resolve.py`)
 2. **Git log** — map recent commits to plan tasks (by commit message, branch, or scope)
 3. **Current diff** — any uncommitted changes that would be affected
 4. **Session state** — what phase we're in and what's been completed
