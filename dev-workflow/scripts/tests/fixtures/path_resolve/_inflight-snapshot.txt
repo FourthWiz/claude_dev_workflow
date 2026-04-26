@@ -1,0 +1,4 @@
+artifact-format-architecture | absent | present | stage-5
+caveman-token-optimization | present-without-decomp | present | (none)
+v3-stage-3-smoke | present-with-decomp | present | (none)
+v3-stage-4-smoke | present-with-decomp | present | (none)
