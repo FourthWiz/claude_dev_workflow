@@ -36,3 +36,8 @@ e7ae5027-8315-4154-b86d-e14f3d779e84 | 2026-04-26 | critic | claude-opus-4-7 | t
 
 6a425672-0aa0-43c1-ac38-58763f887ffe | 2026-04-27 | implement | claude-sonnet-4-6 | task | implement stage-5 quoin-foundation; T-00a..T-11
 6a425672-0aa0-43c1-ac38-58763f887ffe | 2026-04-27 | review | claude-opus-4-7 | task | stage-5 review round 1
+6a425672-0aa0-43c1-ac38-58763f887ffe | 2026-04-27 | end-of-task | claude-sonnet-4-6 | task | end-of-task stage-5 quoin-foundation; archive sub-task to parent finalized/, branch push
+
+## Stage-5 totals (per `/end_of_task` aggregation, source: `npx ccusage session -i <UUID>`)
+- Session 6a425672-0aa0-43c1-ac38-58763f887ffe: $33.37 (44.7M tokens) — implement + review (model breakdown unavailable: all entry-level costUSD cached, totalCost used)
+- **Stage-5 total: $33.37 (44.7M tokens)**
