@@ -361,10 +361,11 @@ def test_install_sh_lists_path_resolve():
     """install.sh must include path_resolve.py in the for-loop and success message."""
     text = INSTALL_SH.read_text()
 
-    assert "for script_file in validate_artifact.py path_resolve.py; do" in text, (
-        f"install.sh for-loop (near line 125) does not contain path_resolve.py. "
-        f"T-06 must add it. Expected line: "
-        f"'for script_file in validate_artifact.py path_resolve.py; do'"
+    # Accept the for-loop containing path_resolve.py — additional scripts may also
+    # be listed (e.g., cost_from_jsonl.py was added in stage-2 T-05).
+    assert re.search(r"for script_file in[^\n]*path_resolve\.py", text), (
+        f"install.sh for-loop does not contain path_resolve.py. "
+        f"Expected 'for script_file in ... path_resolve.py ...; do'"
     )
 
     assert "v3 scripts" in text and "path_resolve.py" in text, (
