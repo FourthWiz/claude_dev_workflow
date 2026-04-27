@@ -92,11 +92,32 @@ Reference files (apply HERE at the body-generation WRITE-SITE — per format-kit
 **Step 1 pre-write sweep:** Before writing, clear stale leftovers from any prior aborted run: `(rm -f <plan-path>.body.tmp <plan-path>.tmp 2>/dev/null || true)`.
 Compose the format-aware body per format-kit.md §2 `current-plan.md` enumeration. Include the `## Revision history` section (terse numbered list or table per format-kit.md §2) with the new round's changelog appended inside it. DO NOT include the `## For human` block in the body — that's Steps 2–3. Write the body to `<plan-path>.body.tmp` using the Bash tool.
 
-**Step 2: Summary generation (with empty-output check).** Invoke:
-  `python3 ~/.claude/scripts/summarize_for_human.py <plan-path>.body.tmp`
-- If exit code is non-zero: treat as Step 2 failure → trigger Step 5 retry path.
-- If exit code is 0 BUT stdout (after stripping whitespace) is empty: treat as Step 2 failure → trigger Step 5 retry path.
-- Otherwise: proceed to Step 3 with the captured stdout as `summary_raw`.
+**Step 2: Summary generation (Agent subagent, with empty-output check).**
+
+Read the frozen prompt template from `~/.claude/memory/summary-prompt.md` using
+the Read tool. Read the artifact body from `<plan-path>.body.tmp` using the Read tool.
+Compose the prompt as: <prompt-template-with-`<<<BODY>>>`-replaced-by-body-text>.
+
+Spawn an Agent subagent with:
+  - model: "haiku"
+  - description: "Generate ## For human summary"
+  - prompt: <composed prompt>
+  - additional system instruction prepended to the prompt: "Use temperature 0.0
+    (deterministic). Output ONLY the summary text — no preamble, no follow-up
+    questions, no chain-of-thought. Do not invent facts not present in the body.
+    Do not exceed 8 lines."
+
+Wait for the subagent. Capture its response text as `summary_raw`.
+
+- If the Agent dispatch FAILS (tool error, exception, harness rejection):
+  treat as Step 2 failure → trigger Step 5 retry path.
+- If `summary_raw.strip()` is EMPTY:
+  treat as Step 2 failure → trigger Step 5 retry path.
+- Otherwise: proceed to Step 3 with `summary_raw`.
+
+(Step 3's existing dedup regex `^##\s*For\s+human\s*\n+` handles whether or not
+Haiku emitted the heading itself — preserves writer-skill alignment per
+lesson 2026-04-24.)
 
 **Step 3: Compose and write the single file (with `## For human` heading dedup).**
   (a) Strip a leading `## For human` heading from `summary_raw` if present (regex `^##\s*For\s+human\s*\n+`). Call the result `summary_body`.
@@ -108,7 +129,7 @@ Compose the format-aware body per format-kit.md §2 `current-plan.md` enumeratio
 Exit code 0 = PASS; non-zero = at least one invariant failed (stderr names which).
 
 **Step 5: Retry / English-fallback (failure-class-aware).**
-  - **Step 2 failure:** re-run Step 2 once; if still fails → English-fallback.
+  - **Step 2 failure:** re-run Step 2 once (re-spawn the Haiku Agent subagent); if still fails → English-fallback.
   - **V-06/V-07 failures:** re-run Steps 2–4 once.
   - **V-02/V-03/V-05 failures:** re-run Steps 1–4 once with explicit body-discipline instruction.
   - **English-fallback:** v2-style write (no `## For human` block), log `format-kit-skipped` warning. Clean up body.tmp: `(rm -f <plan-path>.body.tmp 2>/dev/null || true)`.

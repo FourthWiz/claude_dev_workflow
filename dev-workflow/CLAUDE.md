@@ -375,6 +375,8 @@ The caveman-token-optimization v2 architecture (see `.workflow_artifacts/caveman
 - `~/.claude/memory/glossary.md` (deployed copy — overwritten on re-install).
 - `dev-workflow/memory/format-kit.sections.json` (v3 machine-readable sidecar enumerating allowed/required sections per artifact type; structured-not-prose; consumed by validate_artifact.py per v3 §5.3.2).
 - `~/.claude/memory/format-kit.sections.json` (deployed copy — overwritten on re-install).
+- `dev-workflow/memory/summary-prompt.md` (Tier 1 hand-edited — frozen Haiku prompt template for Class B writer Step 2 summaries; per Quoin Stage 5 architecture).
+- `~/.claude/memory/summary-prompt.md` (deployed copy — read by Class B writer skills at runtime; overwritten on re-install from the source above).
 
 **Contract-approval files (v3 format):**
 - `<task>/architecture.md` — has an English `## For human` summary block at the top (read by humans and `/gate`); body is format-aware structured per `dev-workflow/memory/format-kit.md` (read by skills).

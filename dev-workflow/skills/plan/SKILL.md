@@ -67,12 +67,32 @@ Reference files (apply HERE at the body-generation WRITE-SITE — per format-kit
 **Step 1 pre-write sweep:** Before writing, clear stale leftovers from any prior aborted run: `(rm -f <plan-path>.body.tmp <plan-path>.tmp 2>/dev/null || true)`.
 Compose the format-aware body for `current-plan.md` per format-kit.md §2 enumeration: `## State` (YAML), `## Tasks` (terse numbered list with status glyphs ✓ ✗ ⏳ 🚫 + acceptance bullets), `## Decisions` (caveman prose, only if non-trivial), `## Risks` (markdown table with id/risk/likelihood/impact/mitigation/rollback), `## Procedures` (pseudo-code, optional), `## References` (terse list, only if cross-refs exist). Apply `format-kit.md` §1 pick rules per section. DO NOT include the `## For human` block yet — that's Step 2 + Step 3. Write the body to a temp file using the Bash tool: `<plan-path>.body.tmp`.
 
-**Step 2: Summary generation (with empty-output check).** Invoke the deployed Haiku summary script via the Bash tool:
-  `bash ~/.claude/scripts/with_env.sh python3 ~/.claude/scripts/summarize_for_human.py <plan-path>.body.tmp`
-Capture stdout (the summary text) and exit code. The script's contract is documented at architecture §5.3.1 and in the script's docstring. Timeout: 30s (script-enforced).
-- If exit code is non-zero: treat as Step 2 failure → trigger Step 5 retry path.
-- If exit code is 0 BUT stdout (after stripping whitespace) is empty: treat as Step 2 failure → trigger Step 5 retry path. (An empty/whitespace-only summary is NOT acceptable; do not silently emit `## For human\n\n\n`.)
-- Otherwise: proceed to Step 3 with the captured stdout as `summary_raw`.
+**Step 2: Summary generation (Agent subagent, with empty-output check).**
+
+Read the frozen prompt template from `~/.claude/memory/summary-prompt.md` using
+the Read tool. Read the artifact body from `<plan-path>.body.tmp` using the Read tool.
+Compose the prompt as: <prompt-template-with-`<<<BODY>>>`-replaced-by-body-text>.
+
+Spawn an Agent subagent with:
+  - model: "haiku"
+  - description: "Generate ## For human summary"
+  - prompt: <composed prompt>
+  - additional system instruction prepended to the prompt: "Use temperature 0.0
+    (deterministic). Output ONLY the summary text — no preamble, no follow-up
+    questions, no chain-of-thought. Do not invent facts not present in the body.
+    Do not exceed 8 lines."
+
+Wait for the subagent. Capture its response text as `summary_raw`.
+
+- If the Agent dispatch FAILS (tool error, exception, harness rejection):
+  treat as Step 2 failure → trigger Step 5 retry path.
+- If `summary_raw.strip()` is EMPTY:
+  treat as Step 2 failure → trigger Step 5 retry path.
+- Otherwise: proceed to Step 3 with `summary_raw`.
+
+(Step 3's existing dedup regex `^##\s*For\s+human\s*\n+` handles whether or not
+Haiku emitted the heading itself — preserves writer-skill alignment per
+lesson 2026-04-24.)
 
 **Step 3: Compose and write the single file (with `## For human` heading dedup).** The Haiku prompt template instructs Haiku to "Produce a `## For human` summary" — Haiku may or may not emit the heading itself. To guarantee exactly one heading in the assembled file:
   (a) Take `summary_raw` from Step 2.
@@ -87,8 +107,8 @@ This guarantees the assembled file contains exactly one `## For human` line, reg
 
 **Step 5: Retry / English-fallback (failure-class-aware).** Differentiate the retry path by which step failed:
 
-  - **Step 2 failure path (Haiku non-zero exit OR exit-0-but-empty-stdout):**
-    (a) Re-run ONLY Step 2 once (re-invoke `summarize_for_human.py` against the unchanged `<plan-path>.body.tmp`). The script pins `temperature=0.0`; re-running may catch transient network errors. Do NOT re-run Step 1.
+  - **Step 2 failure path (Agent dispatch FAILS OR empty `summary_raw`):**
+    (a) Re-run ONLY Step 2 once (re-spawn the Haiku Agent subagent against the unchanged `<plan-path>.body.tmp`). The prompt directive pins temperature 0.0; re-running may catch transient dispatch errors. Do NOT re-run Step 1.
     (b) If the re-run ALSO fails: fall back to v2-style single-file write (see fallback below).
 
   - **Step 4 validation failure path (non-zero validator exit):** parse validator stderr (each line begins `FAIL V-NN: ...`) to identify the failing invariant ID(s):

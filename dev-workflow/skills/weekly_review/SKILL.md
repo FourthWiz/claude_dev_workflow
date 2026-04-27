@@ -89,7 +89,7 @@ Produce the weekly review in this format:
 
 ## For human
 
-<5-8 line plain-English summary: what was the week's focus; which tasks completed or made major progress; what remains in-flight; what matters most for next week. Written directly by the Haiku writer in the same generation as the body — NOT via summarize_for_human.py>
+<5-8 line plain-English summary: what was the week's focus; which tasks completed or made major progress; what remains in-flight; what matters most for next week. Written inline by the Haiku writer in the same generation as the body — no separate summarizer call>
 
 ## Highlights
 <3-5 bullet points: the most important things that happened this week. Lead with outcomes, not activity.>
@@ -156,7 +156,7 @@ For the Highlights section: each bullet should state a concrete outcome or deliv
 
 ### Step 4: Save the review
 
-Compose the `## For human` block directly in the same generation pass as the body — do not call `summarize_for_human.py` or `validate_artifact.py`. The block should be 5-8 lines of plain English placed immediately after the H1 heading.
+Compose the `## For human` block directly in the same generation pass as the body — do not invoke any separate summarizer or validator script; the weekly review is written inline by Haiku. The block should be 5-8 lines of plain English placed immediately after the H1 heading.
 
 Write the review to:
 ```

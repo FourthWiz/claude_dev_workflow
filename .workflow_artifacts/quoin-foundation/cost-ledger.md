@@ -33,3 +33,11 @@ e7ae5027-8315-4154-b86d-e14f3d779e84 | 2026-04-26 | critic | claude-opus-4-7 | t
 7dbde9b9-670a-484b-8740-8c401002d4d8 | 2026-04-26 | critic | claude-opus-4-7 | task | critic round-5 (FINAL — Large-profile cap) stage-3 quoin-foundation; verified CRIT-1 resolution via Option-B split (D-09a primary 9-file alternation + D-09b secondary 3-file explicit allow-list = 12 combined); independent audit confirms 9+3=12 matching T-05 rows; T-08 case b/c extended for explicit-list enforcement; validator PASS; verdict PASS with 2 cosmetic MIN; class-level pattern closed-with-caveats; recommend proceed to gate
 7dbde9b9-670a-484b-8740-8c401002d4d8 | 2026-04-26 | gate | claude-opus-4-7 | task | gate Checkpoint B thorough_plan to implement stage-3; verdict PASS smoke-large; 7/8 PASS, 1 WARN (V-06 section-order — Convergence Summary precedes For human; cosmetic, all required content present)
 7dbde9b9-670a-484b-8740-8c401002d4d8 | 2026-04-26 | implement | claude-sonnet-4-6 | task | implement stage-3 quoin-foundation; stage-subfolder convention + path resolver (T-01..T-10)
+
+6a425672-0aa0-43c1-ac38-58763f887ffe | 2026-04-27 | implement | claude-sonnet-4-6 | task | implement stage-5 quoin-foundation; T-00a..T-11
+6a425672-0aa0-43c1-ac38-58763f887ffe | 2026-04-27 | review | claude-opus-4-7 | task | stage-5 review round 1
+6a425672-0aa0-43c1-ac38-58763f887ffe | 2026-04-27 | end-of-task | claude-sonnet-4-6 | task | end-of-task stage-5 quoin-foundation; archive sub-task to parent finalized/, branch push
+
+## Stage-5 totals (per `/end_of_task` aggregation, source: `npx ccusage session -i <UUID>`)
+- Session 6a425672-0aa0-43c1-ac38-58763f887ffe: $33.37 (44.7M tokens) — implement + review (model breakdown unavailable: all entry-level costUSD cached, totalCost used)
+- **Stage-5 total: $33.37 (44.7M tokens)**

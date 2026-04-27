@@ -235,12 +235,32 @@ Compose the format-aware body for `architecture.md` per format-kit.md §2 enumer
 
 Apply `format-kit.md` §1 pick rules per section. DO NOT include the `## For human` block yet — that's Step 2 + Step 3. **Step 1 pre-write sweep:** `(rm -f <path>.body.tmp <path>.tmp 2>/dev/null || true)` — clear stale leftovers before writing. Write the body to a temp file: `<path>.body.tmp`.
 
-**Step 2: Summary generation (with empty-output check).** Invoke the deployed Haiku summary script via the Bash tool:
-  `bash ~/.claude/scripts/with_env.sh python3 ~/.claude/scripts/summarize_for_human.py <path>.body.tmp`
-Capture stdout (the summary text) and exit code.
-- If exit code is non-zero: treat as Step 2 failure → trigger Step 5 retry path.
-- If exit code is 0 BUT stdout (after stripping whitespace) is empty: treat as Step 2 failure → trigger Step 5 retry path.
-- Otherwise: proceed to Step 3 with captured stdout as `summary_raw`.
+**Step 2: Summary generation (Agent subagent, with empty-output check).**
+
+Read the frozen prompt template from `~/.claude/memory/summary-prompt.md` using
+the Read tool. Read the artifact body from `<path>.body.tmp` using the Read tool.
+Compose the prompt as: <prompt-template-with-`<<<BODY>>>`-replaced-by-body-text>.
+
+Spawn an Agent subagent with:
+  - model: "haiku"
+  - description: "Generate ## For human summary"
+  - prompt: <composed prompt>
+  - additional system instruction prepended to the prompt: "Use temperature 0.0
+    (deterministic). Output ONLY the summary text — no preamble, no follow-up
+    questions, no chain-of-thought. Do not invent facts not present in the body.
+    Do not exceed 8 lines."
+
+Wait for the subagent. Capture its response text as `summary_raw`.
+
+- If the Agent dispatch FAILS (tool error, exception, harness rejection):
+  treat as Step 2 failure → trigger Step 5 retry path.
+- If `summary_raw.strip()` is EMPTY:
+  treat as Step 2 failure → trigger Step 5 retry path.
+- Otherwise: proceed to Step 3 with `summary_raw`.
+
+(Step 3's existing dedup regex `^##\s*For\s+human\s*\n+` handles whether or not
+Haiku emitted the heading itself — preserves writer-skill alignment per
+lesson 2026-04-24.)
 
 **Step 3: Compose and write the single file (with `## For human` heading dedup).** The Haiku prompt instructs Haiku to produce a `## For human` summary — Haiku may or may not emit the heading itself. To guarantee exactly one heading:
   (a) Take `summary_raw` from Step 2.
@@ -255,8 +275,8 @@ Filename auto-detection identifies the type as `architecture` (matches `^archite
 
 **Step 5: Retry / English-fallback (failure-class-aware).** Differentiate by which step failed:
 
-  - **Step 2 failure path (Haiku non-zero exit OR empty stdout):**
-    (a) Re-run ONLY Step 2 once. Do NOT re-run Step 1 (body is fine; summary failed).
+  - **Step 2 failure path (Agent dispatch FAILS OR empty `summary_raw`):**
+    (a) Re-run ONLY Step 2 once (re-spawn the Haiku Agent subagent). Do NOT re-run Step 1 (body is fine; summary failed).
     (b) If re-run also fails: fall back to v2-style single-file write (see fallback below).
 
   - **Step 4 validation failure path:**
