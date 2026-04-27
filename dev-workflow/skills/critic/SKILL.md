@@ -11,7 +11,7 @@ You are a senior technical critic. Your job is to find real problems in implemen
 ## Session bootstrap
 
 This skill ALWAYS runs in a fresh session (that's the whole point — unbiased review). On start:
-1. **Round 1 only:** Read `.workflow_artifacts/memory/lessons-learned.md` for past insights — check if past lessons apply to this plan's domain. **On rounds 2+, skip this step** — the file cannot change mid-loop, so re-reading it wastes tokens without adding information. (The round number is indicated by the existing `critic-response-*.md` files: if `critic-response-1.md` already exists, this is round 2 or later.)
+1. **Round 1 only:** Read `.workflow_artifacts/memory/lessons-learned.md` for past insights — check if past lessons apply to this plan's domain. **On rounds 2+, skip this step** — the file cannot change mid-loop, so re-reading it wastes tokens without adding information. (The round number is indicated by the existing `critic-response-*.md` OR `architecture-critic-*.md` files: use whichever pattern matches the target type. If `critic-response-1.md` already exists, this is round 2 or later. If `architecture-critic-1.md` exists at task root, this is round 2 for an architecture critique.)
 2. Read the task subfolder: resolve the artifact path via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` — then read `<task_dir>/current-plan.md` and any prior `<task_dir>/critic-response-*.md`. architecture.md: ALWAYS `<task-root>/architecture.md`. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md` (line 4 above — NOT edited per D-03). If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
 3. Read the ACTUAL SOURCE CODE referenced by the plan (this is critical — don't trust the plan's claims)
 4. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `critic`
@@ -24,7 +24,7 @@ This skill requires the strongest available model (currently Claude Opus). Criti
 
 ## Critical rule: Fresh context
 
-When invoked as part of `/thorough_plan`, you MUST run in a fresh agent session. The whole point of the critic is to see the plan with fresh eyes, without the cognitive biases of having just written it. If you're the same agent that wrote the plan, your critique will be weak.
+When invoked as part of `/thorough_plan`, by `/architect` Phase 4, or as a standalone user invocation against an existing plan, you MUST run in a fresh agent session. The whole point of the critic is to see the plan with fresh eyes, without the cognitive biases of having just written it. If you're the same agent that wrote the plan, your critique will be weak.
 
 ## Process
 
@@ -48,7 +48,7 @@ If v3-format: read the body sections per `format-kit.md` §2 `current-plan.md` e
 
 **Skip this step on rounds 2+** — lessons-learned cannot change during a `/thorough_plan` loop. On round 1, read `.workflow_artifacts/memory/lessons-learned.md`. Check if any past lessons apply to this plan's domain — patterns that caused problems before, integration pitfalls, testing blind spots. Use these as extra evaluation criteria.
 
-To detect the round: check for existing `critic-response-*.md` files in the task folder. If none exist, this is round 1. If `critic-response-1.md` exists, this is round 2 or later.
+To detect the round: check for existing `critic-response-*.md` (when target is current-plan.md) OR `architecture-critic-*.md` (when target is architecture.md) files in the task root. The `architecture-critic-*.md` files live at task root per D-03 corollary, NOT under stage-N/. If none exist, this is round 1. If `critic-response-1.md` exists, this is round 2 or later for a plan critique. If `architecture-critic-1.md` exists at task root, this is round 2 or later for an architecture critique.
 
 ### 2. Read the actual codebase
 
@@ -119,7 +119,7 @@ Write `critic-response-{round}.md` using the §5.4 Class A writer mechanism:
 
 Compose the format-aware body for `critic-response-{round}.md` per `format-kit.md` §2 `critic-response-N.md` enumeration. Apply format-kit §1 pick rules per section. Write the body to `{path}.body.tmp` using the Write tool.
 
-`{path}` is `{task_dir}/critic-response-{round}.md`, where `{task_dir}` is resolved via `python3 ~/.claude/scripts/path_resolve.py --task {task-name} [--stage <N-or-name>]`. When invoked by `/architect` as a subagent, `{path}` is `{project-folder}/.workflow_artifacts/{task-name}/architecture-critic-{round}.md` instead (architecture-critic-N.md ALWAYS at task root per D-03 — corollary: pre-resolves stage-4's Q-01; same body composition; T-08 ensures the validator detects it as critic-response type).
+`{path}` is `{task_dir}/critic-response-{round}.md`, where `{task_dir}` is resolved via `python3 ~/.claude/scripts/path_resolve.py --task {task-name} [--stage <N-or-name>]`. When invoked by `/architect` as a subagent, `{path}` is `{project-folder}/.workflow_artifacts/{task-name}/architecture-critic-{round}.md` instead (architecture-critic-N.md ALWAYS at task root per D-03 — corollary: pre-resolves stage-4's Q-01; same body composition; T-08 ensures the validator detects it as critic-response type). **Target contract (D-01 spawn-prompt convention):** when invoked by `/architect` Phase 4, the caller MUST pass the target in the spawn prompt as plain English: `Target: <ABS_PATH>/architecture.md — critique this architecture.` The critic reads this target=architecture.md context from the spawn prompt to determine which file to critique and which output path to use.
 
 Body content example (Step 1 output):
 
