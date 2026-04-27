@@ -1,291 +1,136 @@
-# Claude Dev Workflow
+![Quoin](quoin/docs/images/quoin-hero.png)
 
-A structured, multi-agent development workflow for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). It turns Claude into a disciplined engineering partner with planning, architecture review, quality gates, and institutional memory.
+# Quoin
 
-## How It Works
+**Workflow state for stateless coding agents.**
 
-The workflow breaks complex development tasks into discrete phases, each handled by a specialized skill running on the right model for the job. Quality gates between every phase require your explicit approval before proceeding.
+A workflow memory toolkit for Claude Code that structures your coding agent workflow using lightweight persistence files — so every session starts informed and every decision is tracked.
+
+## What is Quoin?
+
+Quoin gives Claude Code a disciplined engineering partner: planning, architecture review, quality gates, cost discipline, and institutional memory — across sessions, tasks, and team members.
+
+Without Quoin, each Claude session starts cold. With Quoin, sessions share accumulated knowledge through structured artifacts: plans, critic reviews, session state, lessons learned, and a cost ledger.
+
+## Why Quoin?
+
+- **Cost discipline** — §0 model dispatch preamble routes each skill to the right tier (Haiku/Sonnet/Opus). `/cost_snapshot` shows live spend. `ccusage` fallback tracks every session.
+- **Planning rigor** — `/thorough_plan` runs a plan→critic→revise convergence loop before a single line of code is written.
+- **Audit trail** — every phase produces a structured artifact: `architecture.md`, `current-plan.md`, `critic-response-N.md`, `review-N.md`, `cost-ledger.md`.
+- **Six stages of foundation** — stages 1–6 of the Quoin foundation hardened the system: §0 dispatch preamble (1), ccusage fallback (2), stage-subfolder path resolution (3), architect Phase 4 critic loop (4), native Haiku summarizer (5), and this rebrand + QUICKSTART relocation (6).
+
+## Install
+
+```bash
+git clone https://github.com/FourthWiz/quoin
+cd quoin
+bash quoin/install.sh
+```
+
+> **Note:** GitHub auto-redirects from the old `FourthWiz/claude_dev_workflow` URL — existing clones continue to work.
+
+## 30-Second Start
 
 ```
-/discover → /architect → GATE → /thorough_plan → GATE → /implement → GATE → /review → GATE → /end_of_task
+/init_workflow   ← one-time project bootstrap
+/architect       ← design the solution
+/thorough_plan   ← converge on a plan with critic review
+/implement       ← write the code (explicit — you decide when)
+/review          ← verify implementation against the plan
+/end_of_task     ← push the branch (explicit — you decide when to ship)
 ```
-
-**You stay in control.** `/implement` and `/end_of_task` never run automatically — you explicitly decide when to write code and when to ship.
-
-## Task Profiles
-
-Not every task needs every phase. `/thorough_plan` auto-triages tasks into three profiles:
-
-| Profile | When | Planning | Critic loop | Typical cost |
-|---------|------|----------|-------------|-------------|
-| **Small** | 1–3 files, single module, no integration risk | Single `/plan` pass | Skipped | ~$2.49 |
-| **Medium** | Multiple files, 1–2 modules, some integration | `/plan` + critic loop (Sonnet revise) | Up to 4 rounds | ~$2.99–$4.00 |
-| **Large** | Cross-service, high risk, data migrations | `/plan` + critic loop (all Opus) | Up to 5 rounds | ~$4.65+ |
-
-Override with a prefix: `small: add health endpoint`, `large: rewrite auth layer`. When in doubt, Medium is the default.
-
-`/architect` is a separate, optional phase you run before `/thorough_plan` when the task needs system-level design (typically Large tasks). Small and Medium tasks usually go straight to `/thorough_plan`.
 
 ## Skills
 
-20 skills organized by workflow phase:
+### Planning & Architecture
 
-### Planning & Design
+| Command | Model | What it does |
+|---------|-------|-------------|
+| `/architect` | Opus | Deep architectural analysis; internal Phase 4 critic loop |
+| `/plan` | Opus | Detailed implementation plan (single-pass) |
+| `/thorough_plan` | Opus | Triages task size; runs plan→critic→revise convergence loop |
+| `/critic` | Opus | Reviews a plan for gaps, risks, integration issues |
+| `/revise` | Opus | Revises plan from critic feedback (strict/Large mode) |
+| `/revise-fast` | Sonnet | Revises plan from critic feedback (Medium mode, cost-efficient) |
 
-| Skill | Purpose | Model |
-|-------|---------|-------|
-| `/init_workflow` | Bootstrap the workflow in a new project | Opus |
-| `/discover` | Scan repos, map architecture and dependencies | Opus |
-| `/architect` | Design solution architecture with parallel repo scanning | Opus |
-| `/thorough_plan` | Orchestrate plan→critic→revise loop (auto-triages task size) | Opus |
-| `/plan` | Generate detailed implementation plan | Opus |
-| `/critic` | Review plan for gaps, risks, and integration issues | Opus |
-| `/revise` | Address critic feedback (strict/Large mode) | Opus |
-| `/revise-fast` | Address critic feedback (normal/Medium mode) | Sonnet |
+### Implementation & Review
 
-### Execution & Review
-
-| Skill | Purpose | Model |
-|-------|---------|-------|
-| `/implement` | Write code and tests from the plan | Sonnet |
-| `/review` | Verify implementation against the plan | Opus |
-| `/gate` | Quality checkpoint between phases | Sonnet |
-| `/rollback` | Safely undo implementation work | Sonnet |
-| `/end_of_task` | Commit, push branch, capture lessons | Sonnet |
-| `/run` | End-to-end pipeline orchestrator (discover → end_of_task) | Opus |
+| Command | Model | What it does |
+|---------|-------|-------------|
+| `/implement` | Sonnet | Writes code from the plan (explicit command only) |
+| `/review` | Opus | Verifies implementation against the plan; production-ready check |
+| `/gate` | Sonnet | Automated quality checkpoint between phases; requires your approval |
+| `/rollback` | Sonnet | Safely undoes an implementation phase or specific tasks |
 
 ### Session Lifecycle
 
-| Skill | Purpose | Model |
-|-------|---------|-------|
-| `/start_of_day` | Restore context, check git state | Haiku |
-| `/end_of_day` | Save session state, consolidate work | Haiku |
-| `/weekly_review` | Aggregate week's progress into a review | Haiku |
-| `/capture_insight` | Log a pattern or gotcha to the daily scratchpad | Haiku |
-| `/cost_snapshot` | Live cost summary: today, lifetime, per-task | Haiku |
-| `/triage` | Inspect a prompt + current state and propose which skill fits best (you type the command) | Haiku |
+| Command | Model | What it does |
+|---------|-------|-------------|
+| `/init_workflow` | Opus | One-time project bootstrap — creates `.workflow_artifacts/`, runs `/discover` |
+| `/discover` | Opus | Scans all repos; maps architecture, dependencies, git log |
+| `/start_of_day` | Haiku | Morning briefing — restores context from daily cache |
+| `/end_of_day` | Haiku | Saves session state; promotes insights to daily cache |
+| `/end_of_task` | Sonnet | Pushes branch, captures lessons, marks task complete (explicit only) |
 
-### Model Strategy
+### Utilities
 
-- **Opus** — planning, architecture, review, critic. Tasks where reasoning depth matters.
-- **Sonnet** — implementation, gates, rollback, revise-fast. The plan already defines what to do; Sonnet executes efficiently.
-- **Haiku** — session state, daily/weekly summaries, insight capture. Structured template work that doesn't need heavy reasoning.
+| Command | Model | What it does |
+|---------|-------|-------------|
+| `/run` | Opus | End-to-end pipeline orchestrator; pauses at each gate |
+| `/cost_snapshot` | Haiku | Live cost: today, lifetime, per-task breakdown |
+| `/triage` | Haiku | Routes your request to the right skill |
+| `/weekly_review` | Haiku | Aggregates the week's progress into a structured review |
+| `/capture_insight` | Haiku | Logs a pattern or gotcha to the daily scratchpad |
+| `/expand <path>` | Sonnet | Re-renders a terse workflow artifact in readable English |
 
-## Installation
+## Architecture
 
-### Prerequisites
+![Quoin architecture](quoin/docs/images/quoin-architecture.png)
 
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI installed
-- Git
-- GitHub CLI (`gh`) — optional, for PR creation
+Each Claude session is stateless by nature. Quoin bridges sessions using structured file artifacts under `.workflow_artifacts/`. Skills read these files at startup (session bootstrap) and write them on completion — so the next session, whether in 5 minutes or 5 days, picks up exactly where you left off.
 
-### Step 1 — Clone and install (once per machine)
+For full rules, model assignments, artifact formats, and cost-tracking conventions, see [`quoin/CLAUDE.md`](quoin/CLAUDE.md).
 
-```bash
-git clone https://github.com/FourthWiz/claude_dev_workflow.git
-bash claude_dev_workflow/dev-workflow/install.sh
-```
+## Cost & Model Discipline
 
-This is a one-time user-level setup that:
-1. Copies all 20 skills to `~/.claude/skills/` — available in every project
-2. Writes workflow rules to `~/.claude/CLAUDE.md` — auto-loaded by Claude Code everywhere
+Every Quoin skill declares a model tier (`haiku`, `sonnet`, `opus`). When invoked from a session running on a more expensive model, the skill self-dispatches via the `Agent` tool to its declared tier (§0 model dispatch preamble).
 
-Re-running is safe — it updates skills and rules idempotently.
-
-### Step 2 — Scaffold each project
-
-```bash
-cd /path/to/your/project
-claude
-```
-
-Then type:
-```
-/init_workflow
-```
-
-This handles all project-level setup:
-- Creates `.workflow_artifacts/` at the project root (gitignored) with memory, sessions, daily, weekly dirs and template files
-- Configures `.claude/settings.json` permissions (allows reads/searches, denies destructive ops)
-- Runs `/discover` to scan your repos and populate memory
-- Generates a quickstart reference
+- Fails gracefully: if dispatch is unavailable, the skill proceeds at the current tier with a one-line warning — never aborts your invocation.
+- Tracked: every session appends a row to `cost-ledger.md`. `/cost_snapshot` reads it live. `ccusage` is the fallback if the ledger is unavailable.
+- Three artifact tiers: Tier 1 (always English — CLAUDE.md, reviews, architectures), Tier 2 (English + side-file), Tier 3 (terse; use `/expand` to read).
 
 ## Typical Flows
 
-**Large feature:**
+**Large feature (full pipeline):**
 ```
-/discover → /architect → GATE → /thorough_plan → GATE → /implement → GATE → /review → GATE → /end_of_task
-```
-
-**Medium feature:**
-```
-/thorough_plan → GATE → /implement → GATE → /review → GATE → /end_of_task
+/discover → /architect → /thorough_plan large: ... → /implement → /review → /end_of_task
 ```
 
-**Small task / bug fix:**
+**Medium task (default):**
 ```
-/thorough_plan → GATE → /implement → GATE → /review → GATE → /end_of_task
-```
-(Auto-triaged as Small — single-pass plan, no critic loop)
-
-**Quick fix (skip planning):**
-```
-/implement → /review → /end_of_task
+/thorough_plan add caching layer → /implement → /review → /end_of_task
 ```
 
-**Daily routine:**
+**Small bug fix:**
 ```
-/start_of_day    # morning — restores context from yesterday
-... work ...
-/end_of_day      # evening — saves state, promotes insights
+/thorough_plan small: fix null pointer in auth handler → /implement → /review → /end_of_task
 ```
 
-**Not sure which skill to run?**
+**Start / end of day:**
 ```
-/triage <your request in natural language>
+/start_of_day          ← morning: restores context, checks git state
+/end_of_day            ← evening: saves state, consolidates insights
 ```
-`/triage` reads your prompt and the current workspace state, then proposes the best-fit skill. It never invokes anything on your behalf — you decide and type the command.
-
-## Key Concepts
-
-### Quality Gates
-
-Gates run between every phase. They perform automated checks (tests, lint, no debug code, no secrets) and require your explicit approval before proceeding. Gate intensity scales with task profile — smoke checks for Small, full checks for Large.
-
-### Session Independence
-
-Each skill is designed to work in its own chat session. Context windows fill up — this is expected. File-based artifacts (`current-plan.md`, `architecture.md`, `critic-response-N.md`, session state) are the shared memory between sessions. Start a fresh session for each heavy skill; short flows can share a session.
-
-### Three-Tier Memory
-
-The workflow accumulates knowledge at three levels:
-
-- **Tier 1 — Daily scratchpad** (`.workflow_artifacts/memory/daily/insights-<date>.md`): Claude writes here automatically during task work — patterns, gotchas, decision rationale. Use `/capture_insight` to log something explicitly.
-- **Tier 2 — Lessons learned** (`.workflow_artifacts/memory/lessons-learned.md`): Promoted from Tier 1 at `/end_of_day` with your confirmation. Planning and review skills read this to avoid repeating past mistakes.
-- **Tier 3 — Workflow suggestions** (`.workflow_artifacts/memory/workflow-suggestions.md`): Insights about the workflow itself. Surfaced at `/end_of_day` for you to apply to the workflow repo manually.
-
-### Knowledge Cache
-
-The workflow maintains a hierarchical, file-based summary cache of your code under `.workflow_artifacts/cache/`. It gives planning and review skills a cheap way to navigate the codebase without re-reading unchanged source files on every run.
-
-- **Structure** — a root `_index.md` maps out the repos, each repo has its own `_index.md` and `_deps.md`, and directories with non-trivial logic get per-module and per-file summaries. `_staleness.md` tracks the git HEAD per repo.
-- **Who maintains it** — `/discover` populates the cache on first run. `/implement` updates entries for files it modifies via a write-through pattern. Other skills read from it; none require it.
-- **Advisory, not authoritative** — cache entries are hints. Skills that need exact code (e.g. `/implement` before editing, `/review` reading diffs) always read source directly.
-- **Safe to delete** — removing `.workflow_artifacts/cache/` restores pre-cache behavior. `/discover` rebuilds it on the next run.
-- **Measured benefit** — on a single-task `/run` lifecycle (plan → implement → review), the cache cuts input tokens by ~47% and estimated cost by ~43% vs. cache-off, by preventing wasteful exploratory reads (`README.md`, `SETUP.md`, tangential SKILL.md files) when the model is orienting itself.
-
-### Plan-Critic-Revise Loop
-
-`/thorough_plan` orchestrates a convergence loop:
-1. `/plan` (Opus) creates the initial plan
-2. `/critic` (Opus) reviews it against the actual codebase
-3. `/revise` or `/revise-fast` addresses feedback
-4. Repeat until the critic passes or the round limit is reached
-
-Medium tasks use Sonnet for revision (up to 4 rounds). Large tasks use Opus throughout (up to 5 rounds). Small tasks skip the loop entirely.
-
-### Task Subfolder Convention
-
-All planning artifacts live under `.workflow_artifacts/` (gitignored, hidden at project root):
-```
-your-project/.workflow_artifacts/auth-refactor/          # active task
-your-project/.workflow_artifacts/auth-refactor/current-plan.md
-your-project/.workflow_artifacts/auth-refactor/critic-response-1.md
-your-project/.workflow_artifacts/auth-refactor/review-1.md
-```
-
-When finalized via `/end_of_task`, the folder moves to `.workflow_artifacts/finalized/`:
-```
-your-project/.workflow_artifacts/finalized/auth-refactor/
-```
-
-## Project Structure After Install
-
-```
-~/.claude/                       ← user-level (shared across all projects)
-├── CLAUDE.md                    ← workflow rules (auto-loaded everywhere)
-└── skills/                      ← all 20 workflow skills
-    ├── init_workflow/SKILL.md
-    ├── discover/SKILL.md
-    ├── architect/SKILL.md
-    ├── thorough_plan/SKILL.md
-    ├── plan/SKILL.md
-    ├── critic/SKILL.md
-    ├── revise/SKILL.md
-    ├── revise-fast/SKILL.md
-    ├── gate/SKILL.md
-    ├── implement/SKILL.md
-    ├── review/SKILL.md
-    ├── rollback/SKILL.md
-    ├── end_of_task/SKILL.md
-    ├── run/SKILL.md
-    ├── start_of_day/SKILL.md
-    ├── end_of_day/SKILL.md
-    ├── weekly_review/SKILL.md
-    ├── capture_insight/SKILL.md
-    ├── cost_snapshot/SKILL.md
-    └── triage/SKILL.md
-
-your-project/                    ← any project where you ran /init_workflow
-├── .claude/
-│   └── settings.json            ← project permissions
-├── .workflow_artifacts/         ← all workflow artifacts (gitignored)
-│   ├── memory/                  ← project memory
-│   │   ├── sessions/            ← per-session task state
-│   │   ├── daily/               ← daily insights scratchpads
-│   │   ├── weekly/              ← weekly reviews
-│   │   ├── lessons-learned.md   ← accumulated project insights
-│   │   ├── workflow-suggestions.md
-│   │   ├── repos-inventory.md   ← populated by /discover
-│   │   ├── architecture-overview.md
-│   │   └── dependencies-map.md
-│   ├── cache/                   ← knowledge cache (populated by /discover, updated by /implement)
-│   │   ├── _index.md            ← root index: repo list
-│   │   ├── _staleness.md        ← per-repo git HEAD tracking
-│   │   └── <repo-name>/         ← per-repo summaries (_index, _deps, module/file entries)
-│   ├── my-feature/              ← active task artifacts
-│   │   ├── current-plan.md
-│   │   ├── critic-response-1.md
-│   │   └── cost-ledger.md       ← cross-session cost tracking for this task
-│   └── finalized/               ← completed tasks (archived by /end_of_task)
-├── service-a/                   ← your repos (clean root!)
-├── service-b/
-└── frontend/
-```
-
-## Scenarios
-
-### New machine — first time setup
-```bash
-git clone https://github.com/FourthWiz/claude_dev_workflow.git
-bash claude_dev_workflow/dev-workflow/install.sh
-```
-Then for each project: `cd project && claude` → `/init_workflow`
-
-### Update the workflow
-```bash
-cd claude_dev_workflow && git pull
-bash dev-workflow/install.sh
-```
-Skills and `~/.claude/CLAUDE.md` are updated. Project `.workflow_artifacts/` is never touched.
-
-> **Important:** Always re-run `bash install.sh` after pulling updates. Without this step, Claude's global `~/.claude/CLAUDE.md` won't reflect path changes and will conflict with the updated skill files.
-
-### Team member joining
-Same as new machine. Clone the workflow repo, run `install.sh`. Each project's `.workflow_artifacts/` is local and gitignored. `/init_workflow` can re-scaffold any project that's missing its structure.
-
-### Legacy project (old layout)
-Run `/init_workflow` in the project. It detects old layouts (`memory/` at root, task folders at root, `finalized/` at root, or the oldest `dev-workflow/memory/` layout) and offers to migrate everything into `.workflow_artifacts/` with your confirmation.
-
-### Cache got stale or noisy
-Delete `.workflow_artifacts/cache/` and run `/discover` again. Skills transparently fall back to direct source reads while the cache is missing, and `/discover` rebuilds the hierarchy from current `git HEAD`.
 
 ## Documentation
 
-- [SETUP.md](dev-workflow/SETUP.md) — detailed setup guide
-- [QUICKSTART.md](dev-workflow/QUICKSTART.md) — quick command reference
-- [Workflow-User-Guide.html](dev-workflow/Workflow-User-Guide.html) — interactive walkthrough with example conversations
-- [CLAUDE.md](dev-workflow/CLAUDE.md) — full shared rules (the contract all skills follow)
+- [`quoin/QUICKSTART.md`](quoin/QUICKSTART.md) — command reference table (21 skills)
+- `<your-quoin-clone>/Workflow-User-Guide.html` — interactive walkthrough with scenarios (open in browser)
+- [`quoin/CLAUDE.md`](quoin/CLAUDE.md) — full workflow rules, model assignments, artifact formats
+
+## Contributing
+
+Bug reports and PRs welcome. The workflow is its own guinea pig — all Quoin development uses Quoin.
 
 ## License
 
