@@ -148,6 +148,10 @@ Read `.workflow_artifacts/<task-name>/cost-ledger.md`.
 
 For each data line in the ledger (skip lines starting with `#` and blank lines), parse the pipe-delimited fields: `<uuid> | <date> | <phase> | <model> | <category> | <notes>`
 
+**Binary check:** Before running ccusage, verify `npx` is available. If it is NOT
+(`command -v npx` returns non-zero, or `npx --version` fails), skip ccusage entirely
+and fall back to cost_from_jsonl.py for ALL ledger UUIDs (see fallback block below).
+
 Run `npx ccusage session -i <UUID> --json` for each UUID, sequentially. Apply a 15-second timeout per call:
 
 ```bash
@@ -170,6 +174,33 @@ Then filter the returned sessions against the UUIDs in the ledger.
 From `entries`, aggregate per-model cost: group entries by the `model` field and sum `costUSD` per model. If all entry-level `costUSD` values are 0 (cached calls), use `totalCost` as the session total and mark model breakdown as "unavailable".
 
 **If a lookup times out or returns an error**, note "cost unknown" for that phase and continue.
+
+**Fallback gate (path-agnostic):** After ccusage execution completes — whichever of the
+per-UUID loop or the bulk `--since` call was taken — if NO ledger UUID was successfully
+resolved (every per-UUID call returned non-zero, OR the bulk call returned non-zero or an
+empty/unmatched result set), fall back to cost_from_jsonl.py for all ledger UUIDs.
+This catches the "ccusage binary present but completely broken" case (e.g., npm install failure).
+# (Path-agnostic gate: covers per-UUID loop failure AND bulk-call failure — per D-02b rationale.)
+# (Binary-check + all-failed-gate are structurally separate per D-02b — same fallback semantics as cost_snapshot Step 2's single conflated branch.)
+
+**Fallback (fires from either the binary-check branch above or the path-agnostic all-failed gate above):**
+For per-UUID mode (< 5 sessions in ledger):
+  python3 ~/.claude/scripts/cost_from_jsonl.py session -i UUID --json
+For bulk mode (≥ 5 sessions in ledger, mirroring ccusage's bulk path):
+  python3 ~/.claude/scripts/cost_from_jsonl.py session --json --since <earliest-date-from-ledger>
+  Compute earliest-date-from-ledger as the min of column-2 dates across all data lines in
+  cost-ledger.md (the same expression Step 6 already uses for the bulk ccusage call —
+  preserve the existing SKILL.md derivation). Then filter returned results to only the
+  UUIDs present in the ledger.
+Parse the JSON output identically to ccusage output — the shape is identical.
+Before recording the cost breakdown in Step 8, prepend ONE line:
+  [fallback: cost_from_jsonl.py — prices as of <LAST_UPDATED>]
+Read LAST_UPDATED via:
+  python3 -c "from pathlib import Path; import sys; sys.path.insert(0, str(Path.home() / '.claude' / 'scripts')); import cost_from_jsonl; print(cost_from_jsonl.LAST_UPDATED)"
+
+Exit code 2 from cost_from_jsonl.py ("UUID not found") is a per-UUID recoverable failure.
+Treat it the same as ccusage's per-UUID timeout: record cost-unknown for that UUID,
+continue with the rest. Do NOT treat exit 2 as a fallback-level failure.
 
 **Aggregate results (hold in memory for Step 8):**
 - Per-phase breakdown: sum `totalCost` by phase field from ledger

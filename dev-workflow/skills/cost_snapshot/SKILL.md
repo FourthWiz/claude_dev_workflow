@@ -101,14 +101,30 @@ Then filter the returned results to only the UUIDs present in your collections.
 
 Parse each JSON response: `{"sessionId": "...", "totalCost": 1.23, "totalTokens": 123456, "entries": [...]}`. Extract `totalCost` per UUID.
 
-If `npx` or `ccusage` is not available, or all calls fail, print:
+If `npx` or `ccusage` is not available (binary not found), OR every ccusage
+call returns non-zero, fall back to `cost_from_jsonl.py`:
 
-```
-ccusage not available — cannot retrieve dollar amounts.
-Install Node.js (https://nodejs.org) to enable cost tracking.
-Session counts: <N> total sessions across <M> tasks
-```
+  # Per-UUID mode (parallel with the ccusage `-i UUID --json` path):
+  python3 ~/.claude/scripts/cost_from_jsonl.py session -i UUID --json
 
+  # Bulk mode (parallel with `ccusage session --since DATE --json`):
+  python3 ~/.claude/scripts/cost_from_jsonl.py session --json --since DATE
+
+The output JSON shape is identical to ccusage (see /cost_snapshot Step 2
+parser). Parse it the same way.
+
+Before printing the cost summary in Step 3, prepend ONE line of context:
+
+  [fallback: cost_from_jsonl.py — prices as of LAST_UPDATED]
+
+Read LAST_UPDATED from the script via:
+  python3 -c "from pathlib import Path; import sys; sys.path.insert(0, str(Path.home() / '.claude' / 'scripts')); \
+    import cost_from_jsonl; print(cost_from_jsonl.LAST_UPDATED)"
+
+If even the fallback fails (script missing OR exit code 1 on all UUIDs),
+print:
+  cost tracking unavailable — neither ccusage nor cost_from_jsonl.py
+  could resolve session costs. Session counts: N total across M tasks
 Then stop.
 
 For individual call timeouts or errors, record cost as `null` for that UUID and continue — do not abort.

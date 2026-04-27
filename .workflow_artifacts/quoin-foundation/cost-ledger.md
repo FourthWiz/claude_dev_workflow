@@ -1,4 +1,5 @@
 # Cost Ledger — quoin-foundation
+487990e1-cb7a-4646-b34a-bad0a7cf9d47 | 2026-04-27 | gate | claude-sonnet-4-6 | task | gate implement→review stage-2; 322/323 pass; 1 pre-existing failure on main (test_revise_revise_fast_sync_contract)
 
 07d7193e-32a8-4aca-993b-0d522d94ce9f | 2026-04-25 | architect | claude-opus-4-7 | task | architect Phase 2-3 synthesis; produced architecture.md w/ 6-stage decomposition
 07d7193e-32a8-4aca-993b-0d522d94ce9f | 2026-04-25 | gate | claude-opus-4-7 | task | gate Checkpoint A architect to thorough_plan; verdict PASS; open questions resolved
@@ -27,6 +28,7 @@ e7ae5027-8315-4154-b86d-e14f3d779e84 | 2026-04-26 | end-of-task | claude-sonnet-
 e7ae5027-8315-4154-b86d-e14f3d779e84 | 2026-04-26 | critic | claude-opus-4-7 | task | critic round-2 stage-3 quoin-foundation; verified C1/C2/C3 + M1..M6 + m1..m3 resolution; new C-A (rollback/SKILL.md missing) + MAJ-A (gate L116 rewrite text absent) + MAJ-B (audit-method gap)
 7dbde9b9-670a-484b-8740-8c401002d4d8 | 2026-04-26 | revise | claude-opus-4-7 | task | revise round-3 stage-3 quoin-foundation; addressed C-A (rollback/SKILL.md added → 11 files), MAJ-A (gate L116 verbatim rewrite block), MAJ-B (D-07 audit-method + T-08 case b/c dynamic glob), min-A (Q-03 → D-08), min-B (D-07 as Decision)
 7dbde9b9-670a-484b-8740-8c401002d4d8 | 2026-04-26 | critic | claude-opus-4-7 | task | critic round-3 stage-3 quoin-foundation; verified C-A/MAJ-A/MAJ-B + min-A/min-B resolution; new MAJ-1 (end_of_task/SKILL.md L71 missing from T-05 — third occurrence of class-level pattern) + 2 MIN; structural canary D-07/T-08 effective
+5b369f87-92fb-4046-b7a5-08750a880a59 | 2026-04-27 | plan | claude-opus-4-7 | task | plan round-1 stage-2 of quoin-foundation; ccusage fallback via cost_from_jsonl.py
 7dbde9b9-670a-484b-8740-8c401002d4d8 | 2026-04-26 | revise | claude-opus-4-7 | task | revise round-4 stage-3 quoin-foundation; addressed MAJ-1 (end_of_task/SKILL.md L71 added → 12 files; subset-regex audit failure not structural); D-09 codifies copy-pastable audit-grep procedure; addressed MIN-1 (T-07 expanded to grep all 3 task-name refs in end_of_task) + MIN-2 (T-08 sanity-floor diagnostic durable phrasing)
 7dbde9b9-670a-484b-8740-8c401002d4d8 | 2026-04-26 | critic | claude-opus-4-7 | task | critic round-4 stage-3 quoin-foundation; verified MAJ-1/MIN-1/MIN-2 resolution; new CRIT-1 (D-09 regex returns 9 not 12 — plan/gate/architect rows match Form-B/C, not D-09's alternation; plan internally contradicts its own audit-as-contract framing); 2 MIN; class-level recurrence fourth shape (audit-method narrowness); recommend round 5 regex-broaden + reconcile
 7dbde9b9-670a-484b-8740-8c401002d4d8 | 2026-04-26 | revise | claude-opus-4-7 | task | revise round-5 stage-3 quoin-foundation (FINAL — Large-profile cap); addressed CRIT-1 (D-09 regex too narrow → split into D-09a primary 9-file alternation + D-09b secondary 3-file explicit allow-list for plan/gate/architect Form-B/C; combined yields 12); T-08 case b/c HARDCODED_RE/RESIDUAL_RE updated; T-09 grep d references combined contract; Procedures block rewritten; independently verified 12 hits via combined commands
@@ -41,3 +43,22 @@ e7ae5027-8315-4154-b86d-e14f3d779e84 | 2026-04-26 | critic | claude-opus-4-7 | t
 ## Stage-5 totals (per `/end_of_task` aggregation, source: `npx ccusage session -i <UUID>`)
 - Session 6a425672-0aa0-43c1-ac38-58763f887ffe: $33.37 (44.7M tokens) — implement + review (model breakdown unavailable: all entry-level costUSD cached, totalCost used)
 - **Stage-5 total: $33.37 (44.7M tokens)**
+5b369f87-92fb-4046-b7a5-08750a880a59 | 2026-04-27 | thorough-plan | claude-opus-4-7 | task | thorough_plan stage-2 of quoin-foundation; orchestrator session — ccusage fallback via cost_from_jsonl.py
+5b369f87-92fb-4046-b7a5-08750a880a59 | 2026-04-27 | plan | claude-opus-4-7 | task | plan round-1 stage-2 of quoin-foundation; ccusage fallback via cost_from_jsonl.py
+$(uuidgen) | 2026-04-27 | plan | claude-opus-4-7 | task | plan round-1 stage-2 of quoin-foundation; ccusage fallback via cost_from_jsonl.py
+5b369f87-92fb-4046-b7a5-08750a880a59 | 2026-04-27 | critic | claude-opus-4-7 | task | critic round-1 stage-2 quoin-foundation; ccusage-fallback plan critique
+5b369f87-92fb-4046-b7a5-08750a880a59 | 2026-04-27 | revise | claude-sonnet-4-6 | task | revise round-2 stage-2 quoin-foundation; addressed CRIT-1/CRIT-2/MAJ-1/MAJ-2/MAJ-3 from critic-response-1
+5b369f87-92fb-4046-b7a5-08750a880a59 | 2026-04-27 | critic | claude-opus-4-7 | task | stage-2 round-2 critique
+5b369f87-92fb-4046-b7a5-08750a880a59 | 2026-04-27 | revise | claude-sonnet-4-6 | task | revise-fast round 3 stage-2; addressing MAJ-1-r2 MIN-1-r2 MIN-2-r2
+5b369f87-92fb-4046-b7a5-08750a880a59 | 2026-04-27 | critic | claude-opus-4-7 | task | critic round-3 stage-2 quoin-foundation; verified MAJ-1-r2/MIN-1-r2/MIN-2-r2 closure; verdict PASS
+5b369f87-92fb-4046-b7a5-08750a880a59 | 2026-04-27 | critic | claude-opus-4-7 | task | critic round-3 stage-2 quoin-foundation; verdict PASS — 0 CRIT/MAJOR/MIN, 1 NIT (metadata staleness, fixed inline)
+5b369f87-92fb-4046-b7a5-08750a880a59 | 2026-04-27 | gate | claude-sonnet-4-6 | task | gate Checkpoint B thorough_plan to implement stage-2; smoke/Medium; verdict PASS
+487990e1-cb7a-4646-b34a-bad0a7cf9d47 | 2026-04-27 | implement | claude-sonnet-4-6 | task | implement stage-2 quoin-foundation; cost_from_jsonl.py + SKILL.md fallback wiring + tests (T-01..T-08)
+487990e1-cb7a-4646-b34a-bad0a7cf9d47 | 2026-04-27 | review | claude-opus-4-7 | task | stage-2 review
+487990e1-cb7a-4646-b34a-bad0a7cf9d47 | 2026-04-27 | implement | claude-sonnet-4-6 | task | fix-up: line 48 above contains literal '$(uuidgen)' from a stale session — that UUID is invalid and should be excluded from cost rollups
+487990e1-cb7a-4646-b34a-bad0a7cf9d47 | 2026-04-27 | end-of-task | claude-sonnet-4-6 | task | end-of-task stage-2 quoin-foundation; archive sub-task to parent finalized/, branch push
+
+## Stage-2 totals (per `/end_of_task` aggregation, source: `npx ccusage session -i <UUID>`)
+- Session 5b369f87-92fb-4046-b7a5-08750a880a59: $9.57 (8.2M tokens) — thorough_plan + plan ×2 + critic ×3 + revise ×2 + gate (model breakdown unavailable: entry-level costUSD cached, totalCost used)
+- Session 487990e1-cb7a-4646-b34a-bad0a7cf9d47: $4.19 (1.4M tokens) — implement + gate + review + end-of-task (model breakdown unavailable: entry-level costUSD cached, totalCost used)
+- **Stage-2 total: $13.76 (9.6M tokens)**
