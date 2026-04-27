@@ -56,3 +56,9 @@ $(uuidgen) | 2026-04-27 | plan | claude-opus-4-7 | task | plan round-1 stage-2 o
 487990e1-cb7a-4646-b34a-bad0a7cf9d47 | 2026-04-27 | implement | claude-sonnet-4-6 | task | implement stage-2 quoin-foundation; cost_from_jsonl.py + SKILL.md fallback wiring + tests (T-01..T-08)
 487990e1-cb7a-4646-b34a-bad0a7cf9d47 | 2026-04-27 | review | claude-opus-4-7 | task | stage-2 review
 487990e1-cb7a-4646-b34a-bad0a7cf9d47 | 2026-04-27 | implement | claude-sonnet-4-6 | task | fix-up: line 48 above contains literal '$(uuidgen)' from a stale session — that UUID is invalid and should be excluded from cost rollups
+487990e1-cb7a-4646-b34a-bad0a7cf9d47 | 2026-04-27 | end-of-task | claude-sonnet-4-6 | task | end-of-task stage-2 quoin-foundation; archive sub-task to parent finalized/, branch push
+
+## Stage-2 totals (per `/end_of_task` aggregation, source: `npx ccusage session -i <UUID>`)
+- Session 5b369f87-92fb-4046-b7a5-08750a880a59: $9.57 (8.2M tokens) — thorough_plan + plan ×2 + critic ×3 + revise ×2 + gate (model breakdown unavailable: entry-level costUSD cached, totalCost used)
+- Session 487990e1-cb7a-4646-b34a-bad0a7cf9d47: $4.19 (1.4M tokens) — implement + gate + review + end-of-task (model breakdown unavailable: entry-level costUSD cached, totalCost used)
+- **Stage-2 total: $13.76 (9.6M tokens)**
