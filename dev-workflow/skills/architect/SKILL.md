@@ -268,6 +268,88 @@ Filename auto-detection identifies the type as `architecture` (matches `^archite
 
 **Step 6: Atomic rename.** `mv <path>.tmp <path>; (rm -f <path>.body.tmp <path>.tmp 2>/dev/null || true)`. The final file at `<path>` IS what `/critic`, `/thorough_plan`, `/gate` will read. Do NOT write a `.original.md` side-file.
 
+### Phase 4: Critic loop (max 2 rounds default; max 4 in strict mode)
+
+Phase 4 runs immediately after Step 6 above — `architecture.md` now exists on disk at `<path>`. The output of Phase 3 decomposition is the synthesis input that Phase 4 critiques. The `## Tier 3 critic outputs` sub-section below defines the format contract for `architecture-critic-N.md` files produced here.
+
+**Cache note:** Phase 4 produces `architecture-critic-N.md` (a workflow artifact under `.workflow_artifacts/<task>/`); no .workflow_artifacts/cache/ write-through required (per CLAUDE.md Knowledge cache rule b — only source-file modifications trigger cache updates). Phase 4 invokes Output format Steps 1-6 on REVISE re-synthesis; the cache-write-through obligation for that re-synthesis follows the existing Output format Steps 1-6 contract (which has none, since `architecture.md` is not a source file).
+
+**Convergence rules mirror `/thorough_plan` SKILL.md L189-203 — keep in sync.**
+
+**Step P1: Parse invocation overrides.** Scan the user invocation for a `max_rounds: N` token (case-insensitive; strip it). Detect `strict:` or `large:` prefix.
+- Default: `max_rounds = 2` (lesson 2026-04-22 anti-target — do NOT raise without strict mode).
+- Strict mode (`strict:` or `large:` prefix): `max_rounds = 4`.
+- Explicit `max_rounds: N` override from invocation (positive integer; non-positive → ignore).
+- Record whether the user passed `max_rounds:` explicitly (used by recursive-self-critique guard below).
+
+**Step P2: Recursive-self-critique guard.** Detection MUST be string-match only — no LLM call (lesson 2026-04-23 on LLM-replay non-determinism). Grep the `architecture.md` body (just written by Steps 1-6) for any of the broadened 4-form alternation:
+
+- `architect/SKILL\.md`
+- `critic/SKILL\.md`
+- `dev-workflow/skills/(architect|critic)/SKILL\.md`
+- `~/.claude/skills/(architect|critic)/SKILL\.md`
+
+If any form matches AND the user did NOT pass `strict:` or `max_rounds: N` (N ≥ 2) explicitly:
+- Warn the user: "This task modifies architect or critic SKILL.md — recursive self-critique applies."
+- Force `max_rounds = 1` and inform: "max_rounds forced to 1; pass strict: or max_rounds: N to override."
+
+False positives on docs-only references are a feature, not a bug — recursive-self-critique cost is the explicit anti-target.
+
+**Step P3: Critic loop.**
+
+```
+round = 1
+while round <= max_rounds:
+
+    if round == 2:
+        # cost guard — emit verbatim before spawning round 2:
+        inform_user("[critic round 2 starting — ~$10-30 estimated based on body size]")
+        confirm = ask_user("Proceed with round 2 critic? (yes/no)")
+        if confirm != "yes": break
+
+    # Spawn /critic as a FRESH subagent (model: opus — non-negotiable per CLAUDE.md model assignments).
+    # Convey target via spawn-prompt (D-01 spawn-prompt convention, not CLI flag):
+    spawn_critic_subagent(
+        model="opus",
+        prompt="Target: <ABS_PATH>/architecture.md — critique this architecture."
+    )
+    # Read from TASK ROOT (NOT stage-N/ — D-03 corollary):
+    read .workflow_artifacts/<task-name>/architecture-critic-{round}.md
+
+    verdict = parse_verdict(architecture-critic-{round}.md)
+    if verdict == PASS: break
+
+    # Loop detection — STRICT MODE ONLY (D-09):
+    # Normal mode (max_rounds=2) relies on the hard cap; no meaningful loop detection needed.
+    # In strict mode (if round >= 2): compare CRITICAL/MAJOR issue titles across rounds.
+    if strict_mode and round >= 2:
+        prior_titles = critical_or_major_titles(round - 1)
+        this_titles  = critical_or_major_titles(round)
+        if any(t in prior_titles for t in this_titles):
+            inform_user("Same issue title across rounds — escalating.")
+            decision = ask_user("Accept architecture as-is, or continue revising?")
+            if decision == "accept": break
+
+    # REVISE — re-run Output format Steps 1-6 IN THE SAME /architect session (D-03):
+    # /architect IS the synthesis skill; no fresh-session re-spawn for re-synthesis.
+    # Carry Phase 1 scan findings + Phase 2 synthesis context + critic feedback.
+    re_run_output_format_steps_1_to_6(feedback=architecture-critic-{round}.md)
+    round += 1
+
+if verdict == REVISE and round > max_rounds:
+    inform_user(
+        "Architecture critic reached max_rounds=" + max_rounds + " with REVISE verdict, " +
+        "remaining concerns enumerated below. Architecture is final-as-is. " +
+        "To force more rounds, re-invoke with strict: or max_rounds: 4."
+    )
+```
+
+**Step P4: Convergence outcome.**
+
+- **PASS → done.** No CRITICAL or MAJOR issues — proceed to `## Save session state`.
+- **Max rounds reached.** Loop exited with REVISE verdict — max-rounds-reached message emitted above; proceed to `## Save session state`.
+- **Loop detected (strict mode only).** User chose "accept" at AskUserQuestion — architecture.md is final-as-is; proceed to `## Save session state`.
+
 ## Save session state
 
 Before finishing, write or update `.workflow_artifacts/memory/sessions/<date>-<task-name>.md` with:

@@ -94,8 +94,9 @@ After the phase, verify the cost ledger has a new entry for the `discover` phase
 
 - **If Small:** tell the user "Small task — skipping /architect, proceeding directly to planning."
 - **If running:** spawn `/architect` as a subagent session, passing the task description and paths to discovery output files (`repos-inventory.md`, `architecture-overview.md`, `dependencies-map.md`).
+  - **Note:** `/architect` now includes a Phase 4 critic loop (max 2 rounds default, 4 in strict mode); expect 1-2 additional `critic` phase rows in the cost ledger per round. If Phase 4 triggers the cost-guard confirmation (pre-round-2), the architect subagent will pause for user input — watch for the prompt `[critic round 2 starting — ~$10-30 estimated based on body size]` in the subagent output.
 
-After the phase, verify the cost ledger has a new entry for the `architect` phase. If not, append a best-effort entry with `unknown-architect-<timestamp>`.
+After the phase, verify the cost ledger has a new entry for the `architect` phase. If not, append a best-effort entry with `unknown-architect-<timestamp>`. Also check for `critic` phase rows from Phase 4 (1-2 expected; accept their absence if Phase 4 was skipped via `max_rounds: 0`).
 
 After architect completes, spawn `/gate` as a subagent session (architecture gate — subagent dispatch required for audit-log persistence).
 
@@ -108,6 +109,7 @@ Summary:
 - <key architectural decisions>
 - <stages identified>
 - <integration points>
+- Critic verdict (Phase 4): PASS / REVISE / skipped
 
 Gate: PASSED / FAILED
 
