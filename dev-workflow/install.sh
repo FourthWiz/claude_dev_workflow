@@ -109,7 +109,7 @@ cp "$RUBRIC_SRC" "$RUBRIC_DST"
 success "Copied terse-rubric.md to ~/.claude/memory/"
 
 # v3 reference files (NEW — mirror the rubric pattern exactly)
-for ref_file in format-kit.md glossary.md format-kit.sections.json; do
+for ref_file in format-kit.md glossary.md format-kit.sections.json summary-prompt.md; do
   REF_SRC="$SCRIPT_DIR/memory/$ref_file"
   REF_DST="$USER_MEMORY_DIR/$ref_file"
   if [ ! -f "$REF_SRC" ]; then
@@ -122,7 +122,7 @@ done
 
 # v3 scripts (NEW — separate destination directory ~/.claude/scripts/)
 mkdir -p "$USER_SCRIPTS_DIR"
-for script_file in summarize_for_human.py validate_artifact.py path_resolve.py; do
+for script_file in validate_artifact.py path_resolve.py; do
   SCRIPT_SRC="$SCRIPT_DIR/scripts/$script_file"
   SCRIPT_DST="$USER_SCRIPTS_DIR/$script_file"
   if [ ! -f "$SCRIPT_SRC" ]; then
@@ -134,22 +134,22 @@ for script_file in summarize_for_human.py validate_artifact.py path_resolve.py; 
   success "Copied $script_file to ~/.claude/scripts/"
 done
 
-# with_env.sh wrapper (Stage 4 — non-interactive shell env loader)
-WITH_ENV_SRC="$SCRIPT_DIR/scripts/with_env.sh"
-WITH_ENV_DST="$USER_SCRIPTS_DIR/with_env.sh"
-if [ ! -f "$WITH_ENV_SRC" ]; then
-  error "Expected with_env.sh at $WITH_ENV_SRC but not found — aborting"
-  exit 1
-fi
-cp "$WITH_ENV_SRC" "$WITH_ENV_DST"
-chmod +x "$WITH_ENV_DST"
-success "Copied with_env.sh to ~/.claude/scripts/"
+# Stage 5 cleanup: remove already-deployed obsolete scripts from prior installs.
+# cp deploys but does not delete; explicit rm closes the gap.
+for obsolete in summarize_for_human.py with_env.sh; do
+  if [ -f "$USER_SCRIPTS_DIR/$obsolete" ]; then
+    rm -f "$USER_SCRIPTS_DIR/$obsolete"
+    success "Removed obsolete $obsolete from $USER_SCRIPTS_DIR/ (Stage 5 cleanup)"
+  fi
+done
+# Optional: remove the corresponding deployed test harness if it exists.
+for obsolete_test in test_summarize_for_human.py test_with_env_sh.py; do
+  if [ -f "$USER_SCRIPTS_DIR/tests/$obsolete_test" ]; then
+    rm -f "$USER_SCRIPTS_DIR/tests/$obsolete_test"
+    success "Removed obsolete $obsolete_test (Stage 5 cleanup)"
+  fi
+done
 
-# Optional dep hint (architecture R-12 mitigation): print setup-friction reduction hints
-if ! python3 -c 'import anthropic' 2>/dev/null; then
-  warn "Python package 'anthropic' is not installed — summarize_for_human.py will fail at runtime."
-  warn "  Install with: pip install anthropic"
-fi
 if ! python3 -c 'import yaml' 2>/dev/null; then
   warn "Python package 'pyyaml' is not installed — validate_artifact.py V-01 frontmatter check will fail at runtime."
   warn "  Install with: pip install pyyaml"
@@ -197,8 +197,8 @@ echo ""
 echo -e "  ${GREEN}$SKILL_COUNT skills${NC} installed in ~/.claude/skills/"
 echo -e "  ${GREEN}Workflow rules${NC} written to ~/.claude/CLAUDE.md"
 echo -e "  ${GREEN}Terse rubric${NC} copied to ~/.claude/memory/terse-rubric.md"
-echo -e "  ${GREEN}v3 reference files${NC} copied to ~/.claude/memory/ (format-kit.md, glossary.md, format-kit.sections.json)"
-echo -e "  ${GREEN}v3 scripts${NC} copied to ~/.claude/scripts/ (validate_artifact.py, summarize_for_human.py, path_resolve.py, with_env.sh)"
+echo -e "  ${GREEN}v3 reference files${NC} copied to ~/.claude/memory/ (format-kit.md, glossary.md, format-kit.sections.json, summary-prompt.md)"
+echo -e "  ${GREEN}v3 scripts${NC} copied to ~/.claude/scripts/ (validate_artifact.py, path_resolve.py)"
 echo ""
 echo -e "  ${BLUE}Tip:${NC} re-run bash install.sh to refresh skills, CLAUDE.md, and the rubric together."
 echo ""
