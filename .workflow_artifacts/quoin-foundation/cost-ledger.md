@@ -62,3 +62,27 @@ $(uuidgen) | 2026-04-27 | plan | claude-opus-4-7 | task | plan round-1 stage-2 o
 - Session 5b369f87-92fb-4046-b7a5-08750a880a59: $9.57 (8.2M tokens) — thorough_plan + plan ×2 + critic ×3 + revise ×2 + gate (model breakdown unavailable: entry-level costUSD cached, totalCost used)
 - Session 487990e1-cb7a-4646-b34a-bad0a7cf9d47: $4.19 (1.4M tokens) — implement + gate + review + end-of-task (model breakdown unavailable: entry-level costUSD cached, totalCost used)
 - **Stage-2 total: $13.76 (9.6M tokens)**
+
+502995d0-feb9-4e5f-a2dd-095abc84570a | 2026-04-27 | thorough-plan | claude-opus-4-7 | task | thorough_plan stage 6 of quoin-foundation; orchestrator session (rebrand + QUICKSTART + README)
+502995d0-feb9-4e5f-a2dd-095abc84570a | 2026-04-27 | critic | claude-opus-4-7 | task | critic round-1 stage-6 quoin-foundation; rebrand + QUICKSTART + README plan critique
+502995d0-feb9-4e5f-a2dd-095abc84570a | 2026-04-27 | revise | claude-opus-4-7 | task | revise round-2 stage-6 quoin-foundation; addressed 2 CRIT + 4 MAJ + 6 MIN from critic-response-1 (resumed after stream timeout — body.tmp retained, Steps 2-6 completed inline)
+502995d0-feb9-4e5f-a2dd-095abc84570a | 2026-04-27 | critic | claude-opus-4-7 | task | critic round-2 stage-6 quoin-foundation; verified all 12 round-1 issues resolved (CRIT-1, CRIT-2, MAJ-1..4, MIN-1..6); verdict PASS
+97e40fc8-4e96-4ddf-8174-10ea0a63c044 | 2026-04-27 | implement | claude-opus-4-7 | task | implement stage-6 quoin-foundation; T-01..T-12 (rebrand rename + mass-sub + README + CHANGELOG + tests)
+502995d0-feb9-4e5f-a2dd-095abc84570a | 2026-04-27 | gate | claude-sonnet-4-6 | task | gate Checkpoint B thorough-plan → implement stage-6; smoke gate; 8/8 PASS; verdict PASS
+97e40fc8-4e96-4ddf-8174-10ea0a63c044 | 2026-04-28 | gate | claude-opus-4-7 | task | gate Checkpoint C implement → review stage-6 quoin-foundation; Full gate level (Large profile); 6/6 PASS + 2 pre-existing test warns; verdict PASS
+97e40fc8-4e96-4ddf-8174-10ea0a63c044 | 2026-04-28 | review | claude-opus-4-7 | task | review-1 stage-6 quoin-foundation; verdict APPROVED; 0 CRIT / 0 MAJ / 6 MIN cosmetic; recommended pre-merge cleanup of stale dev-workflow/ and pictures_for_git/ directories
+97e40fc8-4e96-4ddf-8174-10ea0a63c044 | 2026-04-28 | end-of-task | claude-sonnet-4-6 | task | end-of-task stage-6 quoin-foundation (FINAL); archive entire quoin-foundation to finalized/; branch push
+
+## Stage-6 totals (per `/end_of_task` aggregation, source: cost_from_jsonl.py)
+- Session 502995d0-feb9-4e5f-a2dd-095abc84570a: $25.88 (24.0M tokens) — thorough_plan + plan + critic ×2 + revise ×2 + gate
+- Session 97e40fc8-4e96-4ddf-8174-10ea0a63c044: $38.46 (57.1M tokens) — implement + gate ×2 + review + end-of-task
+- **Stage-6 total: $64.34 (81.1M tokens)**
+
+## quoin-foundation GRAND TOTAL (all stages)
+- Stage-1 total: $85.52 (83.1M tokens) — architect, plan ×2, critic ×4, revise ×3, gate ×4, implement, review, end-of-task
+- Stage-2 total: $13.76 (9.6M tokens) — thorough_plan, plan ×2, critic ×3, revise ×2, gate ×2, implement, review, end-of-task
+- Stage-3 total: included in session 7dbde9b9 (see rows above; no separate totals recorded)
+- Stage-4 total: not recorded (no cost ledger rows for stage-4)
+- Stage-5 total: $33.37 (44.7M tokens) — implement, review, end-of-task
+- Stage-6 total: $64.34 (81.1M tokens) — thorough_plan, plan, critic ×2, revise ×2, gate ×3, implement, review, end-of-task
+- **Feature grand total (stages with recorded data): ~$197.00+**

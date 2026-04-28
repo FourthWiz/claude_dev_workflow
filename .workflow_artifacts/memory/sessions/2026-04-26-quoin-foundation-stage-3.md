@@ -137,10 +137,65 @@ None new. Q-01/Q-02 remain in Notes; Q-03 closed via D-08 (round-3 min-A).
   - d: `grep -rn 'path_resolve' dev-workflow/skills/` → 23 matches across 12 SKILL.md files — ≥12 threshold MET — PASS
   - e: `grep -n 'path_resolve' dev-workflow/CLAUDE.md` → 2 matches (line 52: multi-stage section; line 391: Tier 1 source-files block) — ≥1 threshold MET — PASS
 
-## Current stage (post-T-09)
-T-01 through T-09 complete. Awaiting user green-light for T-10 (live-LLM smoke).
+## Current stage (post-T-10)
+T-01 through T-10 complete. Implement phase done. Awaiting user `/gate` Checkpoint C (implement → review).
+
+## Status: completed (implement phase)
+All 10 tasks complete. Ready for `/gate` Checkpoint C → `/review`.
+
+## T-10 result
+- Live-LLM smoke PASS (2026-04-26, fresh Opus session)
+- Verification recorded: dev-workflow/scripts/verify_path_resolve_smoke.md
+- Load-bearing assertion (path string `_smoke-stage-resolve/stage-1` in orchestrator output): HOLDS
+- Abort criteria A/B/C: none triggered
+- Throwaway fixture deleted post-test
+- T-10 marked ✅ in current-plan.md
 
 ## Cost (implement session — T-05 through T-09)
-- Session UUID: (new session — continuing from context-window compaction; UUID TBD per cost-ledger)
+- Session UUID: 7dbde9b9-670a-484b-8740-8c401002d4d8
 - Phase: implement
-- Recorded in cost ledger: pending (this session to be appended)
+- Recorded in cost ledger: yes
+
+## Cost (T-10 finalization session)
+- Session UUID: 7dbde9b9-670a-484b-8740-8c401002d4d8
+- Phase: implement
+- Recorded in cost ledger: yes
+
+## Decisions made (gate Checkpoint C — implement → review)
+- Full gate (Large profile): 7/9 PASS, 2 non-blocking WARN
+- All 10 planned tasks (T-01..T-10) implemented and committed (057e23f → 256acd8)
+- Full test suite 32/32 PASS (22 unit + 10 e2e)
+- No debug code; no secrets; no unrelated file changes; branch up to date with main
+- WARNs: uncommitted .workflow_artifacts/memory/sessions/...md (this file); next-steps.md untracked (pre-existing)
+- User approved → /review
+
+## Decisions made (review round 1)
+- Verdict: APPROVED (2 MINOR + 1 NIT advisory; no blockers)
+- Plan-compliance verification: full match against round-5 plan; all acceptance criteria verified
+- Resolver-coverage cross-check produced empty output (all 12 D-09a∪D-09b files contain path_resolve.py)
+- T-10 live-LLM smoke confirmed orchestrator actually invokes the resolver
+- MIN-1: D-09a Procedures expected-output text is pre-T-05 (says 9); post-T-05 returns 0 (because hardcodes were replaced) — non-blocking; suggest stage-4 plan or doc-fix Edit clarifies
+- MIN-2: CLAUDE.md tree uses TASK-NAME (uppercase) not <task-name>; cleaner than predicted, deviates from plan text — non-blocking
+- NIT: D-09b allow-list is hand-maintained — Form-D shape risk persists; already documented in plan's round-5 carry-forward MIN
+- review-1.md written via Class B mechanism: validate_artifact.py PASS after V-05 fix (replaced bare D-04/D-03 cross-artifact refs with plain English per format-kit V-05 rule); atomic rename to .workflow_artifacts/quoin-foundation/stage-3/review-1.md
+
+## Status (post-review)
+completed (review round 1 APPROVED). Awaiting user `/gate` Checkpoint D → `/end_of_task`.
+
+## Decisions made (gate Checkpoint D — review → end_of_task)
+- Full gate: 7/7 PASS, 2 non-blocking WARN (uncommitted session-state, untracked next-steps.md)
+- Audit log: gate-review-2026-04-26.md; validator PASS; cost-ledger appended
+- User approved → /end_of_task
+
+## Status: completed
+All 10 tasks complete. All gates passed. Review APPROVED. Stage-3 finalized.
+
+## Cost (review round 1)
+- Session UUID: 7dbde9b9-670a-484b-8740-8c401002d4d8
+- Phase: review
+- Recorded in cost ledger: yes
+
+## Cost (gate Checkpoint D + end_of_task)
+- Session UUID: 7dbde9b9-670a-484b-8740-8c401002d4d8
+- Phase: gate / end-of-task
+- Recorded in cost ledger: yes
