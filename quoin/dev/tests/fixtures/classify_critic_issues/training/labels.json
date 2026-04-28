@@ -1,0 +1,79 @@
+{
+  "stage-1-critic-response-1.md": {
+    "C1": "structural",
+    "C2": "structural",
+    "C3": "structural",
+    "M1": "mechanical",
+    "M2": "structural",
+    "M3": "structural",
+    "M4": "mechanical",
+    "M5": "structural",
+    "M6": "structural",
+    "M7": "structural"
+  },
+  "stage-1-critic-response-2.md": {
+    "MAJ-1": "structural",
+    "MAJ-2": "structural"
+  },
+  "stage-1-critic-response-3.md": {},
+  "stage-2-critic-response-1.md": {
+    "CRIT-1": "structural",
+    "CRIT-2": "structural",
+    "MAJ-1": "structural",
+    "MAJ-2": "structural",
+    "MAJ-3": "structural"
+  },
+  "stage-2-critic-response-2.md": {
+    "MAJ-1-r2": "structural"
+  },
+  "stage-2-critic-response-3.md": {},
+  "stage-3-critic-response-1.md": {
+    "C1": "structural",
+    "C2": "structural",
+    "C3": "mechanical",
+    "M1": "structural",
+    "M2": "structural",
+    "M3": "mechanical",
+    "M4": "structural",
+    "M5": "mechanical",
+    "M6": "structural"
+  },
+  "stage-3-critic-response-2.md": {
+    "C-A": "mechanical",
+    "MAJ-A": "mechanical",
+    "MAJ-B": "structural"
+  },
+  "stage-3-critic-response-3.md": {
+    "MAJ-1": "mechanical"
+  },
+  "stage-3-critic-response-4.md": {
+    "CRIT-1": "structural"
+  },
+  "stage-3-critic-response-5.md": {},
+  "stage-4-critic-response-1.md": {
+    "CRIT-1": "structural",
+    "CRIT-2": "mechanical",
+    "CRIT-3": "structural",
+    "MAJ-1": "structural",
+    "MAJ-2": "mechanical",
+    "MAJ-3": "structural",
+    "MAJ-4": "mechanical",
+    "MAJ-5": "structural"
+  },
+  "stage-4-critic-response-2.md": {
+    "CRIT-1": "structural",
+    "MAJ-1": "mechanical"
+  },
+  "stage-4-critic-response-3.md": {},
+  "stage-5-critic-response-1.md": {
+    "CRIT-1": "mechanical",
+    "MAJ-1": "structural",
+    "MAJ-2": "structural",
+    "MAJ-3": "structural",
+    "MAJ-4": "structural"
+  },
+  "stage-5-critic-response-2.md": {
+    "MAJ": "structural"
+  },
+  "stage-5-critic-response-3.md": {}
+}
