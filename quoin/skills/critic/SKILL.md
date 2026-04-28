@@ -165,6 +165,8 @@ Body content example (Step 1 output):
 | De-risking | good/fair/poor | <brief> |
 ```
 
+**Per-issue `Class:` line is REQUIRED** for CRIT and MAJ issues. Omitting it causes downstream classifier errors. Use `structural` for design, architecture, or correctness gaps; use `mechanical` for format, naming, missing-section, or prose problems. The valid values are: `enumeration`, `regex-breadth`, `audit-method`, `integration`, `risk-coverage`, `testability`, `implementability`, `structural-fallback`, `other`, `unknown`.
+
 **Step 2 [Class A]: SKIP** — no `## For human` block on Class A. Move directly to Step 3.
 
 **Step 3 [Class A]: Compose final file.** Read body content from `{path}.body.tmp`; compose final file as:
@@ -187,6 +189,7 @@ Write to `{path}.tmp` using the Write tool. (No `## For human` heading; no Haiku
 
 - **PASS** — no CRITICAL or MAJOR issues. Minor issues may remain.
 - **REVISE** — has CRITICAL or MAJOR issues that must be addressed.
+- **BAIL-TO-IMPLEMENT** — all remaining issues are `mechanical` and the plan's core structure is sound. Signal that revision would add no value; the implementer can fix these mechanically. Use this when: ≥2 rounds have run, no structural issues remain, only mechanical/format issues remain.
 
 ## Save session state
 

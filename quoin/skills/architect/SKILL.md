@@ -341,7 +341,6 @@ while round <= max_rounds:
 
     # Classify issues — always run (informs same-class detection):
     run: python3 ~/.claude/scripts/classify_critic_issues.py \
-         --enable-bailout=false \
          --critic-response .workflow_artifacts/<task-name>/architecture-critic-{round}.md
     # Capture: structural_count, dominant_surface_family for this round.
 

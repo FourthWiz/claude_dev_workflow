@@ -200,7 +200,6 @@ After reading each critic response, run:
 
 ```
 python3 ~/.claude/scripts/classify_critic_issues.py \
-  --enable-bailout=false \
   --critic-response <task_dir>/critic-response-<N>.md
 ```
 
@@ -258,5 +257,5 @@ After the gate, inform the user:
 - **You are the orchestrator, not the planner.** Don't produce plan content yourself — invoke `/plan`, `/critic`, `/revise` (or `/revise-fast`).
 - **Critic MUST be a fresh session.** This is non-negotiable. Same-agent critique is biased and weak.
 - **Keep the user informed.** Brief status updates between rounds. Don't go silent for 10 minutes.
-- **Detect loops early.** After each critic round, run `classify_critic_issues.py --enable-bailout=false` and compare the dominant `surface_family` of structural issues against the previous round. If the same class recurs, escalate to the user — ask whether to continue revising, add a canary task, or accept the plan as-is.
+- **Detect loops early.** After each critic round, run `classify_critic_issues.py` (without `--enable-bailout`) and compare the dominant `surface_family` of structural issues against the previous round. If the same class recurs, escalate to the user — ask whether to continue revising, add a canary task, or accept the plan as-is.
 - **Pass context explicitly.** Each agent starts with limited knowledge. Give them the file paths and repo locations they need.
