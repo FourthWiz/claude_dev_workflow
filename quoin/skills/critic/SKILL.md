@@ -137,12 +137,14 @@ Body content example (Step 1 output):
   - Why it matters: <what breaks or goes wrong>
   - Where: <specific location in the plan or codebase>
   - Suggestion: <direction for fixing>
+  - Class: <one of: enumeration|regex-breadth|audit-method|integration|risk-coverage|testability|implementability|structural-fallback|other|unknown>
 
 ### Major (significant gap, should address)
 - **[MAJ-1] <title>**
   - What: <description>
   - Why it matters: <impact>
   - Suggestion: <how to address>
+  - Class: <one of: enumeration|regex-breadth|audit-method|integration|risk-coverage|testability|implementability|structural-fallback|other|unknown>
 
 ### Minor (improvement, use judgment)
 - **[MIN-1] <title>**

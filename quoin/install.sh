@@ -132,7 +132,7 @@ done
 
 # v3 scripts (NEW — separate destination directory ~/.claude/scripts/)
 mkdir -p "$USER_SCRIPTS_DIR"
-for script_file in validate_artifact.py path_resolve.py cost_from_jsonl.py; do
+for script_file in validate_artifact.py path_resolve.py cost_from_jsonl.py classify_critic_issues.py; do
   SCRIPT_SRC="$SCRIPT_DIR/scripts/$script_file"
   SCRIPT_DST="$USER_SCRIPTS_DIR/$script_file"
   if [ ! -f "$SCRIPT_SRC" ]; then
@@ -220,7 +220,7 @@ echo -e "  ${GREEN}$SKILL_COUNT skills${NC} installed in ~/.claude/skills/"
 echo -e "  ${GREEN}Workflow rules${NC} written to ~/.claude/CLAUDE.md"
 echo -e "  ${GREEN}Terse rubric${NC} copied to ~/.claude/memory/terse-rubric.md"
 echo -e "  ${GREEN}v3 reference files${NC} copied to ~/.claude/memory/ (format-kit.md, glossary.md, format-kit.sections.json, summary-prompt.md)"
-echo -e "  ${GREEN}v3 scripts${NC} copied to ~/.claude/scripts/ (validate_artifact.py, path_resolve.py, cost_from_jsonl.py)"
+echo -e "  ${GREEN}v3 scripts${NC} copied to ~/.claude/scripts/ (validate_artifact.py, path_resolve.py, cost_from_jsonl.py, classify_critic_issues.py)"
 echo ""
 echo -e "  ${BLUE}Tip:${NC} re-run bash install.sh to refresh skills, CLAUDE.md, and the rubric together."
 echo -e "  ${BLUE}Dev tip:${NC} run bash install.sh --dev to also install pyyaml + pytest for running quoin/dev/tests/."

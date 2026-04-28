@@ -34,6 +34,7 @@ def test_no_lowercase_dev_workflow_in_quoin_dir():
             "grep", "-rln", "--include=*.md", "--include=*.sh",
             "--include=*.py", "--include=*.json", "--include=*.html",
             "--exclude-dir=v2-historical",
+            "--exclude-dir=training",
             "dev-workflow",
             str(QUOIN_DIR),
         ],

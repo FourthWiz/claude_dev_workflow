@@ -98,7 +98,7 @@
         "## What's good",
         "## Scorecard"
       ],
-      "notes": "format-kit.md §2 critic-response-N.md entry; Class A — no For human block required; ## Verdict: PASS and ## Verdict: REVISE allowed (heading-line-form per SKILL.md template)"
+      "notes": "format-kit.md §2 critic-response-N.md entry; Class A — no For human block required; ## Verdict: PASS and ## Verdict: REVISE allowed (heading-line-form per SKILL.md template); CRITICAL/MAJOR issues should include a '- Class:' sub-bullet (last after Suggestion:) with value from enumeration|regex-breadth|audit-method|integration|risk-coverage|testability|implementability|structural-fallback|other|unknown"
     },
     "session": {
       "class": "A",

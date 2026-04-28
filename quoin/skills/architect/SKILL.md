@@ -339,14 +339,20 @@ while round <= max_rounds:
     verdict = parse_verdict(architecture-critic-{round}.md)
     if verdict == PASS: break
 
+    # Classify issues — always run (informs same-class detection):
+    run: python3 ~/.claude/scripts/classify_critic_issues.py \
+         --enable-bailout=false \
+         --critic-response .workflow_artifacts/<task-name>/architecture-critic-{round}.md
+    # Capture: structural_count, dominant_surface_family for this round.
+
     # Loop detection — STRICT MODE ONLY (D-09):
     # Normal mode (max_rounds=2) relies on the hard cap; no meaningful loop detection needed.
-    # In strict mode (if round >= 2): compare CRITICAL/MAJOR issue titles across rounds.
+    # In strict mode (if round >= 2): compare dominant surface_family of structural issues.
     if strict_mode and round >= 2:
-        prior_titles = critical_or_major_titles(round - 1)
-        this_titles  = critical_or_major_titles(round)
-        if any(t in prior_titles for t in this_titles):
-            inform_user("Same issue title across rounds — escalating.")
+        prior_family = dominant_structural_surface_family(round - 1)
+        this_family  = dominant_structural_surface_family(round)
+        if prior_family and this_family and prior_family == this_family:
+            inform_user("Same structural surface-family class '" + this_family + "' recurring across rounds — escalating.")
             decision = ask_user("Accept architecture as-is, or continue revising?")
             if decision == "accept": break
 

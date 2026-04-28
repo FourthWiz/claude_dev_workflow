@@ -157,7 +157,7 @@ Machine-readable sidecar: `quoin/memory/format-kit.sections.json` (consumed by `
 | `## Target` | OPTIONAL | Caveman prose, 1 line | What artifact was reviewed |
 | `## Verdict` | REQUIRED | XML tag `<verdict>PASS\|REVISE</verdict>` or heading-line verdict | Machine-extractable verdict |
 | `## Summary` | REQUIRED | Caveman prose, 2–3 sentences | Overview of plan quality and main concerns |
-| `## Issues` | REQUIRED | Terse numbered list grouped by severity (Critical, Major, Minor) | Issue title, what, why it matters, suggestion |
+| `## Issues` | REQUIRED | Terse numbered list grouped by severity (Critical, Major, Minor) | Issue title, what, why it matters, suggestion. Each CRITICAL/MAJOR entry should include a `- Class:` sub-bullet (last, after `Suggestion:`) with value from: `enumeration\|regex-breadth\|audit-method\|integration\|risk-coverage\|testability\|implementability\|structural-fallback\|other\|unknown`. |
 | `## What's good` | REQUIRED | Terse numbered list | Aspects the reviser should preserve |
 | `## Scorecard` | REQUIRED | Markdown table | Per-criterion score (good/fair/poor) with brief notes |
 
