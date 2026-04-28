@@ -12,7 +12,7 @@ Verifies that:
   - Multi-match raises ValueError with the expected message
 
 Run from project root:
-  python3 -m pytest quoin/scripts/tests/test_path_resolve_e2e.py -v
+  python3 -m pytest quoin/dev/tests/test_path_resolve_e2e.py -v
 """
 
 import glob

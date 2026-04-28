@@ -2,12 +2,12 @@
 Black-box pytest tests for validate_artifact.py.
 
 Tests call the validator via subprocess against synthetic .md fixtures in
-quoin/scripts/tests/fixtures/. Tests are hermetic: each test passes
+quoin/dev/tests/fixtures/. Tests are hermetic: each test passes
 --sections-json pointing at the test fixture sidecar (content-identical to
 the production sidecar at test creation time).
 
 No imports of validator internals — tests exercise the CLI contract only.
-Run: pytest quoin/scripts/tests/test_validate_artifact.py -v
+Run: pytest quoin/dev/tests/test_validate_artifact.py -v
 """
 
 import os

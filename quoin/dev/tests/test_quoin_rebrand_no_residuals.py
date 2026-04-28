@@ -19,15 +19,15 @@ def test_no_lowercase_dev_workflow_in_quoin_dir():
     Legitimate exceptions (allowlisted):
       - quoin/skills/init_workflow/SKILL.md — legacy-detection block intentionally
         references the old (project)/dev-workflow/QUICKSTART.md path.
-      - quoin/scripts/tests/test_quoin_rebrand_no_residuals.py — this test file
+      - quoin/dev/tests/test_quoin_rebrand_no_residuals.py — this test file
         itself contains the search string.
-      - quoin/scripts/tests/test_init_workflow_legacy_quickstart.py — tests assert
+      - quoin/dev/tests/test_init_workflow_legacy_quickstart.py — tests assert
         the legacy-detection block contains the string.
     """
     allowlist_files = {
         "quoin/skills/init_workflow/SKILL.md",
-        "quoin/scripts/tests/test_quoin_rebrand_no_residuals.py",
-        "quoin/scripts/tests/test_init_workflow_legacy_quickstart.py",
+        "quoin/dev/tests/test_quoin_rebrand_no_residuals.py",
+        "quoin/dev/tests/test_init_workflow_legacy_quickstart.py",
     }
     result = subprocess.run(
         [
