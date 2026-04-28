@@ -12,7 +12,7 @@ Outputs a markdown report with one row per artifact type, a totals row, and a
 No LLM calls. No non-stdlib imports. Deterministic.
 
 Usage:
-    python3 quoin/scripts/measure_v3_savings.py --out /tmp/report.md
+    python3 quoin/dev/measure_v3_savings.py --out /tmp/report.md
 """
 
 import argparse
@@ -60,33 +60,33 @@ INSUFFICIENT_SENTINEL = "INSUFFICIENT_HISTORICAL_DATA"
 FIXTURE_PAIRS = [
     (
         "current-plan",
-        "quoin/scripts/tests/fixtures/v2-historical/current-plan.md",
+        "quoin/dev/tests/fixtures/v2-historical/current-plan.md",
         ".workflow_artifacts/v3-stage-4-smoke/current-plan.md",
     ),
     (
         "architecture",
-        "quoin/scripts/tests/fixtures/v2-historical/architecture.md",
+        "quoin/dev/tests/fixtures/v2-historical/architecture.md",
         ".workflow_artifacts/v3-stage-4-smoke/architecture.md",
     ),
     (
         "critic-response",
-        "quoin/scripts/tests/fixtures/v2-historical/critic-response.md",
+        "quoin/dev/tests/fixtures/v2-historical/critic-response.md",
         ".workflow_artifacts/v3-stage-4-smoke/critic-response-1.md",
     ),
     (
         "review",
-        "quoin/scripts/tests/fixtures/v2-historical/review.md",
+        "quoin/dev/tests/fixtures/v2-historical/review.md",
         ".workflow_artifacts/v3-stage-4-smoke/review-1.md",
     ),
     (
         "gate",
-        "quoin/scripts/tests/fixtures/v2-historical/gate.md",
+        "quoin/dev/tests/fixtures/v2-historical/gate.md",
         ".workflow_artifacts/v3-stage-4-smoke/gate-architect-2026-04-25.md",
     ),
     (
         "session",
-        "quoin/scripts/tests/fixtures/v2-historical/session.md",
-        "quoin/scripts/tests/fixtures/session/2026-04-25-stage4-fixture.md",
+        "quoin/dev/tests/fixtures/v2-historical/session.md",
+        "quoin/dev/tests/fixtures/session/2026-04-25-stage4-fixture.md",
     ),
 ]
 
@@ -145,12 +145,12 @@ def run(project_root: pathlib.Path, out_path: pathlib.Path) -> None:
     lines.append("# v2→v3 Savings Measurement Report")
     lines.append("")
     lines.append(f"Script SHA: run `git log -1 --format=%H -- "
-                 f"quoin/scripts/measure_v3_savings.py` to get it.")
+                 f"quoin/dev/measure_v3_savings.py` to get it.")
     lines.append("")
     lines.append("**Comparison caveat:** v2 baselines are real historical artifacts "
                  "from the cost-reduction project (tasks of greater complexity than "
                  "the v3 Stage 4 smoke). The byte deltas are NOT matched-task. "
-                 "See `quoin/scripts/tests/fixtures/v2-historical/PROVENANCE.md`.")
+                 "See `quoin/dev/tests/fixtures/v2-historical/PROVENANCE.md`.")
     lines.append("")
     lines.append("## Per-artifact results")
     lines.append("")
@@ -228,7 +228,7 @@ def main() -> None:
 
     # Locate project root: walk up from this script's directory
     script_dir = pathlib.Path(__file__).resolve().parent
-    project_root = script_dir.parent.parent  # quoin/scripts/ → project root
+    project_root = script_dir.parent.parent  # quoin/dev/ → project root
     out_path = pathlib.Path(args.out).resolve()
 
     run(project_root, out_path)

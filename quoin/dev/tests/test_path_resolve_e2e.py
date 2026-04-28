@@ -12,7 +12,7 @@ Verifies that:
   - Multi-match raises ValueError with the expected message
 
 Run from project root:
-  python3 -m pytest quoin/scripts/tests/test_path_resolve_e2e.py -v
+  python3 -m pytest quoin/dev/tests/test_path_resolve_e2e.py -v
 """
 
 import glob
@@ -253,7 +253,7 @@ def test_resolver_routes_explicit_stage_canonical():
 INFLIGHT_SNAPSHOT = (
     PROJECT_ROOT
     / "quoin"
-    / "scripts"
+    / "dev"
     / "tests"
     / "fixtures"
     / "path_resolve"

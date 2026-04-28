@@ -32,7 +32,7 @@ print(content.count(target))
 
 ## D. Recursive-self-critique guard: bare form in fixture (expect ≥1)
 
-Fixture: `quoin/scripts/tests/fixtures/architect-phase-4/architecture-fixture.md`
+Fixture: `quoin/dev/tests/fixtures/architect-phase-4/architecture-fixture.md`
 
 ```
 grep -cE 'architect/SKILL\.md|critic/SKILL\.md' <fixture>
@@ -97,9 +97,9 @@ grep -n 'Phase 4 critic loop' quoin/CLAUDE.md
 
 ## Fixture cleanup
 
-Fixture `quoin/scripts/tests/fixtures/architect-phase-4/architecture-fixture.md`
+Fixture `quoin/dev/tests/fixtures/architect-phase-4/architecture-fixture.md`
 **Status:** Retained for reviewer inspection (per T-09 acceptance — cleanup after smoke completes).
-Cleanup: `rm -rf quoin/scripts/tests/fixtures/architect-phase-4/`
+Cleanup: `rm -rf quoin/dev/tests/fixtures/architect-phase-4/`
 
 ## Verdict
 

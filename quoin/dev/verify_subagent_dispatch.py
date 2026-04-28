@@ -3,13 +3,13 @@
 Quoin Stage 1 T-00 / T-09 Phase A — verify_subagent_dispatch.
 
 Pure-stdlib documentation generator. Emits a markdown template at
-`quoin/scripts/verify_subagent_dispatch.md` with three sections:
+`quoin/dev/verify_subagent_dispatch.md` with three sections:
 ## Procedure, ## Observed, ## Result. The user fills in ## Observed and
 ## Result during the HITL pilot (T-00) and re-confirmation (T-09 Phase A).
 
 This script is one-shot diagnostic tooling — it is NOT deployed to
 `~/.claude/scripts/` (per round-3 MIN-1 fix). Run directly from the
-repo via `python3 quoin/scripts/verify_subagent_dispatch.py`.
+repo via `python3 quoin/dev/verify_subagent_dispatch.py`.
 Exit 0 always.
 """
 from __future__ import annotations

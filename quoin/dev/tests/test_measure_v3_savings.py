@@ -8,7 +8,7 @@ import sys
 import tempfile
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
-SCRIPT = PROJECT_ROOT / "quoin" / "scripts" / "measure_v3_savings.py"
+SCRIPT = PROJECT_ROOT / "quoin" / "dev" / "measure_v3_savings.py"
 
 
 def run_script(*extra_args: str, out: str = "") -> subprocess.CompletedProcess:
@@ -95,7 +95,7 @@ def test_missing_fixture_clear_error(tmp_path):
     # nonexistent --out directory to trigger a missing-parent error.
     # Better: test the script's own check by temporarily removing a fixture.
     import shutil
-    v2_arch = PROJECT_ROOT / "quoin/scripts/tests/fixtures/v2-historical/architecture.md"
+    v2_arch = PROJECT_ROOT / "quoin/dev/tests/fixtures/v2-historical/architecture.md"
     v2_tmp = tmp_path / "architecture.md.bak"
     shutil.copy(v2_arch, v2_tmp)
     v2_arch.rename(tmp_path / "architecture.md.gone")

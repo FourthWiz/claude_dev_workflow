@@ -14,12 +14,12 @@ from pathlib import Path
 
 import pytest
 
-# Add parent dir so `from path_resolve import ...` works without packaging
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add scripts dir so `from path_resolve import ...` works without packaging
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts"))
 from path_resolve import task_path, _lookup_stage_by_name
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "path_resolve"
-SCRIPT_PATH = Path(__file__).parent.parent / "path_resolve.py"
+SCRIPT_PATH = Path(__file__).parent.parent.parent / "scripts" / "path_resolve.py"
 
 
 # ---------------------------------------------------------------------------

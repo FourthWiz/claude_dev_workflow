@@ -2,12 +2,12 @@
 Black-box pytest tests for validate_artifact.py.
 
 Tests call the validator via subprocess against synthetic .md fixtures in
-quoin/scripts/tests/fixtures/. Tests are hermetic: each test passes
+quoin/dev/tests/fixtures/. Tests are hermetic: each test passes
 --sections-json pointing at the test fixture sidecar (content-identical to
 the production sidecar at test creation time).
 
 No imports of validator internals — tests exercise the CLI contract only.
-Run: pytest quoin/scripts/tests/test_validate_artifact.py -v
+Run: pytest quoin/dev/tests/test_validate_artifact.py -v
 """
 
 import os
@@ -21,8 +21,10 @@ import pytest
 # Resolve from the location of this test file upward to the project root
 TEST_DIR = os.path.dirname(os.path.abspath(__file__))
 FIXTURES_DIR = os.path.join(TEST_DIR, 'fixtures')
-SCRIPTS_DIR = os.path.dirname(TEST_DIR)
-PROJECT_ROOT = os.path.dirname(os.path.dirname(SCRIPTS_DIR))
+DEV_DIR = os.path.dirname(TEST_DIR)            # quoin/dev/
+QUOIN_DIR = os.path.dirname(DEV_DIR)           # quoin/
+SCRIPTS_DIR = os.path.join(QUOIN_DIR, 'scripts')  # quoin/scripts/
+PROJECT_ROOT = os.path.dirname(QUOIN_DIR)      # project root
 
 VALIDATOR = os.path.join(SCRIPTS_DIR, 'validate_artifact.py')
 TEST_SIDECAR = os.path.join(FIXTURES_DIR, 'format-kit.sections.json')

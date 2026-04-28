@@ -390,9 +390,9 @@ The caveman-token-optimization v2 architecture (see `.workflow_artifacts/caveman
 **Source files:**
 - `MEMORY.md` (tiny — below any compression threshold).
 - `quoin/skills/**/SKILL.md` (skill source, not artifact).
-- `quoin/scripts/tests/fixtures/quoin-stage-1-preamble.md` (§0 preamble template; hand-edited Tier 1; source of truth for the 12 cheap-tier SKILL.md preambles).
-- `quoin/scripts/verify_subagent_dispatch.md` (§0 subagent-dispatch verification template; hand-filled by user during T-00 pilot and T-09 smoke; lives at `quoin/scripts/` only — NOT deployed to `~/.claude/scripts/` per round-3 MIN-1 fix; one-shot diagnostic, not a runtime tool).
-- `quoin/scripts/tests/fixtures/path_resolve/**` (Stage 3 path-resolver test fixture corpus; hand-edited Tier 1; consumed by `test_path_resolve.py`; covers all 7 fixture subdirectories AND the `_inflight-snapshot.txt` file).
+- `quoin/dev/tests/fixtures/quoin-stage-1-preamble.md` (§0 preamble template; hand-edited Tier 1; source of truth for the 12 cheap-tier SKILL.md preambles).
+- `quoin/dev/verify_subagent_dispatch.md` (§0 subagent-dispatch verification template; hand-filled by user during T-00 pilot and T-09 smoke; lives at `quoin/dev/` only — NOT deployed to `~/.claude/scripts/` per round-3 MIN-1 fix; one-shot diagnostic, not a runtime tool).
+- `quoin/dev/tests/fixtures/path_resolve/**` (Stage 3 path-resolver test fixture corpus; hand-edited Tier 1; consumed by `test_path_resolve.py`; covers all 7 fixture subdirectories AND the `_inflight-snapshot.txt` file).
 
 Any other workflow artifact may be subject to terse-style writing (Tier 2 contract files use English + side-file; Tier 3 ephemeral files are terse-only with `/expand` for human reading).
 
@@ -431,4 +431,4 @@ If the harness's subagent-spawn tool is unavailable or returns an error, dispatc
 
 Manual override: prefix any user-typed slash invocation with bare `[no-redispatch]` to skip dispatch entirely. Use this only when intentionally overriding the cost guardrail (e.g., for one-off debugging on a different tier).
 
-Mechanical drift detection lives in `quoin/scripts/tests/test_quoin_stage1_preamble.py` and `quoin/scripts/tests/test_quoin_stage1_recursion_abort.py`; manual production-dispatch verification is captured in `quoin/scripts/verify_subagent_dispatch.md`.
+Mechanical drift detection lives in `quoin/dev/tests/test_quoin_stage1_preamble.py` and `quoin/dev/tests/test_quoin_stage1_recursion_abort.py`; manual production-dispatch verification is captured in `quoin/dev/verify_subagent_dispatch.md`.

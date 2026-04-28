@@ -21,7 +21,7 @@ import pytest
 # Path resolution helpers
 # ---------------------------------------------------------------------------
 REPO_ROOT = pathlib.Path(__file__).parent.parent.parent.parent  # project root
-SCRIPTS_DIR = pathlib.Path(__file__).parent.parent              # quoin/scripts/
+SCRIPTS_DIR = pathlib.Path(__file__).parent.parent.parent / "scripts"  # quoin/scripts/
 FIXTURES_DIR = pathlib.Path(__file__).parent / "fixtures" / "cost_from_jsonl"
 UUID_FIXTURE = FIXTURES_DIR / "uuids.txt"
 SCRIPT = SCRIPTS_DIR / "cost_from_jsonl.py"

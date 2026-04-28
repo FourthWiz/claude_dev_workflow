@@ -30,6 +30,16 @@ header()  { echo -e "\n${BOLD}$1${NC}"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# ── Argument parsing ──
+DEV_MODE=0
+for arg in "$@"; do
+  case "$arg" in
+    --dev) DEV_MODE=1 ;;
+    -h|--help) echo "Usage: bash install.sh [--dev]"; exit 0 ;;
+    *) warn "Unknown arg: $arg (ignored)" ;;
+  esac
+done
+
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════╗${NC}"
 echo -e "${BOLD}║   Quoin Installer              ║${NC}"
@@ -136,7 +146,7 @@ done
 
 # Stage 5 cleanup: remove already-deployed obsolete scripts from prior installs.
 # cp deploys but does not delete; explicit rm closes the gap.
-for obsolete in summarize_for_human.py with_env.sh; do
+for obsolete in summarize_for_human.py with_env.sh audit_corpus_coverage.py; do
   if [ -f "$USER_SCRIPTS_DIR/$obsolete" ]; then
     rm -f "$USER_SCRIPTS_DIR/$obsolete"
     success "Removed obsolete $obsolete from $USER_SCRIPTS_DIR/ (Stage 5 cleanup)"
@@ -153,6 +163,18 @@ done
 if ! python3 -c 'import yaml' 2>/dev/null; then
   warn "Python package 'pyyaml' is not installed — validate_artifact.py V-01 frontmatter check will fail at runtime."
   warn "  Install with: pip install pyyaml"
+fi
+
+# ── Step 2c: Install dev Python dependencies (--dev only) ──
+if [ "$DEV_MODE" -eq 1 ]; then
+  header "Step 2c: Installing dev Python dependencies..."
+  if command -v pip3 >/dev/null; then
+    pip3 install --user --upgrade pyyaml pytest \
+      || warn "pip install failed; install pyyaml + pytest manually for dev tests"
+    success "Dev deps installed (pyyaml, pytest)"
+  else
+    warn "pip3 not found — install pyyaml + pytest manually for dev tests"
+  fi
 fi
 
 # ── Step 3: Write workflow rules to ~/.claude/CLAUDE.md ──
@@ -201,6 +223,7 @@ echo -e "  ${GREEN}v3 reference files${NC} copied to ~/.claude/memory/ (format-k
 echo -e "  ${GREEN}v3 scripts${NC} copied to ~/.claude/scripts/ (validate_artifact.py, path_resolve.py, cost_from_jsonl.py)"
 echo ""
 echo -e "  ${BLUE}Tip:${NC} re-run bash install.sh to refresh skills, CLAUDE.md, and the rubric together."
+echo -e "  ${BLUE}Dev tip:${NC} run bash install.sh --dev to also install pyyaml + pytest for running quoin/dev/tests/."
 echo ""
 echo -e "  ${BOLD}Next: scaffold a project${NC}"
 echo ""
