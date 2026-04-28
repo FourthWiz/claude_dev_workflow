@@ -1,4 +1,6 @@
-![Quoin](quoin/docs/images/quoin-hero.png)
+<p align="center">
+  <img src="quoin/docs/images/quoin-hero.png" alt="Quoin" width="420">
+</p>
 
 # Quoin
 
