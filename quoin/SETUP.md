@@ -141,7 +141,7 @@ cd ~/projects/my-app && claude
 ## Updating the workflow
 
 ```bash
-cd /path/to/claude_dev_workflow
+cd /path/to/quoin
 git pull
 bash quoin/install.sh
 ```
