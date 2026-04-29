@@ -11,8 +11,9 @@ You are a senior code reviewer using the strongest available model. Your job is 
 ## Session bootstrap
 
 This skill should run in a fresh session for unbiased review (similar to /critic — fresh eyes catch more). On start:
-1. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights
-2. Read `<task_dir>/current-plan.md` — this is the spec to review against. Resolve `<task_dir>` via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. Apply the §5.7.1 detection rule below before reading. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
+1. Read `~/.claude/skills/review/preamble.md` if it exists; if missing or empty, proceed normally. Purely additive cache-warming — every other read in this `## Session bootstrap` section, and every write-site format-kit / glossary reference (per §5.3 / §5.4 write-site instructions), stays in force unchanged. The intent is CROSS-SPAWN cache reuse: spawn N+1 of this skill with a byte-identical task fixture hits cache from spawn N's preamble.md tool_result, within the 5-minute prompt-cache TTL. Within a single spawn there is no cache benefit — savings only materialize on subsequent spawns whose prompt prefix is byte-identical through the preamble read. (Stage 2-alt of pipeline-efficiency-improvements.)
+2. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights
+3. Read `<task_dir>/current-plan.md` — this is the spec to review against. Resolve `<task_dir>` via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. Apply the §5.7.1 detection rule below before reading. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
 
 # v3-format detection (architecture.md §5.7.1 — copy verbatim)
 # A file is v3-format iff:
@@ -25,21 +26,21 @@ This skill should run in a fresh session for unbiased review (similar to /critic
 # on LLM-replay non-determinism).
 
 If v3-format: read the body sections per format-kit.md §2 — ## Tasks is the spec to review against; the ## For human block is the user-facing summary (informational, not a review target). If v2-format: read the whole file as the v2 mechanism did.
-3. Read `.workflow_artifacts/<task-name>/architecture.md` if it exists (ALWAYS at task root per D-03 — corollary: architecture-critic-N.md also at task root)
-4. Read prior `<task_dir>/critic-response-*.md` to verify those issues were addressed
-5. **Check the knowledge cache** (if `.workflow_artifacts/cache/_index.md` exists):
+4. Read `.workflow_artifacts/<task-name>/architecture.md` if it exists (ALWAYS at task root per D-03 — corollary: architecture-critic-N.md also at task root)
+5. Read prior `<task_dir>/critic-response-*.md` to verify those issues were addressed
+6. **Check the knowledge cache** (if `.workflow_artifacts/cache/_index.md` exists):
    - Read `.workflow_artifacts/cache/_staleness.md` (if it exists, otherwise fall back to `.workflow_artifacts/memory/repo-heads.md`) — compare each relevant repo's HEAD against cached hash
-   - Run `git diff --name-only <base-branch>...HEAD` to get the review's scope — the exact set of files changed by this implementation. (This is the same set step 6 reads diffs for, computed ahead of time so cache loads are precise.)
+   - Run `git diff --name-only <base-branch>...HEAD` to get the review's scope — the exact set of files changed by this implementation. (This is the same set step 7 reads diffs for, computed ahead of time so cache loads are precise.)
    - Load cache entries in deterministic order for prompt cache efficiency: root `_index.md` → repo `_index.md` → module `_index.md` → file `<stem>.md`. Specifically:
      - For each repo containing at least one changed file: read `cache/<repo>/_index.md` and `cache/<repo>/_deps.md` if not stale
      - For each directory containing at least one changed file: read `cache/<repo>/<dir>/_index.md` (Tier 2 — surrounding module context) if not stale
-     - For each changed file: read `cache/<repo>/<dir>/<file-stem>.md` (Tier 3 — per-file summary) if it exists and the repo is not stale. If the repo IS stale and the file appears in `git diff --name-only <cached-head> <current-head>`, skip its cache entry — the source read in step 6 is authoritative for changed files.
+     - For each changed file: read `cache/<repo>/<dir>/<file-stem>.md` (Tier 3 — per-file summary) if it exists and the repo is not stale. If the repo IS stale and the file appears in `git diff --name-only <cached-head> <current-head>`, skip its cache entry — the source read in step 7 is authoritative for changed files.
    - Cache entries are **context only**. They describe what the module/file normally does. They do NOT replace reading the diff or any full-file read triggered by the Step 1 criteria (lines 34–41).
-   - If no cache exists, skip this step — fall through to step 6 (current behavior preserved).
-6. Read the git diff (`git diff <base-branch>...HEAD`) — every line. Then selectively read full files per Step 1 criteria below. Do NOT read all modified files unconditionally.
-7. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `review`
-8. Read deployed v3 references at session start: `~/.claude/memory/format-kit.md` and `~/.claude/memory/glossary.md`.
-9. Then proceed with review
+   - If no cache exists, skip this step — fall through to step 7 (current behavior preserved).
+7. Read the git diff (`git diff <base-branch>...HEAD`) — every line. Then selectively read full files per Step 1 criteria below. Do NOT read all modified files unconditionally.
+8. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `review`
+9. Read deployed v3 references at session start: `~/.claude/memory/format-kit.md` and `~/.claude/memory/glossary.md`.
+10. Then proceed with review
 
 ## Model requirement
 
