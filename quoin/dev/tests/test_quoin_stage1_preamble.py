@@ -306,6 +306,14 @@ def test_revise_revise_fast_sync_contract():
         return None
 
     allowed_sections = {SO_HEADING, MR_HEADING}
+    # Stage 2-alt (pipeline-efficiency-improvements): the preamble bootstrap step
+    # contains the skill-specific path (~/.claude/skills/<skill>/preamble.md) which
+    # differs between revise and revise-fast. This is an intentional, allowed diff
+    # in ## Session bootstrap — the SYNC contract permits it because the only
+    # difference is the skill name in the preamble path.
+    PREAMBLE_STEP_FRAGMENT = "preamble.md` if it exists; if missing or empty"
+    SESSION_BOOTSTRAP_HEADING = "## Session bootstrap"
+
     sm = difflib.SequenceMatcher(a=a_lines, b=b_lines, autojunk=False)
     unexpected = []
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
@@ -313,12 +321,18 @@ def test_revise_revise_fast_sync_contract():
             continue
         for i in range(i1, i2):
             sec = section_at(a_lines, i)
+            # Allow preamble-path diff in ## Session bootstrap (Stage 2-alt intentional diff)
+            if sec == SESSION_BOOTSTRAP_HEADING and PREAMBLE_STEP_FRAGMENT in a_lines[i]:
+                continue
             if sec not in allowed_sections:
                 unexpected.append(
                     f"  revise/SKILL.md line {i+1} (section={sec!r}): {a_lines[i]!r}"
                 )
         for j in range(j1, j2):
             sec = section_at(b_lines, j)
+            # Allow preamble-path diff in ## Session bootstrap (Stage 2-alt intentional diff)
+            if sec == SESSION_BOOTSTRAP_HEADING and PREAMBLE_STEP_FRAGMENT in b_lines[j]:
+                continue
             if sec not in allowed_sections:
                 unexpected.append(
                     f"  revise-fast/SKILL.md line {j+1} (section={sec!r}): {b_lines[j]!r}"
@@ -326,6 +340,7 @@ def test_revise_revise_fast_sync_contract():
 
     assert not unexpected, (
         "Unexpected diff lines between revise and revise-fast — only the "
-        "`## Model requirement` section AND the `## §0 Model dispatch ...` block "
-        "may differ:\n" + "\n".join(unexpected[:20])
+        "`## Model requirement` section, the `## §0 Model dispatch ...` block, "
+        "and the preamble-path line in `## Session bootstrap` may differ:\n"
+        + "\n".join(unexpected[:20])
     )

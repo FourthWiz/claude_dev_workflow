@@ -81,6 +81,11 @@ fi
 
 success "Prerequisites OK"
 
+# ── Step 2a: Regenerate subagent preambles ──
+header "Step 2a: Regenerating subagent preambles..."
+python3 "$SCRIPT_DIR/scripts/build_preambles.py" || { error "build_preambles.py failed"; exit 1; }
+success "Regenerated 7 subagent preambles in $SCRIPT_DIR/skills/*/preamble.md"
+
 # ── Step 2: Copy skills to ~/.claude/skills/ ──
 header "Step 2: Copying skills to ~/.claude/skills/..."
 
@@ -93,6 +98,7 @@ for skill_dir in "$SCRIPT_DIR/skills"/*/; do
     skill_name=$(basename "$skill_dir")
     mkdir -p "$USER_SKILLS_DIR/$skill_name"
     cp "$skill_dir/SKILL.md" "$USER_SKILLS_DIR/$skill_name/SKILL.md"
+    if [ -f "$skill_dir/preamble.md" ]; then cp "$skill_dir/preamble.md" "$USER_SKILLS_DIR/$skill_name/preamble.md"; fi
     SKILL_COUNT=$((SKILL_COUNT + 1))
   fi
 done
@@ -132,7 +138,7 @@ done
 
 # v3 scripts (NEW — separate destination directory ~/.claude/scripts/)
 mkdir -p "$USER_SCRIPTS_DIR"
-for script_file in validate_artifact.py path_resolve.py cost_from_jsonl.py classify_critic_issues.py; do
+for script_file in validate_artifact.py path_resolve.py cost_from_jsonl.py classify_critic_issues.py build_preambles.py; do
   SCRIPT_SRC="$SCRIPT_DIR/scripts/$script_file"
   SCRIPT_DST="$USER_SCRIPTS_DIR/$script_file"
   if [ ! -f "$SCRIPT_SRC" ]; then
@@ -220,7 +226,7 @@ echo -e "  ${GREEN}$SKILL_COUNT skills${NC} installed in ~/.claude/skills/"
 echo -e "  ${GREEN}Workflow rules${NC} written to ~/.claude/CLAUDE.md"
 echo -e "  ${GREEN}Terse rubric${NC} copied to ~/.claude/memory/terse-rubric.md"
 echo -e "  ${GREEN}v3 reference files${NC} copied to ~/.claude/memory/ (format-kit.md, glossary.md, format-kit.sections.json, summary-prompt.md)"
-echo -e "  ${GREEN}v3 scripts${NC} copied to ~/.claude/scripts/ (validate_artifact.py, path_resolve.py, cost_from_jsonl.py, classify_critic_issues.py)"
+echo -e "  ${GREEN}v3 scripts${NC} copied to ~/.claude/scripts/ (validate_artifact.py, path_resolve.py, cost_from_jsonl.py, classify_critic_issues.py, build_preambles.py)"
 echo ""
 echo -e "  ${BLUE}Tip:${NC} re-run bash install.sh to refresh skills, CLAUDE.md, and the rubric together."
 echo -e "  ${BLUE}Dev tip:${NC} run bash install.sh --dev to also install pyyaml + pytest for running quoin/dev/tests/."

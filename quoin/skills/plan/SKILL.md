@@ -11,12 +11,13 @@ You are a senior technical planner. You produce detailed, implementation-ready p
 ## Session bootstrap
 
 This skill may run in a fresh chat session. On start:
-1. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights — apply relevant lessons
-2. Read `.workflow_artifacts/memory/sessions/` for active session state
-3. Read the task subfolder using `task_path(<task-name>, stage=<N>)` from `~/.claude/scripts/path_resolve.py` (or pass `stage=None` for legacy/default-root tasks); read `architecture.md` from the TASK ROOT, `current-plan.md` from the resolved path. Call pattern: `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate with integer form. architecture.md path: ALWAYS `<task-root>/architecture.md` (never under stage-N/). cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md`.
-4. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `plan`
-5. Read deployed v3 references at session start: `~/.claude/memory/format-kit.md` and `~/.claude/memory/glossary.md`
-6. Then proceed with planning
+1. Read `~/.claude/skills/plan/preamble.md` if it exists; if missing or empty, proceed normally. Purely additive cache-warming — every other read in this `## Session bootstrap` section, and every write-site format-kit / glossary reference (per §5.3 / §5.4 write-site instructions), stays in force unchanged. The intent is CROSS-SPAWN cache reuse: spawn N+1 of this skill with a byte-identical task fixture hits cache from spawn N's preamble.md tool_result, within the 5-minute prompt-cache TTL. Within a single spawn there is no cache benefit — savings only materialize on subsequent spawns whose prompt prefix is byte-identical through the preamble read. (Stage 2-alt of pipeline-efficiency-improvements.)
+2. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights — apply relevant lessons
+3. Read `.workflow_artifacts/memory/sessions/` for active session state
+4. Read the task subfolder using `task_path(<task-name>, stage=<N>)` from `~/.claude/scripts/path_resolve.py` (or pass `stage=None` for legacy/default-root tasks); read `architecture.md` from the TASK ROOT, `current-plan.md` from the resolved path. Call pattern: `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate with integer form. architecture.md path: ALWAYS `<task-root>/architecture.md` (never under stage-N/). cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md`.
+5. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `plan`
+6. Read deployed v3 references at session start: `~/.claude/memory/format-kit.md` and `~/.claude/memory/glossary.md`
+7. Then proceed with planning
 
 ## Model requirement
 
