@@ -90,6 +90,10 @@ def test_fresh_clone_install_e2e():
                 f"v3 script not executable: {script_path}"
             )
 
+        assert (tmp_home / ".claude" / "QUICKSTART.md").exists(), (
+            "install.sh did not deploy QUICKSTART.md to ~/.claude/"
+        )
+
         claude_md = tmp_home / ".claude" / "CLAUDE.md"
         assert claude_md.exists(), "install.sh did not create ~/.claude/CLAUDE.md"
         content = claude_md.read_text()

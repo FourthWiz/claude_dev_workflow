@@ -156,7 +156,7 @@ Create the memory structure under `.workflow_artifacts/` at the project root:
 ```
 <project-root>/
 ├── .workflow_artifacts/
-│   ├── QUICKSTART.md              ← command reference (copied from <your-quoin-clone>/QUICKSTART.md)
+│   ├── QUICKSTART.md              ← command reference (copied from user-level path, deployed by install.sh)
 │   ├── memory/
 │   │   ├── sessions/                  ← per-session state files
 │   │   ├── daily/                     ← daily rollup from /end_of_day
@@ -170,9 +170,10 @@ Create the memory structure under `.workflow_artifacts/` at the project root:
 │   │   └── workflow-suggestions.md   ← Tier 3 insight suggestions
 ```
 
-Note: The Quoin source clone (e.g., `~/code/quoin/`) is a **sibling clone**, NOT a subdirectory
-of your project. Skills live at `~/.claude/skills/` (installed by `install.sh`).
-The interactive guide lives at `<your-quoin-clone>/Workflow-User-Guide.html`.
+Note: Skills live at `~/.claude/skills/` (installed by `install.sh`), and the QUICKSTART command
+reference is deployed by `install.sh` to `~/.claude/QUICKSTART.md`. The interactive HTML guide lives
+in your Quoin source clone at `<your-quoin-clone>/Workflow-User-Guide.html` — the only artifact
+/init_workflow still references from the source clone.
 
 Skills are already at `~/.claude/skills/` (installed by `install.sh`). Do not create a `skills/` directory in the project.
 
@@ -266,23 +267,33 @@ Options:
 
 Safety check: if `(project)/dev-workflow/install.sh` OR `(project)/dev-workflow/SETUP.md` is also present, the directory is likely the cloned source repo — print a warning and default to `[k]`. Do NOT auto-delete.
 
-**Copy QUICKSTART from the Quoin source clone:**
+**Copy QUICKSTART from the deployed location:**
 
-The new Step 7 copies QUICKSTART.md from the Quoin source directory to `.workflow_artifacts/QUICKSTART.md` (the new location). Locate `<quoin-source-dir>` by:
+`install.sh` deploys `quoin/QUICKSTART.md` to `~/.claude/QUICKSTART.md` at install time. Step 7 reads
+from that stable path — no user prompt needed.
 
-(a) **Auto-detect:** check if `$HOME/.claude/skills/init_workflow/SKILL.md` exists. If so, the source clone was likely installed from a directory resolvable via `realpath` of a nearby sibling — suggest the most recently modified clone that contains `quoin/install.sh` as the auto-suggestion.
+- **Source path:** `~/.claude/QUICKSTART.md` (deployed by `install.sh`)
+- **Destination:** `.workflow_artifacts/QUICKSTART.md`
 
-(b) **Ask the user** (preferred fallback):
-```
-Where is your Quoin source clone? (default: ~/code/quoin)
-I'll copy QUICKSTART.md from there to .workflow_artifacts/QUICKSTART.md.
-```
-
-(c) **Last resort:** if the user can't locate the clone, embed the QUICKSTART body inline (generates a static snapshot — may drift from the source over time).
-
-Once `<quoin-source-dir>` is confirmed:
 ```bash
-cp <quoin-source-dir>/QUICKSTART.md .workflow_artifacts/QUICKSTART.md
+if [ -f "$HOME/.claude/QUICKSTART.md" ]; then
+  cp "$HOME/.claude/QUICKSTART.md" .workflow_artifacts/QUICKSTART.md
+else
+  cat > .workflow_artifacts/QUICKSTART.md <<'EOF'
+# Quoin — Quickstart (fallback)
+
+The full QUICKSTART could not be found at ~/.claude/QUICKSTART.md.
+This means install.sh has not been run, or was run from an older version.
+
+To get the full command reference, re-run install.sh from your Quoin source clone:
+  bash <your-quoin-clone>/install.sh
+
+In the meantime:
+  - Type /help inside Claude Code to see available slash commands.
+  - Browse the user skills directory at ~/.claude/skills/ for per-skill SKILL.md files.
+  - Open the interactive HTML guide at <your-quoin-clone>/Workflow-User-Guide.html in your browser.
+EOF
+fi
 ```
 
 The interactive guide lives in the source clone:

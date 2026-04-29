@@ -42,3 +42,5 @@ unknown-2026-04-29T09:43:14Z | 2026-04-29 | critic | claude-opus-4-7 | task | ro
 0e58a4c8-dbf3-4a95-9619-77cc72222211 | 2026-04-29 | gate | claude-sonnet-4-6 | task | Smoke gate: /thorough_plan → /implement for Stage 2-alt (on-disk-read variant); all checks PASS
 
 0e58a4c8-dbf3-4a95-9619-77cc72222211 | 2026-04-29 | implement | claude-sonnet-4-6 | task | Stage 2-alt implement T-01..T-08 (on-disk preamble read transport)
+0e58a4c8-dbf3-4a95-9619-77cc72222211 | 2026-04-29 | review | claude-opus-4-7 | task | Stage 2-alt review on on-disk-read implementation; 1 MAJ (install.sh hard-requires pyyaml) + 8 MIN; verdict CHANGES_REQUESTED
+0e58a4c8-dbf3-4a95-9619-77cc72222211 | 2026-04-29 | review | claude-opus-4-7 | task | Stage 2-alt review round 2 on fix commit 4dc1846; verifying MAJOR-1 + 5 MIN fixes
