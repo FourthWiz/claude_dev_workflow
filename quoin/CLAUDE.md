@@ -378,6 +378,10 @@ The caveman-token-optimization v2 architecture (see `.workflow_artifacts/caveman
 - `quoin/memory/summary-prompt.md` (Tier 1 hand-edited — frozen Haiku prompt template for Class B writer Step 2 summaries; per stage 5 of the Quoin foundation work).
 - `~/.claude/memory/summary-prompt.md` (deployed copy — read by Class B writer skills at runtime; overwritten on re-install from the source above).
 
+NOTE: QUICKSTART.md sits at `quoin/` root and deploys to `~/.claude/QUICKSTART.md` (NOT under `memory/`) — this is intentional; QUICKSTART is a top-level command reference, not a memory artifact. Do NOT "normalize" the paths to `quoin/memory/QUICKSTART.md` or `~/.claude/memory/QUICKSTART.md` — this would break install.sh (T-01) and /init_workflow Step 7 (T-02) simultaneously.
+- `quoin/QUICKSTART.md` (Tier 1 hand-edited — single-page command reference; deployed by install.sh).
+- `~/.claude/QUICKSTART.md` (deployed copy — read by /init_workflow at runtime; overwritten on re-install).
+
 **Contract-approval files (v3 format):**
 - `<task>/architecture.md` — has an English `## For human` summary block at the top (read by humans and `/gate`); body is format-aware structured per `quoin/memory/format-kit.md` (read by skills).
 - `<task>/review-<round>.md` — same v3 format as architecture.md.
