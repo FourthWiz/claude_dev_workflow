@@ -4,6 +4,11 @@ This file accumulates patterns, surprises, and insights from completed tasks. Ev
 
 <!-- Append new entries at the top. Keep entries concise — 2-4 lines each. -->
 
+## 2026-04-30 — pipeline-efficiency-improvements / stage-3 (§0 dispatch vs inline conflict)
+**What happened:** Stage 3 added "run /gate inline" directives to /run and /review SKILL.md. Review surfaced a MAJOR gap: /gate carries a §0 model-dispatch preamble that would self-dispatch to Sonnet when called inline from an Opus parent (/run, /review). The plan never mentioned this interaction; gate/SKILL.md did not say to skip §0 inline. The fix was adding `[no-redispatch]` guidance to gate/SKILL.md for inline sites.
+**Lesson:** Any design that changes a skill's invocation mode (subagent → inline, inline → subagent) must audit §0 model-dispatch interactions explicitly. The §0 preamble is in ALL 12 cheap-tier skills; an inline call from an Opus parent will always trigger re-dispatch unless `[no-redispatch]` is present.
+**Applies to:** /plan, /critic, /architect — add a §0 audit step to any "change invocation mode" task checklist.
+
 ## 2026-04-30 — pipeline-efficiency-improvements / stage-3 (inline-gate flip)
 **What happened:** Stage 3 flipped the post-implement and post-review `/gate` boundaries from subagent dispatch to inline execution. The post-implement boundary covers three sites in `/run/SKILL.md`: the primary path (line ~151) and two recursive recovery paths (lines ~169, ~185). The manual (non-`/run`) post-review path was also missing a `/gate` invocation entirely — added by T-20 in `/review/SKILL.md`'s "After the review" APPROVED branch.
 **Lesson:** When introducing a default-mode change to a skill, always grep ALL callers (not just the obvious one). `/run/SKILL.md` had three post-implement gate sites; two were missed in the architecture phase. And always check both the orchestrated path (`/run`) and the manual path (direct skill invocation) — they can diverge silently if only one is updated.
