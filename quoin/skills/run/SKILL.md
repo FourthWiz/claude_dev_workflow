@@ -148,7 +148,7 @@ Spawn `/implement` as a subagent session, passing path to `<task_dir>/current-pl
 
 After the phase, verify the cost ledger has a new entry for the `implement` phase. If not, append a best-effort entry with `unknown-implement-<timestamp>`.
 
-After implement completes, spawn `/gate` as a subagent session (never inline — the subagent must read gate/SKILL.md for Step 5 audit-log persistence to fire):
+After implement completes, run `/gate` inline (read `/gate/SKILL.md` from the same session and execute the gate process directly — do not spawn a subagent). Step 5 audit-log persistence applies in inline mode per the gate skill's existing rule.
 - Standard level for Small/Medium
 - Full level for Large
 
@@ -166,7 +166,7 @@ Continue to review? (yes / no / show changes)
 ```
 
 If the gate **failed**: present the failures and ask "Fix and retry, or stop?"
-- "fix" → spawn `/implement` again for the failing items, then re-run `/gate`
+- "fix" → spawn `/implement` again for the failing items, then re-run `/gate` inline (post-implement boundary — same inline mechanism as the primary path; audit-log persistence applies per `/gate/SKILL.md`)
 - "stop" → halt, preserve artifacts
 
 If the user says "show changes": run `git diff --stat` and display, then re-ask.
@@ -179,10 +179,10 @@ Read the review output (`review-*.md`) and check the verdict.
 
 After the phase, verify the cost ledger has a new entry for the `review` phase. If not, append a best-effort entry with `unknown-review-<timestamp>`.
 
-**If APPROVED:** spawn `/gate` as a subagent session (Full level, post-review — subagent dispatch required for audit-log persistence). Proceed to Checkpoint D.
+**If APPROVED:** run `/gate` inline (Full level, post-review — read `/gate/SKILL.md` from the same session and execute the gate process directly). Step 5 audit-log persistence applies in inline mode per the gate skill's existing rule. Proceed to Checkpoint D.
 
 **If CHANGES_REQUESTED:** present the issues to the user. Offer:
-1. **"fix"** → spawn `/implement` again with the review issues as the spec. After fix-implement completes, re-run the post-implementation gate (same level as before). Then re-spawn `/review`. Cap at 3 review rounds to prevent infinite cycling.
+1. **"fix"** → spawn `/implement` again with the review issues as the spec. After fix-implement completes, re-run the post-implementation gate inline (same level as before; audit-log persistence per `/gate/SKILL.md`). Then re-spawn `/review`. Cap at 3 review rounds to prevent infinite cycling.
 2. **"accept"** → treat as approved despite requested changes. Log this decision in session state. Proceed to Checkpoint D.
 
 **If BLOCKED:** present the blocking issues. **STOP.** Do not offer to continue. Tell the user: "Review found blocking issues. The workflow cannot continue until these are resolved. Artifacts are preserved at `.workflow_artifacts/<task-name>/`."
@@ -279,6 +279,10 @@ These are rough estimates based on typical usage. Actual costs are computed by `
 - **Gate failure:** present failures, offer to fix (re-run the phase) or stop
 - **Git errors:** report and let the user resolve
 - **Context exhaustion:** save state, instruct user to resume with `/run --resume <task-name>`
+
+## Gate boundaries reference
+
+**Post-architect (line 101):** subagent dispatch (not modified by Stage 3). **Post-implement (line 151 primary, lines 169 + 185 recursive recovery):** all inline — preserve the parent's prompt cache. **Post-review (line 182):** inline. **Post-plan (handled by `/thorough_plan/SKILL.md`):** subagent dispatch. **There is no `/gate` invocation after `/discover`** (per line 87 — discover feeds directly into architect). Audit-log persistence (`gate-{phase}-{date}.md`) is mandatory at every boundary regardless of mode per `/gate/SKILL.md`.
 
 ## Important behaviors
 

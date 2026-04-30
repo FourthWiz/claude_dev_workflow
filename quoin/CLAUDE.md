@@ -134,6 +134,8 @@ Not every task needs every stage. Small tasks typically skip `/architect` entire
 
 **Exception: `/run` orchestrator.** When the user invokes `/run`, they have explicitly requested the full end-to-end pipeline. `/run` may invoke `/implement` and `/end_of_task` on the user's behalf, but still pauses at each gate checkpoint for confirmation before proceeding. The user's `/run` invocation constitutes the conscious decision; the gate confirmations provide the safety checkpoints.
 
+**Gate invocation modes:** Post-implement and post-review gates run **inline** by default (same session, no subagent spawn — preserves the parent session's prompt cache). Post-architect and post-plan gates spawn **subagent** by default (different context shape after those phases). There is no `/gate` after `/discover`. Audit-log persistence (`gate-{phase}-{date}.md`) is mandatory regardless of mode — see `/gate/SKILL.md`.
+
 Session lifecycle:
 - `/start_of_day` — restores context from daily cache and checks git state. Run at the beginning of a work session.
 - `/end_of_day` — saves session state and consolidates unfinished work into a daily cache. Run when wrapping up.

@@ -237,7 +237,14 @@ If automated checks failed:
 
 ### Step 5: Write audit log (after user approves)
 
-If you are reading this skill's instructions inline (orchestrator-invoked, not subagent-dispatched), you are still required to write the audit log before yielding control. The persistence requirement applies regardless of invocation mode.
+**Gate invocation boundaries:**
+- **Post-implement and post-review boundaries:** inline invocation is the **default** (read `/gate/SKILL.md` from the same session and execute the gate process directly — no subagent spawn).
+- **Post-architect and post-plan boundaries:** subagent dispatch is the **default** (the parent has just completed a multi-phase loop and the post-gate checks operate against a different context shape).
+- **There is no `/gate` invocation after `/discover`** — discover feeds directly into architect (per `run/SKILL.md:87`).
+
+Regardless of invocation mode, Step 5 audit-log persistence is **mandatory**: every `/gate` invocation **MUST write** a `gate-{phase}-{date}.md` **audit log** before yielding control. This requirement applies whether invoked inline or as a subagent. **audit log persistence** is non-skippable on approval.
+
+**Inline mode note:** inline mode skips the `~/.claude/skills/gate/preamble.md` cache-warming read at the session bootstrap step — this is by design (the parent session's cache is already warm, so the cross-spawn cache-reuse rationale does not apply).
 
 Once the user explicitly approves the gate (i.e., after the STOP-and-wait in Step 4 returns with approval), persist the gate result to disk as a Class A artifact at `{project-folder}/.workflow_artifacts/{task-name}/gate-{phase}-{date}.md`.
 

@@ -225,8 +225,9 @@ If the verdict is CHANGES_REQUESTED or BLOCKED:
 - Repeat until APPROVED
 
 If the verdict is APPROVED:
-- The code is ready for PR (if not already created)
-- The review document should be referenced in the PR description
+- **Run `/gate` inline** (Full level, post-review — read `/gate/SKILL.md` from the same session and execute the gate process directly; write the audit log per gate Step 5 before yielding control). This is the manual (non-`/run`) post-review boundary; audit-log persistence applies inline per `/gate/SKILL.md`.
+- After gate approval, **STOP and wait** for the user to invoke `/end_of_task`. Do NOT auto-create a PR or auto-invoke `/end_of_task` — those are explicit user actions per CLAUDE.md `## Working Rules`.
+- The review document should be referenced in the eventual PR description.
 
 ## Save session state
 

@@ -48,21 +48,40 @@ def test_gate_step5_inline_invocation_clause():
     )
 
 
-def test_run_dispatches_gate_as_subagent():
-    """run/SKILL.md must instruct subagent dispatch for gate (not inline invocation)."""
+def test_run_gate_boundaries():
+    """run/SKILL.md must correctly distinguish inline vs subagent gate boundaries (Stage 3).
+
+    Post-architect gate: subagent dispatch (context shape diverges after architect phase).
+    Post-implement gates (primary + recursive recovery) and post-review gate: inline.
+    """
     text = RUN_SKILL.read_text()
-    # Must contain explicit subagent-dispatch language near gate calls
-    assert re.search(r"spawn.*`?/gate`?.*subagent|subagent.*`?/gate`?", text), (
-        "run/SKILL.md: no 'spawn /gate as subagent' instruction found"
+
+    # Post-architect gate still spawns as subagent (NOT modified by Stage 3).
+    assert re.search(r"spawn.*`/gate`.*subagent.*architect|architect.*gate.*subagent", text), (
+        "run/SKILL.md: post-architect gate must still spawn as subagent"
     )
-    # Must NOT contain a bare primary 'run /gate' dispatch without subagent context.
-    # Allow "re-run /gate" (retry path) — that's still a subagent re-dispatch.
-    # Flag only lines that say "run `/gate`" as a top-level dispatch instruction.
-    bare_inline = re.findall(
-        r"^(?!.*subagent)(?!.*re-run).*\brun\b.*`/gate`", text, re.MULTILINE
+
+    # Post-implement primary gate must be inline.
+    assert "After implement completes, run `/gate` inline" in text, (
+        "run/SKILL.md: post-implement primary gate must run inline"
     )
-    assert not bare_inline, (
-        f"run/SKILL.md: bare inline 'run /gate' dispatch found (should be subagent): {bare_inline}"
+
+    # Recursive recovery paths must also be inline.
+    assert "then re-run `/gate` inline" in text, (
+        "run/SKILL.md: post-implement recursive recovery path must re-run /gate inline"
+    )
+    assert "re-run the post-implementation gate inline" in text, (
+        "run/SKILL.md: post-implement fix path must re-run gate inline"
+    )
+
+    # Post-review gate must be inline.
+    assert "run `/gate` inline (Full level, post-review" in text, (
+        "run/SKILL.md: post-review gate must run inline"
+    )
+
+    # The old 'never inline — the subagent must read gate/SKILL.md' wording must be gone.
+    assert "never inline — the subagent must read gate/SKILL.md" not in text, (
+        "run/SKILL.md: old 'never inline — the subagent' wording should have been replaced"
     )
 
 

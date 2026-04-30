@@ -303,6 +303,6 @@ This is what `/end_of_day` reads to consolidate the day's work. Without it, this
 ## After implementation
 
 When all requested tasks are complete:
-1. Run `/gate` — this will execute automated checks (tests, lint, typecheck, etc.) and present the summary
+1. Run `/gate` **inline** — read `/gate/SKILL.md` from the same session and execute the gate process directly (do not spawn a subagent). The post-implement boundary keeps the parent's cache hot. Step 5 audit-log persistence applies; write `gate-implement-<date>.md` per `/gate/SKILL.md` before yielding control.
 2. **STOP and wait** — the user must explicitly invoke `/review` to proceed
 3. If the user wants to undo anything, `/rollback` can safely revert specific tasks or the entire phase
