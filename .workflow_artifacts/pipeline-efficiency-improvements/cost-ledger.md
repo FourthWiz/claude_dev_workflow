@@ -44,3 +44,12 @@ unknown-2026-04-29T09:43:14Z | 2026-04-29 | critic | claude-opus-4-7 | task | ro
 0e58a4c8-dbf3-4a95-9619-77cc72222211 | 2026-04-29 | implement | claude-sonnet-4-6 | task | Stage 2-alt implement T-01..T-08 (on-disk preamble read transport)
 0e58a4c8-dbf3-4a95-9619-77cc72222211 | 2026-04-29 | review | claude-opus-4-7 | task | Stage 2-alt review on on-disk-read implementation; 1 MAJ (install.sh hard-requires pyyaml) + 8 MIN; verdict CHANGES_REQUESTED
 0e58a4c8-dbf3-4a95-9619-77cc72222211 | 2026-04-29 | review | claude-opus-4-7 | task | Stage 2-alt review round 2 on fix commit 4dc1846; verifying MAJOR-1 + 5 MIN fixes
+904dd097-c501-4c67-b482-c341789d1186 | 2026-04-29 | thorough-plan | opus | task | stage-3 large profile orchestration (cache preservation)
+904dd097-c501-4c67-b482-c341789d1186 | 2026-04-29 | plan | claude-opus-4-7 | task | stage-3 plan round 1 (Large/strict)
+904dd097-c501-4c67-b482-c341789d1186 | 2026-04-29 | plan | claude-opus-4-7 | task | Stage 3 (S-3 phase-boundary cache preservation) plan round 1 — Large/strict three sub-deliverables (a/b/c)
+904dd097-c501-4c67-b482-c341789d1186 | 2026-04-29 | critic | claude-opus-4-7 | task | Stage 3 critic round 1 — review of S-3 (phase-boundary cache preservation) plan
+904dd097-c501-4c67-b482-c341789d1186 | 2026-04-29 | revise | claude-opus-4-7 | task | Stage 3 revise round 2 (Opus, strict mode) — addressed CRIT-1, CRIT-2, MAJ-1..MAJ-7 + selected MINORs
+904dd097-c501-4c67-b482-c341789d1186 | 2026-04-29 | critic | claude-opus-4-7 | task | Stage 3 critic round 2 — verify revisions of CRIT/MAJ/MIN
+904dd097-c501-4c67-b482-c341789d1186 | 2026-04-30 | gate | claude-sonnet-4-6 | task | Smoke gate: /thorough_plan → /implement for Stage 3 (phase-boundary cache preservation); all checks PASS
+fd1a1487-40fa-4d01-944b-bb8868258753 | 2026-04-30 | implement | claude-opus-4-7 | task | Stage 3 implement sub-deliverable (b) inline gate flip + (a) measurement script + (c) resume cookie
+904dd097-c501-4c67-b482-c341789d1186 | 2026-04-30 | review | claude-opus-4-7 | task | Stage 3 review — verify implementation against converged plan, all 20 plan tasks + tests + decision doc

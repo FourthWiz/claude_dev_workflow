@@ -106,9 +106,18 @@ def test_multi_stage_task_shape():
 def test_multi_stage_row_aggregation():
     """Multi-stage tasks aggregate rows from ALL stage ledgers, not just root."""
     result = _run("multi-stage-shape")
-    # multi-opus-task: root (1 row) + finalized/stage-1 (1 row) + finalized/stage-2 (1 row) = 3 rounds
-    # The task is on the opus track; check it has round_count >= 1 (we have it in n_stages_per_task)
-    assert result["n_opus"] >= 1
+    rounds = result["round_count_per_task"]
+    # multi-opus-task: root (1 row) + finalized/stage-1 (1 row) + finalized/stage-2 (1 row) = 3 rounds.
+    # If aggregation only read the root ledger this would be 1, not 3 — proving the test is meaningful.
+    assert rounds.get("multi-opus-task") == 3, (
+        f"Expected multi-opus-task round_count=3 (root + 2 nested stages), "
+        f"got {rounds.get('multi-opus-task')}. Aggregation likely only reading root ledger."
+    )
+    # multi-fast-task: root (1) + stage-1 (1) + stage-2 (1) = 3 rounds (flat-stage variant B layout).
+    assert rounds.get("multi-fast-task") == 3, (
+        f"Expected multi-fast-task round_count=3 (root + 2 flat stages), "
+        f"got {rounds.get('multi-fast-task')}. Variant B (flat stage-N/) layout not aggregated."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +130,7 @@ def test_output_schema_complete():
     required = {
         "n_opus", "n_fast", "mean_opus_cost", "mean_fast_cost",
         "stderr_opus", "stderr_fast", "mean_opus_rounds", "mean_fast_rounds",
-        "recommendation", "caveats", "n_stages_per_task",
+        "recommendation", "caveats", "n_stages_per_task", "round_count_per_task",
     }
     missing = required - result.keys()
     assert not missing, f"Missing keys in output: {missing}"

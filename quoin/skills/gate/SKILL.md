@@ -244,7 +244,11 @@ If automated checks failed:
 
 Regardless of invocation mode, Step 5 audit-log persistence is **mandatory**: every `/gate` invocation **MUST write** a `gate-{phase}-{date}.md` **audit log** before yielding control. This requirement applies whether invoked inline or as a subagent. **audit log persistence** is non-skippable on approval.
 
-**Inline mode note:** inline mode skips the `~/.claude/skills/gate/preamble.md` cache-warming read at the session bootstrap step — this is by design (the parent session's cache is already warm, so the cross-spawn cache-reuse rationale does not apply).
+**Inline mode note:** when invoked inline (post-implement, post-review), the executing agent skips both:
+- The `~/.claude/skills/gate/preamble.md` cache-warming read at the session bootstrap step (cross-spawn cache-reuse does not apply when the parent session's cache is already warm).
+- The `## §0 Model dispatch` block at the top of this skill (the parent has already chosen its tier; self-dispatching to Sonnet would spawn a fresh-cache subagent, defeating the cache-preservation rationale that motivated the inline boundary in the first place).
+
+The agent reads from `### Step 1: Detect context` onwards. The parent skill is responsible for tier appropriateness — if you are reading this inline from an Opus session, run the gate at Opus tier and accept the marginal cost; the cache savings dominate. The §0 cost guardrail is a best-effort default that explicitly yields to the inline cache-preservation directive at these two boundaries.
 
 Once the user explicitly approves the gate (i.e., after the STOP-and-wait in Step 4 returns with approval), persist the gate result to disk as a Class A artifact at `{project-folder}/.workflow_artifacts/{task-name}/gate-{phase}-{date}.md`.
 

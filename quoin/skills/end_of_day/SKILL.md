@@ -272,7 +272,7 @@ Check `.workflow_artifacts/memory/lessons-learned.md`. Count the number of lesso
   last_skill: end_of_day
   branch: <current git branch>
   dirty_count: <N uncommitted changes>
-  expires: <today ISO date + 24h, e.g. 2026-04-30T23:59:00>
+  expires: <now + 24h ISO datetime, e.g. if now is 2026-04-30T14:00:00Z then expires is 2026-05-01T14:00:00Z>
   ---
   <1-2 line "what's next" hint, free text>
   ```

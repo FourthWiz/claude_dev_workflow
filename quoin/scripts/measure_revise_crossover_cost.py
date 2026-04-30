@@ -146,8 +146,15 @@ def analyse(
 ) -> dict:
     """Run the crossover analysis. Returns the result dict."""
     # 1. Discover finalized task roots
+    # Skip backup dirs (*.bak) and dot-prefixed dirs (.git, .DS_Store, etc.) —
+    # they are not real tasks and their cost ledgers (if any) would pollute the sample.
     task_roots = sorted(
-        [d for d in task_dir.iterdir() if d.is_dir()],
+        [
+            d for d in task_dir.iterdir()
+            if d.is_dir()
+            and not d.name.startswith(".")
+            and not d.name.endswith(".bak")
+        ],
         key=lambda d: (d / "cost-ledger.md").stat().st_mtime
         if (d / "cost-ledger.md").exists()
         else 0,
@@ -226,6 +233,9 @@ def analyse(
         "fast_tasks": [t["name"] for t in fast_tasks],
         "n_stages_per_task": {
             t["name"]: t["n_stages"] for t in (opus_tasks + fast_tasks)
+        },
+        "round_count_per_task": {
+            t["name"]: t["round_count"] for t in (opus_tasks + fast_tasks)
         },
     }
 
