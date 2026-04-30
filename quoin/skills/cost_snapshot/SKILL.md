@@ -53,6 +53,8 @@ Cost tracking note: `/cost_snapshot` is a read-only reporting skill. Append to t
 
 ## Process
 
+Pricing parity: this skill (and `cost_from_jsonl.py` fallback) does NOT deduplicate ledger or JSONL entries by message.id — this is intentional ccusage parity (verified 2026-04-27 against ccusage v18.0.11). See `cost_from_jsonl.py:102` for the same note inline.
+
 ### Step 1: Collect ledger data
 
 Determine the project root (the directory containing `.workflow_artifacts/`). Then:
