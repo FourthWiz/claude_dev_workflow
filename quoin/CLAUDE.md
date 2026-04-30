@@ -274,9 +274,12 @@ The session state file template includes a `## Cost` section:
 - Phase: <phase>
 - Recorded in cost ledger: yes/no
 - end_of_day_due: yes
+- fallback_fires: 0
 ```
 
 The `end_of_day_due` field defaults to `yes` at every session-state write. `/end_of_day` Step 3d flips it to `no` for each session it processes after the daily-cache write succeeds. `/start_of_day` reads this field (in addition to the existing insights-file check) as a second signal for the missing-EOD banner — if any session file written within the last 36 hours has `end_of_day_due: yes`, the banner fires.
+
+The `fallback_fires` field counts Class B writer Step 5 English-fallback invocations and Step 2 Haiku dispatch retries during this session. The active skill increments the field in place (atomic-rename pattern, mirror of end_of_day_due flip) immediately before emitting the `format-kit-skipped` warning. Default value is `0` at every session-state write; never decremented. KNOWN ISSUE: under parallel subagent fallback fires (rare; <1/day in practice given pre-Stage-4 finalized-artifact data), the read-modify-write update can undercount — it never overcounts. For low-frequency telemetry visibility this undercounting is acceptable; if a future post-merge measurement shows >5% undercounting, escalate to a per-skill append-only counter file (per Stage 4 D-03-rev2 option 3 — currently deferred).
 
 This is informational — the cost ledger (`.workflow_artifacts/<task-name>/cost-ledger.md`) is the source of truth for per-session costs.
 
@@ -286,7 +289,11 @@ Every skill that does meaningful work should record its session to the task's co
 
 **Ledger path:** `.workflow_artifacts/<task-name>/cost-ledger.md`. Create with header `# Cost Ledger — <task-name>` if new.
 
-**Row format:** `<session-uuid> | <YYYY-MM-DD> | <phase> | <primary-model> | task | <brief note>`
+**Row format:** `SESSION_UUID | YYYY_MM_DD | PHASE | PRIMARY_MODEL | task | BRIEF_NOTE | FALLBACK_FIRES`
+
+The 7th column (`fallback_fires`) is OPTIONAL. Existing 6-column rows are valid forever; readers MUST tolerate both shapes. When present, the value is a non-negative integer (`0` if no fires occurred during the session). When absent, parsers treat it as `0`. Writers SHOULD emit the 7th column on new rows; readers MUST NOT fail on a missing 7th column. Append-only ledger semantics are unchanged.
+
+**Writer guidance:** Skills emitting a new ledger row SHOULD include the 7th column when they have a session-state `fallback_fires` value available (typically at session-end emits, not session-open). Skills MAY emit a 6-column row when no session-state exists (e.g., `/discover`, `/triage`) or when `fallback_fires` is 0; readers tolerate both shapes per the row-format spec. The emitter migration is incremental — Stage 4 documents the schema; per-skill row-emit edits ship in Stage 5 alongside the `$(uuidgen)` replacement.
 
 **UUID acquisition:** Most recently modified `<uuid>.jsonl` under `~/.claude/projects/<project-hash>/` (project-hash = project path with `/` replaced by `-`). Fall back to `unknown-<ISO-timestamp>` if none found.
 
@@ -382,6 +389,8 @@ The caveman-token-optimization v2 architecture (see `.workflow_artifacts/caveman
 - `~/.claude/memory/format-kit.sections.json` (deployed copy — overwritten on re-install).
 - `quoin/memory/summary-prompt.md` (Tier 1 hand-edited — frozen Haiku prompt template for Class B writer Step 2 summaries; per stage 5 of the Quoin foundation work).
 - `~/.claude/memory/summary-prompt.md` (deployed copy — read by Class B writer skills at runtime; overwritten on re-install from the source above).
+- `quoin/memory/format-kit-pitfalls.md` (Tier 1 hand-edited — pre-write reminder block read at Class B writers' Step 1; per Stage 4 of pipeline-efficiency-improvements).
+- `~/.claude/memory/format-kit-pitfalls.md` (deployed copy — read by Class B writer skills at runtime; overwritten on re-install from the source above).
 
 NOTE: QUICKSTART.md sits at `quoin/` root and deploys to `~/.claude/QUICKSTART.md` (NOT under `memory/`) — this is intentional; QUICKSTART is a top-level command reference, not a memory artifact. Do NOT "normalize" the paths to `quoin/memory/QUICKSTART.md` or `~/.claude/memory/QUICKSTART.md` — this would break install.sh (T-01) and /init_workflow Step 7 (T-02) simultaneously.
 - `quoin/QUICKSTART.md` (Tier 1 hand-edited — single-page command reference; deployed by install.sh).

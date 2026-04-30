@@ -7,13 +7,14 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Workflow artifacts (session-specific, not shared)
-.workflow_artifacts/
+# Workflow artifacts (session-specific, not shared) — anchored to project root
+/.workflow_artifacts/
 
-# Legacy artifact locations (pre-.workflow_artifacts layout)
-memory/
-finalized/
-artifact-consolidation/
+# Legacy artifact locations (pre-.workflow_artifacts layout) — anchored to project root
+# so they don't catch in-tree directories like quoin/memory/ or quoin/finalized/.
+/memory/
+/finalized/
+/artifact-consolidation/
 
 # Editor / IDE
 .vscode/

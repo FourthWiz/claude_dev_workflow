@@ -92,6 +92,7 @@ def _collect_ledger_rows(task_root: pathlib.Path) -> list:
             continue
         for line in lpath.read_text(encoding="utf-8").splitlines():
             parts = [p.strip() for p in line.split("|")]
+            # Column contract: col 0=uuid, 1=date, 2=phase, 3=model, 4=category, 5=note, 6=fallback_fires (Stage 4+, optional). _collect_ledger_rows ignores cols 4+ — verify 7-column tolerance if you ever unpack them.
             if len(parts) < 4:
                 continue
             uuid, _date, phase, model = parts[0], parts[1], parts[2], parts[3]

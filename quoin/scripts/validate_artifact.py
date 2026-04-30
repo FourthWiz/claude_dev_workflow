@@ -155,6 +155,8 @@ def detect_type(filepath, type_override):
         return 'session'
     if re.match(r'^gate-', name):
         return 'gate'
+    if re.match(r'^format-kit-pitfalls', name):
+        return 'pitfalls'
     if re.match(r'^repos-inventory', name):
         return 'repos-inventory'
     if re.match(r'^dependencies-map', name):

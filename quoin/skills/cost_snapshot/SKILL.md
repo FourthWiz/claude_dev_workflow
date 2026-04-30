@@ -60,17 +60,21 @@ Determine the project root (the directory containing `.workflow_artifacts/`). Th
 - **Active tasks:** scan `.workflow_artifacts/*/cost-ledger.md` (non-finalized task folders)
 - **Finalized tasks:** scan `.workflow_artifacts/finalized/*/cost-ledger.md`
 
-For each ledger file found, parse every data line (skip lines starting with `#` and blank lines). Each line has the format:
+For each ledger file found, parse every data line (skip lines starting with `#` and blank lines). Split each line on `|` (bare pipe, NOT ` | `), strip each field. Require at least 6 fields. If exactly 7 fields, take the 7th as `fallback_fires` (parse as int; on parse failure treat as `0` and emit stderr WARN `cost_snapshot.WARN: malformed fallback_fires column at <ledger>:<lineno>`). If more than 7 fields, treat the 7th as `fallback_fires` and ignore the rest with a stderr WARN. The format is:
 
 ```
-<uuid> | <date> | <phase> | <model> | <category> | <notes>
+<uuid> | <date> | <phase> | <model> | <category> | <notes> [| <fallback_fires>]
 ```
+
+The 7th column is OPTIONAL (Stage 4+ only); 6-column rows are always valid with `fallback_fires=0`.
 
 Build three collections:
 
 - **`today_entries`** — entries where `date` matches today's date (YYYY-MM-DD), from ALL ledgers
 - **`all_entries`** — every entry from ALL ledgers (active + finalized), deduplicated by UUID
 - **`open_task_entries`** — entries grouped by task name, from active (non-finalized) ledgers only
+
+Also scan today's session-state files at `.workflow_artifacts/memory/sessions/<today>-*.md` for each active task. For each file, read the `## Cost` block and extract the `fallback_fires:` field via regex `^- fallback_fires:\s*(\d+)\s*$`. Sum per task. Store as **`today_fallback_by_task`** (task-name → int). Sessions lacking the `fallback_fires` line (pre-Stage-4) are treated as 0 — no warning emitted.
 
 If no ledger files are found anywhere, print:
 
@@ -151,6 +155,8 @@ Open tasks:
 
 [<K> sessions with unknown cost — ccusage lookup failed or timed out]
 ```
+
+When today's fallback total (from `today_fallback_by_task`) is > 0 for a task, append ` (<K> fallback fires today)` after the session count for that task in the "Open tasks" block. When 0, no marker is shown. Similarly, if the lifetime 7th-column sum across all ledgers is > 0, append ` (<K> fallback fires)` after the lifetime session count. If today's total fallback fires across all tasks is > 0, append ` (<K> fallback fires today)` after the Today session count. Never print fallback-fire markers when the count is 0.
 
 Formatting rules:
 - Right-align the dollar amounts (pad task names to consistent width)

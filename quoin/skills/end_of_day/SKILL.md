@@ -182,6 +182,8 @@ Write the daily cache to `.workflow_artifacts/memory/daily/<date>.md`:
 
 To populate the **Cost summary** section: for each active task today, check if `.workflow_artifacts/<task-name>/cost-ledger.md` exists. If it does, count the data lines (non-header, non-blank) where the date column matches today's date, and list the unique phase values. Do NOT run `npx ccusage` — Haiku does not orchestrate cost lookups. Just report counts and phases. Dollar amounts are computed by `/end_of_task`.
 
+Also scan today's session-state files at `.workflow_artifacts/memory/sessions/<today>-*.md` for each active task. For each file, read the `## Cost` block and extract the `fallback_fires:` field via regex `^- fallback_fires:\s*(\d+)\s*$`. Sum per task. For each task with today's fallback total > 0, append the suffix `; <K> fallback fires today` to that task's Cost summary line. Add a `## Day total` line at the bottom of the Cost summary block when the day's fallback sum > 0: `Day total fallback fires: <K>`. After the Day total line, add: "A non-zero fallback count indicates one or more Class B writers fell back to v2-style write (no `## For human` summary, no validator gate). Investigate which skill emitted `[format-kit-skipped]` and triage before next session." Sessions lacking the `fallback_fires` line (pre-Stage-4) are treated as 0 — no warning emitted.
+
 ### Step 3b: Review and promote daily insights
 
 Check if `.workflow_artifacts/memory/daily/insights-<today>.md` exists. If it does:

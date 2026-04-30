@@ -58,6 +58,7 @@ Before writing anything:
 The plan is a Class B artifact (`current-plan.md`) per artifact-format-architecture v3 §4.1. Write it using the §5.3 5-step Class B mechanism:
 
 **Step 1: Body generation.**
+Read `~/.claude/memory/format-kit-pitfalls.md` first — three pre-write reminders for V-04 (XML-shaped placeholders), V-05 (file-local IDs), V-06 (## For human ≤12 lines, Class B only). Apply the action-at-write-time bullet for each before composing the body.
 Reference files (apply HERE at the body-generation WRITE-SITE — per format-kit.md §1; this is the only place these references apply, per lesson 2026-04-23):
 - `~/.claude/memory/format-kit.md` — primitives + standard sections per artifact type
 - `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs
@@ -109,6 +110,7 @@ This guarantees the assembled file contains exactly one `## For human` line, reg
 **Step 5: Retry / English-fallback (failure-class-aware).** Differentiate the retry path by which step failed:
 
   - **Step 2 failure path (Agent dispatch FAILS OR empty `summary_raw`):**
+    Before re-running Step 2, increment the session-state `fallback_fires` field by 1 (atomic-rename pattern; same rules as the Step 5 increment described above). Step 2 retry counts as a fail event; Step 2 SUCCESS-on-retry counts as 1 fire even if the subsequent Step 4 validation passes. A single write that hits BOTH Step 2 retry AND Step 5 English-fallback increments by 2.
     (a) Re-run ONLY Step 2 once (re-spawn the Haiku Agent subagent against the unchanged `<plan-path>.body.tmp`). The prompt directive pins temperature 0.0; re-running may catch transient dispatch errors. Do NOT re-run Step 1.
     (b) If the re-run ALSO fails: fall back to v2-style single-file write (see fallback below).
 
@@ -117,7 +119,7 @@ This guarantees the assembled file contains exactly one `## For human` line, reg
     (b) **V-02 / V-03 / V-05 failures:** re-run Steps 1–4 once with the explicit body-discipline instruction prepended: "all standard sections required, no inventions, summary 5–8 lines, do not output any heading".
     (c) **V-01 / V-04 failures:** treat as body issues (re-run Steps 1–4).
 
-  - **English-fallback (after retry also fails):** fall back to v2-style single-file write — regenerate the body using terse-rubric only (no format-kit, no `## For human` block). Write to `<plan-path>.tmp` directly. Skip Step 4 validation. Log a `format-kit-skipped` warning to the user with the failing invariant ID(s). Clean up body.tmp: `(rm -f <plan-path>.body.tmp 2>/dev/null || true)`. The artifact still gets written; the safety property holds.
+  - **English-fallback (after retry also fails):** fall back to v2-style single-file write — regenerate the body using terse-rubric only (no format-kit, no `## For human` block). Write to `<plan-path>.tmp` directly. Skip Step 4 validation. Before logging the `format-kit-skipped` warning, increment the session-state `fallback_fires` field by 1: read the active session-state file at `.workflow_artifacts/memory/sessions/{today}-{task}.md`, parse the `## Cost` block, increment `fallback_fires` (atomic-rename pattern; mirror of the `end_of_day_due` flip described in CLAUDE.md "Session state tracking"), then proceed. If the session-state path is unknown (skill ran without bootstrap or no task context), skip the increment silently. Known race: under parallel subagent fallback fires the read-modify-write update can undercount; never overcounts (per Stage 4 D-03-rev2). Log a `format-kit-skipped` warning to the user with the failing invariant ID(s). Clean up body.tmp: `(rm -f <plan-path>.body.tmp 2>/dev/null || true)`. The artifact still gets written; the safety property holds.
 
 **Step 6: Atomic rename.** Move `<plan-path>.tmp` to `<plan-path>` (overwriting any prior `current-plan.md`). Clean up both temp files. Use the Bash tool: `mv <plan-path>.tmp <plan-path>; (rm -f <plan-path>.body.tmp <plan-path>.tmp 2>/dev/null || true)`.
 

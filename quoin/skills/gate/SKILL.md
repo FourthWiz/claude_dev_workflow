@@ -254,7 +254,9 @@ Once the user explicitly approves the gate (i.e., after the STOP-and-wait in Ste
 
 If the user rejects the gate (asks to fix something), do NOT write the audit log. Wait until the gate is re-run and approved before writing.
 
-Use the §5.4 Class A writer mechanism. Reference files (apply HERE at the body-generation write-site, per format-kit.md §1 / lesson 2026-04-23):
+Use the §5.4 Class A writer mechanism.
+Read `~/.claude/memory/format-kit-pitfalls.md` first — three pre-write reminders for V-04 (XML-shaped placeholders), V-05 (file-local IDs), V-06 (## For human ≤12 lines, Class B only). Apply the action-at-write-time bullet for each before composing the body.
+Reference files (apply HERE at the body-generation write-site, per format-kit.md §1 / lesson 2026-04-23):
 - `~/.claude/memory/format-kit.md` — primitives + standard sections per artifact type
 - `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs
 - `~/.claude/memory/terse-rubric.md` — prose discipline
@@ -269,7 +271,7 @@ Compose the format-aware body per format-kit.md §2 `gate-{phase}-{date}.md` enu
 - `## Summary of what was produced` — OPTIONAL — caveman prose, 2-3 sentences. (Reuse the `## For human` content already captured from Step 3a; do NOT re-read the source artifact.)
 - `## What's next` — OPTIONAL — caveman prose, 1-2 lines.
 
-Write the body to `{path}.body.tmp`; compose final file as `{frontmatter (YAML — task, phase, date, gate-level)}\n\n{body content}`; write to `{path}.tmp`. Validate via `python3 ~/.claude/scripts/validate_artifact.py {path}.tmp` (auto-detection → gate type via `^gate-` prefix). On V-failure: retry-once with section-discipline reminder; on persistent failure, fall back to v2-style terse-rubric-only write. Atomic rename: `mv {path}.tmp {path} && (rm -f {path}.body.tmp 2>/dev/null || true)`.
+Write the body to `{path}.body.tmp`; compose final file as `{frontmatter (YAML — task, phase, date, gate-level)}\n\n{body content}`; write to `{path}.tmp`. Validate via `python3 ~/.claude/scripts/validate_artifact.py {path}.tmp` (auto-detection → gate type via `^gate-` prefix). On V-failure: retry-once with section-discipline reminder; on persistent failure, Before falling back to v2-style write, increment the session-state `fallback_fires` field by 1 (atomic-rename pattern; same rules as the Step 5 increment described above), then fall back to v2-style terse-rubric-only write. Atomic rename: `mv {path}.tmp {path} && (rm -f {path}.body.tmp 2>/dev/null || true)`.
 
 The user-facing checkpoint summary rendered in Step 3 is Tier 1 English (per CLAUDE.md "User-facing rendered output" carve-out); the audit log written here is the disk-side Class A artifact. Both must convey the same verdict and failure set.
 

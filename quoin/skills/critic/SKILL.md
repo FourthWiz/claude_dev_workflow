@@ -113,7 +113,9 @@ Score the plan against each criterion:
 
 Write `critic-response-{round}.md` using the §5.4 Class A writer mechanism:
 
-**Step 1: Body generation.** Reference files (apply HERE at the body-generation write-site, per format-kit.md §1 / lesson 2026-04-23):
+**Step 1: Body generation.**
+Read `~/.claude/memory/format-kit-pitfalls.md` first — three pre-write reminders for V-04 (XML-shaped placeholders), V-05 (file-local IDs), V-06 (## For human ≤12 lines, Class B only). Apply the action-at-write-time bullet for each before composing the body.
+Reference files (apply HERE at the body-generation write-site, per format-kit.md §1 / lesson 2026-04-23):
 - `~/.claude/memory/format-kit.md` — primitives + standard sections per artifact type.
 - `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs.
 - `~/.claude/memory/terse-rubric.md` — prose discipline (compose with format-kit per format-kit §5).
@@ -182,7 +184,7 @@ Write to `{path}.tmp` using the Write tool. (No `## For human` heading; no Haiku
   `python3 ~/.claude/scripts/validate_artifact.py {path}.tmp`
 (Filename auto-detection → critic-response type via T-08 match_paths extension.) Exit code 0 = PASS; non-zero = invariant failure.
 
-**Step 5: Retry / English-fallback.** On V-02/V-03/V-05 failures: re-run Steps 1, 3, 4 once with explicit "use only allowed sections per format-kit §2 critic-response; group issues by severity; verdict in heading-line form" instruction. On V-01/V-04 failures: same re-run path. After retry also fails: fall back to v2-style write — regenerate body using terse-rubric only (no format-kit; use heading-line `## Verdict: PASS | REVISE` form). Write to `{path}.tmp` directly. Skip Step 4. Log a `format-kit-skipped` warning to stderr with the failing invariant ID(s).
+**Step 5: Retry / English-fallback.** On V-02/V-03/V-05 failures: re-run Steps 1, 3, 4 once with explicit "use only allowed sections per format-kit §2 critic-response; group issues by severity; verdict in heading-line form" instruction. On V-01/V-04 failures: same re-run path. After retry also fails: fall back to v2-style write — regenerate body using terse-rubric only (no format-kit; use heading-line `## Verdict: PASS | REVISE` form). Write to `{path}.tmp` directly. Skip Step 4. Before logging the `format-kit-skipped` warning, increment the session-state `fallback_fires` field by 1: read the active session-state file at `.workflow_artifacts/memory/sessions/{today}-{task}.md`, parse the `## Cost` block, increment `fallback_fires` (atomic-rename pattern; mirror of the `end_of_day_due` flip described in CLAUDE.md "Session state tracking"), then proceed. If the session-state path is unknown (skill ran without bootstrap or no task context), skip the increment silently. Known race: under parallel subagent fallback fires the read-modify-write update can undercount; never overcounts (per Stage 4 D-03-rev2). Log a `format-kit-skipped` warning to stderr with the failing invariant ID(s).
 
 **Step 6: Atomic rename.** `mv {path}.tmp {path} && (rm -f {path}.body.tmp 2>/dev/null || true)`
 

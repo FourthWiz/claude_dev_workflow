@@ -213,6 +213,7 @@ Where `<task-name>` is a descriptive kebab-case name derived from the task (ask 
 `architecture.md` is a Class B artifact per artifact-format-architecture v3 §4.1. Write it using the §5.3 5-step Class B mechanism:
 
 **Step 1: Body generation.**
+Read `~/.claude/memory/format-kit-pitfalls.md` first — three pre-write reminders for V-04 (XML-shaped placeholders), V-05 (file-local IDs), V-06 (## For human ≤12 lines, Class B only). Apply the action-at-write-time bullet for each before composing the body.
 Reference files (apply HERE at the body-generation WRITE-SITE — per format-kit.md §1; this is the only place these references apply, per lesson 2026-04-23):
 - `~/.claude/memory/format-kit.md` — primitives + standard sections per artifact type
 - `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs
@@ -277,6 +278,7 @@ Filename auto-detection identifies the type as `architecture` (matches `^archite
 **Step 5: Retry / English-fallback (failure-class-aware).** Differentiate by which step failed:
 
   - **Step 2 failure path (Agent dispatch FAILS OR empty `summary_raw`):**
+    Before re-running Step 2, increment the session-state `fallback_fires` field by 1 (atomic-rename pattern; same rules as the Step 5 increment described above). Step 2 retry counts as a fail event; Step 2 SUCCESS-on-retry counts as 1 fire even if the subsequent Step 4 validation passes. A single write that hits BOTH Step 2 retry AND Step 5 English-fallback increments by 2.
     (a) Re-run ONLY Step 2 once (re-spawn the Haiku Agent subagent). Do NOT re-run Step 1 (body is fine; summary failed).
     (b) If re-run also fails: fall back to v2-style single-file write (see fallback below).
 
@@ -285,7 +287,7 @@ Filename auto-detection identifies the type as `architecture` (matches `^archite
     (b) **V-02 / V-03 / V-05 failures** (body-section issues): re-run Steps 1–4 once with body-discipline instruction prepended.
     (c) **V-01 / V-04 failures** (frontmatter / code-fence): treat as body issues; re-run Steps 1–4.
 
-  - **English-fallback (after retry also fails):** fall back to v2-style write — regenerate body using terse-rubric only (no format-kit, no `## For human` block). Write to `<path>.tmp` directly. Skip Step 4. Log a `format-kit-skipped` warning to the user with the failing invariant ID(s). Clean up body.tmp: `(rm -f <path>.body.tmp 2>/dev/null || true)`.
+  - **English-fallback (after retry also fails):** fall back to v2-style write — regenerate body using terse-rubric only (no format-kit, no `## For human` block). Write to `<path>.tmp` directly. Skip Step 4. Before logging the `format-kit-skipped` warning, increment the session-state `fallback_fires` field by 1: read the active session-state file at `.workflow_artifacts/memory/sessions/{today}-{task}.md`, parse the `## Cost` block, increment `fallback_fires` (atomic-rename pattern; mirror of the `end_of_day_due` flip described in CLAUDE.md "Session state tracking"), then proceed. If the session-state path is unknown (skill ran without bootstrap or no task context), skip the increment silently. Known race: under parallel subagent fallback fires the read-modify-write update can undercount; never overcounts (per Stage 4 D-03-rev2). Log a `format-kit-skipped` warning to the user with the failing invariant ID(s). Clean up body.tmp: `(rm -f <path>.body.tmp 2>/dev/null || true)`.
 
 **Step 6: Atomic rename.** `mv <path>.tmp <path>; (rm -f <path>.body.tmp <path>.tmp 2>/dev/null || true)`. The final file at `<path>` IS what `/critic`, `/thorough_plan`, `/gate` will read. Do NOT write a `.original.md` side-file.
 

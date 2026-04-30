@@ -83,6 +83,7 @@ First, perform the in-context revision:
 Then, write the updated plan using the §5.3 5-step Class B mechanism for `<task_dir>/current-plan.md` (where `<task_dir>` is resolved per Session bootstrap step 1):
 
 **Step 1: Body generation.**
+Read `~/.claude/memory/format-kit-pitfalls.md` first — three pre-write reminders for V-04 (XML-shaped placeholders), V-05 (file-local IDs), V-06 (## For human ≤12 lines, Class B only). Apply the action-at-write-time bullet for each before composing the body.
 Reference files (apply HERE at the body-generation WRITE-SITE — per format-kit.md §1; this is the only place these references apply, per lesson 2026-04-23):
 - `~/.claude/memory/format-kit.md` — primitives + standard sections per artifact type
 - `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs
@@ -130,10 +131,11 @@ lesson 2026-04-24.)
 Exit code 0 = PASS; non-zero = at least one invariant failed (stderr names which).
 
 **Step 5: Retry / English-fallback (failure-class-aware).**
+  - Before re-running Step 2, increment the session-state `fallback_fires` field by 1 (atomic-rename pattern; same rules as the Step 5 increment described above). Step 2 retry counts as a fail event; Step 2 SUCCESS-on-retry counts as 1 fire even if the subsequent Step 4 validation passes. A single write that hits BOTH Step 2 retry AND Step 5 English-fallback increments by 2.
   - **Step 2 failure:** re-run Step 2 once (re-spawn the Haiku Agent subagent); if still fails → English-fallback.
   - **V-06/V-07 failures:** re-run Steps 2–4 once.
   - **V-02/V-03/V-05 failures:** re-run Steps 1–4 once with explicit body-discipline instruction.
-  - **English-fallback:** v2-style write (no `## For human` block), log `format-kit-skipped` warning. Clean up body.tmp: `(rm -f <plan-path>.body.tmp 2>/dev/null || true)`.
+  - **English-fallback:** v2-style write (no `## For human` block). Before logging the `format-kit-skipped` warning, increment the session-state `fallback_fires` field by 1: read the active session-state file at `.workflow_artifacts/memory/sessions/{today}-{task}.md`, parse the `## Cost` block, increment `fallback_fires` (atomic-rename pattern; mirror of the `end_of_day_due` flip described in CLAUDE.md "Session state tracking"), then proceed. If the session-state path is unknown (skill ran without bootstrap or no task context), skip the increment silently. Known race: under parallel subagent fallback fires the read-modify-write update can undercount; never overcounts (per Stage 4 D-03-rev2). Log `format-kit-skipped` warning. Clean up body.tmp: `(rm -f <plan-path>.body.tmp 2>/dev/null || true)`.
 
 **Step 6: Atomic rename.**
   `mv <plan-path>.tmp <plan-path>; (rm -f <plan-path>.body.tmp <plan-path>.tmp 2>/dev/null || true)`

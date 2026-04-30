@@ -33,6 +33,7 @@ V3_MEMORY_FILES = [
     "glossary.md",
     "format-kit.sections.json",
     "summary-prompt.md",
+    "format-kit-pitfalls.md",  # T-15: Mirror of T-02's install.sh deploy edit; without this assertion a future install.sh edit could silently skip the deploy.
     "terse-rubric.md",
 ]
 
@@ -81,6 +82,19 @@ def test_fresh_clone_install_e2e():
             assert (memory_dir / mem_file).exists(), (
                 f"Missing v3 memory file: {memory_dir / mem_file}"
             )
+
+        # T-15: format-kit-pitfalls.md byte-identical check.
+        # Mirror of T-02's install.sh deploy edit; without this assertion a future
+        # install.sh edit could silently skip the deploy.
+        pitfalls_src = REPO_ROOT / "quoin" / "memory" / "format-kit-pitfalls.md"
+        pitfalls_dst = memory_dir / "format-kit-pitfalls.md"
+        assert pitfalls_dst.exists(), (
+            "install.sh did not deploy format-kit-pitfalls.md to ~/.claude/memory/"
+        )
+        assert pitfalls_src.read_bytes() == pitfalls_dst.read_bytes(), (
+            "Deployed format-kit-pitfalls.md is not byte-identical to source "
+            f"quoin/memory/format-kit-pitfalls.md"
+        )
 
         scripts_dir = tmp_home / ".claude" / "scripts"
         for script in V3_SCRIPTS:

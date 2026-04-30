@@ -125,7 +125,7 @@ cp "$RUBRIC_SRC" "$RUBRIC_DST"
 success "Copied terse-rubric.md to ~/.claude/memory/"
 
 # v3 reference files (NEW — mirror the rubric pattern exactly)
-for ref_file in format-kit.md glossary.md format-kit.sections.json summary-prompt.md; do
+for ref_file in format-kit.md glossary.md format-kit.sections.json summary-prompt.md format-kit-pitfalls.md; do
   REF_SRC="$SCRIPT_DIR/memory/$ref_file"
   REF_DST="$USER_MEMORY_DIR/$ref_file"
   if [ ! -f "$REF_SRC" ]; then
@@ -238,7 +238,7 @@ echo ""
 echo -e "  ${GREEN}$SKILL_COUNT skills${NC} installed in ~/.claude/skills/"
 echo -e "  ${GREEN}Workflow rules${NC} written to ~/.claude/CLAUDE.md"
 echo -e "  ${GREEN}Terse rubric${NC} copied to ~/.claude/memory/terse-rubric.md"
-echo -e "  ${GREEN}v3 reference files${NC} copied to ~/.claude/memory/ (format-kit.md, glossary.md, format-kit.sections.json, summary-prompt.md)"
+echo -e "  ${GREEN}v3 reference files${NC} copied to ~/.claude/memory/ (format-kit.md, glossary.md, format-kit.sections.json, summary-prompt.md, format-kit-pitfalls.md)"
 echo -e "  ${GREEN}v3 scripts${NC} copied to ~/.claude/scripts/ (validate_artifact.py, path_resolve.py, cost_from_jsonl.py, classify_critic_issues.py, build_preambles.py)"
 echo -e "  ${GREEN}QUICKSTART deployed to ~/.claude/QUICKSTART.md${NC}"
 echo ""

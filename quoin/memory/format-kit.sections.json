@@ -182,6 +182,13 @@
       "required_sections": [],
       "allowed_sections": [],
       "notes": "/discover output uses dynamic per-repo ## {name} headings; allowed_sections empty short-circuits V-02. V-01/V-03/V-04/V-05/V-06 still fire."
+    },
+    "pitfalls": {
+      "class": "A",
+      "match_paths": ["format-kit-pitfalls.md", "**/format-kit-pitfalls.md"],
+      "required_sections": ["## V-04", "## V-05", "## V-06"],
+      "allowed_sections": ["## V-04", "## V-05", "## V-06"],
+      "notes": "Tier 1 hand-edited memory file; pre-write reminders for Class B writers (per Stage 4 of pipeline-efficiency-improvements). V-04/V-05/V-06 are the V-NN section headings — required and allowed; no other top-level H2 permitted."
     }
   },
   "default": {
