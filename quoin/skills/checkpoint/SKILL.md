@@ -202,9 +202,33 @@ Enumerate `.workflow_artifacts/memory/pending-restore-*.txt`:
 
 1. **Preferred:** check for `pending-restore-${session_id}.txt` matching the current session's session_id. If found, read its content to get the checkpoint file path.
 
-2. **Fallback:** if no current-session match, use `ls -t .workflow_artifacts/memory/pending-restore-*.txt 2>/dev/null | head -1` to get the mtime-most-recent sentinel (POSIX-portable on darwin BSD and GNU). Tag the restore with a session-id mismatch warning.
+2. **Fallback (disambiguation):** if no current-session match, enumerate all sentinels sorted by mtime:
 
-3. **Direct checkpoint lookup:** if no pending-restore sentinel exists at all, fall back to the most recent `checkpoints/<YYYY-MM-DD>-*.md` (lex/date sort is reliable here — ISO date prefix is time-ordered).
+   ```
+   sentinel_list=$(ls -t .workflow_artifacts/memory/pending-restore-*.txt 2>/dev/null)
+   ```
+
+   - **0 sentinels:** fall through to Step 3 directly (no pending-restore files exist).
+
+   - **Exactly 1 sentinel:** use it automatically. Tag with a session-id mismatch warning:
+     `Session-id mismatch: sentinel is from a prior session. Using it anyway.`
+
+   - **2 or more sentinels:** do NOT auto-pick. Read each sentinel file to get the checkpoint path it contains, then read `## Active task` and `## Branch` from that checkpoint file. Surface a numbered list to the user:
+
+     ```
+     Multiple pending-restore sentinels found. Which session do you want to restore?
+       1. Task: <TASK_1>  Branch: <BRANCH_1>  (checkpoint: <DATE_1>)
+       2. Task: <TASK_2>  Branch: <BRANCH_2>  (checkpoint: <DATE_2>)
+     Enter number, or 'skip' to proceed to direct checkpoint lookup:
+     ```
+
+     Where `<DATE_N>` is the `YYYY-MM-DD` prefix from the checkpoint filename.
+
+     - On a valid number: use that sentinel's checkpoint file; tag with mismatch warning.
+     - On `skip`: fall through to Step 3 (direct checkpoint lookup by date).
+     - On invalid input: re-prompt once; on second invalid input, fall through to Step 3.
+
+3. **Direct checkpoint lookup:** if no pending-restore sentinel exists at all, fall back to the most recent `checkpoints/<YYYY-MM-DD>-*.md` sorted by mtime. If both `<date>-<task>.md` and `<date>-<task>-precompact.md` exist with the same date prefix, prefer the non-`-precompact` file (voluntary checkpoint takes precedence over the automatic precompact one). Tie-break by mtime.
 
 ### Step 2: Surface checkpoint state to user
 
@@ -235,24 +259,51 @@ Skip step 4 entirely. Surface ONLY the task-state restore from step 2/3.
 Proceed directly to step 5 (sentinel cleanup — pending-restore only).
 
 **CASE B — `pending-prompt-${session_id}.txt` exists for the current session (block-recovery flow):**
-Read the content. Surface to user:
-```
-Your previous prompt was: <PROMPT_TEXT>
-Run it now? [y / n / edit]
-```
-- On `y`: emit the prompt as-if the user just typed it (rebound path).
-- On `n`: delete the sentinel without surfacing the prompt content.
-- On `edit`: invite the user to paste an edited version; on save, submit it.
+
+Read the file. Detect format by checking for `=== BLOCKED PROMPT [...]` headers:
+
+- **Legacy format (no headers present):** treat the entire file content as a single prompt entry. Surface with the existing interface:
+  ```
+  Your previous prompt was: <PROMPT_TEXT>
+  Run it now? [y / n / edit]
+  ```
+  - On `y`: emit the prompt as-if the user just typed it (rebound path).
+  - On `n`: delete the sentinel without surfacing the prompt content.
+  - On `edit`: invite the user to paste an edited version; on save, submit it.
+
+- **Multi-entry format (one or more `=== BLOCKED PROMPT [<timestamp>] ===` headers):**
+  Parse all entries. Each entry is the text between one header line and the next header line (or end of file), with leading/trailing blank lines trimmed. Any text appearing before the first `=== BLOCKED PROMPT` header (e.g., legacy preamble from a migration-on-append) is treated as an implicit first entry with timestamp `legacy`.
+
+  Surface a numbered list:
+  ```
+  <N> blocked prompt(s) were saved while context was overloaded:
+    1. [<timestamp_1>] <first 80 chars of prompt_1>...
+    2. [<timestamp_2>] <first 80 chars of prompt_2>...
+    ...
+  Replay which? [all / 1 / 2 / 1,3 / edit 1 / none]
+  ```
+
+  - `all`: emit all entries in chronological order (oldest first, separated by a blank line).
+  - A single number (e.g. `2`): emit only that entry.
+  - Comma-separated numbers (e.g. `1,3`): emit those entries in ascending order.
+  - `edit N`: surface entry N in full, invite the user to paste an edited version before submitting. Wait for the user to provide the edited text, then emit that instead of the stored entry.
+  - `none` or `n`: delete the file without replaying any entry.
+  - Invalid input: re-prompt once; on second invalid input, treat as `none`.
+
+  After replaying the selected prompts, proceed to Step 5 (sentinel cleanup).
 
 **CASE C — `pending-prompt-*.txt` exists but ONLY for a DIFFERENT session-id (sentinel-staleness):**
 Surface a warning:
 ```
 Stale pending-prompt sentinel detected (session-id MISMATCH: was <OLD_SID>, current <CUR_SID>).
-Content: <PROMPT_TEXT>
-Run it anyway? [y / n / delete]
 ```
-- `delete`: remove the stale file.
-- `n`: leave it for explicit user cleanup.
+Then apply the same multi-entry format detection as CASE B:
+- **Legacy format:** surface as `Content: <PROMPT_TEXT>` and offer `[y / n / delete]`.
+  - `y`: emit the prompt.
+  - `delete`: remove the stale file.
+  - `n`: leave it for explicit user cleanup.
+- **Multi-entry format:** surface the numbered list (same as CASE B multi-entry), prefixed with the mismatch warning. The `edit N` option applies here as well.
+- On `delete`: remove the stale file regardless of format.
 
 ### Step 5: Sentinel cleanup
 

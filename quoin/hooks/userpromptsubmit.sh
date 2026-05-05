@@ -110,8 +110,26 @@ else
   # Ensure directory exists
   mkdir -p "${cwd}/.workflow_artifacts/memory" 2>/dev/null || exit 0
 
-  # STEP C: Write pending-prompt file
-  printf '%s' "$prompt" > "$pending_prompt_file" 2>/dev/null || exit 0
+  # STEP C: Append blocked prompt to pending-prompt file
+  # Uses append (>>) not overwrite (>) so multiple parallel agent completions accumulate.
+  # Each entry is prefixed with a === BLOCKED PROMPT [<timestamp>] === header.
+  # Migration: if the file exists in legacy raw-text format (no header), convert it
+  # to headered format on first append so no prior content is dropped.
+  _timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _timestamp="unknown"
+  if [ -f "$pending_prompt_file" ] && ! head -1 "$pending_prompt_file" 2>/dev/null | grep -q '^=== BLOCKED PROMPT'; then
+    _legacy=$(cat "$pending_prompt_file" 2>/dev/null)
+    {
+      printf '=== BLOCKED PROMPT [legacy-pre-migration] ===\n'
+      printf '%s\n' "$_legacy"
+      printf '=== BLOCKED PROMPT [%s] ===\n' "$_timestamp"
+      printf '%s\n' "$prompt"
+    } > "$pending_prompt_file" 2>/dev/null || exit 0
+  else
+    {
+      printf '=== BLOCKED PROMPT [%s] ===\n' "$_timestamp"
+      printf '%s\n' "$prompt"
+    } >> "$pending_prompt_file" 2>/dev/null || exit 0
+  fi
 
   # STEP D: Emit block JSON (only reaches here if STEP C succeeded)
   pct_int=$((util / 100))

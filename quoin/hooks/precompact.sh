@@ -48,7 +48,17 @@ if [ -z "$session_id" ]; then
   exit 0
 fi
 
+# Pre-compute sentinel path so we can check it before writing a new checkpoint (A3 fix)
+MEMORY_DIR="${cwd}/.workflow_artifacts/memory"
+pending_restore_file="${MEMORY_DIR}/pending-restore-${session_id}.txt"
+
 # STEP 2: Save checkpoint state (paths-not-content rule)
+# Skip entirely if voluntary /checkpoint already ran this session — preserve the better sentinel
+# and avoid creating an orphaned -precompact.md file (A3 fix)
+if [ -f "$pending_restore_file" ]; then
+  printf '[quoin-precompact] INFO: pending-restore sentinel already exists (voluntary /checkpoint was run earlier in this session); skipping checkpoint write to avoid orphaned -precompact.md file\n' >&2
+else
+
 CHECKPOINT_DIR="${cwd}/.workflow_artifacts/memory/checkpoints"
 mkdir -p "$CHECKPOINT_DIR" 2>/dev/null || {
   printf '[quoin-precompact] WARNING: cannot create checkpoint dir; falling back fail-OPEN\n' >&2
@@ -60,6 +70,7 @@ checkpoint_date=$(date -u +%Y-%m-%d 2>/dev/null) || checkpoint_date="unknown-dat
 # Determine active task name from session-state filenames (best-effort)
 session_state_dir="${cwd}/.workflow_artifacts/memory/sessions"
 active_task="unknown-task"
+latest_session=""
 if [ -d "$session_state_dir" ]; then
   # Most recently modified session state file (ls -t) — mtime-most-recent
   latest_session=$(ls -t "$session_state_dir"/*.md 2>/dev/null | head -1)
@@ -86,25 +97,64 @@ if command -v git > /dev/null 2>&1; then
   branch_out=$(git -C "$cwd" rev-parse --abbrev-ref HEAD 2>/dev/null) && current_branch="$branch_out"
 fi
 
-# Find most recent plan and architecture files
+# Find most recent plan, architecture, critic-response, and review files
+# Uses find -exec ls -t {} + for mtime sort — whitespace-safe (no word-splitting on paths)
+# and no BSD-xargs empty-stdin hazard (A1 fix)
 current_plan_path="(none found)"
 architecture_path="(none found)"
+latest_critic="(none found)"
+latest_review="(none found)"
 if [ -d "${cwd}/.workflow_artifacts" ]; then
-  found_plan=$(find "${cwd}/.workflow_artifacts" -name "current-plan.md" 2>/dev/null | head -1)
+  found_plan=$(find "${cwd}/.workflow_artifacts" -name "current-plan.md" \
+    -exec ls -t {} + 2>/dev/null | head -1)
   [ -n "$found_plan" ] && current_plan_path="$found_plan"
-  found_arch=$(find "${cwd}/.workflow_artifacts" -name "architecture.md" 2>/dev/null | head -1)
+  found_arch=$(find "${cwd}/.workflow_artifacts" -name "architecture.md" \
+    -exec ls -t {} + 2>/dev/null | head -1)
   [ -n "$found_arch" ] && architecture_path="$found_arch"
+  c=$(find "${cwd}/.workflow_artifacts" -name "critic-response-*.md" \
+    -exec ls -t {} + 2>/dev/null | head -1)
+  [ -n "$c" ] && latest_critic="$c"
+  r=$(find "${cwd}/.workflow_artifacts" -name "review-*.md" \
+    -exec ls -t {} + 2>/dev/null | head -1)
+  [ -n "$r" ] && latest_review="$r"
+fi
+
+# Extract current phase from session-state ## Cost block (A2 fix)
+# Handles bulleted format: - Phase: implement
+current_phase="unknown"
+if [ -n "$latest_session" ] && [ -f "$latest_session" ]; then
+  current_phase=$(awk '/^## Cost/{f=1;next} f && /^[[:space:]]*-?[[:space:]]*Phase:/{sub(/^[[:space:]]*-?[[:space:]]*Phase:[[:space:]]*/,""); print; exit} f && /^## /{exit}' \
+    "$latest_session" 2>/dev/null)
+  [ -z "$current_phase" ] && current_phase="unknown"
+fi
+
+# Extract open questions and unfinished work from session-state (A2 fix)
+# Guards: /^## / exits section; /^pollution_score:/ prevents trailing score line from leaking
+open_questions=""
+if [ -n "$latest_session" ] && [ -f "$latest_session" ]; then
+  block=$(awk '/^## Open questions/{f=1;next} /^## /{if(f)exit} /^pollution_score:/{if(f)exit} f{print}' \
+    "$latest_session" 2>/dev/null | sed '/^[[:space:]]*$/d')
+  [ -n "$block" ] && open_questions="$block"
+fi
+
+unfinished_work=""
+if [ -n "$latest_session" ] && [ -f "$latest_session" ]; then
+  block=$(awk '/^## Unfinished work/{f=1;next} /^## /{if(f)exit} /^pollution_score:/{if(f)exit} f{print}' \
+    "$latest_session" 2>/dev/null | sed '/^[[:space:]]*$/d')
+  [ -n "$block" ] && unfinished_work="$block"
 fi
 
 checkpoint_file="${CHECKPOINT_DIR}/${checkpoint_date}-${active_task}-precompact.md"
 
 # Write checkpoint (paths-not-content — never carry file contents)
+# User-content fields (open_questions, unfinished_work) use placeholders to prevent
+# shell expansion of $varname, backticks, or ${...} from session-state free-form text (A2 fix)
 cat > "$checkpoint_file" 2>/dev/null << CPEOF
 ## Status
 precompact-hook save (auto-compaction intercepted)
 
 ## Current stage
-unknown — read session-state files for details
+${current_phase}
 
 ## Active task
 ${active_task}
@@ -124,11 +174,36 @@ ${pidfile_info}
 ## In-flight artifacts
 - current-plan.md: ${current_plan_path}
 - architecture.md: ${architecture_path}
+- latest critic-response: ${latest_critic}
+- latest review: ${latest_review}
+- session-state: ${latest_session:-"(none found)"}
 - transcript: ${transcript_path}
 
+## Open questions
+__OPEN_QUESTIONS_PLACEHOLDER__
+
+## Unfinished work
+__UNFINISHED_WORK_PLACEHOLDER__
+
 ## Restore hint
-Run /checkpoint --restore in a fresh session to resume.
+Run /checkpoint --restore in a fresh session to resume task '${active_task}' from branch '${current_branch}'.
 CPEOF
+
+# Substitute user-content placeholders via awk -v (no shell expansion of user content)
+if [ -n "$open_questions" ] || [ -n "$unfinished_work" ]; then
+  _oq="${open_questions:-(none)}"
+  _uw="${unfinished_work:-(none)}"
+  awk -v oq="$_oq" -v uw="$_uw" '
+    /^__OPEN_QUESTIONS_PLACEHOLDER__$/{print (oq=="" ? "(none)" : oq); next}
+    /^__UNFINISHED_WORK_PLACEHOLDER__$/{print (uw=="" ? "(none)" : uw); next}
+    {print}
+  ' "$checkpoint_file" > "${checkpoint_file}.tmp" 2>/dev/null \
+    && mv "${checkpoint_file}.tmp" "$checkpoint_file" 2>/dev/null || true
+else
+  sed 's/__OPEN_QUESTIONS_PLACEHOLDER__/(none)/;s/__UNFINISHED_WORK_PLACEHOLDER__/(none)/' \
+    "$checkpoint_file" > "${checkpoint_file}.tmp" 2>/dev/null \
+    && mv "${checkpoint_file}.tmp" "$checkpoint_file" 2>/dev/null || true
+fi
 
 # Check if write succeeded
 if [ ! -f "$checkpoint_file" ]; then
@@ -141,15 +216,14 @@ if [ "$pidfile_info" = "none" ]; then
   printf '[quoin-precompact] WARNING: no active pidfiles found; compaction block may be unreliable (start skills that acquire pidfiles via §0c to improve reliability)\n' >&2
 fi
 
-# STEP 3: Write pending-restore sentinel (CRIT-3 fix — session-id discriminant)
-MEMORY_DIR="${cwd}/.workflow_artifacts/memory"
-pending_restore_file="${MEMORY_DIR}/pending-restore-${session_id}.txt"
+# STEP 3: Write pending-restore sentinel (session-id discriminant)
 mkdir -p "$MEMORY_DIR" 2>/dev/null || true
 printf '%s\n' "$checkpoint_file" > "$pending_restore_file" 2>/dev/null || {
   printf '[quoin-precompact] WARNING: cannot write pending-restore sentinel; sessionstart hook cannot surface restore banner\n' >&2
   # Still block — checkpoint was written, just sentinel is missing
 }
 
+fi  # end: if [ ! -f "$pending_restore_file" ]
+
 # STEP 4: Emit block JSON
-printf '{"decision": "block", "reason": "auto-compaction intercepted; session state saved to %s; run /checkpoint then /checkpoint --restore in a fresh session"}\n' \
-  "$(basename "$checkpoint_file")"
+printf '{"decision": "block", "reason": "auto-compaction intercepted; session state saved; run /checkpoint then /checkpoint --restore in a fresh session"}\n'
