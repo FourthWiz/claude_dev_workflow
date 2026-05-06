@@ -138,7 +138,6 @@ Every Quoin skill declares a model tier (`haiku`, `sonnet`, `opus`). When invoke
 ## Documentation
 
 - [`quoin/QUICKSTART.md`](quoin/QUICKSTART.md) — command reference table (21 skills)
-- `<your-quoin-clone>/Workflow-User-Guide.html` — interactive walkthrough with scenarios (open in browser)
 - [`quoin/CLAUDE.md`](quoin/CLAUDE.md) — full workflow rules, model assignments, artifact formats
 
 ## Contributing

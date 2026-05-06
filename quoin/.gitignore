@@ -12,3 +12,37 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+
+# ── Distribution boundary: dev artifacts excluded from the distributable package ──
+
+# Dev-only subtree — tests, spikes, verify logs, dev tooling
+dev/
+
+# Internal design/audit docs — stage-specific investigation artifacts
+docs/revise-crossover-decision-*.md
+docs/rollback-s*.md
+docs/sentinel-lifecycle-s*.md
+docs/spawn-bootstrap-audit-*.md
+docs/v-trip-rate-baseline-*.md
+
+# Dev measurement and verification scripts (not in DEPLOYED_SCRIPTS)
+# Explicit filenames — do not use globs here to avoid accidentally blocking future deployed scripts
+scripts/measure_revise_crossover_cost.py
+scripts/measure_v_trip_rate.py
+scripts/verify_spawn_prompt_prefix.py
+
+# Test suite for deployed scripts — dev artifact, not deployed to users
+scripts/tests/
+
+# Personal auto-memory, suggestion scratchpad, and maintainer institutional memory
+# None of these are deployed by installer.py; a user's lessons-learned.md lives at
+# .workflow_artifacts/memory/lessons-learned.md (project level), not in the source tree
+memory/workflow-rules.md
+memory/workflow-suggestions.md
+memory/lessons-learned.md
+
+# Test case files co-located in skills/ — not deployed by installer
+skills/*/TEST-CASES.md
+
+# HTML user guide — not deployed by installer; redundant with installed skills + QUICKSTART
+Workflow-User-Guide.html

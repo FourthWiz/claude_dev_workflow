@@ -208,9 +208,7 @@ Create the memory structure under `.workflow_artifacts/` at the project root:
 ```
 
 Note: Skills live at `~/.claude/skills/` (installed by `install.sh`), and the QUICKSTART command
-reference is deployed by `install.sh` to `~/.claude/QUICKSTART.md`. The interactive HTML guide lives
-in your Quoin source clone at `<your-quoin-clone>/Workflow-User-Guide.html` — the only artifact
-/init_workflow still references from the source clone.
+reference is deployed by `install.sh` to `~/.claude/QUICKSTART.md`.
 
 Skills are already at `~/.claude/skills/` (installed by `install.sh`). Do not create a `skills/` directory in the project.
 
@@ -328,14 +326,9 @@ To get the full command reference, re-run install.sh from your Quoin source clon
 In the meantime:
   - Type /help inside Claude Code to see available slash commands.
   - Browse the user skills directory at ~/.claude/skills/ for per-skill SKILL.md files.
-  - Open the interactive HTML guide at <your-quoin-clone>/Workflow-User-Guide.html in your browser.
+  - Read ~/.claude/QUICKSTART.md for a command reference.
 EOF
 fi
-```
-
-The interactive guide lives in the source clone:
-```
-<your-quoin-clone>/Workflow-User-Guide.html — open in your browser for full walkthrough scenarios.
 ```
 
 ### Step 8: Report
@@ -348,7 +341,6 @@ Workflow initialized in <project-root>/.workflow_artifacts/
 📁 Structure created:
   - .workflow_artifacts/memory/ (repos, architecture, dependencies, lessons, sessions)
   - .workflow_artifacts/QUICKSTART.md (command reference)
-  - <your-quoin-clone>/Workflow-User-Guide.html (interactive guide — in your cloned source)
 
 🔍 /discover completed:
   - Found <N> repositories
@@ -358,7 +350,6 @@ Ready to go. Start with:
   - /start_of_day — if resuming existing work
   - /architect — if starting a new feature
   - /plan or /thorough_plan — if you know what to build
-  - Open <your-quoin-clone>/Workflow-User-Guide.html for full scenarios
 ```
 
 ## Important behaviors
