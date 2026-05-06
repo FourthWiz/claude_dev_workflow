@@ -162,7 +162,7 @@ def deploy_hooks(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
         print(f"Copied hook {fname} to ~/.claude/hooks/")
 
     # Merge 5 hook stanzas into settings.json using Python json module
-    # settings.json lives one level above dest_root (~/.claude/../settings.json = ~/.claude/settings.json)
+    # settings.json lives inside dest_root (~/.claude/settings.json)
     settings_path = dest_root / "settings.json"
 
     # Load existing settings or start fresh
