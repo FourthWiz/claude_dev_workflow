@@ -133,9 +133,10 @@ else
 fi
 
 # (f) /checkpointfoo → NOT exempt; falls through to threshold logic
-# With 70% fixture → should pass through (exit 0 no output)
+# Use QUOIN_STOP_BPS=7500 override: 70% fixture (bps≈7000) < 7500 → passthrough.
+# Default threshold is 7000; at exactly 70% the fixture could hit the boundary.
 stdin=$(make_stdin '/checkpointfoo' "$TRANSCRIPT_70")
-out=$(run_hook "$stdin")
+out=$(printf '%s' "$stdin" | QUOIN_STOP_BPS=7500 sh "$HOOK" 2>/dev/null)
 if [ -z "$out" ]; then
   ok "(f) /checkpointfoo with 70% fixture → not exempt, falls through, passthrough"
 else
@@ -183,9 +184,9 @@ else
 fi
 
 # (k) All-whitespace prompt → cmd is empty; falls through to threshold logic
-# With 70% fixture → passthrough (no output)
+# Use QUOIN_STOP_BPS=7500 override so 70% fixture is below threshold.
 stdin_raw='{"prompt":"   \n\t  ","transcript_path":"'"$TRANSCRIPT_70"'","session_id":"test-k","cwd":"'"$TMPDIR_TEST"'"}'
-out=$(printf '%s' "$stdin_raw" | sh "$HOOK" 2>/dev/null)
+out=$(printf '%s' "$stdin_raw" | QUOIN_STOP_BPS=7500 sh "$HOOK" 2>/dev/null)
 if [ -z "$out" ]; then
   ok "(k) all-whitespace prompt with 70% fixture → no output (below threshold)"
 else
@@ -237,16 +238,17 @@ fi
 
 # ─── Three threshold branches ─────────────────────────────────────────────────
 
-# Branch (1): passthrough — 70% fixture (bps=6999 < 8500 STOP_BPS)
+# Branch (1): passthrough — 70% fixture (bps=6999 < 7500 STOP_BPS; env-var override set to 7500
+# for margin headroom — default is 7000 which leaves only 1 bps margin from this fixture)
 stdin=$(make_stdin 'do some work' "$TRANSCRIPT_70" "sess-branch1" "$TMPDIR_TEST")
-out=$(run_hook "$stdin")
+out=$(printf '%s' "$stdin" | QUOIN_STOP_BPS=7500 sh "$HOOK" 2>/dev/null)
 if [ -z "$out" ]; then
   ok "branch(1): 70% fixture → passthrough (no output)"
 else
   fail "branch(1): 70% fixture → expected no output, got: $out"
 fi
 
-# Branch (2): advisory — 88% fixture (bps=8800, STOP_BPS <= 8800 < BLOCK_BPS 9500)
+# Branch (2): advisory — 88% fixture (bps=8800, STOP_BPS=7000 <= 8800 < BLOCK_BPS 9500)
 stdin=$(make_stdin 'do some work' "$TRANSCRIPT_88" "sess-branch2" "$TMPDIR_TEST")
 out=$(run_hook "$stdin")
 if printf '%s' "$out" | grep -q 'additionalContext' 2>/dev/null; then

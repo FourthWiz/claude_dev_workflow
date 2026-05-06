@@ -58,7 +58,7 @@ make_stdin() {
     "$trigger" "$session_id" "$cwd" "$cwd"
 }
 
-# ─── (a) auto trigger + active pidfile → block + state saved + sentinel written ──
+# ─── (a) auto trigger + active pidfile → allow + checkpoint saved, NO sentinel ──
 
 # Create a fake pidfile
 touch "$TMPDIR_TEST/.workflow_artifacts/memory/sessions/implement-12345.pidfile.lock"
@@ -67,17 +67,19 @@ stdin=$(make_stdin "auto" "sess-auto-pidfile")
 out=$(printf '%s' "$stdin" | sh "$HOOK" 2>/dev/null)
 
 if printf '%s' "$out" | grep -q '"decision"' 2>/dev/null && \
-   printf '%s' "$out" | grep -q '"block"' 2>/dev/null; then
-  ok "(a) auto trigger + active pidfile → block JSON emitted"
+   printf '%s' "$out" | grep -q '"allow"' 2>/dev/null; then
+  ok "(a) auto trigger + active pidfile → allow JSON emitted"
 else
-  fail "(a) auto trigger + active pidfile → expected block JSON, got: $out"
+  fail "(a) auto trigger + active pidfile → expected allow JSON, got: $out"
 fi
 
-# Check sentinel written
-if ls "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-auto-pidfile.txt" > /dev/null 2>&1; then
-  ok "(a) auto trigger + active pidfile → pending-restore sentinel written"
+# Check sentinel NOT written (allow path must not write pending-restore)
+# Count all pending-restore-*.txt files to avoid trivial pass on fresh TMPDIR
+sentinel_count=$(ls "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-"*.txt 2>/dev/null | wc -l | awk '{print $1}')
+if [ "$sentinel_count" -eq 0 ]; then
+  ok "(a) auto trigger + active pidfile → pending-restore sentinel NOT written (allow path)"
 else
-  fail "(a) auto trigger + active pidfile → pending-restore sentinel NOT written"
+  fail "(a) auto trigger + active pidfile → pending-restore sentinel was written (should not be in allow path)"
 fi
 
 # Check checkpoint saved
@@ -105,12 +107,11 @@ else
   fail "(b) auto trigger no pidfile → expected block, got: $out"
 fi
 
-# Warning should appear in stderr
-if printf '%s' "$stderr_out" | grep -qi 'pidfile\|WARNING' 2>/dev/null; then
-  ok "(b) auto trigger no pidfile → stderr warning about pidfiles"
+# INFO log should appear in stderr
+if printf '%s' "$stderr_out" | grep -q 'no active pidfiles' 2>/dev/null; then
+  ok "(b) auto trigger no pidfile → stderr INFO 'no active pidfiles' present"
 else
-  # The warning may say "no active pidfiles"
-  ok "(b) auto trigger no pidfile → (stderr warning check skipped — may vary)"
+  fail "(b) auto trigger no pidfile → stderr missing 'no active pidfiles' INFO log; got: $stderr_out"
 fi
 
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-auto-nopidfile.txt"
@@ -173,6 +174,75 @@ if [ -z "$out" ] || ! printf '%s' "$out" | grep -q '"block"' 2>/dev/null; then
 else
   fail "(f) session_id absent → block JSON emitted despite missing session_id: $out"
 fi
+
+# ─── (g) allow path: checkpoint content records pidfile info ──────────────────
+
+touch "$TMPDIR_TEST/.workflow_artifacts/memory/sessions/plan-67890.pidfile.lock"
+
+stdin=$(make_stdin "auto" "sess-allow-content")
+printf '%s' "$stdin" | sh "$HOOK" 2>/dev/null > /dev/null
+
+# Read the most recent checkpoint and verify ## Trigger field contains pidfile info
+latest_cp=$(ls -t "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null | head -1)
+if [ -n "$latest_cp" ] && grep -q 'plan-67890' "$latest_cp" 2>/dev/null; then
+  ok "(g) allow path → checkpoint ## Trigger records active pidfile name"
+else
+  fail "(g) allow path → checkpoint missing pidfile info in ## Trigger; latest_cp=${latest_cp:-none}"
+fi
+
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/sessions/plan-67890.pidfile.lock"
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
+
+# ─── (h) sentinel pre-exists + pidfiles active → block (conservative) ────────
+
+# Write a sentinel as if a prior /checkpoint already ran
+touch "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-prior-checkpoint.txt"
+echo "/some/prior/checkpoint.md" > "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-prior-checkpoint.txt"
+
+# Also have a pidfile active
+touch "$TMPDIR_TEST/.workflow_artifacts/memory/sessions/implement-55555.pidfile.lock"
+
+stdin=$(make_stdin "auto" "sess-prior-checkpoint")
+out=$(printf '%s' "$stdin" | sh "$HOOK" 2>/dev/null)
+
+# In early-skip path, pidfile_info stays "none" → should block
+if printf '%s' "$out" | grep -q '"block"' 2>/dev/null; then
+  ok "(h) sentinel pre-exists + pidfiles → block (conservative: existing sentinel preserved)"
+else
+  fail "(h) sentinel pre-exists + pidfiles → expected block (conservative), got: $out"
+fi
+
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-prior-checkpoint.txt"
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/sessions/implement-55555.pidfile.lock"
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
+
+# ─── (i) STOP_BPS default structural assertion ────────────────────────────────
+
+LIB="$SCRIPT_DIR/../../hooks/_lib.sh"
+if grep -q 'QUOIN_STOP_BPS:-7000' "$LIB" 2>/dev/null; then
+  ok "(i) _lib.sh STOP_BPS default is 7000"
+else
+  fail "(i) _lib.sh STOP_BPS default is NOT 7000 (check for :-7000 in $LIB)"
+fi
+
+# ─── (j) pidfile present (skill may or may not be alive) → allow ─────────────
+# The hook never reads or checks PID liveness — it only lists pidfile names.
+# PID 99999 is a descriptive dummy; whether that process is alive is irrelevant
+# to the test outcome. This test documents the known limitation explicitly.
+
+touch "$TMPDIR_TEST/.workflow_artifacts/memory/sessions/implement-99999.pidfile.lock"
+
+stdin=$(make_stdin "auto" "sess-stale-pidfile")
+out=$(printf '%s' "$stdin" | sh "$HOOK" 2>/dev/null)
+
+if printf '%s' "$out" | grep -q '"allow"' 2>/dev/null; then
+  ok "(j) pidfile present (skill may or may not be alive) → allow (liveness not checked)"
+else
+  fail "(j) pidfile present → expected allow regardless of PID liveness, got: $out"
+fi
+
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/sessions/implement-99999.pidfile.lock"
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
 
 # ─── Summary ──────────────────────────────────────────────────────────────────
 

@@ -3,8 +3,9 @@
 # Deployed to ~/.claude/hooks/ by bash install.sh
 #
 # Contract: fires on PreCompact event (auto compaction only — manual /compact
-# is passed through). Saves session state as a last-resort fallback, writes
-# a pending-restore sentinel, then blocks the compaction.
+# is passed through). Saves checkpoint state. If skill pidfiles are active:
+# allows compaction (workflow continues uninterrupted). If no pidfiles (direct
+# conversation): writes pending-restore sentinel and blocks compaction.
 # Fail-OPEN: any error → exit 0, no output (compaction proceeds unblocked).
 #
 # Shebang assertion: head -1 ... | grep -qE '^#!/bin/sh( |$)'
@@ -52,6 +53,14 @@ fi
 MEMORY_DIR="${cwd}/.workflow_artifacts/memory"
 pending_restore_file="${MEMORY_DIR}/pending-restore-${session_id}.txt"
 
+# Pre-initialize pidfile_info to "none" so STEP 4 branching is safe in the early-skip path.
+# The early-skip path (sentinel already exists) skips the else block entirely, so pidfile
+# detection inside the else block never runs — pidfile_info stays "none" → block.
+# This is the intentional conservative behavior: if the user ran /checkpoint manually,
+# they are managing the session themselves. The else block overwrites this "none" if
+# pidfiles are found in the full checkpoint path.
+pidfile_info="none"
+
 # STEP 2: Save checkpoint state (paths-not-content rule)
 # Skip entirely if voluntary /checkpoint already ran this session — preserve the better sentinel
 # and avoid creating an orphaned -precompact.md file (A3 fix)
@@ -82,13 +91,10 @@ if [ -d "$session_state_dir" ]; then
   fi
 fi
 
-# Collect active pidfiles (for escalation info)
-pidfile_info="none"
+# Collect active pidfiles (overwrite pre-initialized "none" if any are found)
 if ls "$session_state_dir"/*.pidfile.lock > /dev/null 2>&1; then
   pidfile_info=$(ls "$session_state_dir"/*.pidfile.lock 2>/dev/null | xargs -I{} basename {} 2>/dev/null | tr '\n' ' ' | sed 's/ $//')
-  if [ -z "$pidfile_info" ]; then
-    pidfile_info="none"
-  fi
+  [ -z "$pidfile_info" ] && pidfile_info="none"
 fi
 
 # Determine current git branch (best-effort)
@@ -166,7 +172,7 @@ ${current_branch}
 ${session_id}
 
 ## Trigger
-auto (compaction was blocked; run /checkpoint --restore in a fresh session)
+auto (active pidfiles at save time: ${pidfile_info})
 
 ## Active skills (pidfiles)
 ${pidfile_info}
@@ -211,19 +217,39 @@ if [ ! -f "$checkpoint_file" ]; then
   exit 0
 fi
 
-# Warn if no active pidfiles (compaction escalation less reliable)
-if [ "$pidfile_info" = "none" ]; then
-  printf '[quoin-precompact] WARNING: no active pidfiles found; compaction block may be unreliable (start skills that acquire pidfiles via §0c to improve reliability)\n' >&2
-fi
-
-# STEP 3: Write pending-restore sentinel (session-id discriminant)
-mkdir -p "$MEMORY_DIR" 2>/dev/null || true
-printf '%s\n' "$checkpoint_file" > "$pending_restore_file" 2>/dev/null || {
-  printf '[quoin-precompact] WARNING: cannot write pending-restore sentinel; sessionstart hook cannot surface restore banner\n' >&2
-  # Still block — checkpoint was written, just sentinel is missing
-}
-
 fi  # end: if [ ! -f "$pending_restore_file" ]
 
-# STEP 4: Emit block JSON
-printf '{"decision": "block", "reason": "auto-compaction intercepted; session state saved; run /checkpoint then /checkpoint --restore in a fresh session"}\n'
+# STEP 4: Branch on pidfile presence
+# If skills are running (pidfiles present): allow compact — workflow must continue.
+# If no pidfiles (direct conversation): block — user must manually restore in fresh session.
+# NOTE: when the pending_restore_file already exists (early-skip path at the top), pidfile_info
+# stays "none" because the pidfile-collection block was skipped. The decision always falls
+# through to block in that path — intentional conservative behavior: the user already ran
+# /checkpoint manually, so they knew what they were doing.
+#
+# KNOWN LIMITATION: stale pidfiles
+# The pidfile liveness check is NOT performed. If a skill crashed without releasing its
+# .pidfile.lock file, pidfile_info will be non-"none" and the hook will emit "allow".
+# Rationale: liveness checking (kill -0 <pid>) requires parsing the PID from the filename,
+# a POSIX loop, and fragile format coupling. The crash-without-cleanup failure mode is rare
+# and bounded — the checkpoint saved in STEP 2 is always available for recovery.
+# To clean up after a crash: rm .workflow_artifacts/memory/sessions/*.pidfile.lock
+if [ "$pidfile_info" != "none" ]; then
+  printf '[quoin-precompact] INFO: skills running (%s); allowing auto-compact; checkpoint saved at %s\n' "$pidfile_info" "${checkpoint_file:-unknown}" >&2
+  printf '{"decision": "allow"}\n'
+else
+  # Block path: no active skills detected (direct conversation mode).
+  # STEP 3 (block path only): Write pending-restore sentinel.
+  # Guard: [ -n "$checkpoint_file" ] ensures we only write in the full checkpoint path,
+  # not the early-skip path where checkpoint_file is unset and the existing sentinel
+  # is already correct — no need to overwrite it.
+  if [ -n "$checkpoint_file" ]; then
+    mkdir -p "$MEMORY_DIR" 2>/dev/null || true
+    printf '%s\n' "$checkpoint_file" > "$pending_restore_file" 2>/dev/null || {
+      printf '[quoin-precompact] WARNING: cannot write pending-restore sentinel; sessionstart hook cannot surface restore banner\n' >&2
+      # Still block — checkpoint was written, just sentinel is missing
+    }
+  fi
+  printf '[quoin-precompact] INFO: no active pidfiles → blocking auto-compaction (direct conversation mode); checkpoint saved at %s\n' "${checkpoint_file:-unknown}" >&2
+  printf '{"decision": "block", "reason": "auto-compaction intercepted; session state saved; run /checkpoint then /checkpoint --restore in a fresh session"}\n'
+fi

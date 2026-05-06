@@ -17,13 +17,13 @@
 # After calling, the following are exported:
 #   BPT      — bytes per token (e.g., "8.0")
 #   LIMIT    — effective context limit in tokens (e.g., 150000)
-#   STOP_BPS — stop/advisory threshold in basis-points (e.g., 8500)
+#   STOP_BPS — stop/advisory threshold in basis-points (e.g., 7000)
 #   BLOCK_BPS — block threshold in basis-points (e.g., 9500)
 #   STALE_DAYS — sentinel staleness threshold in days (e.g., 7)
 read_constants() {
     BPT=${QUOIN_BYTES_PER_TOKEN:-8.0}
     LIMIT=${QUOIN_EFFECTIVE_CONTEXT_LIMIT:-150000}
-    STOP_BPS=${QUOIN_STOP_BPS:-8500}
+    STOP_BPS=${QUOIN_STOP_BPS:-7000}
     BLOCK_BPS=${QUOIN_BLOCK_BPS:-9500}
     STALE_DAYS=${QUOIN_STALE_SENTINEL_DAYS:-7}
     export BPT LIMIT STOP_BPS BLOCK_BPS STALE_DAYS
