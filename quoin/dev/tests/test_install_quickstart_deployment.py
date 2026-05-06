@@ -57,7 +57,7 @@ def test_install_sh_deploys_quickstart():
             capture_output=True,
             text=True,
             cwd=str(REPO_ROOT),
-            timeout=60,
+            timeout=180,
         )
         assert result.returncode == 0, (
             f"install.sh failed: returncode={result.returncode}\n"

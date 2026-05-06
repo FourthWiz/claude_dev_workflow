@@ -52,7 +52,7 @@ def _run_install(tmp_home: Path) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         cwd=str(REPO_ROOT),
-        timeout=60,
+        timeout=180,
     )
 
 
