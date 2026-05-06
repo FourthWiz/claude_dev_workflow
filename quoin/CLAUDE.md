@@ -401,12 +401,13 @@ The 7 Opus-tier skills that are NOT orchestrators (architect, plan, critic, revi
 
 ### Hooks deployed by quoin
 
-`bash install.sh` deploys hook scripts to `~/.claude/hooks/` and registers five (event, matcher) stanzas in `~/.claude/settings.json`:
+`bash install.sh` deploys hook scripts to `~/.claude/hooks/` and registers six (event, matcher) stanzas in `~/.claude/settings.json`:
 
 | Event | Matcher | Script | Timeout | Contract |
 |-------|---------|--------|---------|----------|
 | UserPromptSubmit | `*` | `userpromptsubmit.sh` | 5s | Context utilization check; advisory or block |
 | PreCompact | `auto` | `precompact.sh` | 10s | Last-resort save; blocks (direct conversation) or allows (skill pidfiles present) on auto-compaction |
+| PostCompact | `auto` | `postcompact.sh` | 5s | Writes `postcompact-reset-${session_id}.txt` sentinel; `userpromptsubmit.sh` STEP 0.5 consumes it to confirm compaction occurred and trash-moves the sentinel |
 | SessionStart | `startup` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) |
 | SessionStart | `resume` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) |
 | SessionEnd | `*` | `sessionend.sh` | 5s | EOD nudge if `end_of_day_due: yes` |
@@ -472,8 +473,12 @@ The `forgotten/` directory structure:
 ├── checkpoints/       ← /checkpoint restore sentinels
 ├── forgotten/         ← soft-forget archive (NEW — S-3)
 │   └── <date>.md      ← one file per day /sleep ran with forgets
+├── trash/             ← recoverable delete archive (sentinel trash-moves land here)
+│   └── <YYYY-MM-DD>/  ←   dated subdirs, one per trash day
 └── lessons-learned.md ← long-term institutional memory
 ```
+
+Note: `trash/` accumulates sentinel files moved by `trash_move()` (in `_lib.sh`) instead of hard-deleted. The `/sleep --purge --older-than 90d` scope does not yet include `trash/` — this is a known gap (R-7); a follow-up task will extend `/sleep --purge` to cover `trash/`.
 
 Each `forgotten/<date>.md` file is append-only. Each entry block follows this format:
 

@@ -268,7 +268,7 @@ Read the file. Detect format by checking for `=== BLOCKED PROMPT [...]` headers:
   Run it now? [y / n / edit]
   ```
   - On `y`: emit the prompt as-if the user just typed it (rebound path).
-  - On `n`: delete the sentinel without surfacing the prompt content.
+  - On `n`: trash-move the sentinel (to `.workflow_artifacts/memory/trash/<date>/`) without surfacing the prompt content.
   - On `edit`: invite the user to paste an edited version; on save, submit it.
 
 - **Multi-entry format (one or more `=== BLOCKED PROMPT [<timestamp>] ===` headers):**
@@ -287,7 +287,7 @@ Read the file. Detect format by checking for `=== BLOCKED PROMPT [...]` headers:
   - A single number (e.g. `2`): emit only that entry.
   - Comma-separated numbers (e.g. `1,3`): emit those entries in ascending order.
   - `edit N`: surface entry N in full, invite the user to paste an edited version before submitting. Wait for the user to provide the edited text, then emit that instead of the stored entry.
-  - `none` or `n`: delete the file without replaying any entry.
+  - `none` or `n`: trash-move the file without replaying any entry.
   - Invalid input: re-prompt once; on second invalid input, treat as `none`.
 
   After replaying the selected prompts, proceed to Step 5 (sentinel cleanup).
@@ -300,18 +300,23 @@ Stale pending-prompt sentinel detected (session-id MISMATCH: was <OLD_SID>, curr
 Then apply the same multi-entry format detection as CASE B:
 - **Legacy format:** surface as `Content: <PROMPT_TEXT>` and offer `[y / n / delete]`.
   - `y`: emit the prompt.
-  - `delete`: remove the stale file.
+  - `delete`: trash-move the stale file to `.workflow_artifacts/memory/trash/<date>/`.
   - `n`: leave it for explicit user cleanup.
 - **Multi-entry format:** surface the numbered list (same as CASE B multi-entry), prefixed with the mismatch warning. The `edit N` option applies here as well.
-- On `delete`: remove the stale file regardless of format.
+- On `delete`: trash-move the stale file regardless of format.
 
 ### Step 5: Sentinel cleanup
 
-Delete consumed sentinels:
+Trash-move consumed sentinels to `.workflow_artifacts/memory/trash/<YYYY-MM-DD>/` (recoverable):
 - `pending-prompt-${session_id}.txt` — if it was CASE B and user chose `y` or `n`.
 - `pending-restore-${session_id}.txt` — always on successful restore (CASE A or B).
 
-Stale CASE C pending-prompt files left alone unless user chose `delete`.
+Use the `trash_move` helper from `~/.claude/hooks/_lib.sh` (fail-OPEN — if the move fails, warn and leave in place):
+```bash
+. ~/.claude/hooks/_lib.sh && trash_move "<sentinel-path>" "$(pwd)/.workflow_artifacts/memory"
+```
+
+Stale CASE C pending-prompt files left alone unless user chose `delete` (see CASE C below).
 Checkpoint artifact stays in `checkpoints/` until `/sleep --purge` (architecture S-3) or manual delete.
 
 ### Step 6: Append cost-ledger row

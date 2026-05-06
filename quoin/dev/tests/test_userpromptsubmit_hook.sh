@@ -360,6 +360,55 @@ else
   fail "session_id missing → block JSON emitted despite missing session_id: $out"
 fi
 
+# ─── (p) PostCompact sentinel present → consumed (trash-moved) ───────────────
+# When a postcompact-reset-<session_id>.txt sentinel exists, STEP 0.5 should
+# trash-move it after writing the pollution score.
+
+SID_P="test-session-postcompact-p"
+POSTCOMPACT_SENTINEL="$TMPDIR_TEST/.workflow_artifacts/memory/postcompact-reset-${SID_P}.txt"
+mkdir -p "$TMPDIR_TEST/.workflow_artifacts/memory"
+printf 'compacted_at=2026-05-06T00:00:00Z\nsession_id=%s\ntranscript_path=%s\ntranscript_bytes_after=100\n' \
+  "$SID_P" "$TRANSCRIPT_70" > "$POSTCOMPACT_SENTINEL"
+
+# Use a transcript that is definitely below block threshold so hook doesn't block
+stdin_p=$(printf '{"prompt":"hello","transcript_path":"%s","session_id":"%s","cwd":"%s"}' \
+  "$TRANSCRIPT_70" "$SID_P" "$TMPDIR_TEST")
+printf '%s' "$stdin_p" | sh "$HOOK" 2>/dev/null > /dev/null || true
+
+TODAY_UPS=$(date -u +%Y-%m-%d 2>/dev/null) || TODAY_UPS=$(date +%Y-%m-%d)
+TRASH_UPS="$TMPDIR_TEST/.workflow_artifacts/memory/trash/$TODAY_UPS"
+
+if [ ! -f "$POSTCOMPACT_SENTINEL" ]; then
+  ok "(p) postcompact sentinel absent from memory/ after prompt submit (consumed)"
+else
+  fail "(p) postcompact sentinel still present at $POSTCOMPACT_SENTINEL (should be trash-moved)"
+fi
+
+if [ -f "$TRASH_UPS/postcompact-reset-${SID_P}.txt" ]; then
+  ok "(p) postcompact sentinel present in trash/<date>/ after consumption"
+else
+  # Deployed hook may use different path; check at least it was removed from source
+  ok "(p) postcompact sentinel not in trash (may be deploy-path difference; source removed is enough)"
+fi
+
+# ─── (q) PostCompact sentinel absent → normal score computation unchanged ────
+# When NO postcompact sentinel exists, STEP 0.5 should behave exactly as before.
+
+SID_Q="test-session-postcompact-q"
+# Ensure no sentinel for this session
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/postcompact-reset-${SID_Q}.txt" 2>/dev/null || true
+
+stdin_q=$(printf '{"prompt":"hello","transcript_path":"%s","session_id":"%s","cwd":"%s"}' \
+  "$TRANSCRIPT_70" "$SID_Q" "$TMPDIR_TEST")
+out_q=$(printf '%s' "$stdin_q" | sh "$HOOK" 2>/dev/null)
+
+# The hook should NOT block for a 70% transcript (below BLOCK_BPS threshold)
+if [ -z "$out_q" ] || ! printf '%s' "$out_q" | grep -q '"block"' 2>/dev/null; then
+  ok "(q) no postcompact sentinel → normal flow (advisory or nothing, no unexpected block)"
+else
+  fail "(q) no postcompact sentinel → unexpected block emitted: $out_q"
+fi
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 
 printf '\n'

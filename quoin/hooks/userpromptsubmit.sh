@@ -20,6 +20,7 @@ STDIN=$(cat)
 # lives here. Score written before the exemption check so it fires on all prompts.
 (
     _ups_tp=$(printf '%s' "$STDIN" | jq -r '.transcript_path // empty' 2>/dev/null) || true
+    _ups_sid=$(printf '%s' "$STDIN" | jq -r '.session_id // empty' 2>/dev/null) || true
     if [ -n "$_ups_tp" ] && [ -r "$_ups_tp" ]; then
         _ups_score=$(compute_pollution_score "$_ups_tp") || true
         if [ -n "$_ups_score" ]; then
@@ -34,6 +35,15 @@ STDIN=$(cat)
             else
                 mkdir -p "$_ups_mem" 2>/dev/null || true
                 printf '%s\n' "$_ups_score" > "${_ups_mem}/pollution-score-latest.txt" 2>/dev/null || true
+            fi
+            # PostCompact sentinel: if auto-compaction occurred, consume the sentinel.
+            # The compacted transcript is naturally small so _ups_score above is already
+            # the post-compact value — no recomputation needed. Guard: skip if no session_id.
+            if [ -n "$_ups_sid" ]; then
+                _ups_postcompact="${_ups_mem}/postcompact-reset-${_ups_sid}.txt"
+                if [ -f "$_ups_postcompact" ]; then
+                    trash_move "$_ups_postcompact" "$_ups_mem" 2>/dev/null || true
+                fi
             fi
         fi
     fi
@@ -134,7 +144,7 @@ else
   # STEP D: Emit block JSON (only reaches here if STEP C succeeded)
   pct_int=$((util / 100))
   pct_dec=$(printf '%02d' $((util % 100)))
-  printf '{"decision": "block", "reason": "context at %d.%s%% — your prompt was saved to pending-prompt-%s.txt; run /checkpoint then /checkpoint --restore in a fresh session"}\n' \
+  printf '{"decision": "block", "reason": "context at %d.%s%% — your prompt was saved to pending-prompt-%s.txt; run /checkpoint --restore in a fresh session"}\n' \
     "$pct_int" "$pct_dec" "$session_id"
   exit 0
 fi

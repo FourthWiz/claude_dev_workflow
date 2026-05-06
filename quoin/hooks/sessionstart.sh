@@ -76,10 +76,11 @@ fi
 # === end S-4 missing-EOD banner ===
 
 # STEP 2: Sweep stale sentinel files
-# Delete pending-prompt-*.txt and pending-restore-*.txt older than STALE_DAYS days
+# Trash-move pending-prompt-*.txt and pending-restore-*.txt older than STALE_DAYS days.
 # STALE_DAYS sourced from read_constants() (default 7, override via QUOIN_STALE_SENTINEL_DAYS)
-find "$MEMORY_DIR" -maxdepth 1 -name 'pending-prompt-*.txt' -mtime +"$STALE_DAYS" -delete 2>/dev/null || true
-find "$MEMORY_DIR" -maxdepth 1 -name 'pending-restore-*.txt' -mtime +"$STALE_DAYS" -delete 2>/dev/null || true
+# Using find -exec sh -c to avoid word-splitting on paths containing spaces.
+find "$MEMORY_DIR" -maxdepth 1 \( -name 'pending-prompt-*.txt' -o -name 'pending-restore-*.txt' \) -mtime +"$STALE_DAYS" \
+  -exec sh -c '. ~/.claude/hooks/_lib.sh && trash_move "$1" "$2"' _ {} "$MEMORY_DIR" \; 2>/dev/null || true
 
 # STEP 3: Look for current-session pending-restore sentinel
 pending_restore=""

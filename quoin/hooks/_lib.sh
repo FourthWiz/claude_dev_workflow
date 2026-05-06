@@ -94,6 +94,39 @@ compute_pollution_score() {
         'BEGIN{ printf "%d\n", kb + (ag * 5) + (rd * 1) + (ba * 1) }'
 }
 
+# trash_move <file> <trash_base> — move a file to the trash archive instead of deleting it.
+# Creates <trash_base>/trash/<YYYY-MM-DD>/ and moves the file there.
+# If a file with the same basename already exists in trash today, appends -1, -2, etc.
+# Returns 0 on success. On failure: emits a one-line stderr warning and returns 1.
+# POSIX sh compatible (no bash-isms).
+# <trash_base> is typically ${cwd}/.workflow_artifacts/memory
+trash_move() {
+    _tm_file="$1"
+    _tm_base="$2"
+    [ -f "$_tm_file" ] || {
+        printf '[quoin-trash] WARNING: trash-move failed for %s; source not found\n' "$_tm_file" >&2
+        return 1
+    }
+    _tm_date=$(date -u +%Y-%m-%d 2>/dev/null) || _tm_date=$(date +%Y-%m-%d)
+    _tm_dir="${_tm_base}/trash/${_tm_date}"
+    mkdir -p "$_tm_dir" 2>/dev/null || true
+    _tm_name=$(basename "$_tm_file")
+    _tm_dest="${_tm_dir}/${_tm_name}"
+    if [ -e "$_tm_dest" ]; then
+        _tm_n=1
+        while [ -e "${_tm_dir}/${_tm_name}-${_tm_n}" ]; do
+            _tm_n=$((_tm_n + 1))
+        done
+        _tm_dest="${_tm_dir}/${_tm_name}-${_tm_n}"
+    fi
+    if mv "$_tm_file" "$_tm_dest" 2>/dev/null; then
+        return 0
+    else
+        printf '[quoin-trash] WARNING: trash-move failed for %s; leaving in place\n' "$_tm_file" >&2
+        return 1
+    fi
+}
+
 # safe_jq_or_passthrough [jq-args]... — jq invocation with fail-OPEN.
 # If jq is not on PATH, returns 1; caller should exit 0 (fail-OPEN).
 # Usage: output=$(printf '%s' "$STDIN" | safe_jq_or_passthrough -r '.field // empty')
