@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling>=1.18,<1.19"]
+build-backend = "hatchling.build"
+
+[project]
+name = "quoin"
+dynamic = ["version"]
+description = "Workflow state for stateless coding agents — structured persistence for Claude Code sessions"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "IvGor" },
+]
+
+[project.urls]
+Homepage = "https://github.com/FourthWiz/quoin"
+Source = "https://github.com/FourthWiz/quoin"
+Issues = "https://github.com/FourthWiz/quoin/issues"
+
+[project.scripts]
+quoin = "quoin.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "build",
+]
+
+[tool.hatch.version]
+path = "src/quoin/__about__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/quoin"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"quoin/skills" = "src/quoin/data/skills"
+"quoin/scripts" = "src/quoin/data/scripts"
+"quoin/QUICKSTART.md" = "src/quoin/data/QUICKSTART.md"
+"quoin/CLAUDE.md" = "src/quoin/data/CLAUDE.md"
+"quoin/memory/terse-rubric.md" = "src/quoin/data/memory/terse-rubric.md"
+"quoin/memory/format-kit.md" = "src/quoin/data/memory/format-kit.md"
+"quoin/memory/glossary.md" = "src/quoin/data/memory/glossary.md"
+"quoin/memory/format-kit.sections.json" = "src/quoin/data/memory/format-kit.sections.json"
+"quoin/memory/summary-prompt.md" = "src/quoin/data/memory/summary-prompt.md"
+"quoin/memory/format-kit-pitfalls.md" = "src/quoin/data/memory/format-kit-pitfalls.md"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "quoin/",
+    "pyproject.toml",
+    "LICENSE",
+    "README.md",
+    "quoin/install.sh",
+]
+exclude = [
+    "quoin/dev/",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["quoin/dev/tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+python_classes = "Test*"
+addopts = "-q"
+pythonpath = ["src"]

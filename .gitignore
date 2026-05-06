@@ -6,6 +6,16 @@
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+
+# Build artifacts
+**/*.egg-info/
+build/
+dist/
+.pytest_cache/
+.tox/
+.coverage
+htmlcov/
 
 # Workflow artifacts (session-specific, not shared) — anchored to project root
 /.workflow_artifacts/

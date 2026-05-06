@@ -23,6 +23,15 @@ Without Quoin, each Claude session starts cold. With Quoin, sessions share accum
 
 ## Install
 
+**Via pip (recommended):**
+
+```bash
+pip install quoin
+quoin install
+```
+
+**From source:**
+
 ```bash
 git clone https://github.com/FourthWiz/quoin
 cd quoin
@@ -30,6 +39,8 @@ bash quoin/install.sh
 ```
 
 > **Note:** GitHub auto-redirects from the old `FourthWiz/claude_dev_workflow` URL — existing clones continue to work.
+
+For full setup instructions see [`quoin/SETUP.md`](quoin/SETUP.md). For the command reference see [`quoin/QUICKSTART.md`](quoin/QUICKSTART.md).
 
 ## 30-Second Start
 
