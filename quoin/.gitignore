@@ -15,8 +15,16 @@ build/
 
 # ── Distribution boundary: dev artifacts excluded from the distributable package ──
 
-# Dev-only subtree — tests, spikes, verify logs, dev tooling
-dev/
+# Dev-only artifacts — spikes, verify logs, dev tooling
+# dev/tests/ is intentionally NOT excluded — tests must remain tracked
+# so contributors can verify the distribution works on a fresh clone
+dev/spikes/
+dev/README.md
+dev/audit_corpus_coverage.py
+dev/measure_v3_savings.py
+dev/verify_*.sh
+dev/verify_*.md
+dev/verify_*.py
 
 # Internal design/audit docs — stage-specific investigation artifacts
 docs/revise-crossover-decision-*.md
