@@ -406,7 +406,7 @@ The 7 Opus-tier skills that are NOT orchestrators (architect, plan, critic, revi
 | Event | Matcher | Script | Timeout | Contract |
 |-------|---------|--------|---------|----------|
 | UserPromptSubmit | `*` | `userpromptsubmit.sh` | 5s | Context utilization check; advisory or block |
-| PreCompact | `auto` | `precompact.sh` | 10s | Last-resort save + block on auto-compaction |
+| PreCompact | `auto` | `precompact.sh` | 10s | Last-resort save; blocks (direct conversation) or allows (skill pidfiles present) on auto-compaction |
 | SessionStart | `startup` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) |
 | SessionStart | `resume` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) |
 | SessionEnd | `*` | `sessionend.sh` | 5s | EOD nudge if `end_of_day_due: yes` |

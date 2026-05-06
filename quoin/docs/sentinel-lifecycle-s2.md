@@ -9,7 +9,7 @@ the session-id discriminant, and recovery paths.
 | File pattern | Written by | Read by | Purpose |
 |---|---|---|---|
 | `pending-prompt-${session_id}.txt` | `userpromptsubmit.sh` (block branch) | `/checkpoint --restore` | Saves the user's prompt that was blocked so it can be replayed in a fresh session |
-| `pending-restore-${session_id}.txt` | `precompact.sh` (auto-compaction block) OR `/checkpoint` save mode | `sessionstart.sh`, `/checkpoint --restore` | Points to the checkpoint file path; triggers the restore banner on next session start |
+| `pending-restore-${session_id}.txt` | `precompact.sh` (auto-compaction **block path only** — not written in allow path) OR `/checkpoint` save mode | `sessionstart.sh`, `/checkpoint --restore` | Points to the checkpoint file path; triggers the restore banner on next session start |
 
 Both files live in `.workflow_artifacts/memory/` (not in git — see note at end).
 
@@ -18,7 +18,7 @@ Both files live in `.workflow_artifacts/memory/` (not in git — see note at end
 ```mermaid
 stateDiagram-v2
     [*] --> NormalOperation: session starts
-    NormalOperation --> ContextWarning: UserPromptSubmit fires, util >= 85%
+    NormalOperation --> ContextWarning: UserPromptSubmit fires, util >= 70%
     ContextWarning --> NormalOperation: user acknowledges advisory, continues
     ContextWarning --> UserBlocked: util >= 95%
     UserBlocked --> PendingPromptSaved: userpromptsubmit.sh writes pending-prompt-${sid}.txt
@@ -37,7 +37,7 @@ ASCII state machine (for viewers without mermaid support):
 ```
 [Normal operation]
       |
-      | UserPromptSubmit fires at ≥85% util
+      | UserPromptSubmit fires at ≥70% util
       v
 [Context warning advisory] → user continues → [Normal operation]
       |
@@ -73,11 +73,18 @@ COMPACTION BRANCH:
 [Normal operation]
       | auto-compaction triggers (no /compact from user)
       | precompact.sh fires → saves checkpoint to checkpoints/
-      | → writes pending-restore-${sid}.txt
-      | → emits {"decision": "block"} → compaction blocked
+      |
+      | IF skill pidfiles active:
+      |   → does NOT write pending-restore sentinel
+      |   → emits {"decision": "allow"} → compaction proceeds
+      |   → session continues with compacted context
+      |
+      | IF no pidfiles (direct conversation):
+      |   → writes pending-restore-${sid}.txt
+      |   → emits {"decision": "block"} → compaction blocked
       v
 [User starts fresh session]
-      | SessionStart → banner (pending-restore found)
+      | SessionStart → banner (pending-restore found, block path only)
       v
 [User runs /checkpoint --restore → resumes]
 ```
@@ -127,6 +134,10 @@ result — the block signal may not always halt compaction in all harness versio
 completes. On the NEXT session start, `sessionstart.sh` will surface the banner — this
 is intentional. The user's checkpoint is still valid and recoverable. If not desired,
 the user can `rm .workflow_artifacts/memory/pending-restore-${session_id}.txt`.
+
+In the **allow path** (skill pidfiles active), no sentinel is written — the session
+continues with compacted context and no restore action is needed. The checkpoint file
+is still written to `checkpoints/` for optional manual reference.
 
 If a future T-00 schema-diff reveals a post-compaction signal (a harness-emitted stdin
 field after successful compaction), `precompact.sh` Step 5 would auto-delete the sentinel.
