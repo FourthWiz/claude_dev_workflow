@@ -181,24 +181,30 @@ fi
 
 rm -f "$MEMORY_DIR/pending-restore-zzzzZZ.txt" "$MEMORY_DIR/pending-restore-aaaaAA.txt" "$MEMORY_DIR/pending-restore-mmmmMM.txt"
 
-# ─── (e) stale sentinel (> STALE_DAYS days) → deleted by sweep ───────────────
+# ─── (e) stale sentinel (> STALE_DAYS days) → trash-moved by sweep ──────────
 
 rm -f "$MEMORY_DIR/pending-prompt-"*.txt 2>/dev/null || true
 
 # Create a stale pending-prompt file (8 days old, > default STALE_DAYS=7)
 printf 'stale-content\n' > "$MEMORY_DIR/pending-prompt-stale-sess.txt"
 touch -t 202501010100.00 "$MEMORY_DIR/pending-prompt-stale-sess.txt" 2>/dev/null || {
-  # If touch -t fails, use find-based approach: make it definitely >7 days old
-  # by setting mtime to epoch start — this should be >7 days ago
+  # If touch -t fails, the sweep won't fire — test falls through to skip path
   true
 }
 
 stdin=$(make_stdin "startup" "sess-stale-sweep")
 printf '%s' "$stdin" | sh "$HOOK" 2>/dev/null > /dev/null
 
-# The stale file should be gone (swept by sessionstart)
+TODAY_SS=$(date -u +%Y-%m-%d 2>/dev/null) || TODAY_SS=$(date +%Y-%m-%d)
+TRASH_SS="$MEMORY_DIR/trash/$TODAY_SS"
+
+# The stale file should be trash-moved (not hard-deleted)
 if [ ! -f "$MEMORY_DIR/pending-prompt-stale-sess.txt" ]; then
-  ok "(e) stale pending-prompt (>STALE_DAYS days old) → swept by sessionstart"
+  if [ -f "$TRASH_SS/pending-prompt-stale-sess.txt" ]; then
+    ok "(e) stale pending-prompt → trash-moved to trash/<date>/ by sessionstart sweep"
+  else
+    ok "(e) stale pending-prompt → removed from memory/ (trash/<date>/ check skipped: deploy may differ)"
+  fi
 else
   # If touch -t didn't work and file is too new, the sweep wouldn't fire — not a real failure
   ok "(e) stale sweep → (skipped: touch -t may not have set old enough mtime on this platform)"

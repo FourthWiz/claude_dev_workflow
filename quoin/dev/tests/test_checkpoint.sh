@@ -277,16 +277,43 @@ else
   fail "(e) CASE B: one or both sentinels missing before restore"
 fi
 
-# After simulated 'y' restore: both sentinels should be consumed (deleted)
-# We simulate this:
-rm -f "$MEMORY_DIR/pending-prompt-sess-restore-b.txt"
-rm -f "$MEMORY_DIR/pending-restore-sess-restore-b.txt"
+# After simulated 'y' restore: both sentinels should be trash-moved (not hard-deleted)
+# We simulate this using trash_move from _lib.sh:
+. "$SCRIPT_DIR/../../hooks/_lib.sh"
+trash_move "$MEMORY_DIR/pending-prompt-sess-restore-b.txt" "$MEMORY_DIR"
+trash_move "$MEMORY_DIR/pending-restore-sess-restore-b.txt" "$MEMORY_DIR"
+
+TODAY_DATE=$(date -u +%Y-%m-%d 2>/dev/null) || TODAY_DATE=$(date +%Y-%m-%d)
+TRASH_DIR="$MEMORY_DIR/trash/$TODAY_DATE"
+
+# (e1) pending-restore sentinel appears in trash/<date>/
+if [ -f "$TRASH_DIR/pending-restore-sess-restore-b.txt" ]; then
+  ok "(e1) CASE B: pending-restore sentinel in trash/<date>/ after restore"
+else
+  fail "(e1) CASE B: pending-restore sentinel NOT found in trash (expected: $TRASH_DIR/pending-restore-sess-restore-b.txt)"
+fi
+
+# (e2) pending-restore sentinel NOT in memory/ root
+if [ ! -f "$MEMORY_DIR/pending-restore-sess-restore-b.txt" ]; then
+  ok "(e2) CASE B: pending-restore sentinel removed from memory/ root"
+else
+  fail "(e2) CASE B: pending-restore sentinel still in memory/ root"
+fi
 
 if [ ! -f "$MEMORY_DIR/pending-prompt-sess-restore-b.txt" ] && \
    [ ! -f "$MEMORY_DIR/pending-restore-sess-restore-b.txt" ]; then
-  ok "(e) CASE B: both sentinels consumed (deleted) after restore"
+  ok "(e) CASE B: both sentinels consumed (trash-moved) after restore"
 else
   fail "(e) CASE B: sentinels not cleaned up after restore"
+fi
+
+# (e3) Collision suffix: trash-move a second file with the same basename
+printf 'duplicate\n' > "$MEMORY_DIR/pending-restore-sess-restore-b.txt"
+trash_move "$MEMORY_DIR/pending-restore-sess-restore-b.txt" "$MEMORY_DIR"
+if [ -f "$TRASH_DIR/pending-restore-sess-restore-b.txt-1" ]; then
+  ok "(e3) CASE B collision: second trash-move uses -1 suffix"
+else
+  fail "(e3) CASE B collision: -1 suffix file NOT found in trash"
 fi
 
 # ─── (f) Corrupt checkpoint — graceful error ────────────────────────────────
