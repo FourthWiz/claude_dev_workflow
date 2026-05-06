@@ -129,21 +129,25 @@ def test_installer_byte_identical_to_install_sh():
         )
         assert r_py.returncode == 0, f"python transport failed:\n{r_py.stderr}"
 
-        # Compare skills and memory (the 6 Tier-1 files)
-        for skill in installer.CANONICAL_SKILLS:
-            skill_md_a = home_a / ".claude" / "skills" / skill / "SKILL.md"
-            skill_md_b = home_b / ".claude" / "skills" / skill / "SKILL.md"
-            assert skill_md_a.exists(), f"bash missing: {skill}/SKILL.md"
-            assert skill_md_b.exists(), f"python missing: {skill}/SKILL.md"
-            assert skill_md_a.read_bytes() == skill_md_b.read_bytes(), (
-                f"SKILL.md mismatch: {skill}"
+        # Recursive tree walk of home_a/.claude/ — every file must exist in home_b
+        # with identical content (T-11 plan: full tree comparison, not just constants)
+        claude_a = home_a / ".claude"
+        claude_b = home_b / ".claude"
+        for path_a in sorted(claude_a.rglob("*")):
+            if not path_a.is_file():
+                continue
+            rel = path_a.relative_to(claude_a)
+            path_b = claude_b / rel
+            # settings.json is allowed to differ (bash transport may not write it; python does)
+            if rel.name == "settings.json":
+                continue
+            # CLAUDE.md content differs between transports (appended vs. merged)
+            if rel.name == "CLAUDE.md":
+                continue
+            assert path_b.exists(), f"python transport missing: {rel}"
+            assert path_a.read_bytes() == path_b.read_bytes(), (
+                f"file content mismatch: {rel}"
             )
-
-        for fname in installer.TIER1_MEMORY_FILES:
-            fa = home_a / ".claude" / "memory" / fname
-            fb = home_b / ".claude" / "memory" / fname
-            assert fa.exists() and fb.exists(), f"missing memory file: {fname}"
-            assert fa.read_bytes() == fb.read_bytes(), f"memory mismatch: {fname}"
 
 
 # ── Cleanup obsolete scripts ──────────────────────────────────────────────────

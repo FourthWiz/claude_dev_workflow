@@ -25,6 +25,7 @@ quoin = "quoin.cli:main"
 dev = [
     "pytest>=7.0",
     "build",
+    "pyyaml>=6.0",
 ]
 
 [tool.hatch.version]
@@ -36,6 +37,7 @@ packages = ["src/quoin"]
 [tool.hatch.build.targets.wheel.force-include]
 "quoin/skills" = "src/quoin/data/skills"
 "quoin/scripts" = "src/quoin/data/scripts"
+"quoin/hooks" = "src/quoin/data/hooks"
 "quoin/QUICKSTART.md" = "src/quoin/data/QUICKSTART.md"
 "quoin/CLAUDE.md" = "src/quoin/data/CLAUDE.md"
 "quoin/memory/terse-rubric.md" = "src/quoin/data/memory/terse-rubric.md"
@@ -44,6 +46,8 @@ packages = ["src/quoin"]
 "quoin/memory/format-kit.sections.json" = "src/quoin/data/memory/format-kit.sections.json"
 "quoin/memory/summary-prompt.md" = "src/quoin/data/memory/summary-prompt.md"
 "quoin/memory/format-kit-pitfalls.md" = "src/quoin/data/memory/format-kit-pitfalls.md"
+"quoin/memory/sleep-signals.yaml" = "src/quoin/data/memory/sleep-signals.yaml"
+"quoin/memory/cache-guide.md" = "src/quoin/data/memory/cache-guide.md"
 
 [tool.hatch.build.targets.sdist]
 include = [

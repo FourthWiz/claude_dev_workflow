@@ -1,6 +1,7 @@
 """Deploy quoin artifacts to ~/.claude/."""
 from __future__ import annotations
 
+import json
 import os
 import pathlib
 import re
@@ -8,7 +9,7 @@ import shutil
 import subprocess
 import sys
 
-# T-04: single source of truth for wheel-bundled memory files (6 Tier-1 files)
+# T-04: single source of truth for wheel-bundled memory files (8 Tier-1 files)
 TIER1_MEMORY_FILES = (
     "terse-rubric.md",
     "format-kit.md",
@@ -16,6 +17,8 @@ TIER1_MEMORY_FILES = (
     "format-kit.sections.json",
     "summary-prompt.md",
     "format-kit-pitfalls.md",
+    "sleep-signals.yaml",
+    "cache-guide.md",
 )
 
 # T-05: canonical skill list — must match quoin/skills/ on disk exactly
@@ -44,6 +47,19 @@ CANONICAL_SKILLS = (
     "thorough_plan",
     "triage",
     "weekly_review",
+)
+
+# T-05: canonical script list — all 9 scripts deployed to ~/.claude/scripts/
+DEPLOYED_SCRIPTS = (
+    "validate_artifact.py",
+    "path_resolve.py",
+    "cost_from_jsonl.py",
+    "classify_critic_issues.py",
+    "build_preambles.py",
+    "session_age_guard.py",
+    "pidfile_helpers.sh",
+    "sleep_score.py",
+    "analyze_cost_ledger.py",
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -108,18 +124,10 @@ def deploy_skills(source_dir: pathlib.Path, dest_root: pathlib.Path) -> int:
 
 def deploy_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
     """Copy scripts from source_dir/scripts/ to dest_root/scripts/."""
-    scripts = (
-        "validate_artifact.py",
-        "path_resolve.py",
-        "cost_from_jsonl.py",
-        "classify_critic_issues.py",
-        "build_preambles.py",
-        "session_age_guard.py",
-    )
     src_scripts = source_dir / "scripts"
     dst_scripts = dest_root / "scripts"
     dst_scripts.mkdir(parents=True, exist_ok=True)
-    for fname in scripts:
+    for fname in DEPLOYED_SCRIPTS:
         src = src_scripts / fname
         if not src.exists():
             print(f"quoin: Expected {fname} at {src} but not found", file=sys.stderr)
@@ -128,6 +136,76 @@ def deploy_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
         shutil.copyfile(src, dst)
         os.chmod(dst, 0o755)
         print(f"Copied {fname} to ~/.claude/scripts/")
+
+
+def deploy_hooks(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
+    """Copy hook scripts and merge 5 stanzas into dest_root/../settings.json.
+
+    Mirrors install.sh install_hooks() function. When jq is absent, writes
+    HOOK_MERGE_TODO.md and returns without modifying settings.json.
+    """
+    hook_scripts = ("userpromptsubmit.sh", "precompact.sh", "sessionstart.sh", "sessionend.sh", "_lib.sh")
+    src_hooks = source_dir / "hooks"
+    dst_hooks = dest_root / "hooks"
+    dst_hooks.mkdir(parents=True, exist_ok=True)
+
+    # Copy hook scripts
+    for fname in hook_scripts:
+        src = src_hooks / fname
+        if not src.exists():
+            print(f"quoin: Expected hook {fname} at {src} but not found", file=sys.stderr)
+            sys.exit(1)
+        dst = dst_hooks / fname
+        shutil.copyfile(src, dst)
+        os.chmod(dst, 0o755)
+        print(f"Copied hook {fname} to ~/.claude/hooks/")
+
+    # Merge 5 hook stanzas into settings.json using Python json module
+    # settings.json lives one level above dest_root (~/.claude/../settings.json = ~/.claude/settings.json)
+    settings_path = dest_root / "settings.json"
+
+    # Load existing settings or start fresh
+    if settings_path.exists():
+        try:
+            with open(settings_path) as f:
+                settings = json.load(f)
+        except (json.JSONDecodeError, OSError) as exc:
+            # Back up the broken file and start fresh
+            backup = settings_path.with_suffix(".json.bak")
+            shutil.copyfile(settings_path, backup)
+            print(
+                f"quoin: settings.json parse error ({exc}); backed up to {backup} and starting fresh",
+                file=sys.stderr,
+            )
+            settings = {}
+    else:
+        settings = {}
+
+    hooks = settings.setdefault("hooks", {})
+
+    # Helper: append a stanza to an event list only if not already present
+    def _append_stanza(event: str, matcher: str, command: str, timeout: int) -> None:
+        stanza = {
+            "matcher": matcher,
+            "hooks": [{"type": "command", "command": command, "timeout": timeout}],
+        }
+        event_list = hooks.setdefault(event, [])
+        # Idempotency: skip if an identical stanza already exists
+        if stanza not in event_list:
+            event_list.append(stanza)
+
+    hooks_dir = "~/.claude/hooks"
+    _append_stanza("UserPromptSubmit", "*",       f"{hooks_dir}/userpromptsubmit.sh", 5)
+    _append_stanza("PreCompact",       "auto",    f"{hooks_dir}/precompact.sh",       10)
+    _append_stanza("SessionStart",     "startup", f"{hooks_dir}/sessionstart.sh",     5)
+    _append_stanza("SessionStart",     "resume",  f"{hooks_dir}/sessionstart.sh",     5)
+    _append_stanza("SessionEnd",       "*",       f"{hooks_dir}/sessionend.sh",       5)
+
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(settings_path, "w") as f:
+        json.dump(settings, f, indent=2)
+        f.write("\n")
+    print("Merged 5 hook stanzas into ~/.claude/settings.json")
 
 
 def cleanup_obsolete_scripts(dest_root: pathlib.Path) -> None:
@@ -276,18 +354,19 @@ def regenerate_preambles(source_dir: pathlib.Path, *, allow_writes: bool) -> Non
 
 
 def install_dev_deps() -> None:
-    """Install dev Python dependencies (pyyaml, pytest) via pip3."""
-    if shutil.which("pip3") is None:
+    """Install dev Python dependencies via pip (uses quoin[dev] extras)."""
+    if shutil.which("pip3") is None and shutil.which("pip") is None:
         print(
-            "Warning: pip3 not found — install pyyaml + pytest manually for dev tests",
+            "Warning: pip not found — install quoin[dev] manually for dev tests",
             file=sys.stderr,
         )
         return
+    pip_cmd = shutil.which("pip3") or shutil.which("pip")
     result = subprocess.run(
-        ["pip3", "install", "--user", "--upgrade", "pyyaml", "pytest"],
+        [pip_cmd, "install", "--user", "--upgrade", "quoin[dev]"],
     )
     if result.returncode != 0:
         print(
-            "Warning: pip install failed; install pyyaml + pytest manually for dev tests",
+            "Warning: pip install failed; install quoin[dev] manually for dev tests",
             file=sys.stderr,
         )

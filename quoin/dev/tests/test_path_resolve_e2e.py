@@ -358,19 +358,15 @@ def test_resolver_grandfathers_each_inflight_task_per_production_shape(snapshot_
 
 
 def test_install_sh_lists_path_resolve():
-    """install.sh must include path_resolve.py in the for-loop and success message."""
-    text = INSTALL_SH.read_text()
+    """installer.py DEPLOYED_SCRIPTS must include path_resolve.py."""
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "src"))
+    from quoin import installer  # noqa: PLC0415
 
-    # Accept the for-loop containing path_resolve.py — additional scripts may also
-    # be listed (e.g., cost_from_jsonl.py was added in stage-2 T-05).
-    assert re.search(r"for script_file in[^\n]*path_resolve\.py", text), (
-        f"install.sh for-loop does not contain path_resolve.py. "
-        f"Expected 'for script_file in ... path_resolve.py ...; do'"
-    )
-
-    assert "v3 scripts" in text and "path_resolve.py" in text, (
-        f"install.sh success-message (near line 201) does not mention path_resolve.py. "
-        f"T-06 must add it. Expected substring: 'path_resolve.py' in the 'v3 scripts' line."
+    assert "path_resolve.py" in installer.DEPLOYED_SCRIPTS, (
+        "installer.DEPLOYED_SCRIPTS does not contain 'path_resolve.py'. "
+        "The Python installer (which replaced the install.sh for-loop) must include "
+        "path_resolve.py in its DEPLOYED_SCRIPTS constant."
     )
 
 

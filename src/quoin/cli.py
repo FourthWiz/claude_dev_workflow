@@ -138,6 +138,9 @@ def _cmd_install(args: argparse.Namespace) -> int:
     installer.deploy_scripts(source_dir, dest_root)
     installer.cleanup_obsolete_scripts(dest_root)
 
+    # Hooks
+    installer.deploy_hooks(source_dir, dest_root)
+
     # T-06
     installer.merge_workflow_rules(source_dir, dest_root, force_merge=args.force_merge)
 
@@ -197,12 +200,7 @@ def _cmd_doctor(args: argparse.Namespace) -> int:  # noqa: ARG001
 
     # Scripts
     print("Scripts (~/.claude/scripts/):")
-    for fname in (
-        "validate_artifact.py",
-        "path_resolve.py",
-        "build_preambles.py",
-        "session_age_guard.py",
-    ):
+    for fname in installer.DEPLOYED_SCRIPTS:
         p = dest_root / "scripts" / fname
         found = p.exists()
         status = "✓" if found else "✗"

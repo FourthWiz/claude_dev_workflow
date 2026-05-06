@@ -114,25 +114,27 @@ def test_end_of_task_has_fallback_wiring():
 
 
 # ---------------------------------------------------------------------------
-# Test 3: install.sh deploys cost_from_jsonl.py + Stage 5 cleanup preserved
+# Test 3: installer.py deploys cost_from_jsonl.py + Stage 5 cleanup constants
 # ---------------------------------------------------------------------------
 def test_install_sh_deploys_cost_from_jsonl():
-    text = INSTALL_SH.read_text()
+    """installer.py DEPLOYED_SCRIPTS must include cost_from_jsonl.py; OBSOLETE_SCRIPTS canary."""
+    import sys
+    sys.path.insert(0, str(REPO_ROOT / "src"))
+    from quoin import installer  # noqa: PLC0415
 
-    # cost_from_jsonl.py must appear in the for-loop
-    assert re.search(r'for script_file in[^\n]*cost_from_jsonl\.py', text), (
-        "install.sh: 'cost_from_jsonl.py' not found in the for-loop for script files"
+    # cost_from_jsonl.py must be in DEPLOYED_SCRIPTS constant
+    assert "cost_from_jsonl.py" in installer.DEPLOYED_SCRIPTS, (
+        "installer.DEPLOYED_SCRIPTS does not include 'cost_from_jsonl.py'. "
+        "The Python installer must deploy all scripts that install.sh used to deploy."
     )
-    # cost_from_jsonl.py must appear in the summary echo
-    assert re.search(r'echo[^\n]*cost_from_jsonl\.py', text), (
-        "install.sh: 'cost_from_jsonl.py' not found in the summary echo line"
+
+    # Stage 5 cleanup canary: OBSOLETE_SCRIPTS must still include the legacy scripts
+    assert "summarize_for_human.py" in installer.OBSOLETE_SCRIPTS, (
+        "installer.OBSOLETE_SCRIPTS missing 'summarize_for_human.py' — Stage 5 cleanup canary. "
+        "This is the regression guard that ensures the cleanup for obsolete scripts is not dropped."
     )
-    # Stage 5 cleanup loop must still be present and unchanged
-    assert "for obsolete in summarize_for_human.py with_env.sh" in text, (
-        "install.sh: Stage 5 cleanup loop missing — "
-        "'for obsolete in summarize_for_human.py with_env.sh' not found. "
-        "This is the regression canary that future stages do not accidentally "
-        "drop the cleanup for these obsolete scripts."
+    assert "with_env.sh" in installer.OBSOLETE_SCRIPTS, (
+        "installer.OBSOLETE_SCRIPTS missing 'with_env.sh' — Stage 5 cleanup canary."
     )
 
 
