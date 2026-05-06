@@ -53,8 +53,9 @@ def _resolve_source_dir(explicit: Optional[str]) -> pathlib.Path:
         except (TypeError, AttributeError, FileNotFoundError):
             pass
 
-    # Tier 2: editable or importlib fallback — walk from __file__ to repo/quoin/
-    candidate = (pkg_file.parent / ".." / ".." / ".." / "quoin").resolve()
+    # Tier 2: editable or importlib fallback — walk from src/quoin/ up to repo/
+    # pkg_file.parent = src/quoin/; two ".." reaches project root; then "quoin/"
+    candidate = (pkg_file.parent / ".." / ".." / "quoin").resolve()
     if (candidate / "skills").is_dir():
         return candidate
 
