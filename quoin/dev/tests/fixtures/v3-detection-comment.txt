@@ -1,0 +1,9 @@
+# v3-format detection (architecture.md §5.7.1 — copy verbatim)
+# A file is v3-format iff:
+#   - the first 50 lines following the closing `---` of the YAML frontmatter
+#     contain a heading matching the regex ^## For human\s*$
+# Otherwise the file is v2-format.
+# On v3-format detection: read sections per format-kit.md for this artifact type.
+# On v2-format (or no frontmatter): read the whole file as legacy v2.
+# Detection MUST be string-comparison only — no LLM call (per lesson 2026-04-23
+# on LLM-replay non-determinism).
