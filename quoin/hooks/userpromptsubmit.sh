@@ -42,7 +42,7 @@ STDIN=$(cat)
             if [ -n "$_ups_sid" ]; then
                 _ups_postcompact="${_ups_mem}/postcompact-reset-${_ups_sid}.txt"
                 if [ -f "$_ups_postcompact" ]; then
-                    . ~/.claude/hooks/_lib.sh && trash_move "$_ups_postcompact" "$_ups_mem" 2>/dev/null || true
+                    trash_move "$_ups_postcompact" "$_ups_mem" 2>/dev/null || true
                 fi
             fi
         fi

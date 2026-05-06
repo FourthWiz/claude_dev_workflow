@@ -8,9 +8,6 @@
 #
 # Shebang assertion: head -1 ... | grep -qE '^#!/bin/sh( |$)'
 
-# Source shared helper library (for trash_move used if needed by callers)
-. "$(dirname "$0")/_lib.sh"
-
 # STEP -1: Capture stdin before any parsing (stdin can only be read once)
 STDIN=$(cat)
 
@@ -34,6 +31,7 @@ transcript_bytes_after=0
 if [ -n "$transcript_path" ] && [ -r "$transcript_path" ]; then
     transcript_bytes_after=$(wc -c < "$transcript_path" 2>/dev/null | awk '{print $1}') || transcript_bytes_after=0
 fi
+transcript_bytes_after=${transcript_bytes_after:-0}
 
 printf 'compacted_at=%s\nsession_id=%s\ntranscript_path=%s\ntranscript_bytes_after=%s\n' \
     "$compacted_at" "$session_id" "$transcript_path" "$transcript_bytes_after" \

@@ -36,9 +36,9 @@ cleanup() { rm -rf "$TMPDIR_TEST"; }
 trap cleanup EXIT
 
 make_stdin() {
-  local session_id="${1:-test-session-pc}"
-  local cwd="${2:-$TMPDIR_TEST}"
-  local transcript="${3:-$TRANSCRIPT}"
+  session_id="${1:-test-session-pc}"
+  cwd="${2:-$TMPDIR_TEST}"
+  transcript="${3:-$TRANSCRIPT}"
   printf '{"session_id":"%s","cwd":"%s","transcript_path":"%s","hook_event_name":"PostCompact"}' \
     "$session_id" "$cwd" "$transcript"
 }
