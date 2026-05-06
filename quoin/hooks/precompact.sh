@@ -251,5 +251,5 @@ else
     }
   fi
   printf '[quoin-precompact] INFO: no active pidfiles → blocking auto-compaction (direct conversation mode); checkpoint saved at %s\n' "${checkpoint_file:-unknown}" >&2
-  printf '{"decision": "block", "reason": "auto-compaction intercepted; session state saved; run /checkpoint then /checkpoint --restore in a fresh session"}\n'
+  printf '{"decision": "block", "reason": "auto-compaction intercepted; session state saved automatically; start a fresh session and run /checkpoint --restore to resume"}\n'
 fi

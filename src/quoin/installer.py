@@ -140,12 +140,12 @@ def deploy_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
 
 
 def deploy_hooks(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
-    """Copy hook scripts and merge 5 stanzas into dest_root/../settings.json.
+    """Copy hook scripts and merge 6 stanzas into dest_root/../settings.json.
 
     Mirrors install.sh install_hooks() function. When jq is absent, writes
     HOOK_MERGE_TODO.md and returns without modifying settings.json.
     """
-    hook_scripts = ("userpromptsubmit.sh", "precompact.sh", "sessionstart.sh", "sessionend.sh", "_lib.sh")
+    hook_scripts = ("userpromptsubmit.sh", "precompact.sh", "postcompact.sh", "sessionstart.sh", "sessionend.sh", "_lib.sh")
     src_hooks = source_dir / "hooks"
     dst_hooks = dest_root / "hooks"
     dst_hooks.mkdir(parents=True, exist_ok=True)
@@ -161,7 +161,7 @@ def deploy_hooks(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
         os.chmod(dst, 0o755)
         print(f"Copied hook {fname} to ~/.claude/hooks/")
 
-    # Merge 5 hook stanzas into settings.json using Python json module
+    # Merge 6 hook stanzas into settings.json using Python json module
     # settings.json lives inside dest_root (~/.claude/settings.json)
     settings_path = dest_root / "settings.json"
 
@@ -210,6 +210,7 @@ def deploy_hooks(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
     hooks_dir = str(dest_root.resolve() / "hooks")
     _append_stanza("UserPromptSubmit", "*",       f"{hooks_dir}/userpromptsubmit.sh", 5)
     _append_stanza("PreCompact",       "auto",    f"{hooks_dir}/precompact.sh",       10)
+    _append_stanza("PostCompact",      "auto",    f"{hooks_dir}/postcompact.sh",      5)
     _append_stanza("SessionStart",     "startup", f"{hooks_dir}/sessionstart.sh",     5)
     _append_stanza("SessionStart",     "resume",  f"{hooks_dir}/sessionstart.sh",     5)
     _append_stanza("SessionEnd",       "*",       f"{hooks_dir}/sessionend.sh",       5)
@@ -218,7 +219,7 @@ def deploy_hooks(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
     with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
         f.write("\n")
-    print("Merged 5 hook stanzas into ~/.claude/settings.json")
+    print("Merged 6 hook stanzas into ~/.claude/settings.json")
 
 
 def cleanup_obsolete_scripts(dest_root: pathlib.Path) -> None:
