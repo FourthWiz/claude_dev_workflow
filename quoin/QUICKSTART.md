@@ -80,8 +80,3 @@ Common use cases: reviewing a terse critic response; reading a compressed cache 
 - `.workflow_artifacts/` — all workflow artifacts: memory, task plans, session state (gitignored)
 - `.workflow_artifacts/cache/` — auto-maintained code summary cache (knowledge cache)
 - `~/.claude/skills/` — all workflow skill definitions (user-level)
-- `<your-quoin-clone>/Workflow-User-Guide.html` — detailed interactive guide with scenarios (in your cloned source)
-
-## First time?
-
-Open `<your-quoin-clone>/Workflow-User-Guide.html` in your browser for a full walkthrough with example conversations.
