@@ -1,6 +1,7 @@
 """Deploy quoin artifacts to ~/.claude/."""
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import pathlib
@@ -170,8 +171,9 @@ def deploy_hooks(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
             with open(settings_path) as f:
                 settings = json.load(f)
         except (json.JSONDecodeError, OSError) as exc:
-            # Back up the broken file and start fresh
-            backup = settings_path.with_suffix(".json.bak")
+            # Back up the broken file with a timestamp so prior backups are preserved
+            ts = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+            backup = settings_path.parent / f"{settings_path.name}.bak-{ts}"
             shutil.copyfile(settings_path, backup)
             print(
                 f"quoin: settings.json parse error ({exc}); backed up to {backup} and starting fresh",
@@ -183,18 +185,29 @@ def deploy_hooks(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
 
     hooks = settings.setdefault("hooks", {})
 
-    # Helper: append a stanza to an event list only if not already present
+    # Helper: append a stanza, replacing any existing entry for the same
+    # (matcher, script-filename) pair — mirrors install.sh jq dedup semantics.
     def _append_stanza(event: str, matcher: str, command: str, timeout: int) -> None:
         stanza = {
             "matcher": matcher,
             "hooks": [{"type": "command", "command": command, "timeout": timeout}],
         }
         event_list = hooks.setdefault(event, [])
-        # Idempotency: skip if an identical stanza already exists
-        if stanza not in event_list:
-            event_list.append(stanza)
+        script_name = command.rsplit("/", 1)[-1]
+        # Remove stale entries for the same matcher + script filename (handles path changes)
+        event_list[:] = [
+            s for s in event_list
+            if not (
+                s.get("matcher") == matcher
+                and any(
+                    h.get("command", "").endswith(script_name)
+                    for h in s.get("hooks", [])
+                )
+            )
+        ]
+        event_list.append(stanza)
 
-    hooks_dir = "~/.claude/hooks"
+    hooks_dir = str(dest_root.resolve() / "hooks")
     _append_stanza("UserPromptSubmit", "*",       f"{hooks_dir}/userpromptsubmit.sh", 5)
     _append_stanza("PreCompact",       "auto",    f"{hooks_dir}/precompact.sh",       10)
     _append_stanza("SessionStart",     "startup", f"{hooks_dir}/sessionstart.sh",     5)

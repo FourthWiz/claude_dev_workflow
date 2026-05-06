@@ -138,16 +138,138 @@ def test_installer_byte_identical_to_install_sh():
                 continue
             rel = path_a.relative_to(claude_a)
             path_b = claude_b / rel
-            # settings.json is allowed to differ (bash transport may not write it; python does)
-            if rel.name == "settings.json":
-                continue
-            # CLAUDE.md content differs between transports (appended vs. merged)
-            if rel.name == "CLAUDE.md":
-                continue
             assert path_b.exists(), f"python transport missing: {rel}"
+            if rel.name == "settings.json":
+                # settings.json embeds absolute paths that include the home dir;
+                # compare after normalising both home prefixes to a placeholder
+                text_a = path_a.read_text().replace(str(home_a), "HOME")
+                text_b = path_b.read_text().replace(str(home_b), "HOME")
+                assert text_a == text_b, f"settings.json mismatch after path normalisation"
+                # Also verify Python transport uses no tilde paths
+                import json as _json
+                for stanzas in _json.loads(path_b.read_text()).get("hooks", {}).values():
+                    for s in stanzas:
+                        for h in s.get("hooks", []):
+                            cmd = h.get("command", "")
+                            assert not cmd.startswith("~"), f"tilde path in settings.json: {cmd}"
+                continue
             assert path_a.read_bytes() == path_b.read_bytes(), (
                 f"file content mismatch: {rel}"
             )
+
+
+# ── deploy_hooks unit tests ───────────────────────────────────────────────────
+
+def _fake_source_dir(tmp: Path) -> Path:
+    """Return tmp with stub hook scripts under tmp/hooks/."""
+    hooks_dir = tmp / "hooks"
+    hooks_dir.mkdir(parents=True)
+    for fname in ("userpromptsubmit.sh", "precompact.sh", "sessionstart.sh", "sessionend.sh", "_lib.sh"):
+        (hooks_dir / fname).write_text("#!/bin/bash\n")
+    return tmp
+
+
+def test_deploy_hooks_stanza_placement():
+    from quoin import installer  # noqa: PLC0415
+    import json as _json
+
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = Path(tmp_str)
+        src = _fake_source_dir(tmp / "src")
+        dest = tmp / ".claude"
+
+        installer.deploy_hooks(src, dest)
+
+        settings = _json.loads((dest / "settings.json").read_text())
+        hooks = settings.get("hooks", {})
+
+        assert len(hooks.get("UserPromptSubmit", [])) == 1
+        assert len(hooks.get("PreCompact", [])) == 1
+        assert len(hooks.get("SessionStart", [])) == 2  # startup + resume
+        assert len(hooks.get("SessionEnd", [])) == 1
+
+        # Commands must use absolute paths, not tilde
+        cmd = hooks["UserPromptSubmit"][0]["hooks"][0]["command"]
+        assert not cmd.startswith("~"), f"tilde path in command: {cmd}"
+        assert "userpromptsubmit.sh" in cmd
+
+
+def test_deploy_hooks_idempotent():
+    from quoin import installer  # noqa: PLC0415
+    import json as _json
+
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = Path(tmp_str)
+        src = _fake_source_dir(tmp / "src")
+        dest = tmp / ".claude"
+
+        installer.deploy_hooks(src, dest)
+        installer.deploy_hooks(src, dest)
+
+        settings = _json.loads((dest / "settings.json").read_text())
+        hooks = settings.get("hooks", {})
+
+        # Running twice must not accumulate duplicates
+        assert len(hooks.get("UserPromptSubmit", [])) == 1
+        assert len(hooks.get("PreCompact", [])) == 1
+        assert len(hooks.get("SessionStart", [])) == 2
+        assert len(hooks.get("SessionEnd", [])) == 1
+
+
+def test_deploy_hooks_user_hook_preserved():
+    from quoin import installer  # noqa: PLC0415
+    import json as _json
+
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = Path(tmp_str)
+        src = _fake_source_dir(tmp / "src")
+        dest = tmp / ".claude"
+        dest.mkdir(parents=True)
+
+        user_stanza = {
+            "matcher": "my-project",
+            "hooks": [{"type": "command", "command": "/usr/local/bin/my-hook.sh", "timeout": 5}],
+        }
+        (dest / "settings.json").write_text(
+            _json.dumps({"hooks": {"UserPromptSubmit": [user_stanza]}}) + "\n"
+        )
+
+        installer.deploy_hooks(src, dest)
+
+        settings = _json.loads((dest / "settings.json").read_text())
+        stanzas = settings["hooks"]["UserPromptSubmit"]
+
+        assert any(s["matcher"] == "my-project" for s in stanzas), "user stanza was removed"
+        assert any(s["matcher"] == "*" for s in stanzas), "quoin stanza is missing"
+
+
+def test_deploy_hooks_stale_path_replaced():
+    from quoin import installer  # noqa: PLC0415
+    import json as _json
+
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = Path(tmp_str)
+        src = _fake_source_dir(tmp / "src")
+        dest = tmp / ".claude"
+        dest.mkdir(parents=True)
+
+        # Simulate a stanza written with tilde path (old bug or prior install.sh format)
+        old_stanza = {
+            "matcher": "*",
+            "hooks": [{"type": "command", "command": "~/.claude/hooks/userpromptsubmit.sh", "timeout": 5}],
+        }
+        (dest / "settings.json").write_text(
+            _json.dumps({"hooks": {"UserPromptSubmit": [old_stanza]}}) + "\n"
+        )
+
+        installer.deploy_hooks(src, dest)
+
+        settings = _json.loads((dest / "settings.json").read_text())
+        stanzas = settings["hooks"]["UserPromptSubmit"]
+
+        assert len(stanzas) == 1, f"expected 1 stanza, got {len(stanzas)}: {stanzas}"
+        cmd = stanzas[0]["hooks"][0]["command"]
+        assert not cmd.startswith("~"), f"stale tilde path not replaced: {cmd}"
 
 
 # ── Cleanup obsolete scripts ──────────────────────────────────────────────────
