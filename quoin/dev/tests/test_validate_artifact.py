@@ -16,6 +16,8 @@ import sys
 
 import pytest
 
+pytest.importorskip("yaml", reason="pyyaml required: pip install -e '.[dev]'")
+
 # ── Path setup ────────────────────────────────────────────────────────────────
 
 # Resolve from the location of this test file upward to the project root

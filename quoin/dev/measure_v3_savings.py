@@ -52,8 +52,8 @@ INSUFFICIENT_SENTINEL = "INSUFFICIENT_HISTORICAL_DATA"
 #
 # Deviation from plan's literal paths: the plan specified the existing test
 # fixture stubs for v3 (all <1.5 KB — stubs, not representative). For a
-# meaningful comparison, v3 samples are taken from the real Stage 4 smoke
-# run (.workflow_artifacts/v3-stage-4-smoke/*), which are genuine v3-format
+# meaningful comparison, v3 samples are taken from the real Stage 3 smoke
+# run (.workflow_artifacts/v3-stage-3-smoke/*), which are genuine v3-format
 # artifacts produced by the live pipeline. This deviation is documented in
 # T-01a PROVENANCE.md and in the report header.
 # ---------------------------------------------------------------------------
@@ -61,27 +61,27 @@ FIXTURE_PAIRS = [
     (
         "current-plan",
         "quoin/dev/tests/fixtures/v2-historical/current-plan.md",
-        ".workflow_artifacts/v3-stage-4-smoke/current-plan.md",
+        ".workflow_artifacts/v3-stage-3-smoke/current-plan.md",
     ),
     (
         "architecture",
         "quoin/dev/tests/fixtures/v2-historical/architecture.md",
-        ".workflow_artifacts/v3-stage-4-smoke/architecture.md",
+        ".workflow_artifacts/v3-stage-3-smoke/architecture.md",
     ),
     (
         "critic-response",
         "quoin/dev/tests/fixtures/v2-historical/critic-response.md",
-        ".workflow_artifacts/v3-stage-4-smoke/critic-response-1.md",
+        ".workflow_artifacts/v3-stage-3-smoke/critic-response-1.md",
     ),
     (
         "review",
         "quoin/dev/tests/fixtures/v2-historical/review.md",
-        ".workflow_artifacts/v3-stage-4-smoke/review-1.md",
+        ".workflow_artifacts/v3-stage-3-smoke/review-1.md",
     ),
     (
         "gate",
         "quoin/dev/tests/fixtures/v2-historical/gate.md",
-        ".workflow_artifacts/v3-stage-4-smoke/gate-architect-2026-04-25.md",
+        ".workflow_artifacts/v3-stage-3-smoke/gate-architect-2026-04-25.md",
     ),
     (
         "session",
@@ -149,7 +149,7 @@ def run(project_root: pathlib.Path, out_path: pathlib.Path) -> None:
     lines.append("")
     lines.append("**Comparison caveat:** v2 baselines are real historical artifacts "
                  "from the cost-reduction project (tasks of greater complexity than "
-                 "the v3 Stage 4 smoke). The byte deltas are NOT matched-task. "
+                 "the v3 Stage 3 smoke). The byte deltas are NOT matched-task. "
                  "See `quoin/dev/tests/fixtures/v2-historical/PROVENANCE.md`.")
     lines.append("")
     lines.append("## Per-artifact results")

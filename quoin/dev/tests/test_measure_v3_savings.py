@@ -52,10 +52,6 @@ def test_deterministic_byte_identical(tmp_path):
 
 def test_negative_delta_reported_not_silenced(tmp_path):
     """When v3 > v2, the report must show a negative dollar value — no abs(), no clipping."""
-    fixtures = PROJECT_ROOT / "quoin" / "scripts" / "tests" / "fixtures"
-    v2_historical = fixtures / "v2-historical"
-    smoke = PROJECT_ROOT / ".workflow_artifacts" / "v3-stage-4-smoke"
-
     # Synthesise a pair where v3 is LARGER than v2 using tmpdir files
     v2_tiny = tmp_path / "v2.md"
     v3_big = tmp_path / "v3.md"
