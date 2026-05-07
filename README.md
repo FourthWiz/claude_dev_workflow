@@ -6,13 +6,18 @@
 
 **Workflow state for stateless coding agents.**
 
-A workflow memory toolkit for Claude Code that structures your coding agent workflow using lightweight persistence files — so every session starts informed and every decision is tracked.
+A workflow memory toolkit for coding agents that structures engineering work using lightweight persistence files — so every session starts informed and every decision is tracked.
 
 ## What is Quoin?
 
-Quoin gives Claude Code a disciplined engineering partner: planning, architecture review, quality gates, cost discipline, and institutional memory — across sessions, tasks, and team members.
+Quoin gives coding agents a disciplined engineering workflow: planning, architecture review, quality gates, cost discipline, and institutional memory — across sessions, tasks, and team members.
 
-Without Quoin, each Claude session starts cold. With Quoin, sessions share accumulated knowledge through structured artifacts: plans, critic reviews, session state, lessons learned, and a cost ledger.
+Without Quoin, each agent session starts cold. With Quoin, sessions share accumulated knowledge through structured artifacts: plans, critic reviews, session state, lessons learned, and a cost ledger.
+
+## Runtime Support
+
+- **Claude Code** — supported today through the existing installer, skills, slash commands, and `quoin/CLAUDE.md`.
+- **Codex** — scaffolded through repo-local `AGENTS.md` instructions and shared `.workflow_artifacts/` semantics. Codex uses native approvals, sandboxing, planning, and repo-scoped instructions; Quoin does not install Codex commands in this pass.
 
 ## Why Quoin?
 
@@ -21,7 +26,7 @@ Without Quoin, each Claude session starts cold. With Quoin, sessions share accum
 - **Audit trail** — every phase produces a structured artifact: `architecture.md`, `current-plan.md`, `critic-response-N.md`, `review-N.md`, `cost-ledger.md`.
 - **Six stages of foundation** — stages 1–6 of the Quoin foundation hardened the system: §0 dispatch preamble (1), ccusage fallback (2), stage-subfolder path resolution (3), architect Phase 4 critic loop (4), native Haiku summarizer (5), and this rebrand + QUICKSTART relocation (6).
 
-## Install
+## Install Claude Code Adapter
 
 **Via pip (recommended):**
 
@@ -100,9 +105,9 @@ For full setup instructions see [`quoin/SETUP.md`](quoin/SETUP.md). For the comm
 
 ![Quoin architecture](quoin/docs/images/quoin-architecture.png)
 
-Each Claude session is stateless by nature. Quoin bridges sessions using structured file artifacts under `.workflow_artifacts/`. Skills read these files at startup (session bootstrap) and write them on completion — so the next session, whether in 5 minutes or 5 days, picks up exactly where you left off.
+Each agent session is stateless by nature. Quoin bridges sessions using structured file artifacts under `.workflow_artifacts/`. Skills read these files at startup (session bootstrap) and write them on completion — so the next session, whether in 5 minutes or 5 days, picks up exactly where you left off.
 
-For full rules, model assignments, artifact formats, and cost-tracking conventions, see [`quoin/CLAUDE.md`](quoin/CLAUDE.md).
+For current Claude rules, model assignments, artifact formats, and cost-tracking conventions, see [`quoin/CLAUDE.md`](quoin/CLAUDE.md). For the runtime-portability boundary, see [`quoin/docs/runtime-portability.md`](quoin/docs/runtime-portability.md).
 
 ## Cost & Model Discipline
 
@@ -139,6 +144,9 @@ Every Quoin skill declares a model tier (`haiku`, `sonnet`, `opus`). When invoke
 
 - [`quoin/QUICKSTART.md`](quoin/QUICKSTART.md) — command reference table (21 skills)
 - [`quoin/CLAUDE.md`](quoin/CLAUDE.md) — full workflow rules, model assignments, artifact formats
+- [`quoin/docs/runtime-portability.md`](quoin/docs/runtime-portability.md) — portable core and runtime adapter boundary
+- [`quoin/docs/runtime-portability-status.md`](quoin/docs/runtime-portability-status.md) — current migration status by runtime
+- [`quoin/docs/effort-levels.md`](quoin/docs/effort-levels.md) — runtime-neutral effort vocabulary
 
 ## Contributing
 

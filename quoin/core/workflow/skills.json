@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "skills": [
+    {
+      "name": "architect",
+      "phase": "architecture",
+      "effort": "max",
+      "user_facing": true,
+      "claude_model": "opus"
+    },
+    {
+      "name": "capture_insight",
+      "phase": "memory",
+      "effort": "low",
+      "user_facing": true,
+      "claude_model": "haiku"
+    },
+    {
+      "name": "cost_snapshot",
+      "phase": "cost",
+      "effort": "low",
+      "user_facing": true,
+      "claude_model": "haiku"
+    },
+    {
+      "name": "critic",
+      "phase": "critic",
+      "effort": "high",
+      "user_facing": true,
+      "claude_model": "opus"
+    },
+    {
+      "name": "discover",
+      "phase": "discovery",
+      "effort": "high",
+      "user_facing": true,
+      "claude_model": "opus"
+    },
+    {
+      "name": "end_of_day",
+      "phase": "session-lifecycle",
+      "effort": "low",
+      "user_facing": true,
+      "claude_model": "haiku"
+    },
+    {
+      "name": "end_of_task",
+      "phase": "task-finalization",
+      "effort": "medium",
+      "user_facing": true,
+      "claude_model": "sonnet"
+    },
+    {
+      "name": "expand",
+      "phase": "utility",
+      "effort": "medium",
+      "user_facing": true,
+      "claude_model": "sonnet"
+    },
+    {
+      "name": "gate",
+      "phase": "gate",
+      "effort": "medium",
+      "user_facing": true,
+      "claude_model": "sonnet"
+    },
+    {
+      "name": "implement",
+      "phase": "implementation",
+      "effort": "medium",
+      "user_facing": true,
+      "claude_model": "sonnet"
+    },
+    {
+      "name": "init_workflow",
+      "phase": "project-bootstrap",
+      "effort": "high",
+      "user_facing": true,
+      "claude_model": "opus"
+    },
+    {
+      "name": "plan",
+      "phase": "planning",
+      "effort": "high",
+      "user_facing": true,
+      "claude_model": "opus"
+    },
+    {
+      "name": "review",
+      "phase": "review",
+      "effort": "high",
+      "user_facing": true,
+      "claude_model": "opus"
+    },
+    {
+      "name": "revise",
+      "phase": "planning",
+      "effort": "high",
+      "user_facing": true,
+      "claude_model": "opus"
+    },
+    {
+      "name": "revise-fast",
+      "phase": "planning",
+      "effort": "medium",
+      "user_facing": false,
+      "claude_model": "sonnet"
+    },
+    {
+      "name": "rollback",
+      "phase": "rollback",
+      "effort": "medium",
+      "user_facing": true,
+      "claude_model": "sonnet"
+    },
+    {
+      "name": "run",
+      "phase": "orchestration",
+      "effort": "max",
+      "user_facing": true,
+      "claude_model": "opus"
+    },
+    {
+      "name": "start_of_day",
+      "phase": "session-lifecycle",
+      "effort": "low",
+      "user_facing": true,
+      "claude_model": "haiku"
+    },
+    {
+      "name": "thorough_plan",
+      "phase": "planning",
+      "effort": "max",
+      "user_facing": true,
+      "claude_model": "opus"
+    },
+    {
+      "name": "triage",
+      "phase": "routing",
+      "effort": "low",
+      "user_facing": true,
+      "claude_model": "haiku"
+    },
+    {
+      "name": "weekly_review",
+      "phase": "session-lifecycle",
+      "effort": "low",
+      "user_facing": true,
+      "claude_model": "haiku"
+    }
+  ]
+}
