@@ -183,6 +183,21 @@ def test_codex_setup_and_status_are_explicitly_not_installable():
     assert "status: installable" in status
 
 
+def test_codex_docs_pin_workflow_artifacts_to_project_root():
+    docs = {
+        "AGENTS.md": read_rel("AGENTS.md").lower(),
+        "quoin/adapters/codex/README.md": read_rel("quoin/adapters/codex/README.md").lower(),
+        "quoin/adapters/codex/setup.md": read_rel("quoin/adapters/codex/setup.md").lower(),
+    }
+    for path, text in docs.items():
+        assert "project root" in text, f"{path} must pin the Quoin project root"
+        assert ".workflow_artifacts/" in text, f"{path} must mention .workflow_artifacts/"
+
+    setup = docs["quoin/adapters/codex/setup.md"]
+    assert "not inside a nested application or package directory" in setup
+    assert "nested subdirectory" in setup
+
+
 def test_readme_preserves_claude_install_command():
     readme = read_rel("README.md")
     assert "bash quoin/install.sh" in readme

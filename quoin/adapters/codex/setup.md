@@ -8,6 +8,8 @@ For Codex, setup means:
 
 - keep `AGENTS.md` at the repository root
 - use Quoin's shared `.workflow_artifacts/` conventions
+- treat the repository root containing `AGENTS.md` as the Quoin project root
+- create and read `.workflow_artifacts/` at that project root, not inside a nested application or package directory
 - follow `quoin/docs/runtime-portability.md`
 - use `quoin/core/workflow/` for shared workflow semantics
 - use `quoin/core/workflow/skills.json` for portable skill metadata
@@ -35,3 +37,5 @@ When using Codex in this repo, ask for Quoin workflow phases in natural language
 - "Update Quoin session handoff and lessons learned."
 
 The adapter should preserve Quoin artifacts, not emulate Claude slash commands.
+
+If Codex changes into a nested subdirectory to inspect or edit code, it should still write Quoin artifacts relative to the original project root.
