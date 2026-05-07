@@ -5,6 +5,7 @@ Quoin is being refactored toward runtime portability. When working in this repos
 Use these rules:
 
 - Treat `.workflow_artifacts/` semantics as the portable core: task folders, stage subfolders, architecture/planning/review artifacts, lessons learned, session handoff, and cost ledger.
+- Treat the directory where Codex was launched, containing this `AGENTS.md`, as the Quoin project root. Create and read `.workflow_artifacts/` at that root, not inside a nested application or package subdirectory.
 - Use native Codex planning, approvals, sandboxing, and repo-scoped instructions.
 - Do not assume Claude slash commands exist when describing Codex behavior.
 - Do not add guessed Codex global install paths.

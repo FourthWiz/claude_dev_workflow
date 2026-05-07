@@ -9,6 +9,8 @@ Codex should use Quoin's portable artifact workflow:
 - architecture, planning, critic, review, gate, session, lessons, and cost artifacts
 - shared artifact validation and path-resolution rules
 
+The Quoin project root is the repository root containing `AGENTS.md`. Codex must create and read `.workflow_artifacts/` there, even when the code being changed lives in a nested subdirectory.
+
 Codex should also use native Codex behavior where it already exists:
 
 - planning and progress tracking
