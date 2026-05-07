@@ -8,7 +8,10 @@ Status: installable.
 
 - `bash quoin/install.sh` remains the supported install command.
 - Active Claude rules remain in `quoin/CLAUDE.md`.
-- Active Claude skills remain in `quoin/skills/`.
+- Active Claude skills remain in `quoin/skills/`, EXCEPT `capture_insight`,
+  which installs from `quoin/adapters/claude/skills/capture_insight/SKILL.md`
+  (Phase 6 pilot of the runtime-portable adapter pattern).
+- The portable intent doc for `capture_insight` lives at `quoin/core/skills/capture_insight.md`.
 - Compatibility wrappers deploy to `~/.claude/scripts/`.
 - Extracted portable implementations deploy to `~/.claude/core/scripts/`.
 
@@ -46,6 +49,6 @@ Status: partially extracted.
 
 - Generated Claude skill files.
 - Generated Codex adapter files.
-- Split shared skill intent from runtime overlays.
+- Split shared skill intent from runtime overlays — partial: `capture_insight` shipped under the adapter pattern in Phase 6.
 - Runtime-neutral cost capture.
 - Codex install target verification.

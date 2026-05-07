@@ -83,6 +83,22 @@ def test_fresh_clone_install_e2e():
             skill_md = skills_dir / skill / "SKILL.md"
             assert skill_md.exists(), f"Missing skill SKILL.md: {skill_md}"
 
+        # Phase 6 pilot: capture_insight is the first skill installed from the
+        # Claude adapter path. Verify the deployed file is byte-identical to the
+        # adapter source AND that it is NOT identical to the legacy stub
+        # (i.e., the installer override actually fired).
+        adapter_src = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "capture_insight" / "SKILL.md"
+        adapter_dst = skills_dir / "capture_insight" / "SKILL.md"
+        assert adapter_dst.exists(), "install.sh did not deploy capture_insight"
+        assert adapter_src.read_bytes() == adapter_dst.read_bytes(), (
+            "Deployed capture_insight SKILL.md is not byte-identical to "
+            "the Claude adapter source quoin/adapters/claude/skills/capture_insight/SKILL.md"
+        )
+        legacy_src = REPO_ROOT / "quoin" / "skills" / "capture_insight" / "SKILL.md"
+        assert legacy_src.read_bytes() != adapter_dst.read_bytes(), (
+            "Deployed capture_insight matches legacy stub — installer override did not fire"
+        )
+
         memory_dir = tmp_home / ".claude" / "memory"
         for mem_file in V3_MEMORY_FILES:
             assert (memory_dir / mem_file).exists(), (

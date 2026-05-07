@@ -89,6 +89,14 @@ success "Regenerated 7 subagent preambles in $SCRIPT_DIR/skills/*/preamble.md"
 # ── Step 2: Copy skills to ~/.claude/skills/ ──
 header "Step 2: Copying skills to ~/.claude/skills/..."
 
+# Phase 6 pilot: capture_insight installs from the Claude adapter path.
+# Pre-flight existence check (mirrors the rubric/QUICKSTART/script patterns below).
+ADAPTER_CAPTURE_INSIGHT_SRC="$SCRIPT_DIR/adapters/claude/skills/capture_insight/SKILL.md"
+if [ ! -f "$ADAPTER_CAPTURE_INSIGHT_SRC" ]; then
+  error "Expected Claude adapter SKILL.md at $ADAPTER_CAPTURE_INSIGHT_SRC but not found — aborting"
+  exit 1
+fi
+
 USER_SKILLS_DIR="$HOME/.claude/skills"
 mkdir -p "$USER_SKILLS_DIR"
 
@@ -97,7 +105,12 @@ for skill_dir in "$SCRIPT_DIR/skills"/*/; do
   if [ -d "$skill_dir" ]; then
     skill_name=$(basename "$skill_dir")
     mkdir -p "$USER_SKILLS_DIR/$skill_name"
-    cp "$skill_dir/SKILL.md" "$USER_SKILLS_DIR/$skill_name/SKILL.md"
+    src="$skill_dir/SKILL.md"
+    if [ "$skill_name" = "capture_insight" ]; then
+      src="$ADAPTER_CAPTURE_INSIGHT_SRC"
+      info "Deploying $skill_name from Claude adapter path (Phase 6 pilot)"
+    fi
+    cp "$src" "$USER_SKILLS_DIR/$skill_name/SKILL.md"
     if [ -f "$skill_dir/preamble.md" ]; then cp "$skill_dir/preamble.md" "$USER_SKILLS_DIR/$skill_name/preamble.md"; fi
     SKILL_COUNT=$((SKILL_COUNT + 1))
   fi
