@@ -78,21 +78,30 @@ def test_fresh_clone_install_e2e(transport: str):
             skill_md = skills_dir / skill / "SKILL.md"
             assert skill_md.exists(), f"[{transport}] Missing skill SKILL.md: {skill}"
 
-        # Phase 6 pilot: capture_insight is the first skill installed from the
-        # Claude adapter path. Verify the deployed file is byte-identical to the
-        # adapter source AND that it is NOT identical to the legacy stub
-        # (i.e., the installer override actually fired).
-        adapter_src = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "capture_insight" / "SKILL.md"
-        adapter_dst = skills_dir / "capture_insight" / "SKILL.md"
-        assert adapter_dst.exists(), "install.sh did not deploy capture_insight"
-        assert adapter_src.read_bytes() == adapter_dst.read_bytes(), (
-            "Deployed capture_insight SKILL.md is not byte-identical to "
-            "the Claude adapter source quoin/adapters/claude/skills/capture_insight/SKILL.md"
-        )
-        legacy_src = REPO_ROOT / "quoin" / "skills" / "capture_insight" / "SKILL.md"
-        assert legacy_src.read_bytes() != adapter_dst.read_bytes(), (
-            "Deployed capture_insight matches legacy stub — installer override did not fire"
-        )
+        # Phase 6 / Phase 7 migrated skills: each is installed from the Claude
+        # adapter path. Verify the deployed file is byte-identical to the
+        # adapter source AND NOT identical to the legacy stub (i.e., the
+        # installer override actually fired).
+        MIGRATED_SKILLS = ("capture_insight", "triage")
+        for migrated in MIGRATED_SKILLS:
+            adapter_src = (
+                REPO_ROOT / "quoin" / "adapters" / "claude" / "skills"
+                / migrated / "SKILL.md"
+            )
+            adapter_dst = skills_dir / migrated / "SKILL.md"
+            assert adapter_dst.exists(), (
+                f"install.sh did not deploy {migrated}"
+            )
+            assert adapter_src.read_bytes() == adapter_dst.read_bytes(), (
+                f"Deployed {migrated} SKILL.md is not byte-identical to the "
+                f"Claude adapter source "
+                f"quoin/adapters/claude/skills/{migrated}/SKILL.md"
+            )
+            legacy_src = REPO_ROOT / "quoin" / "skills" / migrated / "SKILL.md"
+            assert legacy_src.read_bytes() != adapter_dst.read_bytes(), (
+                f"Deployed {migrated} matches legacy stub — "
+                "installer override did not fire"
+            )
 
         memory_dir = tmp_home / ".claude" / "memory"
         for mem_file in TIER1_MEMORY_FILES:
