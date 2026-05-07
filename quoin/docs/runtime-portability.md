@@ -78,3 +78,10 @@ Do not duplicate skill templates before this split exists. Duplication would mak
 ## First-Pass Rule
 
 The first implementation pass established the boundary and guard tests. Portable script implementations may move into `quoin/core/scripts/` only when old `quoin/scripts/` entrypoints remain compatible for Claude installs and existing docs.
+
+### Phase 6 pilot: capture_insight
+
+`capture_insight` is the first skill installed from the Claude adapter
+path (`quoin/adapters/claude/skills/capture_insight/SKILL.md`); the
+runtime-neutral intent lives at `quoin/core/skills/capture_insight.md`.
+All other skills still install from `quoin/skills/<name>/SKILL.md`.

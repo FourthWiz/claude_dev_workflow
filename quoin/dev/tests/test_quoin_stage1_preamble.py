@@ -23,6 +23,19 @@ import pytest
 
 TESTS_DIR = Path(__file__).parent
 SKILLS_DIR = TESTS_DIR.parent.parent / "skills"
+ADAPTER_SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
+
+
+def skill_md_path(skill_name: str) -> Path:
+    """Return the canonical SKILL.md path for a given skill.
+
+    Phase 6 pilot: capture_insight is installed from the Claude adapter
+    path, so its authoritative SKILL.md lives under adapters/claude/skills/.
+    All other skills still live under skills/.
+    """
+    if skill_name == "capture_insight":
+        return ADAPTER_SKILLS_DIR / skill_name / "SKILL.md"
+    return SKILLS_DIR / skill_name / "SKILL.md"
 
 SO_HEADING = "## §0 Model dispatch (FIRST STEP — execute before anything else)"
 MR_HEADING = "## Model requirement"
@@ -96,7 +109,7 @@ def extract_preamble_block(skill_path: Path) -> str:
 # -----------------------------------------------------------------------------
 @pytest.mark.parametrize("skill", CHEAP_TIER_SKILLS)
 def test_each_skill_has_preamble_heading(skill):
-    path = SKILLS_DIR / skill / "SKILL.md"
+    path = skill_md_path(skill)
     text = path.read_text(encoding="utf-8")
     count = text.count(SO_HEADING)
     assert count == 1, (
@@ -113,7 +126,7 @@ def test_each_skill_has_preamble_heading(skill):
 # -----------------------------------------------------------------------------
 @pytest.mark.parametrize("skill", CHEAP_TIER_SKILLS)
 def test_each_skill_first_body_h2_is_preamble(skill):
-    path = SKILLS_DIR / skill / "SKILL.md"
+    path = skill_md_path(skill)
     text = path.read_text(encoding="utf-8")
     # Skip frontmatter to find the H1.
     after_yaml = YAML_RE.sub("", text, count=1)
@@ -135,7 +148,7 @@ def test_each_skill_first_body_h2_is_preamble(skill):
 # -----------------------------------------------------------------------------
 @pytest.mark.parametrize("skill", CHEAP_TIER_SKILLS)
 def test_each_skill_preamble_substitutes_declared_model(skill):
-    path = SKILLS_DIR / skill / "SKILL.md"
+    path = skill_md_path(skill)
     text = path.read_text(encoding="utf-8")
     yaml_match = YAML_RE.match(text)
     assert yaml_match, f"{skill}/SKILL.md has no YAML frontmatter"
@@ -185,7 +198,7 @@ def test_each_skill_preamble_substitutes_declared_model(skill):
 # -----------------------------------------------------------------------------
 @pytest.mark.parametrize("skill", OPUS_TIER_SKILLS)
 def test_no_opus_tier_skill_has_preamble(skill):
-    path = SKILLS_DIR / skill / "SKILL.md"
+    path = skill_md_path(skill)
     text = path.read_text(encoding="utf-8")
     assert SO_HEADING not in text, (
         f"{skill}/SKILL.md is opus-tier but contains the §0 heading. The Stage 1 architecture "
@@ -209,7 +222,7 @@ RECURSION_TOKENS = [
 @pytest.mark.parametrize("skill", CHEAP_TIER_SKILLS)
 @pytest.mark.parametrize("token", RECURSION_TOKENS)
 def test_recursion_abort_sentinel_present(skill, token):
-    path = SKILLS_DIR / skill / "SKILL.md"
+    path = skill_md_path(skill)
     slice_text = extract_preamble_block(path)
     assert token in slice_text, (
         f"{skill}/SKILL.md §0 slice missing required sentinel/grammar token: {token!r}"
@@ -223,7 +236,7 @@ def test_recursion_abort_sentinel_present(skill, token):
 # -----------------------------------------------------------------------------
 @pytest.mark.parametrize("skill", CHEAP_TIER_SKILLS)
 def test_no_inter_h2_prose_deleted_by_insertion(skill):
-    path = SKILLS_DIR / skill / "SKILL.md"
+    path = skill_md_path(skill)
     lines = path.read_text(encoding="utf-8").splitlines()
     h1_idx = next((i for i, ln in enumerate(lines) if ln.startswith("# ") and not ln.startswith("## ")), None)
     so_idx = next((i for i, ln in enumerate(lines) if ln == SO_HEADING), None)
@@ -250,7 +263,7 @@ LOAD_BEARING_HEADINGS = {
 
 @pytest.mark.parametrize("skill,heading", sorted(LOAD_BEARING_HEADINGS.items()))
 def test_load_bearing_rules_preserved(skill, heading):
-    path = SKILLS_DIR / skill / "SKILL.md"
+    path = skill_md_path(skill)
     text = path.read_text(encoding="utf-8")
     assert SO_HEADING in text, f"{skill}/SKILL.md missing §0 heading"
     assert heading in text, (

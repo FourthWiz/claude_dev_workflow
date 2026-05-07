@@ -31,3 +31,11 @@ This adapter owns Claude-specific behavior:
 `install.sh` deploys compatibility wrappers to `~/.claude/scripts/` and portable core implementations to `~/.claude/core/scripts/` for the extracted shared scripts.
 
 The first runtime-portability pass must not change Claude install behavior.
+
+## Per-skill adapter files
+
+`skills/capture_insight/SKILL.md` is the first per-skill adapter file under this
+directory. It is the install source for the Claude runtime (Phase 6 pilot of the
+runtime-portable adapter pattern). `bash quoin/install.sh` deploys it to
+`~/.claude/skills/capture_insight/SKILL.md` instead of the legacy stub at
+`quoin/skills/capture_insight/SKILL.md`.
