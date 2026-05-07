@@ -34,7 +34,7 @@ import tempfile
 import pytest
 
 SCRIPT = os.path.join(
-    os.path.dirname(__file__), '..', '..', 'scripts', 'classify_critic_issues.py'
+    os.path.dirname(__file__), '..', '..', 'core', 'scripts', 'classify_critic_issues.py'
 )
 PYTHON = sys.executable
 TRAINING_DIR = os.path.join(

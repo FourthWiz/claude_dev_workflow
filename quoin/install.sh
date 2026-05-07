@@ -110,6 +110,7 @@ header "Step 2b: Copying memory references and v3 scripts to ~/.claude/..."
 
 USER_MEMORY_DIR="$HOME/.claude/memory"
 USER_SCRIPTS_DIR="$HOME/.claude/scripts"
+USER_CORE_SCRIPTS_DIR="$HOME/.claude/core/scripts"
 
 # v2 terse-rubric (pre-existing — keep this block content-identical)
 RUBRIC_SRC="$SCRIPT_DIR/memory/terse-rubric.md"
@@ -161,6 +162,20 @@ for script_file in validate_artifact.py path_resolve.py cost_from_jsonl.py class
   cp "$SCRIPT_SRC" "$SCRIPT_DST"
   chmod +x "$SCRIPT_DST"
   success "Copied $script_file to ~/.claude/scripts/"
+done
+
+# Portable core script implementations used by compatibility wrappers in ~/.claude/scripts/.
+mkdir -p "$USER_CORE_SCRIPTS_DIR"
+for core_script_file in validate_artifact.py path_resolve.py classify_critic_issues.py; do
+  CORE_SCRIPT_SRC="$SCRIPT_DIR/core/scripts/$core_script_file"
+  CORE_SCRIPT_DST="$USER_CORE_SCRIPTS_DIR/$core_script_file"
+  if [ ! -f "$CORE_SCRIPT_SRC" ]; then
+    error "Expected portable core script $core_script_file at $CORE_SCRIPT_SRC but not found — aborting"
+    exit 1
+  fi
+  cp "$CORE_SCRIPT_SRC" "$CORE_SCRIPT_DST"
+  chmod +x "$CORE_SCRIPT_DST"
+  success "Copied core $core_script_file to ~/.claude/core/scripts/"
 done
 
 # Stage 5 cleanup: remove already-deployed obsolete scripts from prior installs.
@@ -240,6 +255,7 @@ echo -e "  ${GREEN}Workflow rules${NC} written to ~/.claude/CLAUDE.md"
 echo -e "  ${GREEN}Terse rubric${NC} copied to ~/.claude/memory/terse-rubric.md"
 echo -e "  ${GREEN}v3 reference files${NC} copied to ~/.claude/memory/ (format-kit.md, glossary.md, format-kit.sections.json, summary-prompt.md, format-kit-pitfalls.md)"
 echo -e "  ${GREEN}v3 scripts${NC} copied to ~/.claude/scripts/ (validate_artifact.py, path_resolve.py, cost_from_jsonl.py, classify_critic_issues.py, build_preambles.py)"
+echo -e "  ${GREEN}portable core scripts${NC} copied to ~/.claude/core/scripts/ (validate_artifact.py, path_resolve.py, classify_critic_issues.py)"
 echo -e "  ${GREEN}QUICKSTART deployed to ~/.claude/QUICKSTART.md${NC}"
 echo ""
 echo -e "  ${BLUE}Tip:${NC} re-run bash install.sh to refresh skills, CLAUDE.md, and the rubric together."

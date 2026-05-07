@@ -43,6 +43,12 @@ V3_SCRIPTS = [
     "cost_from_jsonl.py",
 ]
 
+PORTABLE_CORE_SCRIPTS = [
+    "validate_artifact.py",
+    "path_resolve.py",
+    "classify_critic_issues.py",
+]
+
 
 pytestmark = pytest.mark.skipif(
     shutil.which("claude") is None or shutil.which("npx") is None,
@@ -102,6 +108,29 @@ def test_fresh_clone_install_e2e():
             assert script_path.exists(), f"Missing v3 script: {script_path}"
             assert os.access(script_path, os.X_OK), (
                 f"v3 script not executable: {script_path}"
+            )
+
+        core_scripts_dir = tmp_home / ".claude" / "core" / "scripts"
+        for script in PORTABLE_CORE_SCRIPTS:
+            script_path = core_scripts_dir / script
+            assert script_path.exists(), f"Missing portable core script: {script_path}"
+            assert os.access(script_path, os.X_OK), (
+                f"portable core script not executable: {script_path}"
+            )
+
+        for script in PORTABLE_CORE_SCRIPTS:
+            script_path = scripts_dir / script
+            result = subprocess.run(
+                [sys.executable, str(script_path), "--help"],
+                env=env,
+                capture_output=True,
+                text=True,
+                cwd=str(REPO_ROOT),
+                timeout=15,
+            )
+            assert result.returncode == 0, (
+                f"Deployed wrapper {script_path} failed --help. "
+                f"stdout: {result.stdout[:500]}\nstderr: {result.stderr[:500]}"
             )
 
         assert (tmp_home / ".claude" / "QUICKSTART.md").exists(), (
