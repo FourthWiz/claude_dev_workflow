@@ -26,14 +26,20 @@ SKILLS_DIR = TESTS_DIR.parent.parent / "skills"
 ADAPTER_SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
 
 
+# Skills migrated to the three-file adapter pattern (Phase 6 / Phase 7).
+# When this set grows, add the skill name here AND verify the install.sh
+# override branch exists.
+MIGRATED_TO_ADAPTER = {"capture_insight", "triage"}
+
+
 def skill_md_path(skill_name: str) -> Path:
     """Return the canonical SKILL.md path for a given skill.
 
-    Phase 6 pilot: capture_insight is installed from the Claude adapter
-    path, so its authoritative SKILL.md lives under adapters/claude/skills/.
-    All other skills still live under skills/.
+    Migrated skills (per `MIGRATED_TO_ADAPTER`) are installed from the
+    Claude adapter path, so their authoritative SKILL.md lives under
+    adapters/claude/skills/. All other skills still live under skills/.
     """
-    if skill_name == "capture_insight":
+    if skill_name in MIGRATED_TO_ADAPTER:
         return ADAPTER_SKILLS_DIR / skill_name / "SKILL.md"
     return SKILLS_DIR / skill_name / "SKILL.md"
 
