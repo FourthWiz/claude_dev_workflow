@@ -97,6 +97,13 @@ if [ ! -f "$ADAPTER_CAPTURE_INSIGHT_SRC" ]; then
   exit 1
 fi
 
+# Phase 7 migration: triage installs from the Claude adapter path.
+ADAPTER_TRIAGE_SRC="$SCRIPT_DIR/adapters/claude/skills/triage/SKILL.md"
+if [ ! -f "$ADAPTER_TRIAGE_SRC" ]; then
+  error "Expected Claude adapter SKILL.md at $ADAPTER_TRIAGE_SRC but not found — aborting"
+  exit 1
+fi
+
 USER_SKILLS_DIR="$HOME/.claude/skills"
 mkdir -p "$USER_SKILLS_DIR"
 
@@ -109,6 +116,9 @@ for skill_dir in "$SCRIPT_DIR/skills"/*/; do
     if [ "$skill_name" = "capture_insight" ]; then
       src="$ADAPTER_CAPTURE_INSIGHT_SRC"
       info "Deploying $skill_name from Claude adapter path (Phase 6 pilot)"
+    elif [ "$skill_name" = "triage" ]; then
+      src="$ADAPTER_TRIAGE_SRC"
+      info "Deploying $skill_name from Claude adapter path (Phase 7 migration)"
     fi
     cp "$src" "$USER_SKILLS_DIR/$skill_name/SKILL.md"
     if [ -f "$skill_dir/preamble.md" ]; then cp "$skill_dir/preamble.md" "$USER_SKILLS_DIR/$skill_name/preamble.md"; fi
