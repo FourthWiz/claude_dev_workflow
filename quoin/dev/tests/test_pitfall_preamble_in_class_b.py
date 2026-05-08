@@ -16,6 +16,10 @@ from pathlib import Path
 
 QUOIN_DIR = Path(__file__).parent.parent.parent  # quoin/ directory (3 levels up from test file)
 SKILLS_DIR = QUOIN_DIR / "skills"
+ADAPTER_SKILLS_DIR = QUOIN_DIR / "adapters" / "claude" / "skills"
+MIGRATED_SKILLS_DIR_OVERRIDES = {
+    "review": ADAPTER_SKILLS_DIR,
+}
 
 TARGET_SKILLS = [
     "architect",
@@ -43,7 +47,8 @@ MARKER = "format-kit-pitfalls.md"
 
 
 def skill_path(name: str) -> Path:
-    return SKILLS_DIR / name / "SKILL.md"
+    base = MIGRATED_SKILLS_DIR_OVERRIDES.get(name, SKILLS_DIR)
+    return base / name / "SKILL.md"
 
 
 def test_target_skills_contain_injection_exactly_once():

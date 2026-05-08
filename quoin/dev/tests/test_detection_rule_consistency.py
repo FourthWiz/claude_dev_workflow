@@ -19,7 +19,9 @@ SKILL_FILES = [
     SKILLS_DIR / "expand" / "SKILL.md",
     SKILLS_DIR / "critic" / "SKILL.md",
     SKILLS_DIR / "implement" / "SKILL.md",
-    SKILLS_DIR / "review" / "SKILL.md",
+    # Phase 8 migration: review's authoritative SKILL.md lives in the
+    # Claude adapter path (the v3-detection-comment fixture moves with the body).
+    ADAPTER_SKILLS_DIR / "review" / "SKILL.md",
     SKILLS_DIR / "revise" / "SKILL.md",
     SKILLS_DIR / "revise-fast" / "SKILL.md",
     # Phase 7 migration: start_of_day's authoritative SKILL.md lives in the
