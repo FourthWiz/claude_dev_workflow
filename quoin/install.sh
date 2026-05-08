@@ -104,6 +104,13 @@ if [ ! -f "$ADAPTER_TRIAGE_SRC" ]; then
   exit 1
 fi
 
+# Phase 7 migration: start_of_day installs from the Claude adapter path.
+ADAPTER_START_OF_DAY_SRC="$SCRIPT_DIR/adapters/claude/skills/start_of_day/SKILL.md"
+if [ ! -f "$ADAPTER_START_OF_DAY_SRC" ]; then
+  error "Expected Claude adapter SKILL.md at $ADAPTER_START_OF_DAY_SRC but not found — aborting"
+  exit 1
+fi
+
 USER_SKILLS_DIR="$HOME/.claude/skills"
 mkdir -p "$USER_SKILLS_DIR"
 
@@ -118,6 +125,9 @@ for skill_dir in "$SCRIPT_DIR/skills"/*/; do
       info "Deploying $skill_name from Claude adapter path (Phase 6 pilot)"
     elif [ "$skill_name" = "triage" ]; then
       src="$ADAPTER_TRIAGE_SRC"
+      info "Deploying $skill_name from Claude adapter path (Phase 7 migration)"
+    elif [ "$skill_name" = "start_of_day" ]; then
+      src="$ADAPTER_START_OF_DAY_SRC"
       info "Deploying $skill_name from Claude adapter path (Phase 7 migration)"
     fi
     cp "$src" "$USER_SKILLS_DIR/$skill_name/SKILL.md"

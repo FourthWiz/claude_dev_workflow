@@ -87,7 +87,7 @@ def test_fresh_clone_install_e2e():
         # adapter path. Verify the deployed file is byte-identical to the
         # adapter source AND NOT identical to the legacy stub (i.e., the
         # installer override actually fired).
-        MIGRATED_SKILLS = ("capture_insight", "triage")
+        MIGRATED_SKILLS = ("capture_insight", "triage", "start_of_day")
         for migrated in MIGRATED_SKILLS:
             adapter_src = (
                 REPO_ROOT / "quoin" / "adapters" / "claude" / "skills"
