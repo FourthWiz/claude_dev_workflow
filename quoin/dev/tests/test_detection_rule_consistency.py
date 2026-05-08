@@ -10,7 +10,9 @@ import pytest
 
 TESTS_DIR = pathlib.Path(__file__).parent
 FIXTURE = TESTS_DIR / "fixtures" / "v3-detection-comment.txt"
-SKILLS_DIR = TESTS_DIR.parent.parent / "skills"
+PKG_DIR = TESTS_DIR.parent.parent  # quoin/quoin/
+SKILLS_DIR = PKG_DIR / "skills"
+ADAPTER_SKILLS_DIR = PKG_DIR / "adapters" / "claude" / "skills"
 
 SKILL_FILES = [
     SKILLS_DIR / "gate" / "SKILL.md",
@@ -20,7 +22,9 @@ SKILL_FILES = [
     SKILLS_DIR / "review" / "SKILL.md",
     SKILLS_DIR / "revise" / "SKILL.md",
     SKILLS_DIR / "revise-fast" / "SKILL.md",
-    SKILLS_DIR / "start_of_day" / "SKILL.md",
+    # Phase 7 migration: start_of_day's authoritative SKILL.md lives in the
+    # Claude adapter path (the v3-detection-comment fixture moves with the body).
+    ADAPTER_SKILLS_DIR / "start_of_day" / "SKILL.md",
 ]
 
 
