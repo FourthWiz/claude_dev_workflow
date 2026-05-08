@@ -118,6 +118,34 @@ if [ ! -f "$ADAPTER_REVIEW_SRC" ]; then
   exit 1
 fi
 
+# Phase 9 migration: plan installs from the Claude adapter path.
+ADAPTER_PLAN_SRC="$SCRIPT_DIR/adapters/claude/skills/plan/SKILL.md"
+if [ ! -f "$ADAPTER_PLAN_SRC" ]; then
+  error "Expected Claude adapter SKILL.md at $ADAPTER_PLAN_SRC but not found — aborting"
+  exit 1
+fi
+
+# Phase 9 migration: critic installs from the Claude adapter path.
+ADAPTER_CRITIC_SRC="$SCRIPT_DIR/adapters/claude/skills/critic/SKILL.md"
+if [ ! -f "$ADAPTER_CRITIC_SRC" ]; then
+  error "Expected Claude adapter SKILL.md at $ADAPTER_CRITIC_SRC but not found — aborting"
+  exit 1
+fi
+
+# Phase 9 migration: revise installs from the Claude adapter path.
+ADAPTER_REVISE_SRC="$SCRIPT_DIR/adapters/claude/skills/revise/SKILL.md"
+if [ ! -f "$ADAPTER_REVISE_SRC" ]; then
+  error "Expected Claude adapter SKILL.md at $ADAPTER_REVISE_SRC but not found — aborting"
+  exit 1
+fi
+
+# Phase 9 migration: revise-fast installs from the Claude adapter path.
+ADAPTER_REVISE_FAST_SRC="$SCRIPT_DIR/adapters/claude/skills/revise-fast/SKILL.md"
+if [ ! -f "$ADAPTER_REVISE_FAST_SRC" ]; then
+  error "Expected Claude adapter SKILL.md at $ADAPTER_REVISE_FAST_SRC but not found — aborting"
+  exit 1
+fi
+
 USER_SKILLS_DIR="$HOME/.claude/skills"
 mkdir -p "$USER_SKILLS_DIR"
 
@@ -139,6 +167,18 @@ for skill_dir in "$SCRIPT_DIR/skills"/*/; do
     elif [ "$skill_name" = "review" ]; then
       src="$ADAPTER_REVIEW_SRC"
       info "Deploying $skill_name from Claude adapter path (Phase 8 migration)"
+    elif [ "$skill_name" = "plan" ]; then
+      src="$ADAPTER_PLAN_SRC"
+      info "Deploying $skill_name from Claude adapter path (Phase 9 migration)"
+    elif [ "$skill_name" = "critic" ]; then
+      src="$ADAPTER_CRITIC_SRC"
+      info "Deploying $skill_name from Claude adapter path (Phase 9 migration)"
+    elif [ "$skill_name" = "revise" ]; then
+      src="$ADAPTER_REVISE_SRC"
+      info "Deploying $skill_name from Claude adapter path (Phase 9 migration)"
+    elif [ "$skill_name" = "revise-fast" ]; then
+      src="$ADAPTER_REVISE_FAST_SRC"
+      info "Deploying $skill_name from Claude adapter path (Phase 9 migration)"
     fi
     cp "$src" "$USER_SKILLS_DIR/$skill_name/SKILL.md"
     if [ -f "$skill_dir/preamble.md" ]; then cp "$skill_dir/preamble.md" "$USER_SKILLS_DIR/$skill_name/preamble.md"; fi

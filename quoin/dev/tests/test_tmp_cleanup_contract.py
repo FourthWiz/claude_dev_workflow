@@ -14,6 +14,9 @@ SKILLS_DIR = PROJECT_ROOT / "quoin" / "skills"
 ADAPTER_SKILLS_DIR = PROJECT_ROOT / "quoin" / "adapters" / "claude" / "skills"
 MIGRATED_SKILLS_DIR_OVERRIDES = {
     "review": ADAPTER_SKILLS_DIR,
+    "plan": ADAPTER_SKILLS_DIR,
+    "revise": ADAPTER_SKILLS_DIR,
+    "revise-fast": ADAPTER_SKILLS_DIR,
 }
 
 CLASS_B_WRITERS = ["plan", "architect", "review", "revise", "revise-fast"]

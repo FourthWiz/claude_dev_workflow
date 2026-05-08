@@ -19,6 +19,10 @@ SKILLS_DIR = QUOIN_DIR / "skills"
 ADAPTER_SKILLS_DIR = QUOIN_DIR / "adapters" / "claude" / "skills"
 MIGRATED_SKILLS_DIR_OVERRIDES = {
     "review": ADAPTER_SKILLS_DIR,
+    "plan": ADAPTER_SKILLS_DIR,
+    "critic": ADAPTER_SKILLS_DIR,
+    "revise": ADAPTER_SKILLS_DIR,
+    "revise-fast": ADAPTER_SKILLS_DIR,
 }
 
 TARGET_SKILLS = [
