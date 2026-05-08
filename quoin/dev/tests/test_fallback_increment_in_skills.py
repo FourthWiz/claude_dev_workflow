@@ -24,6 +24,10 @@ QUOIN_DIR = Path(__file__).parent.parent.parent  # quoin/ directory (3 levels up
 SKILLS_DIR = QUOIN_DIR / "skills"
 MIGRATED_SKILLS_DIR_OVERRIDES = {
     "review": QUOIN_DIR / "adapters" / "claude" / "skills",
+    "plan": QUOIN_DIR / "adapters" / "claude" / "skills",
+    "critic": QUOIN_DIR / "adapters" / "claude" / "skills",
+    "revise": QUOIN_DIR / "adapters" / "claude" / "skills",
+    "revise-fast": QUOIN_DIR / "adapters" / "claude" / "skills",
 }
 
 STEP5_CANONICAL = (

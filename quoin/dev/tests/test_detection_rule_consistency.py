@@ -17,13 +17,16 @@ ADAPTER_SKILLS_DIR = PKG_DIR / "adapters" / "claude" / "skills"
 SKILL_FILES = [
     SKILLS_DIR / "gate" / "SKILL.md",
     SKILLS_DIR / "expand" / "SKILL.md",
-    SKILLS_DIR / "critic" / "SKILL.md",
+    # Phase 9 migration: critic's authoritative SKILL.md lives in the Claude adapter path.
+    ADAPTER_SKILLS_DIR / "critic" / "SKILL.md",
     SKILLS_DIR / "implement" / "SKILL.md",
     # Phase 8 migration: review's authoritative SKILL.md lives in the
     # Claude adapter path (the v3-detection-comment fixture moves with the body).
     ADAPTER_SKILLS_DIR / "review" / "SKILL.md",
-    SKILLS_DIR / "revise" / "SKILL.md",
-    SKILLS_DIR / "revise-fast" / "SKILL.md",
+    # Phase 9 migration: revise and revise-fast authoritative SKILL.md files live
+    # in the Claude adapter path.
+    ADAPTER_SKILLS_DIR / "revise" / "SKILL.md",
+    ADAPTER_SKILLS_DIR / "revise-fast" / "SKILL.md",
     # Phase 7 migration: start_of_day's authoritative SKILL.md lives in the
     # Claude adapter path (the v3-detection-comment fixture moves with the body).
     ADAPTER_SKILLS_DIR / "start_of_day" / "SKILL.md",
