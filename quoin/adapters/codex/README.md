@@ -22,3 +22,11 @@ Codex should also use native Codex behavior where it already exists:
 Quoin must not guess Codex global install paths, create a custom approval system, or duplicate sandbox enforcement.
 
 The initial Codex entrypoint is the repository `AGENTS.md`. There is no Codex installer in this pass.
+
+Per-skill portable intent docs now exist at
+`quoin/core/skills/capture_insight.md`,
+`quoin/core/skills/triage.md`, and
+`quoin/core/skills/start_of_day.md`. Codex performs each of these phases
+natively against project-root `.workflow_artifacts/`, following the
+runtime-neutral contract in those docs. No Codex command files, no Codex
+installer, and no global Codex paths are introduced.

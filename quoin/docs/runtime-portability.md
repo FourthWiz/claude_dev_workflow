@@ -79,9 +79,14 @@ Do not duplicate skill templates before this split exists. Duplication would mak
 
 The first implementation pass established the boundary and guard tests. Portable script implementations may move into `quoin/core/scripts/` only when old `quoin/scripts/` entrypoints remain compatible for Claude installs and existing docs.
 
-### Phase 6 pilot: capture_insight
+### Phase 6 / Phase 7 migrated skills
 
-`capture_insight` is the first skill installed from the Claude adapter
-path (`quoin/adapters/claude/skills/capture_insight/SKILL.md`); the
-runtime-neutral intent lives at `quoin/core/skills/capture_insight.md`.
-All other skills still install from `quoin/skills/<name>/SKILL.md`.
+`capture_insight`, `triage`, and `start_of_day` install from the Claude
+adapter path (`quoin/adapters/claude/skills/<name>/SKILL.md`); the
+runtime-neutral intents live at `quoin/core/skills/<name>.md`. All other
+skills still install from `quoin/skills/<name>/SKILL.md`.
+
+`capture_insight` shipped in Phase 6 as the pilot. `triage` and
+`start_of_day` followed in Phase 7. `review` migration is deferred — its
+v3 Class B contract artifact and critic-loop interaction warrant a
+dedicated architecture pass.

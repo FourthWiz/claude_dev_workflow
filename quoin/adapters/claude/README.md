@@ -34,8 +34,16 @@ The first runtime-portability pass must not change Claude install behavior.
 
 ## Per-skill adapter files
 
-`skills/capture_insight/SKILL.md` is the first per-skill adapter file under this
-directory. It is the install source for the Claude runtime (Phase 6 pilot of the
-runtime-portable adapter pattern). `bash quoin/install.sh` deploys it to
-`~/.claude/skills/capture_insight/SKILL.md` instead of the legacy stub at
-`quoin/skills/capture_insight/SKILL.md`.
+The following per-skill adapter files live under this directory and are the
+install source for the Claude runtime. `bash quoin/install.sh` deploys each
+to `~/.claude/skills/<name>/SKILL.md` instead of the legacy stub at
+`quoin/skills/<name>/SKILL.md`.
+
+- `skills/capture_insight/SKILL.md` — Phase 6 pilot of the runtime-portable adapter pattern.
+- `skills/triage/SKILL.md` — Phase 7 migration.
+- `skills/start_of_day/SKILL.md` — Phase 7 migration.
+
+The runtime-neutral intent docs for these skills live at
+`quoin/core/skills/<name>.md`. The legacy stubs at
+`quoin/skills/<name>/SKILL.md` remain only so glob-based tests and the
+manifest frontmatter parser continue to find a valid SKILL.md at each path.
