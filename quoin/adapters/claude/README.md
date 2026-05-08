@@ -42,6 +42,7 @@ to `~/.claude/skills/<name>/SKILL.md` instead of the legacy stub at
 - `skills/capture_insight/SKILL.md` — Phase 6 pilot of the runtime-portable adapter pattern.
 - `skills/triage/SKILL.md` — Phase 7 migration.
 - `skills/start_of_day/SKILL.md` — Phase 7 migration.
+- `skills/review/SKILL.md` — Phase 8 migration.
 
 The runtime-neutral intent docs for these skills live at
 `quoin/core/skills/<name>.md`. The legacy stubs at
