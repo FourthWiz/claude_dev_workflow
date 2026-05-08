@@ -111,6 +111,13 @@ if [ ! -f "$ADAPTER_START_OF_DAY_SRC" ]; then
   exit 1
 fi
 
+# Phase 8 migration: review installs from the Claude adapter path.
+ADAPTER_REVIEW_SRC="$SCRIPT_DIR/adapters/claude/skills/review/SKILL.md"
+if [ ! -f "$ADAPTER_REVIEW_SRC" ]; then
+  error "Expected Claude adapter SKILL.md at $ADAPTER_REVIEW_SRC but not found — aborting"
+  exit 1
+fi
+
 USER_SKILLS_DIR="$HOME/.claude/skills"
 mkdir -p "$USER_SKILLS_DIR"
 
@@ -129,6 +136,9 @@ for skill_dir in "$SCRIPT_DIR/skills"/*/; do
     elif [ "$skill_name" = "start_of_day" ]; then
       src="$ADAPTER_START_OF_DAY_SRC"
       info "Deploying $skill_name from Claude adapter path (Phase 7 migration)"
+    elif [ "$skill_name" = "review" ]; then
+      src="$ADAPTER_REVIEW_SRC"
+      info "Deploying $skill_name from Claude adapter path (Phase 8 migration)"
     fi
     cp "$src" "$USER_SKILLS_DIR/$skill_name/SKILL.md"
     if [ -f "$skill_dir/preamble.md" ]; then cp "$skill_dir/preamble.md" "$USER_SKILLS_DIR/$skill_name/preamble.md"; fi
