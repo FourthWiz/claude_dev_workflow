@@ -30,8 +30,14 @@ Per-skill portable intent docs now exist at
 `quoin/core/skills/review.md`,
 `quoin/core/skills/plan.md`,
 `quoin/core/skills/critic.md`,
-`quoin/core/skills/revise.md`, and
-`quoin/core/skills/revise-fast.md`. Codex performs each of these phases
+`quoin/core/skills/revise.md`,
+`quoin/core/skills/revise-fast.md`,
+`quoin/core/skills/architect.md`, and
+`quoin/core/skills/thorough_plan.md`. Codex performs each of these phases
 natively against project-root `.workflow_artifacts/`, following the
 runtime-neutral contract in those docs. No Codex command files, no Codex
 installer, and no global Codex paths are introduced.
+
+Execution-loop skills (implement, gate, run) and lifecycle/setup/support skills
+(end_of_task, end_of_day, weekly_review, cost_snapshot, init_workflow, discover,
+expand, rollback) remain future work.

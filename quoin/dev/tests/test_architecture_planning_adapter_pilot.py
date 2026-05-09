@@ -42,12 +42,19 @@ THOROUGH_PLAN_EXTRA_SLASH_TOKENS = (
 
 
 def _slash_regex(name: str) -> re.Pattern:
-    """Negative-lookahead regex for a slash-command token.
+    """Word-boundary regex for a slash-command token.
 
-    Matches /name only when NOT followed by an alphanumeric char or [-_].
-    This avoids false positives like /critic matching 'critic-response-1.md'.
+    Matches /name only when:
+    - NOT preceded by an alphanumeric char or [-_] (avoids matching path
+      components like 'skills/architect.md')
+    - NOT followed by an alphanumeric char or [-_] (avoids matching
+      'critic-response-1.md')
     """
-    return re.compile(re.escape("/" + name.lstrip("/")) + r"(?=[^a-zA-Z0-9_\-]|$)")
+    return re.compile(
+        r"(?<![a-zA-Z0-9_\-])"
+        + re.escape("/" + name.lstrip("/"))
+        + r"(?=[^a-zA-Z0-9_\-]|$)"
+    )
 
 
 def _core_doc(skill_name: str) -> Path:
@@ -74,9 +81,15 @@ def test_slash_regex_does_not_false_match_path_separator():
     pat = _slash_regex("critic")
     assert not pat.search("critic-response-1.md"), "false positive: path separator"
     assert not pat.search("current-plan.md"), "false positive: unrelated path"
+    assert not pat.search("skills/critic.md"), "false positive: path component"
+    assert not pat.search("quoin/core/skills/critic.md"), "false positive: nested path"
     assert pat.search("/critic "), "missed: trailing space"
     assert pat.search("/critic\n"), "missed: newline"
     assert pat.search("/critic"), "missed: end-of-string"
+
+    pat2 = _slash_regex("architect")
+    assert not pat2.search("quoin/core/skills/architect.md"), "false positive: path component"
+    assert not pat2.search("skills/architect.md"), "false positive: path component"
 
 
 # ── Parametrized tests (run over both skills) ──────────────────────────────

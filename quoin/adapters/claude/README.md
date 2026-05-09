@@ -47,6 +47,8 @@ to `~/.claude/skills/<name>/SKILL.md` instead of the legacy stub at
 - `skills/critic/SKILL.md` — Phase 9 migration.
 - `skills/revise/SKILL.md` — Phase 9 migration.
 - `skills/revise-fast/SKILL.md` — Phase 9 migration.
+- `skills/architect/SKILL.md` — Phase 10 migration.
+- `skills/thorough_plan/SKILL.md` — Phase 10 migration.
 
 The runtime-neutral intent docs for these skills live at
 `quoin/core/skills/<name>.md`. The legacy stubs at
