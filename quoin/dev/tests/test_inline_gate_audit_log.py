@@ -12,7 +12,7 @@ import pytest
 
 QUOIN_ROOT = pathlib.Path(__file__).parent.parent.parent
 
-GATE_SKILL = QUOIN_ROOT / "skills" / "gate" / "SKILL.md"
+GATE_SKILL = QUOIN_ROOT / "adapters" / "claude" / "skills" / "gate" / "SKILL.md"
 RUN_SKILL = QUOIN_ROOT / "skills" / "run" / "SKILL.md"
 REVIEW_SKILL = QUOIN_ROOT / "adapters" / "claude" / "skills" / "review" / "SKILL.md"
 

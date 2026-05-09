@@ -9,7 +9,7 @@ import pathlib
 import re
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
-GATE_SKILL = PROJECT_ROOT / "quoin" / "skills" / "gate" / "SKILL.md"
+GATE_SKILL = PROJECT_ROOT / "quoin" / "adapters" / "claude" / "skills" / "gate" / "SKILL.md"
 RUN_SKILL = PROJECT_ROOT / "quoin" / "skills" / "run" / "SKILL.md"
 THOROUGH_PLAN_SKILL = PROJECT_ROOT / "quoin" / "adapters" / "claude" / "skills" / "thorough_plan" / "SKILL.md"
 

@@ -31,6 +31,7 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]  # .../Claude_workflow
 SKILLS_GLOB = str(PROJECT_ROOT / "quoin" / "skills" / "*" / "SKILL.md")
+ADAPTER_SKILLS_DIR = PROJECT_ROOT / "quoin" / "adapters" / "claude" / "skills"
 CLAUDE_MD = PROJECT_ROOT / "quoin" / "CLAUDE.md"
 INSTALL_SH = PROJECT_ROOT / "quoin" / "install.sh"
 RESOLVER = PROJECT_ROOT / "quoin" / "scripts" / "path_resolve.py"
@@ -94,7 +95,7 @@ HARDCODED_RE = re.compile(
 # the Form-A alternation cannot match (round-5 CRIT-1).
 EXPLICIT_FORM_B_C_FILES = [
     str(PROJECT_ROOT / "quoin" / "skills" / "plan" / "SKILL.md"),
-    str(PROJECT_ROOT / "quoin" / "skills" / "gate" / "SKILL.md"),
+    str(ADAPTER_SKILLS_DIR / "gate" / "SKILL.md"),
     str(PROJECT_ROOT / "quoin" / "skills" / "architect" / "SKILL.md"),
 ]
 
@@ -156,7 +157,7 @@ GATE_LEGACY_RE = re.compile(r"task subfolder for artifacts")
 FORM_B_C_RESIDUAL_CANARIES = {
     str(PROJECT_ROOT / "quoin" / "skills" / "plan" / "SKILL.md"):
         "any prior `current-plan.md`, `critic-response-*.md`",
-    str(PROJECT_ROOT / "quoin" / "skills" / "gate" / "SKILL.md"):
+    str(ADAPTER_SKILLS_DIR / "gate" / "SKILL.md"):
         "task subfolder for artifacts",
     str(PROJECT_ROOT / "quoin" / "skills" / "architect" / "SKILL.md"):
         "Read the task subfolder if it exists (prior `architecture.md`, `current-plan.md`)",
@@ -196,9 +197,9 @@ def test_skill_files_have_no_residual_hardcoded_path_dynamic_glob_plus_form_b_c(
     # Form-B/C residual-prose check (D-09b / round-5 CRIT-1)
     form_b_c_violations = []
     for path, canary in FORM_B_C_RESIDUAL_CANARIES.items():
-        assert path in skill_files, (
-            f"D-09b residual-canary entry {path} is not in the glob result; either "
-            f"the file was removed (update FORM_B_C_RESIDUAL_CANARIES) or PROJECT_ROOT "
+        assert Path(path).is_file(), (
+            f"D-09b residual-canary entry {path} not found on disk; either "
+            f"the file was removed/moved (update FORM_B_C_RESIDUAL_CANARIES) or PROJECT_ROOT "
             f"is wrong: {PROJECT_ROOT}"
         )
         body = Path(path).read_text()

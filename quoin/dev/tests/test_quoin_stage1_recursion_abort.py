@@ -28,7 +28,7 @@ ADAPTER_SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
 # Skills migrated to the three-file adapter pattern (Phase 6 / Phase 7).
 # When this set grows, add the skill name here AND verify the install.sh
 # override branch exists.
-MIGRATED_TO_ADAPTER = {"capture_insight", "triage", "start_of_day", "plan", "critic", "revise", "revise-fast"}
+MIGRATED_TO_ADAPTER = {"capture_insight", "triage", "start_of_day", "plan", "critic", "revise", "revise-fast", "gate"}
 
 
 def skill_md_path(skill_name: str) -> Path:
@@ -182,7 +182,7 @@ def test_block_describes_fail_graceful_branch(skill):
 def test_synthetic_abort_branch_simulation():
     # Pick any cheap-tier skill — the §0 branch tree is structurally identical
     # across all 12 (T-04 case (e) confirms the sentinel grammar is uniform).
-    slice_text = extract_preamble_block(SKILLS_DIR / "gate" / "SKILL.md")
+    slice_text = extract_preamble_block(skill_md_path("gate"))
 
     # Confirm the abort rule is documented with the expected grep targets.
     assert "[no-redispatch:N]" in slice_text, "abort-rule counter-form prose missing"
