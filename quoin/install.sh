@@ -167,6 +167,13 @@ if [ ! -f "$ADAPTER_GATE_SRC" ]; then
   exit 1
 fi
 
+# Phase 12 migration: implement installs from the Claude adapter path.
+ADAPTER_IMPLEMENT_SRC="$SCRIPT_DIR/adapters/claude/skills/implement/SKILL.md"
+if [ ! -f "$ADAPTER_IMPLEMENT_SRC" ]; then
+  error "Expected Claude adapter SKILL.md at $ADAPTER_IMPLEMENT_SRC but not found — aborting"
+  exit 1
+fi
+
 USER_SKILLS_DIR="$HOME/.claude/skills"
 mkdir -p "$USER_SKILLS_DIR"
 
@@ -209,6 +216,9 @@ for skill_dir in "$SCRIPT_DIR/skills"/*/; do
     elif [ "$skill_name" = "gate" ]; then
       src="$ADAPTER_GATE_SRC"
       info "Deploying $skill_name from Claude adapter path (Phase 11 migration)"
+    elif [ "$skill_name" = "implement" ]; then
+      src="$ADAPTER_IMPLEMENT_SRC"
+      info "Deploying $skill_name from Claude adapter path (Phase 12 migration)"
     fi
     cp "$src" "$USER_SKILLS_DIR/$skill_name/SKILL.md"
     if [ -f "$skill_dir/preamble.md" ]; then cp "$skill_dir/preamble.md" "$USER_SKILLS_DIR/$skill_name/preamble.md"; fi
