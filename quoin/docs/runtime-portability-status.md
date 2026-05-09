@@ -8,10 +8,10 @@ Status: installable.
 
 - `bash quoin/install.sh` remains the supported install command.
 - Active Claude rules remain in `quoin/CLAUDE.md`.
-- Active Claude skills remain in `quoin/skills/`, EXCEPT the eleven skills
-  migrated across Phases 6–11 (`capture_insight`, `triage`, `start_of_day`,
+- Active Claude skills remain in `quoin/skills/`, EXCEPT the twelve skills
+  migrated across Phases 6–12 (`capture_insight`, `triage`, `start_of_day`,
   `review`, `plan`, `critic`, `revise`, `revise-fast`, `architect`,
-  `thorough_plan`, `gate`), which install from
+  `thorough_plan`, `gate`, `implement`), which install from
   `quoin/adapters/claude/skills/<name>/SKILL.md`.
 - Portable intent docs for the migrated skills live at
   `quoin/core/skills/capture_insight.md`,
@@ -23,8 +23,9 @@ Status: installable.
   `quoin/core/skills/revise.md`,
   `quoin/core/skills/revise-fast.md`,
   `quoin/core/skills/architect.md`,
-  `quoin/core/skills/gate.md`, and
-  `quoin/core/skills/thorough_plan.md`.
+  `quoin/core/skills/gate.md`,
+  `quoin/core/skills/thorough_plan.md`, and
+  `quoin/core/skills/implement.md`.
 - Compatibility wrappers deploy to `~/.claude/scripts/`.
 - Extracted portable implementations deploy to `~/.claude/core/scripts/`.
 
@@ -50,7 +51,7 @@ Status: partially extracted.
 
 ## Still Claude-Specific
 
-- Skill bodies in `quoin/skills/` (stubs only for the 11 migrated skills; full bodies now in `quoin/adapters/claude/skills/<name>/SKILL.md`).
+- Skill bodies in `quoin/skills/` (stubs only for the 12 migrated skills; full bodies now in `quoin/adapters/claude/skills/<name>/SKILL.md`).
 - Slash-command invocation model.
 - Agent and Skill dispatch instructions.
 - Prompt-cache preamble generation.
@@ -62,7 +63,7 @@ Status: partially extracted.
 
 - Generated Claude skill files.
 - Generated Codex adapter files.
-- Split shared skill intent from runtime overlays — partial: `capture_insight`, `triage`, `start_of_day`, `review`, `plan`, `critic`, `revise`, `revise-fast`, `architect`, `thorough_plan`, and `gate` shipped under the adapter pattern across Phases 6–11.
-- Execution-loop skills (`implement`, `run`) and lifecycle/setup/support skills (`end_of_task`, `end_of_day`, `weekly_review`, `cost_snapshot`, `init_workflow`, `discover`, `expand`, `rollback`) remain future work; each warrants its own migration pass.
+- Split shared skill intent from runtime overlays — partial: `capture_insight`, `triage`, `start_of_day`, `review`, `plan`, `critic`, `revise`, `revise-fast`, `architect`, `thorough_plan`, `gate`, and `implement` shipped under the adapter pattern across Phases 6–12.
+- Execution-loop skill `run` and lifecycle/setup/support skills (`end_of_task`, `end_of_day`, `weekly_review`, `cost_snapshot`, `init_workflow`, `discover`, `expand`, `rollback`) remain future work; each warrants its own migration pass.
 - Runtime-neutral cost capture.
 - Codex install target verification.
