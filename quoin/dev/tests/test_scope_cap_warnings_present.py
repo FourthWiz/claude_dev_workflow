@@ -11,7 +11,8 @@ Checks:
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-IMPLEMENT_SKILL = REPO_ROOT / "quoin" / "skills" / "implement" / "SKILL.md"
+# Phase 12 migration: implement's authoritative SKILL.md lives in the Claude adapter path.
+IMPLEMENT_SKILL = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "implement" / "SKILL.md"
 REVISE_SKILL = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "revise" / "SKILL.md"
 REVISE_FAST_SKILL = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "revise-fast" / "SKILL.md"
 

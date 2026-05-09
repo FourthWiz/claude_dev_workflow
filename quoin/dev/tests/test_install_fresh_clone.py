@@ -86,7 +86,7 @@ def test_fresh_clone_install_e2e(transport: str):
             "capture_insight", "triage", "start_of_day", "review",
             "plan", "critic", "revise", "revise-fast",
             "architect", "thorough_plan",
-            "gate",
+            "gate", "implement",
         )
         for migrated in MIGRATED_SKILLS:
             adapter_src = (
