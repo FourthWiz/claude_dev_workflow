@@ -146,6 +146,20 @@ if [ ! -f "$ADAPTER_REVISE_FAST_SRC" ]; then
   exit 1
 fi
 
+# Phase 10 migration: architect installs from the Claude adapter path.
+ADAPTER_ARCHITECT_SRC="$SCRIPT_DIR/adapters/claude/skills/architect/SKILL.md"
+if [ ! -f "$ADAPTER_ARCHITECT_SRC" ]; then
+  error "Expected Claude adapter SKILL.md at $ADAPTER_ARCHITECT_SRC but not found — aborting"
+  exit 1
+fi
+
+# Phase 10 migration: thorough_plan installs from the Claude adapter path.
+ADAPTER_THOROUGH_PLAN_SRC="$SCRIPT_DIR/adapters/claude/skills/thorough_plan/SKILL.md"
+if [ ! -f "$ADAPTER_THOROUGH_PLAN_SRC" ]; then
+  error "Expected Claude adapter SKILL.md at $ADAPTER_THOROUGH_PLAN_SRC but not found — aborting"
+  exit 1
+fi
+
 USER_SKILLS_DIR="$HOME/.claude/skills"
 mkdir -p "$USER_SKILLS_DIR"
 
@@ -179,6 +193,12 @@ for skill_dir in "$SCRIPT_DIR/skills"/*/; do
     elif [ "$skill_name" = "revise-fast" ]; then
       src="$ADAPTER_REVISE_FAST_SRC"
       info "Deploying $skill_name from Claude adapter path (Phase 9 migration)"
+    elif [ "$skill_name" = "architect" ]; then
+      src="$ADAPTER_ARCHITECT_SRC"
+      info "Deploying $skill_name from Claude adapter path (Phase 10 migration)"
+    elif [ "$skill_name" = "thorough_plan" ]; then
+      src="$ADAPTER_THOROUGH_PLAN_SRC"
+      info "Deploying $skill_name from Claude adapter path (Phase 10 migration)"
     fi
     cp "$src" "$USER_SKILLS_DIR/$skill_name/SKILL.md"
     if [ -f "$skill_dir/preamble.md" ]; then cp "$skill_dir/preamble.md" "$USER_SKILLS_DIR/$skill_name/preamble.md"; fi
