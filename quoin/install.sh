@@ -195,13 +195,6 @@ if [ ! -f "$ADAPTER_RUN_SRC" ]; then
   exit 1
 fi
 
-# Phase 16 migration: end_of_day installs from the Claude adapter path.
-ADAPTER_END_OF_DAY_SRC="$SCRIPT_DIR/adapters/claude/skills/end_of_day/SKILL.md"
-if [ ! -f "$ADAPTER_END_OF_DAY_SRC" ]; then
-  error "Expected Claude adapter SKILL.md at $ADAPTER_END_OF_DAY_SRC but not found — aborting"
-  exit 1
-fi
-
 USER_SKILLS_DIR="$HOME/.claude/skills"
 mkdir -p "$USER_SKILLS_DIR"
 
@@ -256,9 +249,6 @@ for skill_dir in "$SCRIPT_DIR/skills"/*/; do
     elif [ "$skill_name" = "run" ]; then
       src="$ADAPTER_RUN_SRC"
       info "Deploying $skill_name from Claude adapter path (Phase 15 migration)"
-    elif [ "$skill_name" = "end_of_day" ]; then
-      src="$ADAPTER_END_OF_DAY_SRC"
-      info "Deploying $skill_name from Claude adapter path (Phase 16 migration)"
     fi
     cp "$src" "$USER_SKILLS_DIR/$skill_name/SKILL.md"
     if [ -f "$skill_dir/preamble.md" ]; then cp "$skill_dir/preamble.md" "$USER_SKILLS_DIR/$skill_name/preamble.md"; fi
