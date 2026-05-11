@@ -188,6 +188,13 @@ if [ ! -f "$ADAPTER_END_OF_TASK_SRC" ]; then
   exit 1
 fi
 
+# Phase 15 migration: run installs from the Claude adapter path.
+ADAPTER_RUN_SRC="$SCRIPT_DIR/adapters/claude/skills/run/SKILL.md"
+if [ ! -f "$ADAPTER_RUN_SRC" ]; then
+  error "Expected Claude adapter SKILL.md at $ADAPTER_RUN_SRC but not found — aborting"
+  exit 1
+fi
+
 USER_SKILLS_DIR="$HOME/.claude/skills"
 mkdir -p "$USER_SKILLS_DIR"
 
@@ -239,6 +246,9 @@ for skill_dir in "$SCRIPT_DIR/skills"/*/; do
     elif [ "$skill_name" = "end_of_task" ]; then
       src="$ADAPTER_END_OF_TASK_SRC"
       info "Deploying $skill_name from Claude adapter path (Phase 14 migration)"
+    elif [ "$skill_name" = "run" ]; then
+      src="$ADAPTER_RUN_SRC"
+      info "Deploying $skill_name from Claude adapter path (Phase 15 migration)"
     fi
     cp "$src" "$USER_SKILLS_DIR/$skill_name/SKILL.md"
     if [ -f "$skill_dir/preamble.md" ]; then cp "$skill_dir/preamble.md" "$USER_SKILLS_DIR/$skill_name/preamble.md"; fi
