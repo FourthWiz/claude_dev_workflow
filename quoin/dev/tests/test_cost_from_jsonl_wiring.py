@@ -18,7 +18,7 @@ DEV_WORKFLOW = REPO_ROOT / "quoin"
 SKILLS_DIR = DEV_WORKFLOW / "skills"
 INSTALL_SH = DEV_WORKFLOW / "install.sh"
 
-COST_SNAPSHOT_SKILL = SKILLS_DIR / "cost_snapshot" / "SKILL.md"
+COST_SNAPSHOT_SKILL = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "cost_snapshot" / "SKILL.md"
 END_OF_TASK_SKILL   = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "end_of_task" / "SKILL.md"
 
 
