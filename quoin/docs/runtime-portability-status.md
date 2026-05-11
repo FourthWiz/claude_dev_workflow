@@ -8,10 +8,10 @@ Status: installable.
 
 - `bash quoin/install.sh` remains the supported install command.
 - Active Claude rules remain in `quoin/CLAUDE.md`.
-- Active Claude skills remain in `quoin/skills/`, EXCEPT the twelve skills
-  migrated across Phases 6–12 (`capture_insight`, `triage`, `start_of_day`,
+- Active Claude skills remain in `quoin/skills/`, EXCEPT the thirteen skills
+  migrated across Phases 6–13 (`capture_insight`, `triage`, `start_of_day`,
   `review`, `plan`, `critic`, `revise`, `revise-fast`, `architect`,
-  `thorough_plan`, `gate`, `implement`), which install from
+  `thorough_plan`, `gate`, `implement`, `rollback`), which install from
   `quoin/adapters/claude/skills/<name>/SKILL.md`.
 - Portable intent docs for the migrated skills live at
   `quoin/core/skills/capture_insight.md`,
@@ -24,8 +24,9 @@ Status: installable.
   `quoin/core/skills/revise-fast.md`,
   `quoin/core/skills/architect.md`,
   `quoin/core/skills/gate.md`,
-  `quoin/core/skills/thorough_plan.md`, and
-  `quoin/core/skills/implement.md`.
+  `quoin/core/skills/thorough_plan.md`,
+  `quoin/core/skills/implement.md`, and
+  `quoin/core/skills/rollback.md`.
 - Compatibility wrappers deploy to `~/.claude/scripts/`.
 - Extracted portable implementations deploy to `~/.claude/core/scripts/`.
 
@@ -63,7 +64,7 @@ Status: partially extracted.
 
 - Generated Claude skill files.
 - Generated Codex adapter files.
-- Split shared skill intent from runtime overlays — partial: `capture_insight`, `triage`, `start_of_day`, `review`, `plan`, `critic`, `revise`, `revise-fast`, `architect`, `thorough_plan`, `gate`, and `implement` shipped under the adapter pattern across Phases 6–12.
-- Execution-loop skill `run` and lifecycle/setup/support skills (`end_of_task`, `end_of_day`, `weekly_review`, `cost_snapshot`, `init_workflow`, `discover`, `expand`, `rollback`) remain future work; each warrants its own migration pass.
+- Split shared skill intent from runtime overlays — partial: `capture_insight`, `triage`, `start_of_day`, `review`, `plan`, `critic`, `revise`, `revise-fast`, `architect`, `thorough_plan`, `gate`, `implement`, and `rollback` shipped under the adapter pattern across Phases 6–13.
+- Execution-loop skill `run` and lifecycle/setup/support skills (`end_of_task`, `end_of_day`, `weekly_review`, `cost_snapshot`, `init_workflow`, `discover`, `expand`) remain future work; each warrants its own migration pass.
 - Runtime-neutral cost capture.
 - Codex install target verification.
