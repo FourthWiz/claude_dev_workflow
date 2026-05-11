@@ -93,6 +93,7 @@ def test_fresh_clone_install_e2e(transport: str):
             "weekly_review",
             "cost_snapshot",
             "expand",
+            "discover",
         )
         for migrated in MIGRATED_SKILLS:
             adapter_src = (
