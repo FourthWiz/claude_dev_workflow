@@ -181,6 +181,13 @@ if [ ! -f "$ADAPTER_ROLLBACK_SRC" ]; then
   exit 1
 fi
 
+# Phase 14 migration: end_of_task installs from the Claude adapter path.
+ADAPTER_END_OF_TASK_SRC="$SCRIPT_DIR/adapters/claude/skills/end_of_task/SKILL.md"
+if [ ! -f "$ADAPTER_END_OF_TASK_SRC" ]; then
+  error "Expected Claude adapter SKILL.md at $ADAPTER_END_OF_TASK_SRC but not found — aborting"
+  exit 1
+fi
+
 USER_SKILLS_DIR="$HOME/.claude/skills"
 mkdir -p "$USER_SKILLS_DIR"
 
@@ -229,6 +236,9 @@ for skill_dir in "$SCRIPT_DIR/skills"/*/; do
     elif [ "$skill_name" = "rollback" ]; then
       src="$ADAPTER_ROLLBACK_SRC"
       info "Deploying $skill_name from Claude adapter path (Phase 13 migration)"
+    elif [ "$skill_name" = "end_of_task" ]; then
+      src="$ADAPTER_END_OF_TASK_SRC"
+      info "Deploying $skill_name from Claude adapter path (Phase 14 migration)"
     fi
     cp "$src" "$USER_SKILLS_DIR/$skill_name/SKILL.md"
     if [ -f "$skill_dir/preamble.md" ]; then cp "$skill_dir/preamble.md" "$USER_SKILLS_DIR/$skill_name/preamble.md"; fi
