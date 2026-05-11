@@ -78,7 +78,7 @@ def test_fresh_clone_install_e2e(transport: str):
             skill_md = skills_dir / skill / "SKILL.md"
             assert skill_md.exists(), f"[{transport}] Missing skill SKILL.md: {skill}"
 
-        # Phases 6–15 migrated skills: each is installed from the Claude
+        # Phases 6–17 migrated skills: each is installed from the Claude
         # adapter path. Verify the deployed file is byte-identical to the
         # adapter source AND NOT identical to the legacy stub (i.e., the
         # installer override actually fired).
@@ -90,6 +90,7 @@ def test_fresh_clone_install_e2e(transport: str):
             "end_of_task",
             "run",
             "end_of_day",
+            "weekly_review",
         )
         for migrated in MIGRATED_SKILLS:
             adapter_src = (
