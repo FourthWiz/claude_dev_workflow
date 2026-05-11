@@ -94,6 +94,7 @@ def test_fresh_clone_install_e2e():
             "gate", "implement", "rollback",
             "end_of_task",
             "run",
+            "end_of_day",
         )
         for migrated in MIGRATED_SKILLS:
             adapter_src = (
