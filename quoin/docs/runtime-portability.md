@@ -48,6 +48,7 @@ Claude-specific behavior includes:
 - `session_age_guard.py` is Claude-specific because it inspects Claude Code session JSONL files.
 - `build_preambles.py` is Claude-specific because it generates Claude skill preambles under `~/.claude`.
 - `verify_spawn_prompt_prefix.py` is Claude-specific because it verifies Claude Agent spawn behavior.
+- `validate_adapter_drift.py` is Claude-specific because it validates `## §0 Model dispatch` headings, `adapters/claude/` paths, and install.sh routing — all Claude-specific adapter mechanics. Despite living in `core/scripts/` for wrapper-pattern symmetry with `path_resolve.py`, it checks Claude-only concepts. A future Codex adapter drift validator would be a parallel script (`validate_adapter_drift_codex.py`) rather than a generalization of this one.
 
 The first migration pass must not break `bash quoin/install.sh` or change the installed Claude workflow.
 
@@ -102,3 +103,23 @@ install from `quoin/skills/<name>/SKILL.md`.
 - `expand` migrated in Phase 19.
 - `discover` migrated in Phase 20.
 - `init_workflow` migrated in Phase 21.
+
+### Phase 22 — Adapter drift validator
+
+Phase 22 added an adapter drift validator at `quoin/core/scripts/validate_adapter_drift.py` (compat wrapper at `quoin/scripts/validate_adapter_drift.py`) that asserts 16 structural invariants across the three-file adapter pattern. The validator is run by `pytest quoin/dev/tests/test_validate_adapter_drift.py` and can be invoked directly during development.
+
+**What this phase did:**
+- Extended `skills.json` `schema_version` from 1 to 2 with two new optional fields: `section_0` (bool) and `spawn_target` (bool).
+- Added `validate_adapter_drift.py` in `quoin/core/scripts/` (canonical) and `quoin/scripts/` (compat wrapper), covering 16 invariants (AD-CO through AD-IO) over all 21 skills in the manifest.
+- Added 23 tests in `quoin/dev/tests/test_validate_adapter_drift.py` (2 positive, 16 invariant negatives, 5 misc).
+- Documented the invariants and new fields in `quoin/core/workflow/skills.md`.
+
+**What this phase did NOT do:**
+- Did not consolidate the 17 existing `test_*_adapter_pilot.py` files — they remain as point-in-time regression guards; the new validator is the forward-looking guard.
+- Did not implement generator scaffolding (deferred per plan D-01).
+- Did not add a Codex-adapter validator (D-09 documents the parallel-script pattern for future runtime adapters).
+- Did not add path fields to the manifest (`portable_doc_path`, etc.) — paths are derivable by convention from `name` (D-02).
+- Did not deploy `validate_adapter_drift.py` to `~/.claude/scripts/` — it is a repo-development tool invoked only by pytest and developers, not a runtime helper.
+- Did not change `install.sh` — the validator is purely a dev/CI tool.
+
+**How to extend for future runtime adapters:** per D-09, a Codex adapter drift validator would be a parallel script (`validate_adapter_drift_codex.py` in `quoin/core/scripts/`), not a generalization of this one. The Claude-specific concepts (§0 dispatch, `adapters/claude/` paths, install.sh routing) are intrinsic to the Claude adapter.
