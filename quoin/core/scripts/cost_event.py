@@ -1,15 +1,15 @@
 """Portable cost-event schema and ledger-row parser.
 
 This module is runtime-neutral and does NOT participate in price computation,
-session-UUID acquisition, or JSONL parsing. It provides a typed schema for
-cost-ledger rows and pure functions to parse and format them.
+session-UUID acquisition, or adapter-specific session-log parsing. It provides
+a typed schema for cost-ledger rows and pure functions to parse and format them.
 
 Warning prefix kept as 'cost_snapshot.WARN' for parity with existing consumers
 (test_cost_ledger_7col_parser.py and cost_snapshot/SKILL.md); a future
 SKILL.md-narrowing phase will decide whether to rename to 'cost_event.WARN'.
 
 This module is runtime-neutral; it MUST NOT import from any Claude-adapter-owned
-helper (the JSONL-reading or session-age scripts under quoin/scripts/). The
+helper (the session-log-reading or session-age scripts under quoin/scripts/). The
 portable cost-event schema lives here; runtime-specific cost collection lives in
 the Claude adapter.
 
