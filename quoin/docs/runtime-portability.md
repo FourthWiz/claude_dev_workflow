@@ -79,9 +79,9 @@ Do not duplicate skill templates before this split exists. Duplication would mak
 
 The first implementation pass established the boundary and guard tests. Portable script implementations may move into `quoin/core/scripts/` only when old `quoin/scripts/` entrypoints remain compatible for Claude installs and existing docs.
 
-### Migrated skills (Phases 6–20)
+### Migrated skills (Phases 6–21)
 
-Twenty skills now install from the Claude adapter path
+Twenty-one skills now install from the Claude adapter path
 (`quoin/adapters/claude/skills/<name>/SKILL.md`); the runtime-neutral
 intents live at `quoin/core/skills/<name>.md`. All other skills still
 install from `quoin/skills/<name>/SKILL.md`.
@@ -101,3 +101,4 @@ install from `quoin/skills/<name>/SKILL.md`.
 - `cost_snapshot` migrated in Phase 18.
 - `expand` migrated in Phase 19.
 - `discover` migrated in Phase 20.
+- `init_workflow` migrated in Phase 21.
