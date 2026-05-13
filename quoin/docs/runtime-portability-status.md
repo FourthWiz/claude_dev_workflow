@@ -65,8 +65,8 @@ Status: repo-local setup/readiness only; no verified global install target.
   - Procedure docs: `quoin/adapters/codex/procedures/{discover,plan,implement,review,gate}.md`
   - Skill adapter docs: `quoin/adapters/codex/skills/<skill>/README.md`
   - Unsupported behavior notes: `quoin/adapters/codex/unsupported-claude-behavior.md`
-  - Run `quoin codex init --project-root <path>` to generate `AGENTS.md`.
-  - Run `quoin codex init --project-root . --check` to verify an existing `AGENTS.md` is up to date without writing files.
+  - Run `quoin install --runtime codex --project-root <path>` or `quoin codex init --project-root <path>` to generate repo-local `AGENTS.md`.
+  - Run `quoin install --runtime codex --project-root . --check` or `quoin codex init --project-root . --check` to verify an existing `AGENTS.md` is up to date without writing files.
   - Run `quoin doctor --runtime codex` to verify repo-local readiness.
   - Run `quoin doctor --runtime codex --smoke` to also run the deterministic repo-local smoke check.
   - Run `python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path>` to generate `AGENTS.md`.
@@ -97,9 +97,12 @@ Status: repo-local setup/readiness only; no verified global install target.
   `not_available` because no verified Codex local telemetry interface exists.
 - Phase 36 adds a consolidated CLI setup/readiness path:
   `quoin codex init` for repo-local `AGENTS.md` generation/checking and
-  `quoin doctor --runtime codex` for non-destructive readiness checks. These
-  commands delegate to the existing Codex generator, readiness, and optional
-  smoke scripts; they do not add global Codex install behavior.
+  `quoin doctor --runtime codex` for non-destructive readiness checks. PR 2
+  adds `quoin install --runtime codex` as an alias for the same repo-local
+  `AGENTS.md` generator/check path while preserving Claude as the default
+  `quoin install` runtime. These commands delegate to the existing Codex
+  generator, readiness, and optional smoke scripts; they do not add global Codex
+  install behavior.
 
 ## Portable Core
 
@@ -195,6 +198,12 @@ runtime's cost collector.
 `--smoke` flag runs the existing deterministic Codex smoke script. The CLI
 surface stays repo-local, reuses the existing scripts, and does not create a
 global Codex installer or command-file target.
+
+**Installability PR 2 (2026-05-14):** Added `quoin install --runtime
+claude|codex`. Bare `quoin install` and bare `quoin` remain Claude installs to
+`~/.claude`; `quoin install --runtime codex --project-root <path>` delegates to
+the existing repo-local `AGENTS.md` generator, and `--check` delegates to the
+existing check-only path.
 
 ## Still Claude-Specific
 

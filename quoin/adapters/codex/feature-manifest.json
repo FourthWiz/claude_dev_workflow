@@ -7,6 +7,11 @@
   "entrypoints": [
     {
       "type": "cli",
+      "path": "quoin install --runtime codex",
+      "args": ["--project-root <path>", "--check"]
+    },
+    {
+      "type": "cli",
       "path": "quoin codex init",
       "args": ["--project-root <path>", "--check"]
     },

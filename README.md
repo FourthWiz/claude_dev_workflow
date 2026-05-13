@@ -22,6 +22,7 @@ Without Quoin, each agent session starts cold. With Quoin, sessions share accumu
 Codex repo-local setup and readiness:
 
 ```bash
+quoin install --runtime codex --project-root .
 quoin codex init --project-root .
 quoin doctor --runtime codex
 ```
@@ -39,7 +40,7 @@ quoin doctor --runtime codex
 
 ```bash
 pip install quoin
-quoin install
+quoin install  # defaults to --runtime claude and deploys to ~/.claude
 ```
 
 **From source:**

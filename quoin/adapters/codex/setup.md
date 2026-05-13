@@ -128,6 +128,7 @@ this repository.
 A generator script produces a repo-local `AGENTS.md` from portable skill metadata:
 
 ```
+quoin install --runtime codex --project-root <path>
 quoin codex init --project-root <path>
 python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path>
 ```
@@ -135,6 +136,7 @@ python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path>
 Use `--check` to verify an existing `AGENTS.md` is up to date (exits nonzero on drift):
 
 ```
+quoin install --runtime codex --project-root . --check
 quoin codex init --project-root . --check
 python3 quoin/adapters/codex/generate_codex_assets.py --project-root . --check
 ```

@@ -57,6 +57,9 @@ def test_cli_help():
     result2 = _py("-m", "quoin", "install", "--help")
     assert result2.returncode == 0, result2.stderr
     assert "--dev" in result2.stdout
+    assert "--runtime" in result2.stdout
+    assert "Claude installs globally to ~/.claude" in result2.stdout
+    assert "repo-local AGENTS.md" in result2.stdout
 
     # doctor can target Codex without replacing the default Claude check
     result3 = _py("-m", "quoin", "doctor", "--help")
@@ -69,6 +72,38 @@ def test_cli_help():
     with pytest.raises(SystemExit) as exc:
         main(["--help"])
     assert exc.value.code == 0
+
+
+def test_install_runtime_claude_dispatches_to_claude_path(monkeypatch):
+    from quoin import cli  # noqa: PLC0415
+
+    seen: dict[str, object] = {}
+
+    def fake_claude_install(args):
+        seen["runtime"] = args.runtime
+        seen["project_root"] = args.project_root
+        return 17
+
+    monkeypatch.setattr(cli, "_cmd_claude_install", fake_claude_install)
+
+    assert cli.main(["install", "--runtime", "claude"]) == 17
+    assert seen == {"runtime": "claude", "project_root": "."}
+
+
+def test_install_default_and_bare_quoin_remain_claude(monkeypatch):
+    from quoin import cli  # noqa: PLC0415
+
+    runtimes: list[str] = []
+
+    def fake_claude_install(args):
+        runtimes.append(args.runtime)
+        return 0
+
+    monkeypatch.setattr(cli, "_cmd_claude_install", fake_claude_install)
+
+    assert cli.main(["install"]) == 0
+    assert cli.main([]) == 0
+    assert runtimes == ["claude", "claude"]
 
 
 def test_codex_doctor_cli_passes_for_repo_root():
@@ -107,6 +142,31 @@ def test_codex_init_cli_writes_agents_md_repo_locally():
             "npm install" + " -g " + "codex",
         ):
             assert forbidden not in content
+
+
+def test_install_runtime_codex_writes_and_checks_agents_md_repo_locally():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = _py(
+            "-m", "quoin", "install", "--runtime", "codex", "--project-root", tmpdir,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+
+        root = Path(tmpdir)
+        agents = root / "AGENTS.md"
+        assert agents.is_file()
+        assert sorted(path.name for path in root.iterdir()) == ["AGENTS.md"]
+        assert ".workflow_artifacts/" in agents.read_text(encoding="utf-8")
+
+        check = _py(
+            "-m", "quoin", "install", "--runtime", "codex",
+            "--project-root", tmpdir, "--check",
+            timeout=60,
+        )
+        assert check.returncode == 0, (
+            f"Codex install --check failed:\nstdout={check.stdout}\nstderr={check.stderr}"
+        )
+        assert "is up to date" in check.stdout
 
 
 def test_codex_init_check_is_non_destructive():

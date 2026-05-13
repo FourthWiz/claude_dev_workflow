@@ -54,6 +54,16 @@ root `AGENTS.md`:
 - No Claude slash-command compatibility is implied or emulated
 - No global Codex paths are assumed
 
+The Quoin CLI exposes the repo-local generator through both commands below:
+
+```
+quoin install --runtime codex --project-root <path>
+quoin codex init --project-root <path>
+```
+
+Both commands support `--check` to compare the existing `AGENTS.md` without
+writing files. Bare `quoin install` remains the Claude install path.
+
 ## What the feature installs
 
 Project assets only:
