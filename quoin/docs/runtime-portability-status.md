@@ -59,6 +59,8 @@ Status: partially extracted.
 - Skill metadata lives in `quoin/core/workflow/skills.json`.
 - Shared reference material still lives under `quoin/memory/`.
 
+**Phase 23 (2026-05-12):** Extracted the portable cost-event schema (`quoin/core/scripts/cost_event.py`) with a `CostEvent` dataclass and pure functions `parse_row`, `format_row`, and `iter_events`. Expanded the portable cost-ledger contract (`quoin/core/workflow/cost-ledger.md`) from a 35-line stub into a full ~110-line portable contract covering row shape, append-only invariant, schema mapping, tolerated variations, malformed inputs, and out-of-scope boundaries. Runtime-specific cost collection (Claude session-log parsing, ccusage, model pricing) remains adapter-owned at `quoin/scripts/cost_from_jsonl.py`, `session_age_guard.py`, and `measure_revise_crossover_cost.py`, each annotated with a CLAUDE-ADAPTER-OWNED banner. A Codex cost collector is explicitly future work; no Codex pricing or session-ID acquisition is implemented in this phase.
+
 ## Still Claude-Specific
 
 - Skill bodies in `quoin/skills/` (stubs only for the 21 migrated skills; full bodies now in `quoin/adapters/claude/skills/<name>/SKILL.md`).
@@ -74,5 +76,5 @@ Status: partially extracted.
 - Generated Claude skill files.
 - Generated Codex adapter files.
 - Split shared skill intent from runtime overlays — partial: `capture_insight`, `triage`, `start_of_day`, `review`, `plan`, `critic`, `revise`, `revise-fast`, `architect`, `thorough_plan`, `gate`, `implement`, `rollback`, `end_of_task`, `run`, `end_of_day`, `weekly_review`, `cost_snapshot`, `expand`, `discover`, and `init_workflow` shipped under the adapter pattern across Phases 6–21.
-- Runtime-neutral cost capture.
+- Runtime-neutral cost capture (schema extracted in Phase 23; full SKILL.md-narrowing to call `cost_event.parse_row` is deferred to a future phase).
 - Codex install target verification.

@@ -19,6 +19,7 @@ The portable core is the workflow contract that every runtime adapter should pre
   - `path_resolve.py` is portable because it resolves task and stage artifact paths from `.workflow_artifacts`.
   - `validate_artifact.py` is portable because it validates markdown artifact structure.
   - `classify_critic_issues.py` is portable unless future changes add runtime-specific assumptions.
+  - `cost_event.py` is portable because it provides the typed cost-event schema (`CostEvent` dataclass) and pure functions `parse_row`, `format_row`, and `iter_events` for reading and writing cost-ledger rows. It has no runtime-specific dependencies: no pricing tables, no session-log parsing, no UUID-acquisition logic. Canonical implementation at `quoin/core/scripts/cost_event.py`; compat wrapper at `quoin/scripts/cost_event.py`.
 - Runtime-neutral workflow semantics now live in `quoin/core/workflow/`:
   - `rules.md` defines shared phase and safety rules.
   - `task-layout.md` defines task, stage, and finalization layout.
@@ -44,8 +45,9 @@ Claude-specific behavior includes:
 - Claude model tier names: Haiku, Sonnet, and Opus.
 - Claude session JSONL lookup.
 - `ccusage` integration and the fallback cost parser.
-- `cost_from_jsonl.py` is Claude-specific because it reads Claude Code JSONL sessions and Claude model pricing.
-- `session_age_guard.py` is Claude-specific because it inspects Claude Code session JSONL files.
+- `cost_from_jsonl.py` is Claude-specific because it reads Claude Code session logs and Claude model pricing. Despite living at `quoin/scripts/` (alongside portable wrappers), its adapter scope is declared by a CLAUDE-ADAPTER-OWNED banner at the top of the file. The portable cost-event schema belongs in `quoin/core/scripts/cost_event.py`; runtime-specific cost collection stays here.
+- `session_age_guard.py` is Claude-specific because it inspects Claude Code session files. A CLAUDE-ADAPTER-OWNED banner at the top of the file declares this scope explicitly.
+- `measure_revise_crossover_cost.py` is Claude-specific because it imports `cost_from_jsonl` and references Claude model names. A CLAUDE-ADAPTER-OWNED banner at the top of the file declares this scope explicitly.
 - `build_preambles.py` is Claude-specific because it generates Claude skill preambles under `~/.claude`.
 - `verify_spawn_prompt_prefix.py` is Claude-specific because it verifies Claude Agent spawn behavior.
 - `validate_adapter_drift.py` is Claude-specific because it validates `## §0 Model dispatch` headings, `adapters/claude/` paths, and install.sh routing — all Claude-specific adapter mechanics. Despite living in `core/scripts/` for wrapper-pattern symmetry with `path_resolve.py`, it checks Claude-only concepts. A future Codex adapter drift validator would be a parallel script (`validate_adapter_drift_codex.py`) rather than a generalization of this one.
