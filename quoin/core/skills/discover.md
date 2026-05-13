@@ -97,8 +97,8 @@ markdown output files are written, in order to emit a structured
 
 The default write path is `<project_root>/.workflow_artifacts/discovery-map.json`.
 
-The generator is optional — `/discover` MUST NOT fail if generation fails;
-the markdown outputs remain the authoritative source.
+The generator is optional — the discover skill MUST NOT fail if generation
+fails; the markdown outputs remain the authoritative source.
 
 ## Behavior contract
 

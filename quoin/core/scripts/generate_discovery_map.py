@@ -38,7 +38,6 @@ import os
 import re
 import subprocess
 import sys
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -261,33 +260,6 @@ def _has_stage_decomposition(architecture_path: Path) -> bool:
         return "## Stage decomposition" in content
     except OSError:
         return False
-
-
-def _enumerate_stages(task_root: Path, architecture_path: Path) -> Optional[List[Dict[str, Any]]]:
-    """
-    Enumerate stages for a task — ONLY if architecture.md contains
-    '## Stage decomposition'. Returns None if condition not met (MAJ-1 fix).
-    """
-    if not architecture_path.exists():
-        return None
-    if not _has_stage_decomposition(architecture_path):
-        return None
-
-    stages: List[Dict[str, Any]] = []
-    try:
-        for child in task_root.iterdir():
-            m = re.fullmatch(r"stage-(\d+)", child.name)
-            if m and child.is_dir():
-                stage_id = int(m.group(1))
-                stage_path = child.resolve().relative_to(
-                    task_root.parent.parent.resolve()  # relative to project_root
-                ).as_posix()
-                # Wait — we need project_root here. We'll pass it.
-                stages.append({"_dir": child, "_id": stage_id})
-    except OSError:
-        pass
-
-    return stages  # raw; caller will finalize with project_root
 
 
 def _enumerate_stages_for_task(task_root: Path, project_root: Path) -> Optional[List[Dict[str, Any]]]:
