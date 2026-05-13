@@ -1,0 +1,33 @@
+# Codex Skill Adapter Docs
+
+These files are Codex facing docs generated/scaffolded from Quoin's portable
+skill contracts under `quoin/core/skills/` and metadata in
+`quoin/core/workflow/skills.json`.
+
+They are repo-local adapter docs only. They do not define Codex command files,
+global install paths, approval behavior, sandbox behavior, or model-dispatch
+mechanics.
+
+| Skill | Phase | Effort | User-facing |
+|-------|-------|--------|-------------|
+| [`architect`](architect/README.md) | architecture | max | yes |
+| [`capture_insight`](capture_insight/README.md) | memory | low | yes |
+| [`cost_snapshot`](cost_snapshot/README.md) | cost | low | yes |
+| [`critic`](critic/README.md) | critic | high | yes |
+| [`discover`](discover/README.md) | discovery | high | yes |
+| [`end_of_day`](end_of_day/README.md) | session-lifecycle | low | yes |
+| [`end_of_task`](end_of_task/README.md) | task-finalization | medium | yes |
+| [`expand`](expand/README.md) | utility | medium | yes |
+| [`gate`](gate/README.md) | gate | medium | yes |
+| [`implement`](implement/README.md) | implementation | medium | yes |
+| [`init_workflow`](init_workflow/README.md) | project-bootstrap | high | yes |
+| [`plan`](plan/README.md) | planning | high | yes |
+| [`review`](review/README.md) | review | high | yes |
+| [`revise`](revise/README.md) | planning | high | yes |
+| [`revise-fast`](revise-fast/README.md) | planning | medium | no |
+| [`rollback`](rollback/README.md) | rollback | medium | yes |
+| [`run`](run/README.md) | orchestration | max | yes |
+| [`start_of_day`](start_of_day/README.md) | session-lifecycle | low | yes |
+| [`thorough_plan`](thorough_plan/README.md) | planning | max | yes |
+| [`triage`](triage/README.md) | routing | low | yes |
+| [`weekly_review`](weekly_review/README.md) | session-lifecycle | low | yes |

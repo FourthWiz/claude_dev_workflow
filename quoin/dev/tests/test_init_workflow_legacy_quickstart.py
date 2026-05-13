@@ -3,13 +3,14 @@
 /init_workflow is interactive — direct runtime testing requires a Claude
 Code harness. We test the SKILL.md text contract instead (per architecture
 rebrand-path-conflicts integration concern + 'structural contract over
-LLM replay' lesson).
+LLM replay' lesson). Post-Phase-21, the content contract lives in the
+Claude adapter file at `quoin/adapters/claude/skills/init_workflow/SKILL.md`.
 """
 import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SKILL_MD = REPO_ROOT / "quoin" / "skills" / "init_workflow" / "SKILL.md"
+SKILL_MD = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "init_workflow" / "SKILL.md"
 
 
 def _skill_md_text() -> str:

@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# CLAUDE-ADAPTER-OWNED — this file reads Claude Code JSONL sessions and/or
+# Claude model pricing. Do NOT import this module from any file in
+# quoin/core/. The portable cost-event schema is at
+# quoin/core/scripts/cost_event.py. Adding runtime-neutral functionality
+# belongs there, not here.
 # cost_from_jsonl.py — local fallback for `ccusage session ... --json`.
 # Pure stdlib. Walks ~/.claude/projects/{project-hash}/{uuid}.jsonl.
 # Per the parent architecture's stage-two spec

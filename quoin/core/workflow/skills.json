@@ -1,152 +1,194 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "skills": [
     {
       "name": "architect",
       "phase": "architecture",
       "effort": "max",
       "user_facing": true,
-      "claude_model": "opus"
+      "claude_model": "opus",
+      "section_0": false,
+      "spawn_target": true
     },
     {
       "name": "capture_insight",
       "phase": "memory",
       "effort": "low",
       "user_facing": true,
-      "claude_model": "haiku"
+      "claude_model": "haiku",
+      "section_0": true,
+      "spawn_target": false
     },
     {
       "name": "cost_snapshot",
       "phase": "cost",
       "effort": "low",
       "user_facing": true,
-      "claude_model": "haiku"
+      "claude_model": "haiku",
+      "section_0": true,
+      "spawn_target": false
     },
     {
       "name": "critic",
       "phase": "critic",
       "effort": "high",
       "user_facing": true,
-      "claude_model": "opus"
+      "claude_model": "opus",
+      "section_0": false,
+      "spawn_target": true
     },
     {
       "name": "discover",
       "phase": "discovery",
       "effort": "high",
       "user_facing": true,
-      "claude_model": "opus"
+      "claude_model": "opus",
+      "section_0": false,
+      "spawn_target": false
     },
     {
       "name": "end_of_day",
       "phase": "session-lifecycle",
       "effort": "low",
       "user_facing": true,
-      "claude_model": "haiku"
+      "claude_model": "haiku",
+      "section_0": true,
+      "spawn_target": false
     },
     {
       "name": "end_of_task",
       "phase": "task-finalization",
       "effort": "medium",
       "user_facing": true,
-      "claude_model": "sonnet"
+      "claude_model": "sonnet",
+      "section_0": true,
+      "spawn_target": false
     },
     {
       "name": "expand",
       "phase": "utility",
       "effort": "medium",
       "user_facing": true,
-      "claude_model": "sonnet"
+      "claude_model": "sonnet",
+      "section_0": true,
+      "spawn_target": false
     },
     {
       "name": "gate",
       "phase": "gate",
       "effort": "medium",
       "user_facing": true,
-      "claude_model": "sonnet"
+      "claude_model": "sonnet",
+      "section_0": true,
+      "spawn_target": true
     },
     {
       "name": "implement",
       "phase": "implementation",
       "effort": "medium",
       "user_facing": true,
-      "claude_model": "sonnet"
+      "claude_model": "sonnet",
+      "section_0": true,
+      "spawn_target": false
     },
     {
       "name": "init_workflow",
       "phase": "project-bootstrap",
       "effort": "high",
       "user_facing": true,
-      "claude_model": "opus"
+      "claude_model": "opus",
+      "section_0": false,
+      "spawn_target": false
     },
     {
       "name": "plan",
       "phase": "planning",
       "effort": "high",
       "user_facing": true,
-      "claude_model": "opus"
+      "claude_model": "opus",
+      "section_0": false,
+      "spawn_target": true
     },
     {
       "name": "review",
       "phase": "review",
       "effort": "high",
       "user_facing": true,
-      "claude_model": "opus"
+      "claude_model": "opus",
+      "section_0": false,
+      "spawn_target": true
     },
     {
       "name": "revise",
       "phase": "planning",
       "effort": "high",
       "user_facing": true,
-      "claude_model": "opus"
+      "claude_model": "opus",
+      "section_0": false,
+      "spawn_target": true
     },
     {
       "name": "revise-fast",
       "phase": "planning",
       "effort": "medium",
       "user_facing": false,
-      "claude_model": "sonnet"
+      "claude_model": "sonnet",
+      "section_0": true,
+      "spawn_target": true
     },
     {
       "name": "rollback",
       "phase": "rollback",
       "effort": "medium",
       "user_facing": true,
-      "claude_model": "sonnet"
+      "claude_model": "sonnet",
+      "section_0": true,
+      "spawn_target": false
     },
     {
       "name": "run",
       "phase": "orchestration",
       "effort": "max",
       "user_facing": true,
-      "claude_model": "opus"
+      "claude_model": "opus",
+      "section_0": false,
+      "spawn_target": false
     },
     {
       "name": "start_of_day",
       "phase": "session-lifecycle",
       "effort": "low",
       "user_facing": true,
-      "claude_model": "haiku"
+      "claude_model": "haiku",
+      "section_0": true,
+      "spawn_target": false
     },
     {
       "name": "thorough_plan",
       "phase": "planning",
       "effort": "max",
       "user_facing": true,
-      "claude_model": "opus"
+      "claude_model": "opus",
+      "section_0": false,
+      "spawn_target": false
     },
     {
       "name": "triage",
       "phase": "routing",
       "effort": "low",
       "user_facing": true,
-      "claude_model": "haiku"
+      "claude_model": "haiku",
+      "section_0": true,
+      "spawn_target": false
     },
     {
       "name": "weekly_review",
       "phase": "session-lifecycle",
       "effort": "low",
       "user_facing": true,
-      "claude_model": "haiku"
+      "claude_model": "haiku",
+      "section_0": true,
+      "spawn_target": false
     }
   ]
 }

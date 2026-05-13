@@ -1,6 +1,8 @@
 # Codex Setup
 
-Codex support is repo-local in this pass. There is no Codex installer.
+Codex support is repo-local in this pass. There is no verified stable Codex
+global install target in this repository, so Quoin does not provide a Codex
+installer.
 
 ## What Setup Means
 
@@ -13,6 +15,8 @@ For Codex, setup means:
 - follow `quoin/docs/runtime-portability.md`
 - use `quoin/core/workflow/` for shared workflow semantics
 - use `quoin/core/workflow/skills.json` for portable skill metadata
+- use `quoin/adapters/codex/skills/<skill>/README.md` as Codex facing
+  per-skill guidance generated/scaffolded from the portable core
 
 ## What Setup Does Not Mean
 
@@ -26,6 +30,77 @@ Codex setup does not include:
 - Claude slash-command compatibility
 
 Codex should use native planning, approvals, sandboxing, repo-scoped instructions, and model or reasoning controls.
+
+## Readiness Check
+
+The repo-local readiness check verifies only evidence Quoin can inspect:
+
+- `AGENTS.md` exists at the project root and points workflow artifacts to that root
+- portable workflow docs and `quoin/core/workflow/skills.json` exist
+- Codex adapter docs and manifest exist
+- every portable skill has a Codex adapter doc under `quoin/adapters/codex/skills/`
+- generated Codex outputs are scoped to `repo-local`
+- Codex docs avoid guessed global paths and command packaging claims
+- `quoin/install.sh` remains Claude-only
+
+Run from the repository root:
+
+```
+python3 quoin/adapters/codex/verify_codex_readiness.py --project-root .
+```
+
+Passing this check means the repository is ready for Codex to use Quoin's
+repo-local artifact workflow. It does not mean Quoin has installed anything into
+a global Codex runtime.
+
+## Runtime Smoke Test
+
+Phase 27 adds a deterministic repo-local smoke test for the Codex path:
+
+```
+python3 quoin/adapters/codex/smoke_codex_workflow.py --project-root .
+```
+
+The smoke test follows the documented path from `AGENTS.md` and Codex adapter
+setup docs to `quoin/adapters/codex/skills/`, `quoin/core/skills/`, and
+`quoin/core/workflow/`. It verifies that minimal architecture, plan, review,
+and cost-ledger artifact semantics are reachable without Claude global paths,
+Claude slash-command requirements, Claude install routing, or `ccusage` as a
+required Codex dependency.
+
+Passing this smoke test means the files and assumptions needed for a minimal
+repo-local Codex Quoin workflow are coherent. It still does not automate live
+Codex runtime behavior or install a Codex extension.
+
+## Generating AGENTS.md
+
+A generator script produces a repo-local `AGENTS.md` from portable skill metadata:
+
+```
+python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path>
+```
+
+Use `--check` to verify an existing `AGENTS.md` is up to date (exits nonzero on drift):
+
+```
+python3 quoin/adapters/codex/generate_codex_assets.py --project-root . --check
+```
+
+The feature contract and manifest are at `quoin/adapters/codex/installable-feature.md`
+and `quoin/adapters/codex/feature-manifest.json`.
+
+## Generating Codex Skill Docs
+
+Codex adapter skill docs are generated/scaffolded from portable skill metadata
+and core skill docs:
+
+```
+python3 quoin/adapters/codex/generate_codex_assets.py --project-root . --adapter-assets
+python3 quoin/adapters/codex/generate_codex_assets.py --project-root . --adapter-assets --check
+```
+
+These docs live under `quoin/adapters/codex/skills/`. They are not Codex command
+files and do not imply a global runtime install target.
 
 ## Current Use
 

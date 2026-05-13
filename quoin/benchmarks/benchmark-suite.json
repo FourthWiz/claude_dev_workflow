@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "suite_id": "cross-runtime-workflow-usefulness",
+  "suite_name": "Cross-Runtime Workflow Usefulness Benchmarks",
+  "status": "design-only",
+  "results_policy": "No benchmark results are recorded in this suite until an actual run is completed and reviewed.",
+  "comparison_modes": [
+    {
+      "id": "simple-claude",
+      "label": "Simple Claude workflow",
+      "runtime": "claude",
+      "quoin_enabled": false,
+      "description": "Use Claude Code normally without invoking Quoin phases or relying on Quoin workflow artifacts."
+    },
+    {
+      "id": "quoin-claude",
+      "label": "Quoin + Claude workflow",
+      "runtime": "claude",
+      "quoin_enabled": true,
+      "description": "Use the installed Claude adapter, Quoin slash commands or skills where supported, and the shared .workflow_artifacts/ layout."
+    },
+    {
+      "id": "simple-codex",
+      "label": "Simple Codex workflow",
+      "runtime": "codex",
+      "quoin_enabled": false,
+      "description": "Use Codex normally with native planning, approvals, sandboxing, and repo-scoped instructions, without asking for Quoin artifacts."
+    },
+    {
+      "id": "quoin-codex",
+      "label": "Quoin + Codex workflow",
+      "runtime": "codex",
+      "quoin_enabled": true,
+      "description": "Use Codex with repo-local Quoin guidance, preserving the portable workflow artifacts without assuming Codex global install paths or command files."
+    }
+  ],
+  "metrics": [
+    {
+      "id": "task_completion_quality",
+      "label": "Task completion quality",
+      "kind": "score_0_to_4",
+      "required": true
+    },
+    {
+      "id": "correctness_and_tests",
+      "label": "Correctness / tests",
+      "kind": "score_0_to_4",
+      "required": true
+    },
+    {
+      "id": "artifact_quality",
+      "label": "Artifact quality",
+      "kind": "score_0_to_4",
+      "required": true
+    },
+    {
+      "id": "context_reuse",
+      "label": "Context reuse",
+      "kind": "score_0_to_4",
+      "required": true
+    },
+    {
+      "id": "time_or_turn_count",
+      "label": "Time / turn count",
+      "kind": "numeric_or_observed",
+      "required": true
+    },
+    {
+      "id": "cost_if_available",
+      "label": "Cost if available",
+      "kind": "optional_numeric",
+      "required": false
+    },
+    {
+      "id": "setup_overhead",
+      "label": "Setup overhead",
+      "kind": "score_0_to_4",
+      "required": true
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "fresh-repo-discovery",
+      "label": "Fresh repo discovery",
+      "file": "scenarios/fresh-repo-discovery.md",
+      "workflow_focus": "Orientation quality and useful first-pass map of an unfamiliar repository.",
+      "requires_code_change": false
+    },
+    {
+      "id": "medium-refactor-plan",
+      "label": "Planning a medium refactor",
+      "file": "scenarios/medium-refactor-plan.md",
+      "workflow_focus": "Plan quality, risk discovery, staging, and test strategy before implementation.",
+      "requires_code_change": false
+    },
+    {
+      "id": "scoped-code-change",
+      "label": "Implementing a scoped code change",
+      "file": "scenarios/scoped-code-change.md",
+      "workflow_focus": "Implementation discipline, correctness, test selection, and scope control.",
+      "requires_code_change": true
+    },
+    {
+      "id": "review-changes",
+      "label": "Reviewing changes",
+      "file": "scenarios/review-changes.md",
+      "workflow_focus": "Finding concrete regressions, missing tests, and plan mismatches.",
+      "requires_code_change": false
+    },
+    {
+      "id": "session-handoff-memory-reuse",
+      "label": "Session handoff / memory reuse",
+      "file": "scenarios/session-handoff-memory-reuse.md",
+      "workflow_focus": "Continuation quality across sessions using prior evidence and handoff notes.",
+      "requires_code_change": false
+    }
+  ],
+  "templates": {
+    "run_sheet": "templates/run-sheet.md",
+    "result_template": "templates/result-template.md",
+    "scoring_rubric": "templates/scoring-rubric.md"
+  }
+}

@@ -1,5 +1,11 @@
 """session_age_guard.py — Check whether the current Claude session is too old.
 
+CLAUDE-ADAPTER-OWNED — this file reads Claude Code JSONL sessions and/or
+Claude model pricing. Do NOT import this module from any file in
+quoin/core/. The portable cost-event schema is at
+quoin/core/scripts/cost_event.py. Adding runtime-neutral functionality
+belongs there, not here.
+
 Usage:
   python3 ~/.claude/scripts/session_age_guard.py [--threshold-hours 6.0] \
       [--project-root ABS_PATH] [--current-uuid UUID]
