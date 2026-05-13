@@ -142,8 +142,9 @@ def deploy_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
 def deploy_hooks(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
     """Copy hook scripts and merge 6 stanzas into dest_root/../settings.json.
 
-    Mirrors install.sh install_hooks() function. When jq is absent, writes
-    HOOK_MERGE_TODO.md and returns without modifying settings.json.
+    Mirrors install.sh install_hooks() function. Merges 6 hook stanzas into
+    settings.json using the Python stdlib json module; jq is not required at
+    deploy time.
     """
     hook_scripts = ("userpromptsubmit.sh", "precompact.sh", "postcompact.sh", "sessionstart.sh", "sessionend.sh", "_lib.sh")
     src_hooks = source_dir / "hooks"
@@ -165,21 +166,35 @@ def deploy_hooks(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
     # settings.json lives inside dest_root (~/.claude/settings.json)
     settings_path = dest_root / "settings.json"
 
+    # T-01: backup_path is set ONLY on the valid-load branch; the parse-error
+    # branch uses its own local variable and must NOT expose it here.
+    backup_path: pathlib.Path | None = None
+
     # Load existing settings or start fresh
+    ts = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     if settings_path.exists():
         try:
             with open(settings_path) as f:
                 settings = json.load(f)
+            # T-01: pre-merge backup of valid settings.json (valid-load branch only)
+            backup_path = settings_path.parent / f"{settings_path.name}.bak-{ts}"
+            shutil.copyfile(settings_path, backup_path)
+            print(
+                f"Backed up existing settings.json to {backup_path} "
+                f"(feel free to delete old settings.json.bak-* files)"
+            )
         except (json.JSONDecodeError, OSError) as exc:
             # Back up the broken file with a timestamp so prior backups are preserved
-            ts = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
-            backup = settings_path.parent / f"{settings_path.name}.bak-{ts}"
-            shutil.copyfile(settings_path, backup)
+            broken_backup = settings_path.parent / f"{settings_path.name}.bak-{ts}"
+            shutil.copyfile(settings_path, broken_backup)
             print(
-                f"quoin: settings.json parse error ({exc}); backed up to {backup} and starting fresh",
+                f"quoin: settings.json parse error ({exc}); backed up to {broken_backup} and starting fresh",
                 file=sys.stderr,
             )
             settings = {}
+            # NOTE: backup_path intentionally remains None here — the parse-error
+            # branch backup holds corrupt content and must never be used by T-02
+            # validation-restore logic.
     else:
         settings = {}
 
@@ -219,6 +234,27 @@ def deploy_hooks(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
     with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
         f.write("\n")
+
+    # T-02: post-merge JSON round-trip validation; auto-restore from backup on failure
+    try:
+        with open(settings_path) as f:
+            json.load(f)
+    except json.JSONDecodeError as exc:
+        if backup_path is not None and backup_path.exists():
+            # Restore using shutil.copyfile to preserve symlink semantics
+            shutil.copyfile(backup_path, settings_path)
+            print(
+                f"quoin: post-merge validation failed ({exc}); restored from {backup_path}",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"quoin: post-merge validation failed ({exc}); no backup available — "
+                f"leaving file as-written for manual inspection",
+                file=sys.stderr,
+            )
+        raise SystemExit(1)
+
     print("Merged 6 hook stanzas into ~/.claude/settings.json")
 
 

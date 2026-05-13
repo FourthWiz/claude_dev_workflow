@@ -158,10 +158,20 @@ mkdir -p .claude
 Then write `.claude/settings.json` using python3 (merge with existing if present):
 
 ```python
-import json, os
+import datetime, json, os, shutil, sys
 
 path = ".claude/settings.json"
-settings = json.load(open(path)) if os.path.exists(path) else {}
+settings = {}
+if os.path.exists(path):
+    try:
+        with open(path) as _f:
+            settings = json.load(_f)
+    except (json.JSONDecodeError, OSError) as _exc:
+        _ts = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        _bak = f"{path}.bak-{_ts}"
+        shutil.copyfile(path, _bak)
+        print(f"quoin: settings.json corrupt ({_exc}); backed up to {_bak}, starting fresh", file=sys.stderr)
+        settings = {}
 
 perms = settings.setdefault("permissions", {})
 allow = perms.setdefault("allow", [])

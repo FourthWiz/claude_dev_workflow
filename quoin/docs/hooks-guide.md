@@ -20,15 +20,15 @@ All three event hooks open with `STDIN=$(cat)` to capture the JSON payload into 
 
 ## `bash install.sh --dry-run`
 
-Runs the settings.json merge against a temp copy and prints the would-be merged JSON to stdout WITHOUT writing the live file or creating a `.bak` backup. Use this to preview the hook stanzas before committing to a live deploy: `bash install.sh --dry-run | jq '.hooks'`.
+There is no installer dry-run today. `bash install.sh` does not accept a `--dry-run` flag. To preview the hook stanzas that will be written, read the six `_append_stanza(...)` calls at the bottom of `deploy_hooks()` in `quoin/src/quoin/installer.py`.
 
 ## jq soft-required dependency
 
-Runtime hooks parse stdin JSON via `jq`. If `jq` is absent, hooks fail-OPEN silently (zero protection). Install via `brew install jq` (macOS), `apt-get install jq` (Debian), `apk add jq` (Alpine). `bash install.sh` emits a warning if jq is absent at deploy time AND writes `~/.claude/HOOK_MERGE_TODO.md` with manual-merge instructions; install proceeds but hooks will not function until jq is installed.
+Runtime hooks parse stdin JSON via `jq`. If `jq` is absent, hooks fail-OPEN silently (zero protection). Install via `brew install jq` (macOS), `apt-get install jq` (Debian), `apk add jq` (Alpine). Note: `jq` is a runtime dependency only — the deploy-time merge in `install.sh` uses the Python stdlib `json` module and does not require `jq` at install time.
 
 ## R-09 mitigation (settings.json corruption)
 
-install.sh backs up `~/.claude/settings.json` to `settings.json.bak-<timestamp>` before any merge, validates the result with `jq empty`, and restores from `.bak` if validation fails.
+`install.sh` backs up `~/.claude/settings.json` to `settings.json.bak-<timestamp>` before any merge (valid files only; corrupt files are backed up separately on parse error). After writing the merged file, the installer validates the result with a `json.load()` round-trip (Python stdlib) and restores from the pre-merge `.bak` if validation fails, then exits with code 1.
 
 ## Tunable constants
 
