@@ -61,6 +61,12 @@ include = [
 ]
 exclude = [
     "quoin/dev/",
+    "quoin/benchmarks/",
+    "quoin/scripts/tests/",
+    "quoin/.workflow_artifacts/",
+    "quoin/.pytest_cache/",
+    "quoin/**/__pycache__/",
+    "quoin/**/*.pyc",
 ]
 
 [tool.pytest.ini_options]
