@@ -4,6 +4,9 @@ Three test cases:
 1. install.sh deploys QUICKSTART.md to ~/.claude/QUICKSTART.md (byte-identical to source).
 2. Step 7 body has no clone-discovery prompts (negative-substring contract).
 3. Step 7 fallback heredoc is present with required content and is fully static (no shell expansion).
+
+Post-Phase-21, the content contract lives in the Claude adapter file at
+`quoin/adapters/claude/skills/init_workflow/SKILL.md`.
 """
 import os
 import re
@@ -17,7 +20,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 INSTALL_SH = REPO_ROOT / "quoin" / "install.sh"
 QUICKSTART_SRC = REPO_ROOT / "quoin" / "QUICKSTART.md"
-SKILL_MD = REPO_ROOT / "quoin" / "skills" / "init_workflow" / "SKILL.md"
+SKILL_MD = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "init_workflow" / "SKILL.md"
 
 
 pytestmark = pytest.mark.skipif(
