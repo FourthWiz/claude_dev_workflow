@@ -60,6 +60,7 @@ include = [
     "quoin/install.sh",
 ]
 exclude = [
+    "benchmark-results/",
     "quoin/dev/",
     "quoin/benchmarks/",
     "quoin/scripts/tests/",

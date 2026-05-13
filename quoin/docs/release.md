@@ -56,9 +56,11 @@ permission block with `password: ${{ secrets.PYPI_API_TOKEN }}`.
 
 ## Tests live in the git repo only
 
-`quoin/dev/` is excluded from the sdist and the wheel. Tests require a git
-clone to run. If a user installs via `pip install quoin`, they will not have
-the test suite — this is intentional and documented here as an acknowledgment.
+`quoin/dev/`, `quoin/benchmarks/`, and `benchmark-results/` are excluded from
+the sdist and the wheel. Tests and benchmark evidence require a git clone to
+run or inspect. If a user installs via `pip install quoin`, they will not have
+the test suite or benchmark folders — this is intentional and documented here
+as an acknowledgment.
 
 ## Build verification (per PR)
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tarfile
 import tempfile
 import zipfile
 from pathlib import Path
@@ -34,6 +35,31 @@ _requires_build = pytest.mark.skipif(
 )
 
 
+def _force_include_block() -> str:
+    text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    start = text.index("[tool.hatch.build.targets.wheel.force-include]")
+    end = text.index("[tool.hatch.build.targets.sdist]")
+    return text[start:end]
+
+
+def _sdist_block() -> str:
+    text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
+    start = text.index("[tool.hatch.build.targets.sdist]")
+    end = text.index("[tool.pytest.ini_options]")
+    return text[start:end]
+
+
+def test_packaging_config_excludes_benchmark_folders_from_distribution():
+    """Benchmark design/results stay in git, not install artifacts."""
+    force_include = _force_include_block()
+    sdist = _sdist_block()
+
+    assert "quoin/benchmarks" not in force_include
+    assert "benchmark-results" not in force_include
+    assert '"quoin/benchmarks/"' in sdist
+    assert '"benchmark-results/"' in sdist
+
+
 @pytest.fixture(scope="module")
 def built_wheel(tmp_path_factory):
     """Build the wheel once per module and return its path."""
@@ -51,6 +77,23 @@ def built_wheel(tmp_path_factory):
     return wheels[0]
 
 
+@pytest.fixture(scope="module")
+def built_sdist(tmp_path_factory):
+    """Build the sdist once per module and return its path."""
+    dist_dir = tmp_path_factory.mktemp("sdist")
+    result = subprocess.run(
+        [sys.executable, "-m", "build", "--sdist", "--outdir", str(dist_dir), str(REPO)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if result.returncode != 0:
+        pytest.skip(f"sdist build failed:\n{result.stderr[:500]}")
+    sdists = list(dist_dir.glob("*.tar.gz"))
+    assert sdists, "No sdist produced by build"
+    return sdists[0]
+
+
 @_requires_build
 def test_wheel_contents_no_private_files(built_wheel):
     """Wheel must not contain project-private files."""
@@ -62,6 +105,22 @@ def test_wheel_contents_no_private_files(built_wheel):
 
     assert not any("quoin/dev/" in n for n in names), "quoin/dev/ must not be in wheel"
     assert not any("install.sh" in n for n in names), "install.sh must not be in wheel"
+
+
+@_requires_build
+def test_distributions_do_not_include_benchmark_folders(built_wheel, built_sdist):
+    """Benchmarks/results are repo evidence, not installable distribution data."""
+    forbidden = ("quoin/benchmarks/", "benchmark-results/")
+
+    with zipfile.ZipFile(built_wheel) as whl:
+        wheel_names = whl.namelist()
+    for bad in forbidden:
+        assert not any(bad in name for name in wheel_names), f"{bad} must not be in wheel"
+
+    with tarfile.open(built_sdist, "r:gz") as sdist:
+        sdist_names = sdist.getnames()
+    for bad in forbidden:
+        assert not any(bad in name for name in sdist_names), f"{bad} must not be in sdist"
 
 
 @_requires_build
