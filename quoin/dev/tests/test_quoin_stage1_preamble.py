@@ -29,7 +29,7 @@ ADAPTER_SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
 # Skills migrated to the three-file adapter pattern (Phase 6 / Phase 7).
 # When this set grows, add the skill name here AND verify the install.sh
 # override branch exists.
-MIGRATED_TO_ADAPTER = {"capture_insight", "triage", "start_of_day", "plan", "critic", "revise", "revise-fast", "gate", "implement", "rollback", "end_of_task", "run", "end_of_day", "weekly_review"}
+MIGRATED_TO_ADAPTER = {"capture_insight", "triage", "start_of_day", "plan", "critic", "revise", "revise-fast", "gate", "implement", "rollback", "end_of_task", "run", "end_of_day", "weekly_review", "cost_snapshot"}
 
 
 def skill_md_path(skill_name: str) -> Path:
