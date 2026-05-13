@@ -88,11 +88,84 @@ A repo-local setup scaffold ships under `quoin/adapters/codex/`:
 - `verify_codex_readiness.py` — verifies root instructions, portable core docs, Codex adapter docs, manifest scope, no guessed global Codex paths, and Claude install isolation
 - `smoke_codex_workflow.py` — validates the documented repo-local Codex path
   from setup instructions to portable workflow artifacts
+- `handoff.md` — documents repo-local Codex handoff/session artifacts under
+  `.workflow_artifacts/memory/sessions/`
+- `validate_codex_handoff.py` — deterministically validates the Codex handoff
+  shape and repo-local artifact paths
+- `cost.md` — documents Codex cost event behavior and explicitly unavailable
+  telemetry fields
+- `cost_event.py` — appends and validates Codex cost ledger rows using the
+  portable cost core
+- `workflow.md` and `procedures/` — repo-local execution procedures for the
+  Codex workflow loop without Codex command-file or global install claims
 
 The generator produces only repo-local output. The readiness check reads only
 repo-local files. Global Codex install paths, package registry behavior, and
 Codex command file formats remain unresolved until a stable extension point is
 verified.
+
+### Phase 33 — Codex workflow execution procedures
+
+Phase 33 adds practical Codex-native procedures for the core Quoin loop:
+
+```text
+discover -> plan -> implement -> review -> gate
+```
+
+The guide at `quoin/adapters/codex/workflow.md` and per-phase procedure docs
+under `quoin/adapters/codex/procedures/` tell Codex how to execute each phase
+using natural-language requests, native planning/tool/check behavior,
+project-root `.workflow_artifacts/`, portable skill contracts, and the optional
+`discovery-map.json` produced by `quoin/scripts/generate_discovery_map.py`.
+
+The procedures are documentation and static-check targets only. They do not add
+global Codex installation, Codex command files, Codex approval or sandbox
+replacement logic, Codex model names, or Claude runtime command compatibility.
+
+### Phase 34 — Codex session handoff validation
+
+Phase 34 adds explicit Codex continuation behavior without claiming live hooks.
+Codex writes a session handoff file at:
+
+```text
+.workflow_artifacts/memory/sessions/<YYYY-MM-DD>-<task-name>-codex.md
+```
+
+The file records status, current stage, completed work, unfinished work,
+decisions, finalized artifact paths, continuation context, lesson candidates,
+and cost recording status. The next Codex session reads and validates this file
+before resuming:
+
+```text
+python3 quoin/adapters/codex/validate_codex_handoff.py --self-test
+python3 quoin/adapters/codex/validate_codex_handoff.py --project-root . --file .workflow_artifacts/memory/sessions/<date>-<task>-codex.md
+```
+
+The validator is deterministic and checks the documented markdown shape,
+required metadata, project-root `.workflow_artifacts/` paths, continuation
+fields, and unsupported runtime path leakage. It is not a Codex runtime hook and
+does not introduce a global Codex install path or command system.
+
+### Phase 35 — Codex cost event writer
+
+Phase 35 adds explicit Codex cost recording without claiming unavailable
+runtime telemetry. Codex can append a portable cost-ledger row with:
+
+```text
+python3 quoin/adapters/codex/cost_event.py write --project-root . --task <task> --phase <phase> --effort <low|medium|high|max|unknown>
+python3 quoin/adapters/codex/cost_event.py validate --project-root . --task <task> --expect-codex
+```
+
+The writer uses `quoin/core/scripts/cost_event.py` and the row shape documented
+in `quoin/core/workflow/cost-ledger.md`. It records runtime, task, phase,
+timestamp, session id when supplied, effort, and fallback fires. It records
+`input_tokens`, `output_tokens`, cache token fields, `total_tokens`, `cost_usd`,
+and `telemetry_source` as `not_available` because no verified Codex local
+telemetry interface exists in this repository.
+
+The Codex row uuid starts with `unknown-codex-` so existing readers treat it as
+an unresolved cost source. This is deliberate: unavailable usage must remain
+unknown instead of being inferred from another runtime's collector.
 
 ### Phase 26 — Codex adapter skill docs
 

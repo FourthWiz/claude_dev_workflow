@@ -10,8 +10,10 @@ Unsupported translations:
   selection rules.
 - Claude subagent dispatch prompts are not Codex adapter requirements.
 - Claude prompt-cache preambles are not generated for Codex.
-- Claude session-log, usage, and cost-capture plumbing are not implemented as
-  Codex behavior.
+- Claude session-log, usage, pricing, and cost-capture plumbing are not
+  translated into Codex behavior. Codex cost rows use
+  `quoin/adapters/codex/cost_event.py` and mark unavailable telemetry as
+  `not_available`.
 - Claude installer routing is not reused for Codex.
 
 Codex should use native planning, progress tracking, approvals, sandboxing,

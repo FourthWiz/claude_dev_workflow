@@ -28,9 +28,26 @@ At minimum, record:
 - completed work
 - unfinished work
 - decisions made
+- finalized artifacts or explicit "none"
+- continuation context for the next session
+- lesson candidates or explicit "none"
 - cost recording status when available
 
 The exact runtime session identifier may be adapter-specific.
+
+## Continuation
+
+Session state should let a later runtime session continue without relying on
+chat history. A continuation reader should be able to identify:
+
+- the task folder under `.workflow_artifacts/`
+- the latest relevant planning, review, gate, and session artifacts
+- the first next action
+- any blocker, open risk, or check that was not run
+
+Adapters may add deterministic validators for their concrete handoff shape.
+Those validators should check repo-local `.workflow_artifacts/` paths and avoid
+runtime-global path assumptions.
 
 ## Lessons
 

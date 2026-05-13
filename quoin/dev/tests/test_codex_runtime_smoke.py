@@ -26,6 +26,8 @@ def test_codex_runtime_smoke_passes_for_repo_root():
     assert "SMOKE PASS: repo-local Codex workflow path is coherent" in result.stdout
     assert "setup-to-core-path" in result.stdout
     assert "minimal-workflow-artifacts" in result.stdout
+    assert "handoff-artifacts" in result.stdout
+    assert "codex-cost-events" in result.stdout
     assert "runtime-assumption-boundaries" in result.stdout
 
 
@@ -37,7 +39,10 @@ def test_codex_runtime_smoke_covers_minimal_workflow_path():
         "current-plan.md",
         "review-1.md",
         "cost-ledger.md",
+        "handoff-artifacts",
+        "HANDOFF PASS",
+        "codex-cost-events",
+        "not_available",
         "ccusage",
     ]:
         assert token in text
-

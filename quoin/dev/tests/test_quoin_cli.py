@@ -51,17 +51,104 @@ def test_cli_help():
     result = _py("-m", "quoin", "--help")
     assert result.returncode == 0, result.stderr
     assert "install" in result.stdout
+    assert "codex" in result.stdout
 
     # install subcommand help shows --dev flag
     result2 = _py("-m", "quoin", "install", "--help")
     assert result2.returncode == 0, result2.stderr
     assert "--dev" in result2.stdout
 
+    # doctor can target Codex without replacing the default Claude check
+    result3 = _py("-m", "quoin", "doctor", "--help")
+    assert result3.returncode == 0, result3.stderr
+    assert "--runtime" in result3.stdout
+    assert "codex" in result3.stdout
+
     # In-process variant (no pip install needed — pythonpath = ["src"])
     from quoin.cli import main  # noqa: PLC0415
     with pytest.raises(SystemExit) as exc:
         main(["--help"])
     assert exc.value.code == 0
+
+
+def test_codex_doctor_cli_passes_for_repo_root():
+    result = _py(
+        "-m", "quoin", "doctor", "--runtime", "codex", "--project-root", str(REPO),
+        timeout=60,
+    )
+    assert result.returncode == 0, (
+        f"Codex doctor failed:\nstdout={result.stdout}\nstderr={result.stderr}"
+    )
+    assert "Codex readiness:" in result.stdout
+    assert "READY: repo-local Codex setup contract is satisfied" in result.stdout
+
+
+def test_codex_init_cli_writes_agents_md_repo_locally():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = _py(
+            "-m", "quoin", "codex", "init", "--project-root", tmpdir,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+
+        root = Path(tmpdir)
+        agents = root / "AGENTS.md"
+        assert agents.is_file()
+        assert sorted(path.name for path in root.iterdir()) == ["AGENTS.md"]
+
+        content = agents.read_text(encoding="utf-8")
+        assert ".workflow_artifacts/" in content
+        for forbidden in (
+            "~/." + "codex",
+            "$HOME/." + "codex",
+            "/usr/local/" + "codex",
+            "/opt/" + "codex",
+            "." + "codex/commands",
+            "npm install" + " -g " + "codex",
+        ):
+            assert forbidden not in content
+
+
+def test_codex_init_check_is_non_destructive():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = _py(
+            "-m", "quoin", "codex", "init", "--project-root", tmpdir,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+
+        agents = Path(tmpdir) / "AGENTS.md"
+        before = agents.read_text(encoding="utf-8")
+
+        check = _py(
+            "-m", "quoin", "codex", "init", "--project-root", tmpdir, "--check",
+            timeout=60,
+        )
+        assert check.returncode == 0, (
+            f"Codex init --check failed:\nstdout={check.stdout}\nstderr={check.stderr}"
+        )
+        assert agents.read_text(encoding="utf-8") == before
+        assert "is up to date" in check.stdout
+
+
+def test_codex_doctor_does_not_write_global_codex_paths():
+    with tempfile.TemporaryDirectory() as tmpdir, tempfile.TemporaryDirectory() as home:
+        init = _py(
+            "-m", "quoin", "codex", "init", "--project-root", tmpdir,
+            timeout=60,
+        )
+        assert init.returncode == 0, init.stderr
+
+        doctor = _py(
+            "-m", "quoin", "doctor", "--runtime", "codex", "--project-root", tmpdir,
+            home=home,
+            timeout=60,
+        )
+        assert doctor.returncode == 0, (
+            f"Codex doctor failed:\nstdout={doctor.stdout}\nstderr={doctor.stderr}"
+        )
+        assert not (Path(home) / ".codex").exists()
+        assert sorted(path.name for path in Path(tmpdir).iterdir()) == ["AGENTS.md"]
 
 
 # ── Installer idempotency ─────────────────────────────────────────────────────
@@ -105,10 +192,8 @@ def test_installer_idempotent():
 def test_installer_byte_identical_to_install_sh():
     from quoin import installer  # noqa: PLC0415
 
-    with (
-        tempfile.TemporaryDirectory() as home_a_str,
-        tempfile.TemporaryDirectory() as home_b_str,
-    ):
+    with tempfile.TemporaryDirectory() as home_a_str, \
+            tempfile.TemporaryDirectory() as home_b_str:
         home_a, home_b = Path(home_a_str), Path(home_b_str)
 
         # bash transport
@@ -543,10 +628,8 @@ def test_wheel_memory_inventory_matches_tier1_set():
 )
 def test_wrapper_offline_path():
     """install.sh succeeds via Tier 2 when pip is removed from PATH."""
-    with (
-        tempfile.TemporaryDirectory() as shim_dir,
-        tempfile.TemporaryDirectory() as tmp,
-    ):
+    with tempfile.TemporaryDirectory() as shim_dir, \
+            tempfile.TemporaryDirectory() as tmp:
         # Create pip/pip3 shims that immediately fail (simulates pip absent)
         for name in ("pip", "pip3"):
             p = Path(shim_dir) / name

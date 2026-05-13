@@ -19,6 +19,13 @@ Without Quoin, each agent session starts cold. With Quoin, sessions share accumu
 - **Claude Code** — supported today through the existing installer, skills, slash commands, and `quoin/CLAUDE.md`.
 - **Codex** — scaffolded through repo-local `AGENTS.md` instructions and shared `.workflow_artifacts/` semantics. Codex uses native approvals, sandboxing, planning, and repo-scoped instructions; Quoin does not install Codex commands in this pass.
 
+Codex repo-local setup and readiness:
+
+```bash
+quoin codex init --project-root .
+quoin doctor --runtime codex
+```
+
 ## Why Quoin?
 
 - **Cost discipline** — §0 model dispatch preamble routes each skill to the right tier (Haiku/Sonnet/Opus). `/cost_snapshot` shows live spend. `ccusage` fallback tracks every session.

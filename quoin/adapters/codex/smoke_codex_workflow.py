@@ -23,7 +23,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 QUOIN_PKG_DIR = SCRIPT_DIR.parent.parent
 REPO_ROOT = QUOIN_PKG_DIR.parent
 
-SMOKE_SKILLS = ["architect", "plan", "review"]
+SMOKE_SKILLS = ["discover", "plan", "implement", "review", "gate"]
 
 CODEX_PATH_FILES = [
     "AGENTS.md",
@@ -31,6 +31,18 @@ CODEX_PATH_FILES = [
     "quoin/adapters/codex/setup.md",
     "quoin/adapters/codex/installable-feature.md",
     "quoin/adapters/codex/feature-manifest.json",
+    "quoin/adapters/codex/workflow.md",
+    "quoin/adapters/codex/handoff.md",
+    "quoin/adapters/codex/validate_codex_handoff.py",
+    "quoin/adapters/codex/fixtures/valid-handoff.md",
+    "quoin/adapters/codex/cost.md",
+    "quoin/adapters/codex/cost_event.py",
+    "quoin/adapters/codex/procedures/README.md",
+    "quoin/adapters/codex/procedures/discover.md",
+    "quoin/adapters/codex/procedures/plan.md",
+    "quoin/adapters/codex/procedures/implement.md",
+    "quoin/adapters/codex/procedures/review.md",
+    "quoin/adapters/codex/procedures/gate.md",
     "quoin/adapters/codex/skills/README.md",
     "quoin/adapters/codex/unsupported-claude-behavior.md",
 ]
@@ -122,6 +134,8 @@ def check_setup_to_core_path(project_root: Path) -> SmokeResult:
     agents = _read(project_root / "AGENTS.md")
     setup = _read(SCRIPT_DIR / "setup.md")
     adapter = _read(SCRIPT_DIR / "README.md")
+    workflow = _read(SCRIPT_DIR / "workflow.md")
+    procedures_index = _read(SCRIPT_DIR / "procedures" / "README.md")
     skill_index = _read(SCRIPT_DIR / "skills" / "README.md")
     task_layout = _read(QUOIN_PKG_DIR / "core" / "workflow" / "task-layout.md")
     rules = _read(QUOIN_PKG_DIR / "core" / "workflow" / "rules.md")
@@ -134,16 +148,23 @@ def check_setup_to_core_path(project_root: Path) -> SmokeResult:
         "setup.md names AGENTS.md": "AGENTS.md" in setup,
         "setup.md references portable workflow docs": "quoin/core/workflow/" in setup,
         "adapter README references skill docs": "quoin/adapters/codex/skills/" in adapter,
+        "adapter README references procedures": "quoin/adapters/codex/procedures/" in adapter,
+        "workflow guide names core loop": "discover -> plan -> implement -> review -> gate" in workflow,
+        "workflow guide references project artifacts": ".workflow_artifacts/" in workflow,
         "skill index links plan adapter": "(plan/README.md)" in skill_index,
+        "procedure index links plan procedure": "(plan.md)" in procedures_index,
         "task layout documents stage folders": "stage-N/" in task_layout,
         "rules document runtime adapter ownership": "Runtime adapters own" in rules,
     }
 
     for skill in SMOKE_SKILLS:
         adapter_doc = _read(SCRIPT_DIR / "skills" / skill / "README.md")
+        procedure_doc = _read(SCRIPT_DIR / "procedures" / f"{skill}.md")
         core_doc = _read(QUOIN_PKG_DIR / "core" / "skills" / f"{skill}.md")
         requirements[f"manifest includes {skill}"] = skill in skill_names
         requirements[f"{skill} adapter links core doc"] = f"quoin/core/skills/{skill}.md" in adapter_doc
+        requirements[f"{skill} procedure links core doc"] = f"quoin/core/skills/{skill}.md" in procedure_doc
+        requirements[f"{skill} procedure uses workflow artifacts"] = ".workflow_artifacts/" in procedure_doc
         requirements[f"{skill} core doc uses workflow artifacts"] = ".workflow_artifacts/" in core_doc
 
     missing = [name for name, ok in requirements.items() if not ok]
@@ -152,7 +173,7 @@ def check_setup_to_core_path(project_root: Path) -> SmokeResult:
     return SmokeResult(
         "setup-to-core-path",
         True,
-        "AGENTS.md -> Codex adapter docs -> core skill docs -> workflow docs path is coherent",
+        "AGENTS.md -> Codex adapter docs -> core skill docs -> workflow docs path is coherent; AGENTS.md -> Codex workflow guide -> Codex procedure docs -> core skill docs -> workflow docs path is coherent",
     )
 
 
@@ -164,6 +185,7 @@ def check_minimal_workflow_artifacts() -> SmokeResult:
     )
     required_artifacts = [
         ".workflow_artifacts/",
+        "discovery-map.json",
         "architecture.md",
         "current-plan.md",
         "review-1.md",
@@ -177,6 +199,65 @@ def check_minimal_workflow_artifacts() -> SmokeResult:
         "minimal-workflow-artifacts",
         True,
         "minimal architecture/plan/review artifacts are documented in the portable core",
+    )
+
+
+def check_handoff_artifacts(project_root: Path) -> SmokeResult:
+    agents = _read(project_root / "AGENTS.md")
+    workflow = _read(SCRIPT_DIR / "workflow.md")
+    handoff = _read(SCRIPT_DIR / "handoff.md")
+    validator = _read(SCRIPT_DIR / "validate_codex_handoff.py")
+    session_state = _read(QUOIN_PKG_DIR / "core" / "workflow" / "session-state.md")
+    combined = "\n".join([agents, workflow, handoff, validator, session_state])
+
+    required = [
+        ".workflow_artifacts/memory/sessions/",
+        "<YYYY-MM-DD>-<task-name>-codex.md",
+        "quoin/core/workflow/session-state.md",
+        "quoin/core/workflow/task-layout.md",
+        "Continuation context",
+        "Lessons learned candidates",
+        "Finalized artifacts",
+        "HANDOFF PASS",
+    ]
+    missing = [token for token in required if token not in combined]
+    if missing:
+        return SmokeResult("handoff-artifacts", False, f"missing tokens: {missing}")
+    return SmokeResult(
+        "handoff-artifacts",
+        True,
+        "Codex session handoff docs and validator cover repo-local continuation artifacts",
+    )
+
+
+def check_codex_cost_events(project_root: Path) -> SmokeResult:
+    agents = _read(project_root / "AGENTS.md")
+    workflow = _read(SCRIPT_DIR / "workflow.md")
+    cost_doc = _read(SCRIPT_DIR / "cost.md")
+    writer = _read(SCRIPT_DIR / "cost_event.py")
+    cost_ledger = _read(QUOIN_PKG_DIR / "core" / "workflow" / "cost-ledger.md")
+    combined = "\n".join([agents, workflow, cost_doc, writer, cost_ledger])
+
+    required = [
+        "quoin/adapters/codex/cost_event.py",
+        "quoin/core/scripts/cost_event.py",
+        "quoin/core/workflow/cost-ledger.md",
+        "not_available",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "cost_usd",
+        "telemetry_source",
+        "unknown-codex-",
+        "CODEX COST PASS",
+    ]
+    missing = [token for token in required if token not in combined]
+    if missing:
+        return SmokeResult("codex-cost-events", False, f"missing tokens: {missing}")
+    return SmokeResult(
+        "codex-cost-events",
+        True,
+        "Codex cost events use portable ledger rows and explicit unavailable telemetry",
     )
 
 
@@ -240,6 +321,8 @@ def run_checks(project_root: Path) -> List[SmokeResult]:
         check_required_files(project_root),
         check_setup_to_core_path(project_root),
         check_minimal_workflow_artifacts(),
+        check_handoff_artifacts(project_root),
+        check_codex_cost_events(project_root),
         check_runtime_assumption_boundaries(project_root),
         check_unsupported_claude_behavior_documented(),
     ]

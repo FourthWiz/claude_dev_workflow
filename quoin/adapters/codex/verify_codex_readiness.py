@@ -31,6 +31,8 @@ FORBIDDEN_GLOBAL_CODEX_PATTERNS = [
     "npm install" + " -g " + "codex",
 ]
 
+CORE_WORKFLOW_PHASES = ["discover", "plan", "implement", "review", "gate"]
+
 
 @dataclass
 class CheckResult:
@@ -111,13 +113,174 @@ def check_codex_adapter_docs() -> CheckResult:
         SCRIPT_DIR / "feature-manifest.json",
         SCRIPT_DIR / "generate_codex_assets.py",
         SCRIPT_DIR / "smoke_codex_workflow.py",
+        SCRIPT_DIR / "handoff.md",
+        SCRIPT_DIR / "validate_codex_handoff.py",
+        SCRIPT_DIR / "fixtures" / "valid-handoff.md",
+        SCRIPT_DIR / "cost.md",
+        SCRIPT_DIR / "cost_event.py",
+        SCRIPT_DIR / "workflow.md",
+        SCRIPT_DIR / "procedures" / "README.md",
         SCRIPT_DIR / "skills" / "README.md",
         SCRIPT_DIR / "unsupported-claude-behavior.md",
     ]
+    for phase in CORE_WORKFLOW_PHASES:
+        required.append(SCRIPT_DIR / "procedures" / f"{phase}.md")
     missing = _required_files(required)
     if missing:
         return CheckResult("codex-adapter-docs", False, f"missing files: {missing}")
     return CheckResult("codex-adapter-docs", True, "Codex adapter docs and generator found")
+
+
+def check_codex_workflow_procedures() -> CheckResult:
+    workflow = SCRIPT_DIR / "workflow.md"
+    procedures_index = SCRIPT_DIR / "procedures" / "README.md"
+    issues = []
+
+    workflow_text = _read(workflow) if workflow.is_file() else ""
+    for token in [
+        ".workflow_artifacts/",
+        "discover -> plan -> implement -> review -> gate",
+        "quoin/core/workflow/rules.md",
+        "quoin/core/workflow/task-layout.md",
+        "quoin/core/workflow/session-state.md",
+        "quoin/core/workflow/cost-ledger.md",
+    ]:
+        if token not in workflow_text:
+            issues.append(f"workflow.md missing {token!r}")
+
+    index_text = _read(procedures_index) if procedures_index.is_file() else ""
+    for phase in CORE_WORKFLOW_PHASES:
+        procedure = SCRIPT_DIR / "procedures" / f"{phase}.md"
+        core_ref = f"quoin/core/skills/{phase}.md"
+        if f"| `{phase}` |" not in index_text or f"({phase}.md)" not in index_text or core_ref not in index_text:
+            issues.append(f"procedures/README.md missing {phase} entry")
+        if not procedure.is_file():
+            issues.append(f"{phase}: missing procedure doc")
+            continue
+
+        text = _read(procedure)
+        required_tokens = [
+            f"Portable contract: `{core_ref}`",
+            ".workflow_artifacts/",
+            "quoin/core/workflow/rules.md",
+            "quoin/core/workflow/task-layout.md",
+            "quoin/core/workflow/session-state.md",
+            "quoin/core/workflow/cost-ledger.md",
+            "## Codex Procedure",
+            "## Codex Native Notes",
+        ]
+        missing = [token for token in required_tokens if token not in text]
+        if missing:
+            issues.append(f"{phase}: procedure doc missing tokens {missing}")
+
+    if issues:
+        return CheckResult("codex-workflow-procedures", False, "; ".join(issues))
+    return CheckResult(
+        "codex-workflow-procedures",
+        True,
+        "Codex procedures cover discover, plan, implement, review, and gate",
+    )
+
+
+def check_codex_handoff_contract() -> CheckResult:
+    handoff = SCRIPT_DIR / "handoff.md"
+    validator = SCRIPT_DIR / "validate_codex_handoff.py"
+    fixture = SCRIPT_DIR / "fixtures" / "valid-handoff.md"
+    issues = []
+
+    handoff_text = _read(handoff) if handoff.is_file() else ""
+    for token in [
+        ".workflow_artifacts/memory/sessions/",
+        "<YYYY-MM-DD>-<task-name>-codex.md",
+        "quoin/core/workflow/session-state.md",
+        "quoin/core/workflow/task-layout.md",
+        "quoin/core/workflow/rules.md",
+        "quoin/core/skills/end_of_day.md",
+        "validate_codex_handoff.py",
+        "not a live Codex hook",
+    ]:
+        if token not in handoff_text:
+            issues.append(f"handoff.md missing {token!r}")
+
+    validator_text = _read(validator) if validator.is_file() else ""
+    for token in [
+        "REQUIRED_SECTIONS",
+        "REQUIRED_METADATA",
+        ".workflow_artifacts",
+        "HANDOFF PASS",
+        "HANDOFF FAIL",
+        "FIXTURE_PATH",
+    ]:
+        if token not in validator_text:
+            issues.append(f"validate_codex_handoff.py missing {token!r}")
+
+    fixture_text = _read(fixture) if fixture.is_file() else ""
+    for token in [
+        "# Codex Session Handoff:",
+        ".workflow_artifacts/memory/sessions/",
+        "## Continuation context",
+        "## Cost",
+    ]:
+        if token not in fixture_text:
+            issues.append(f"fixtures/valid-handoff.md missing {token!r}")
+
+    if issues:
+        return CheckResult("codex-handoff-contract", False, "; ".join(issues))
+    return CheckResult(
+        "codex-handoff-contract",
+        True,
+        "Codex handoff docs and validator are grounded in portable session contracts",
+    )
+
+
+def check_codex_cost_contract() -> CheckResult:
+    cost_doc = SCRIPT_DIR / "cost.md"
+    writer = SCRIPT_DIR / "cost_event.py"
+    manifest = SCRIPT_DIR / "feature-manifest.json"
+    issues = []
+
+    cost_text = _read(cost_doc) if cost_doc.is_file() else ""
+    for token in [
+        "not_available",
+        "quoin/core/scripts/cost_event.py",
+        "quoin/core/workflow/cost-ledger.md",
+        "input_tokens",
+        "cost_usd",
+        "telemetry_source",
+        "unknown-codex-",
+    ]:
+        if token not in cost_text:
+            issues.append(f"cost.md missing {token!r}")
+
+    writer_text = _read(writer) if writer.is_file() else ""
+    for token in [
+        "build_codex_event",
+        "validate_ledger",
+        "not_available",
+        "format_row",
+        "parse_row",
+        "CODEX COST PASS",
+        "unknown-codex-",
+    ]:
+        if token not in writer_text:
+            issues.append(f"cost_event.py missing {token!r}")
+
+    manifest_text = _read(manifest) if manifest.is_file() else ""
+    for token in [
+        "quoin/adapters/codex/cost.md",
+        "quoin/adapters/codex/cost_event.py",
+        "quoin/core/scripts/cost_event.py",
+    ]:
+        if token not in manifest_text:
+            issues.append(f"feature-manifest.json missing {token!r}")
+
+    if issues:
+        return CheckResult("codex-cost-contract", False, "; ".join(issues))
+    return CheckResult(
+        "codex-cost-contract",
+        True,
+        "Codex cost writer records unavailable telemetry explicitly through portable cost events",
+    )
 
 
 def check_codex_skill_adapter_coverage() -> CheckResult:
@@ -219,11 +382,11 @@ def check_claude_install_isolated() -> CheckResult:
             False,
             "quoin/install.sh must remain Claude-only and not mention Codex",
         )
-    if ".claude" not in text:
+    if '"install"' not in text or "source-dir" not in text or "python" not in text:
         return CheckResult(
             "claude-install-isolated",
             False,
-            "quoin/install.sh no longer appears to target Claude install paths",
+            "quoin/install.sh no longer appears to delegate to the Quoin installer",
         )
     return CheckResult("claude-install-isolated", True, "Claude installer remains isolated")
 
@@ -235,6 +398,9 @@ def run_checks(project_root: Path) -> List[CheckResult]:
         check_portable_core(),
         check_codex_adapter_docs(),
         check_codex_skill_adapter_coverage(),
+        check_codex_workflow_procedures(),
+        check_codex_handoff_contract(),
+        check_codex_cost_contract(),
         check_manifest_scope(),
         check_no_guessed_global_paths(project_root),
         check_claude_install_isolated(),

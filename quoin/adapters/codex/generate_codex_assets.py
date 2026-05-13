@@ -82,6 +82,7 @@ project root. Use this layout:
   memory/
     lessons-learned.md
     sessions/
+      <YYYY-MM-DD>-<task-name>-codex.md
     daily/
 ```
 
@@ -101,6 +102,49 @@ Use native Codex behavior for planning, progress tracking, approvals, sandboxing
 repo-scoped instructions, and model or reasoning controls.
 No Claude slash-command compatibility is required or implied.
 
+## Codex workflow procedures
+Repo-local Codex execution procedures live under `quoin/adapters/codex/`:
+
+- `quoin/adapters/codex/workflow.md` covers the practical workflow loop:
+  `discover -> plan -> implement -> review -> gate`.
+- `quoin/adapters/codex/procedures/discover.md`
+- `quoin/adapters/codex/procedures/plan.md`
+- `quoin/adapters/codex/procedures/implement.md`
+- `quoin/adapters/codex/procedures/review.md`
+- `quoin/adapters/codex/procedures/gate.md`
+
+These procedure docs link to the portable contracts under `quoin/core/skills/`
+and use project-root `.workflow_artifacts/`. They are not Codex command files
+or global install behavior.
+
+## Codex session handoff
+For continuation across Codex sessions, write handoff state under
+`.workflow_artifacts/memory/sessions/<YYYY-MM-DD>-<task-name>-codex.md`.
+Use `quoin/adapters/codex/handoff.md` for the required shape and validate it
+with:
+
+```
+python3 quoin/adapters/codex/validate_codex_handoff.py --project-root . --file .workflow_artifacts/memory/sessions/<date>-<task>-codex.md
+```
+
+The handoff must summarize current task status, unfinished work, decisions,
+finalized artifact paths, continuation context, lesson candidates, and cost
+recording status. This is repo-local validation, not live Codex hook
+automation.
+
+## Codex cost events
+When a task context exists, Codex can append a portable cost-ledger row with:
+
+```
+python3 quoin/adapters/codex/cost_event.py write --project-root . --task <task> --phase <phase> --effort <low|medium|high|max|unknown>
+python3 quoin/adapters/codex/cost_event.py validate --project-root . --task <task> --expect-codex
+```
+
+This records known local values such as runtime, task, phase, timestamp,
+session id when supplied, and effort. Codex token counts and dollar costs are
+not exposed through a verified repository interface, so the adapter records
+those telemetry fields as `not_available` rather than estimating them.
+
 ## Refactor guidance
 - Separate portable workflow logic from Claude-specific runtime integration.
 - Keep Claude-specific assumptions isolated in the Claude adapter (`quoin/adapters/claude/`).
@@ -115,6 +159,16 @@ No Claude slash-command compatibility is required or implied.
 - Minimize duplication of templates, scripts, and rules.
 - Keep documentation honest about implemented vs planned behavior.
 
+## Discovery map (structured project index)
+
+The portable generator `quoin/scripts/generate_discovery_map.py` produces a structured
+`discovery-map.json` index at `<project_root>/.workflow_artifacts/discovery-map.json`.
+Codex can run it directly without any global-path assumption:
+
+- `python3 quoin/scripts/generate_discovery_map.py "$PROJECT_ROOT" --quiet`
+
+The generator is optional; `discover` MUST NOT fail if it errors.
+
 ## Validation
 - Run relevant checks after making changes.
 - Report exactly which checks were run and which were not.
@@ -123,6 +177,7 @@ No Claude slash-command compatibility is required or implied.
   python3 -m pytest quoin/dev/tests/
   python3 quoin/scripts/build_preambles.py --check
   python3 quoin/adapters/codex/verify_codex_readiness.py --project-root .
+  python3 quoin/adapters/codex/smoke_codex_workflow.py --project-root .
   ```
 """
 
@@ -141,8 +196,10 @@ Unsupported translations:
   selection rules.
 - Claude subagent dispatch prompts are not Codex adapter requirements.
 - Claude prompt-cache preambles are not generated for Codex.
-- Claude session-log, usage, and cost-capture plumbing are not implemented as
-  Codex behavior.
+- Claude session-log, usage, pricing, and cost-capture plumbing are not
+  translated into Codex behavior. Codex cost rows use
+  `quoin/adapters/codex/cost_event.py` and mark unavailable telemetry as
+  `not_available`.
 - Claude installer routing is not reused for Codex.
 
 Codex should use native planning, progress tracking, approvals, sandboxing,

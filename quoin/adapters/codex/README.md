@@ -1,6 +1,7 @@
 # Codex Adapter
 
-The Codex adapter starts as a thin repo-local instruction and readiness layer.
+The Codex adapter starts as a thin repo-local instruction, procedure, and
+readiness layer.
 
 Codex should use Quoin's portable artifact workflow:
 
@@ -32,9 +33,28 @@ natively against project-root `.workflow_artifacts/`, following the
 runtime-neutral contract in the portable core docs. No Codex command files, no
 Codex installer, and no global Codex paths are introduced.
 
-Execution-loop skills (implement, gate, run) and lifecycle/setup/support skills
-(end_of_task, end_of_day, weekly_review, cost_snapshot, init_workflow, discover,
-expand, rollback) remain future work.
+Phase 33 adds repo-local Codex execution procedures for the practical workflow
+loop:
+
+```text
+discover -> plan -> implement -> review -> gate
+```
+
+The guide lives at `quoin/adapters/codex/workflow.md`. Per-phase procedures live
+under `quoin/adapters/codex/procedures/` and link back to the portable
+contracts in `quoin/core/skills/`.
+
+Phase 34 adds explicit repo-local Codex session handoff guidance and a
+deterministic validator. Codex writes handoff state under
+`.workflow_artifacts/memory/sessions/`, validates it with
+`validate_codex_handoff.py`, and the next Codex session reads that artifact
+before continuing work. This is documentation plus validation; it does not claim
+live Codex hooks.
+
+Phase 35 adds a repo-local Codex cost event writer and validator. Codex can
+append portable cost-ledger rows with known task, phase, timestamp, session id,
+and effort values, while marking token and dollar telemetry as `not_available`
+because this repository has no verified Codex runtime telemetry interface.
 
 ## Repo-local setup scaffold
 
@@ -47,17 +67,36 @@ A repo-local setup scaffold is available under this directory:
 - `smoke_codex_workflow.py` — follows the repo-local Codex setup path through
   adapter docs and portable core workflow docs to prove a minimal workflow is
   coherent
+- `handoff.md` — repo-local session/handoff procedure for Codex continuation
+- `validate_codex_handoff.py` — deterministic checker for Codex handoff
+  artifact shape under `.workflow_artifacts/memory/sessions/`
+- `cost.md` — Codex cost event behavior and unavailable telemetry contract
+- `cost_event.py` — repo-local writer/checker for Codex cost ledger rows using
+  the portable cost core
+- `workflow.md` — repo-local Codex guide for executing the workflow loop with
+  native Codex behavior and portable artifacts
+- `procedures/` — per-phase procedures for `discover`, `plan`, `implement`,
+  `review`, and `gate`
 - `skills/` — generated/scaffolded Codex adapter docs for all portable skills
 - `unsupported-claude-behavior.md` — shared notes for Claude-only behavior that is not translated into Codex
 
 Usage:
 
 ```
+quoin codex init --project-root <path>
+quoin codex init --project-root <path> --check
+quoin doctor --runtime codex
+quoin doctor --runtime codex --smoke
 python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path>
 python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path> --check
 python3 quoin/adapters/codex/generate_codex_assets.py --project-root . --adapter-assets --check
 python3 quoin/adapters/codex/verify_codex_readiness.py --project-root .
 python3 quoin/adapters/codex/smoke_codex_workflow.py --project-root .
+python3 quoin/adapters/codex/validate_codex_handoff.py --self-test
+python3 quoin/adapters/codex/validate_codex_handoff.py --project-root . --file .workflow_artifacts/memory/sessions/<date>-<task>-codex.md
+python3 quoin/adapters/codex/cost_event.py --self-test
+python3 quoin/adapters/codex/cost_event.py write --project-root . --task <task> --phase <phase> --effort <low|medium|high|max|unknown>
+python3 quoin/adapters/codex/cost_event.py validate --project-root . --task <task> --expect-codex
 ```
 
 The default generator path writes only to the given `--project-root`. The
