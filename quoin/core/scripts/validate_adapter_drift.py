@@ -16,6 +16,12 @@ A future phase may tighten to a canonical single-line pointer.
 capture_insight is the lead if-branch (Phase 6 migration) in install.sh.
 Normalizing to elif would break bash control flow.
 
+Newer installer wrappers may delegate skill deployment to `quoin install`
+instead of carrying per-skill shell branches. In that shape, AD-IV/AD-IE/AD-IO
+are satisfied when install.sh delegates to the Python installer and
+src/quoin/installer.py prefers adapters/claude/skills/<name>/SKILL.md over the
+legacy stub.
+
 Usage:
     python3 validate_adapter_drift.py [--manifest PATH] [--repo-root PATH] [--json]
 
@@ -432,6 +438,36 @@ def check_install_sh_ordering(
             })
 
 
+def _install_sh_delegates_to_python_installer(install_sh_content: str) -> bool:
+    """Return True when install.sh delegates deployment to `python -m quoin install`.
+
+    This supports the current thin-wrapper installer shape while preserving the
+    older per-skill shell-branch checks for synthetic fixtures and legacy
+    layouts.
+    """
+    required_tokens = [
+        'INSTALL_ARGS=("install" "--source-dir" "$SCRIPT_DIR")',
+        '-m quoin "${INSTALL_ARGS[@]}"',
+    ]
+    return all(token in install_sh_content for token in required_tokens)
+
+
+def _python_installer_prefers_claude_adapter(repo_root: Path) -> bool:
+    """Return True when src/quoin/installer.py owns adapter-path skill routing."""
+    installer_path = repo_root / "src" / "quoin" / "installer.py"
+    try:
+        content = installer_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+
+    required_tokens = [
+        'source_dir / "adapters" / "claude" / "skills"',
+        'adapter_md = src_adapter / skill_name / "SKILL.md"',
+        "skill_md = adapter_md if adapter_md.exists() else skill_dir / \"SKILL.md\"",
+    ]
+    return all(token in content for token in required_tokens)
+
+
 # ---------------------------------------------------------------------------
 # Emit violations
 # ---------------------------------------------------------------------------
@@ -491,6 +527,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     except OSError as exc:
         print(f"DATA: cannot read install.sh at {install_sh_path}: {exc}", file=sys.stderr)
         sys.exit(65)
+    install_routing_delegated = (
+        _install_sh_delegates_to_python_installer(install_sh_content)
+        and _python_installer_prefers_claude_adapter(repo_root)
+    )
 
     violations: List[Dict[str, str]] = []
     skills_with_iv: List[str] = []  # skills that passed AD-IV (for AD-IO ordering check)
@@ -513,13 +553,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         check_preamble(name, spawn_target, repo_root, violations)
 
-        iv_ok = check_install_sh(name, install_sh_content, violations)
-        if iv_ok:
-            skills_with_iv.append(name)
+        if not install_routing_delegated:
+            iv_ok = check_install_sh(name, install_sh_content, violations)
+            if iv_ok:
+                skills_with_iv.append(name)
 
-    check_install_sh_ordering(
-        manifest["skills"], install_sh_content, skills_with_iv, violations
-    )
+    if not install_routing_delegated:
+        check_install_sh_ordering(
+            manifest["skills"], install_sh_content, skills_with_iv, violations
+        )
 
     emit_violations(violations, args.json)
 

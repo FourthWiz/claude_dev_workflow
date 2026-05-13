@@ -16,8 +16,11 @@ mean:
 
 The default generated project output is repo-local: an `AGENTS.md` at the
 project root. Phase 26 also generates/scaffolds Codex adapter docs under
-`quoin/adapters/codex/` from portable core metadata. Nothing is written to a
-global Codex runtime.
+`quoin/adapters/codex/` from portable core metadata. Phase 33 adds repo-local
+workflow execution procedure docs under the same adapter directory. Phase 34
+adds repo-local handoff guidance and validation. Phase 35 adds a repo-local
+Codex cost event writer/checker that records unavailable telemetry explicitly.
+Nothing is written to a global Codex runtime.
 
 ## Supported first feature: repo-local workflow bundle
 
@@ -30,6 +33,18 @@ The generator (`quoin/adapters/codex/generate_codex_assets.py`) produces:
 - `quoin/adapters/codex/skills/README.md` — generated skill index
 - `quoin/adapters/codex/unsupported-claude-behavior.md` — shared unsupported
   behavior notes for Claude-only runtime mechanics
+- `quoin/adapters/codex/workflow.md` — repo-local Codex guide for the
+  `discover -> plan -> implement -> review -> gate` loop
+- `quoin/adapters/codex/procedures/<phase>.md` — per-phase procedure docs for
+  `discover`, `plan`, `implement`, `review`, and `gate`
+- `quoin/adapters/codex/handoff.md` — repo-local Codex handoff/session
+  procedure for continuation files under `.workflow_artifacts/memory/sessions/`
+- `quoin/adapters/codex/validate_codex_handoff.py` — deterministic checker for
+  Codex handoff markdown shape and repo-local artifact paths
+- `quoin/adapters/codex/cost.md` — Codex cost event behavior and explicit
+  unavailable telemetry contract
+- `quoin/adapters/codex/cost_event.py` — repo-local writer/checker for portable
+  Codex cost ledger rows
 
 The generated content preserves the architectural boundaries already present in the
 root `AGENTS.md`:
@@ -45,6 +60,9 @@ Project assets only:
 
 - Root `AGENTS.md` content (workflow guidance, artifact conventions, phase reference)
 - Codex adapter skill docs under `quoin/adapters/codex/skills/`
+- Codex workflow guide and procedure docs under `quoin/adapters/codex/`
+- Codex handoff guide, fixture, and validator under `quoin/adapters/codex/`
+- Codex cost event guide and writer/checker under `quoin/adapters/codex/`
 - Unsupported Claude-only behavior notes
 - Quoin artifact layout guidance (`.workflow_artifacts/` structure and naming)
 - Skill metadata references (drawn from `quoin/core/workflow/skills.json`)
@@ -59,16 +77,22 @@ Project assets only:
 
 ## Readiness verification
 
-The repo-local readiness check is:
+The repo-local readiness check is exposed through the Quoin CLI:
+
+```
+quoin doctor --runtime codex
+```
+
+That command delegates to the existing readiness script:
 
 ```
 python3 quoin/adapters/codex/verify_codex_readiness.py --project-root .
 ```
 
 It verifies root `AGENTS.md`, portable workflow docs, Codex adapter docs,
-manifest scope, absence of guessed global Codex paths in active Codex facing
-docs, and isolation of the Claude installer. It does not inspect or write a
-global Codex runtime.
+workflow procedure coverage, handoff contract coverage, manifest scope, absence
+of guessed global Codex paths in active Codex facing docs, and isolation of the
+Claude installer. It does not inspect or write a global Codex runtime.
 
 The Phase 27 smoke test is:
 
@@ -76,15 +100,48 @@ The Phase 27 smoke test is:
 python3 quoin/adapters/codex/smoke_codex_workflow.py --project-root .
 ```
 
-It validates the repo-local path a Codex session would need for a minimal
-Quoin workflow: root `AGENTS.md`, Codex setup docs, Codex skill adapter docs,
-portable skill contracts, and portable workflow artifact docs. It also checks
-that this path does not require Claude global paths, Claude slash-command
-invocation, Claude install routing, or `ccusage` for Codex.
+It validates the repo-local path a Codex session would need for the Phase 33
+Quoin workflow loop: root `AGENTS.md`, Codex setup docs, Codex skill adapter
+docs, Codex procedure docs, portable skill contracts, and portable workflow
+artifact docs. It also checks that this path does not require Claude global
+paths, Claude slash-command invocation, Claude install routing, or `ccusage`
+for Codex.
+
+The Phase 34 handoff validator can self-test against its bundled fixture:
+
+```
+python3 quoin/adapters/codex/validate_codex_handoff.py --self-test
+```
+
+To validate a real Codex handoff file, pass the project root and session file
+path:
+
+```
+python3 quoin/adapters/codex/validate_codex_handoff.py --project-root . --file .workflow_artifacts/memory/sessions/<date>-<task>-codex.md
+```
+
+The Phase 35 Codex cost writer/checker can self-test without live runtime
+telemetry:
+
+```
+python3 quoin/adapters/codex/cost_event.py --self-test
+```
+
+To append and validate a task cost row:
+
+```
+python3 quoin/adapters/codex/cost_event.py write --project-root . --task <task> --phase <phase> --effort <low|medium|high|max|unknown>
+python3 quoin/adapters/codex/cost_event.py validate --project-root . --task <task> --expect-codex
+```
+
+The writer records known local values and marks token counts, dollar cost, and
+telemetry source as `not_available`; it does not infer unavailable Codex usage.
 
 ## Generator usage
 
 ```
+quoin codex init --project-root <path>
+quoin codex init --project-root <path> --check
 python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path>
 python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path> --check
 python3 quoin/adapters/codex/generate_codex_assets.py --project-root . --adapter-assets --check
@@ -106,4 +163,7 @@ are referenced from `quoin/core/workflow/skills.json` — not duplicated inline.
 
 - Runtime-portability boundary: `quoin/docs/runtime-portability.md`
 - Codex adapter setup: `quoin/adapters/codex/setup.md`
+- Codex workflow guide: `quoin/adapters/codex/workflow.md`
+- Codex handoff guide: `quoin/adapters/codex/handoff.md`
+- Codex cost event guide: `quoin/adapters/codex/cost.md`
 - Portable skill metadata: `quoin/core/workflow/skills.json`

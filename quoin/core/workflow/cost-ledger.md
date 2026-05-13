@@ -80,6 +80,32 @@ The portable ledger contract does NOT cover:
 
 See also: `quoin/core/skills/cost_snapshot.md` § Out of scope for the consumer-side analogue.
 
+## Codex-Specific Capture
+
+Codex currently records repo-local cost events through
+`quoin/adapters/codex/cost_event.py`. The writer uses the portable `CostEvent`
+schema and appends the existing seven-column ledger row.
+
+Because this repository has no verified Codex local telemetry interface, Codex
+rows record available local values in the note field and mark unavailable
+telemetry explicitly:
+
+- `runtime=codex`
+- `task=<task-name>`
+- `timestamp=<ISO timestamp>`
+- `session_id=<provided value or unknown>`
+- `effort=<low|medium|high|max|unknown>`
+- `input_tokens=not_available`
+- `output_tokens=not_available`
+- `cache_creation_input_tokens=not_available`
+- `cache_read_input_tokens=not_available`
+- `total_tokens=not_available`
+- `cost_usd=not_available`
+- `telemetry_source=not_available`
+
+Codex writers must not infer token counts, dollar cost, or telemetry source
+from unrelated local signals.
+
 ## Claude-Specific Capture
 
 Claude currently records Claude session UUIDs and uses `ccusage` plus a JSONL fallback. That behavior belongs to the Claude adapter, not the portable core. Claude's collection details (ccusage CLI, JSONL parsing, model-tier prices) are documented in `quoin/adapters/claude/README.md` and implemented in `quoin/scripts/cost_from_jsonl.py`.

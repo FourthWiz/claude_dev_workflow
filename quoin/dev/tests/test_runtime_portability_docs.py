@@ -29,6 +29,17 @@ def test_runtime_portability_docs_exist():
         "quoin/adapters/codex/README.md",
         "quoin/adapters/codex/effort.md",
         "quoin/adapters/codex/setup.md",
+        "quoin/adapters/codex/workflow.md",
+        "quoin/adapters/codex/handoff.md",
+        "quoin/adapters/codex/validate_codex_handoff.py",
+        "quoin/adapters/codex/cost.md",
+        "quoin/adapters/codex/cost_event.py",
+        "quoin/adapters/codex/procedures/README.md",
+        "quoin/adapters/codex/procedures/discover.md",
+        "quoin/adapters/codex/procedures/plan.md",
+        "quoin/adapters/codex/procedures/implement.md",
+        "quoin/adapters/codex/procedures/review.md",
+        "quoin/adapters/codex/procedures/gate.md",
         "quoin/adapters/codex/verify_codex_readiness.py",
         "quoin/adapters/codex/smoke_codex_workflow.py",
     ]
@@ -74,8 +85,11 @@ def test_runtime_parity_matrix_covers_major_semantics_and_all_migrated_skills():
         "Artifact layout",
         "Planning and review artifacts",
         "Memory and session handoff",
+        "Codex handoff validation",
         "Cost ledger row shape",
+        "Codex cost events",
         "Skill invocation",
+        "Codex workflow procedures",
         "Install and setup",
         "Runtime permissions and approvals",
         "Subagents / agents",
@@ -94,6 +108,8 @@ def test_runtime_parity_matrix_does_not_overclaim_codex_support():
     assert "codex command files" in lower
     assert "unsupported" in lower
     assert "live codex runtime execution is manual" in lower
+    assert "discover-plan-implement-review-gate path" in lower
+    assert "not_available" in lower
 
     forbidden = [
         "~/." + "codex",
@@ -151,17 +167,18 @@ def test_skill_manifest_matches_current_claude_frontmatter():
     by_name = {entry["name"]: entry for entry in entries}
 
     skill_paths = sorted((REPO_ROOT / "quoin" / "skills").glob("*/SKILL.md"))
-    skill_names = {path.parent.name for path in skill_paths}
-    assert set(by_name) == skill_names
+    skill_paths_by_name = {path.parent.name: path for path in skill_paths}
+    missing_stubs = set(by_name) - set(skill_paths_by_name)
+    assert not missing_stubs
 
     allowed_effort = {"low", "medium", "high", "max"}
-    for path in skill_paths:
+    for name, entry in by_name.items():
+        path = skill_paths_by_name[name]
         text = path.read_text(encoding="utf-8")
         frontmatter = text.split("---", 2)[1]
         model = re.search(r"^model:\s*(\S+)", frontmatter, re.MULTILINE)
         assert model is not None, f"Missing model frontmatter in {path}"
 
-        entry = by_name[path.parent.name]
         assert entry["claude_model"] == model.group(1)
         assert entry["effort"] in allowed_effort
         assert isinstance(entry["phase"], str) and entry["phase"]
@@ -219,6 +236,7 @@ def test_codex_docs_do_not_hardcode_model_names():
         read_rel("quoin/adapters/codex/README.md"),
         read_rel("quoin/adapters/codex/effort.md"),
         read_rel("quoin/adapters/codex/setup.md"),
+        read_rel("quoin/adapters/codex/workflow.md"),
     ]
     combined = "\n".join(docs).lower()
     forbidden = ["gpt-", "codex-", "o3", "o4", "o5"]

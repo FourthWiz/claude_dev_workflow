@@ -2,9 +2,19 @@
   "schema_version": 2,
   "feature_name": "repo-local-workflow-bundle",
   "adapter": "codex",
-  "status": "repo-local-readiness-plus-skill-docs",
-  "description": "Generates and verifies repo-local AGENTS.md guidance plus Codex facing skill adapter docs for Quoin workflow use in Codex. Does not install global Codex paths or command files.",
+  "status": "repo-local-readiness-plus-skill-docs-procedures-and-handoff-validation",
+  "description": "Generates and verifies repo-local AGENTS.md guidance plus Codex facing skill adapter docs, procedure docs, and deterministic handoff validation for Quoin workflow use in Codex. Does not install global Codex paths or command files.",
   "entrypoints": [
+    {
+      "type": "cli",
+      "path": "quoin codex init",
+      "args": ["--project-root <path>", "--check"]
+    },
+    {
+      "type": "cli",
+      "path": "quoin doctor --runtime codex",
+      "args": ["--project-root <path>", "--smoke"]
+    },
     {
       "type": "script",
       "path": "quoin/adapters/codex/generate_codex_assets.py",
@@ -19,6 +29,16 @@
       "type": "script",
       "path": "quoin/adapters/codex/smoke_codex_workflow.py",
       "args": ["--project-root <path>"]
+    },
+    {
+      "type": "script",
+      "path": "quoin/adapters/codex/validate_codex_handoff.py",
+      "args": ["--project-root <path>", "--file <.workflow_artifacts/memory/sessions/file.md>"]
+    },
+    {
+      "type": "script",
+      "path": "quoin/adapters/codex/cost_event.py",
+      "args": ["write --project-root <path> --task <task> --phase <phase> --effort <effort>", "validate --project-root <path> --task <task> --expect-codex"]
     }
   ],
   "portable_inputs": [
@@ -29,6 +49,26 @@
     {
       "path": "quoin/core/skills/*.md",
       "description": "Portable per-skill workflow contracts used by generated Codex skill adapter docs"
+    },
+    {
+      "path": "quoin/core/skills/{discover,plan,implement,review,gate}.md",
+      "description": "Portable contracts grounded by the Codex workflow execution procedures"
+    },
+    {
+      "path": "quoin/core/workflow/session-state.md",
+      "description": "Portable session-state contract grounded by the Codex handoff procedure and validator"
+    },
+    {
+      "path": "quoin/core/workflow/task-layout.md",
+      "description": "Portable task-layout contract used to resolve Codex handoff task paths"
+    },
+    {
+      "path": "quoin/core/scripts/cost_event.py",
+      "description": "Portable cost-event schema and row parser used by the Codex cost writer"
+    },
+    {
+      "path": "quoin/core/workflow/cost-ledger.md",
+      "description": "Portable ledger row contract used by Codex cost validation"
     }
   ],
   "generated_outputs": [
@@ -51,6 +91,36 @@
       "path": "quoin/adapters/codex/unsupported-claude-behavior.md",
       "scope": "repo-local",
       "description": "Shared unsupported-translation notes for Claude-only runtime behavior"
+    },
+    {
+      "path": "quoin/adapters/codex/workflow.md",
+      "scope": "repo-local",
+      "description": "Repo-local Codex workflow execution guide for discover, plan, implement, review, and gate"
+    },
+    {
+      "path": "quoin/adapters/codex/procedures/<phase>.md",
+      "scope": "repo-local",
+      "description": "Per-phase Codex procedures linked to portable core skill contracts"
+    },
+    {
+      "path": "quoin/adapters/codex/handoff.md",
+      "scope": "repo-local",
+      "description": "Codex repo-local session handoff procedure for .workflow_artifacts/memory/sessions/"
+    },
+    {
+      "path": "quoin/adapters/codex/validate_codex_handoff.py",
+      "scope": "repo-local",
+      "description": "Deterministic checker for Codex handoff markdown shape and repo-local artifact paths"
+    },
+    {
+      "path": "quoin/adapters/codex/cost.md",
+      "scope": "repo-local",
+      "description": "Codex cost event behavior and explicit unavailable telemetry contract"
+    },
+    {
+      "path": "quoin/adapters/codex/cost_event.py",
+      "scope": "repo-local",
+      "description": "Repo-local Codex cost event writer/checker using the portable cost core"
     }
   ],
   "unsupported_outputs": [
@@ -69,10 +139,16 @@
   ],
   "validation": {
     "commands": [
+      "quoin doctor --runtime codex",
+      "quoin codex init --project-root . --check",
       "python3 -m pytest quoin/dev/tests/test_codex_installable_feature.py",
       "python3 quoin/adapters/codex/generate_codex_assets.py --project-root . --adapter-assets --check",
       "python3 quoin/adapters/codex/verify_codex_readiness.py --project-root .",
-      "python3 quoin/adapters/codex/smoke_codex_workflow.py --project-root ."
+      "python3 quoin/adapters/codex/smoke_codex_workflow.py --project-root .",
+      "python3 quoin/adapters/codex/validate_codex_handoff.py --self-test",
+      "python3 quoin/adapters/codex/cost_event.py --self-test",
+      "python3 -m pytest quoin/dev/tests/test_codex_cost_event.py",
+      "python3 -m pytest quoin/dev/tests/test_codex_installable_feature.py quoin/dev/tests/test_codex_runtime_smoke.py"
     ],
     "notes": "Run from the repository root. The readiness check verifies repo-local Codex setup evidence only; it does not inspect or write global Codex locations."
   }

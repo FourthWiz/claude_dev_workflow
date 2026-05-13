@@ -5,6 +5,7 @@ import argparse
 import importlib.resources
 import os
 import pathlib
+import runpy
 import sys
 from typing import Optional
 
@@ -166,7 +167,75 @@ def _cmd_install(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_doctor(args: argparse.Namespace) -> int:  # noqa: ARG001
+def _codex_script(source_dir: pathlib.Path, name: str) -> pathlib.Path:
+    script = source_dir / "adapters" / "codex" / name
+    if not script.is_file():
+        print(
+            f"quoin: cannot find Codex adapter script {script}; "
+            "pass --source-dir <path-to-clone>/quoin if needed",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return script
+
+
+def _run_codex_script(script: pathlib.Path, argv: list[str]) -> int:
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = [str(script), *argv]
+        try:
+            runpy.run_path(str(script), run_name="__main__")
+        except SystemExit as exc:
+            code = exc.code
+            if code is None:
+                return 0
+            if isinstance(code, int):
+                return code
+            print(code, file=sys.stderr)
+            return 1
+    finally:
+        sys.argv = old_argv
+    return 0
+
+
+def _cmd_codex_doctor(args: argparse.Namespace) -> int:
+    source_dir = _resolve_source_dir(args.source_dir)
+    project_root = pathlib.Path(args.project_root).resolve()
+
+    readiness = _codex_script(source_dir, "verify_codex_readiness.py")
+    print(f"Codex readiness: {project_root}")
+    readiness_rc = _run_codex_script(
+        readiness,
+        ["--project-root", str(project_root)],
+    )
+    if readiness_rc != 0:
+        return readiness_rc
+
+    if args.smoke:
+        smoke = _codex_script(source_dir, "smoke_codex_workflow.py")
+        print()
+        print(f"Codex smoke: {project_root}")
+        return _run_codex_script(smoke, ["--project-root", str(project_root)])
+
+    return 0
+
+
+def _cmd_codex_init(args: argparse.Namespace) -> int:
+    source_dir = _resolve_source_dir(args.source_dir)
+    project_root = pathlib.Path(args.project_root).resolve()
+    generator = _codex_script(source_dir, "generate_codex_assets.py")
+
+    script_args = ["--project-root", str(project_root)]
+    if args.check:
+        script_args.append("--check")
+
+    return _run_codex_script(generator, script_args)
+
+
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    if args.runtime == "codex":
+        return _cmd_codex_doctor(args)
+
     from quoin import installer
     import shutil
 
@@ -275,7 +344,51 @@ def main(argv: list[str] | None = None) -> int:
         help="Keep first DEV WORKFLOW marker pair; remove extra pairs",
     )
 
-    sub.add_parser("doctor", help="Check quoin installation health (read-only)")
+    doctor_p = sub.add_parser("doctor", help="Check quoin installation health (read-only)")
+    doctor_p.add_argument(
+        "--runtime",
+        choices=("claude", "codex"),
+        default="claude",
+        help="Runtime to check; defaults to claude.",
+    )
+    doctor_p.add_argument(
+        "--project-root",
+        default=".",
+        help="Project root for Codex readiness checks; defaults to the current directory.",
+    )
+    doctor_p.add_argument(
+        "--source-dir",
+        metavar="PATH",
+        help="Override quoin data source directory for Codex adapter scripts.",
+    )
+    doctor_p.add_argument(
+        "--smoke",
+        action="store_true",
+        help="For --runtime codex, also run the deterministic repo-local smoke check.",
+    )
+
+    codex_p = sub.add_parser("codex", help="Repo-local Codex setup helpers")
+    codex_sub = codex_p.add_subparsers(dest="codex_command")
+
+    codex_init_p = codex_sub.add_parser(
+        "init",
+        help="Generate or check repo-local Codex AGENTS.md",
+    )
+    codex_init_p.add_argument(
+        "--project-root",
+        default=".",
+        help="Project root where AGENTS.md is generated or checked.",
+    )
+    codex_init_p.add_argument(
+        "--check",
+        action="store_true",
+        help="Check AGENTS.md without writing files.",
+    )
+    codex_init_p.add_argument(
+        "--source-dir",
+        metavar="PATH",
+        help="Override quoin data source directory for Codex adapter scripts.",
+    )
 
     args = parser.parse_args(argv)
 
@@ -286,6 +399,11 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_install(args)
     elif args.command == "doctor":
         return _cmd_doctor(args)
+    elif args.command == "codex":
+        if args.codex_command == "init":
+            return _cmd_codex_init(args)
+        codex_p.print_help()
+        return 1
 
     parser.print_help()
     return 1

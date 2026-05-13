@@ -8,6 +8,7 @@ Verifies:
 """
 
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -18,14 +19,21 @@ TESTS_DIR = THIS_FILE.parent
 PKG_DIR = TESTS_DIR.parent.parent
 CODEX_ADAPTER_DIR = PKG_DIR / "adapters" / "codex"
 CODEX_SKILLS_DIR = CODEX_ADAPTER_DIR / "skills"
+CODEX_PROCEDURES_DIR = CODEX_ADAPTER_DIR / "procedures"
 MANIFEST_PATH = CODEX_ADAPTER_DIR / "feature-manifest.json"
 GENERATOR_PATH = CODEX_ADAPTER_DIR / "generate_codex_assets.py"
 READINESS_PATH = CODEX_ADAPTER_DIR / "verify_codex_readiness.py"
 SMOKE_PATH = CODEX_ADAPTER_DIR / "smoke_codex_workflow.py"
+HANDOFF_DOC_PATH = CODEX_ADAPTER_DIR / "handoff.md"
+HANDOFF_VALIDATOR_PATH = CODEX_ADAPTER_DIR / "validate_codex_handoff.py"
+HANDOFF_FIXTURE_PATH = CODEX_ADAPTER_DIR / "fixtures" / "valid-handoff.md"
+CODEX_COST_DOC_PATH = CODEX_ADAPTER_DIR / "cost.md"
+CODEX_COST_EVENT_PATH = CODEX_ADAPTER_DIR / "cost_event.py"
 CONTRACT_PATH = CODEX_ADAPTER_DIR / "installable-feature.md"
 SKILLS_JSON_PATH = PKG_DIR / "core" / "workflow" / "skills.json"
 CORE_SKILLS_DIR = PKG_DIR / "core" / "skills"
 REPO_ROOT = PKG_DIR.parent
+CORE_WORKFLOW_PHASES = ["discover", "plan", "implement", "review", "gate"]
 
 GUESSED_GLOBAL_PATTERNS = [
     "~/." + "codex",
@@ -46,6 +54,14 @@ REQUIRED_CCUSAGE_PATTERNS = [
     "require ccusage",
     "depends on ccusage",
     "install ccusage",
+]
+
+SLASH_COMMAND_REQUIREMENT_PATTERNS = [
+    re.compile(
+        r"\b(use|run|invoke|call|execute|require|required)\s+/"
+        r"(discover|plan|implement|review|gate|run|architect|critic|revise)\b",
+        re.IGNORECASE,
+    ),
 ]
 
 
@@ -108,6 +124,25 @@ def test_manifest_exposes_readiness_check():
     assert "verify_codex_readiness.py" in validation
     assert any("smoke_codex_workflow.py" in path for path in entrypoint_paths)
     assert "smoke_codex_workflow.py" in validation
+    assert any("validate_codex_handoff.py" in path for path in entrypoint_paths)
+    assert "validate_codex_handoff.py" in validation
+    assert any("cost_event.py" in path for path in entrypoint_paths)
+    assert "cost_event.py" in validation
+
+
+def test_manifest_lists_codex_workflow_procedure_docs():
+    """Manifest must record the repo-local Codex workflow procedure docs."""
+    manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    generated_paths = [entry.get("path", "") for entry in manifest.get("generated_outputs", [])]
+    validation = "\n".join(manifest.get("validation", {}).get("commands", []))
+
+    assert "quoin/adapters/codex/workflow.md" in generated_paths
+    assert "quoin/adapters/codex/procedures/<phase>.md" in generated_paths
+    assert "quoin/adapters/codex/handoff.md" in generated_paths
+    assert "quoin/adapters/codex/validate_codex_handoff.py" in generated_paths
+    assert "quoin/adapters/codex/cost.md" in generated_paths
+    assert "quoin/adapters/codex/cost_event.py" in generated_paths
+    assert "test_codex_installable_feature.py" in validation
 
 
 def test_manifest_generated_output_is_repo_local():
@@ -175,6 +210,17 @@ def test_readiness_script_exists():
 
 def test_smoke_script_exists():
     assert SMOKE_PATH.is_file(), f"Missing {SMOKE_PATH}"
+
+
+def test_handoff_doc_and_validator_exist():
+    assert HANDOFF_DOC_PATH.is_file(), f"Missing {HANDOFF_DOC_PATH}"
+    assert HANDOFF_VALIDATOR_PATH.is_file(), f"Missing {HANDOFF_VALIDATOR_PATH}"
+    assert HANDOFF_FIXTURE_PATH.is_file(), f"Missing {HANDOFF_FIXTURE_PATH}"
+
+
+def test_codex_cost_doc_and_writer_exist():
+    assert CODEX_COST_DOC_PATH.is_file(), f"Missing {CODEX_COST_DOC_PATH}"
+    assert CODEX_COST_EVENT_PATH.is_file(), f"Missing {CODEX_COST_EVENT_PATH}"
 
 
 def test_generator_writes_agents_md_to_project_root():
@@ -310,6 +356,12 @@ def test_generated_agents_md_preserves_architectural_boundaries():
         assert ".workflow_artifacts/" in content, (
             "Generated AGENTS.md must describe .workflow_artifacts/ layout"
         )
+        assert "validate_codex_handoff.py" in content, (
+            "Generated AGENTS.md must describe Codex handoff validation"
+        )
+        assert "cost_event.py" in content, (
+            "Generated AGENTS.md must describe Codex cost event writing"
+        )
         # Must not mention Claude slash commands as required
         assert "slash command" not in content.lower(), (
             "Generated AGENTS.md must not require Claude slash commands"
@@ -369,6 +421,190 @@ def test_codex_skill_index_covers_all_portable_skills():
 
 
 # ---------------------------------------------------------------------------
+# Codex workflow procedure coverage tests
+# ---------------------------------------------------------------------------
+
+
+def test_codex_workflow_guide_exists_and_covers_core_loop():
+    """Codex workflow guide must cover the Phase 33 loop and portable sources."""
+    workflow = CODEX_ADAPTER_DIR / "workflow.md"
+    assert workflow.is_file(), f"Missing {workflow}"
+
+    text = workflow.read_text(encoding="utf-8")
+    assert "discover -> plan -> implement -> review -> gate" in text
+    assert ".workflow_artifacts/" in text
+    for core_doc in [
+        "quoin/core/workflow/rules.md",
+        "quoin/core/workflow/task-layout.md",
+        "quoin/core/workflow/session-state.md",
+        "quoin/core/workflow/cost-ledger.md",
+        "quoin/core/workflow/skills.json",
+    ]:
+        assert core_doc in text
+
+    for phase in CORE_WORKFLOW_PHASES:
+        assert f"quoin/adapters/codex/procedures/{phase}.md" in text
+        assert f"quoin/core/skills/{phase}.md" in text
+
+
+def test_codex_procedure_index_covers_core_loop():
+    """Procedure index must list all five Phase 33 workflow phases."""
+    index = CODEX_PROCEDURES_DIR / "README.md"
+    assert index.is_file(), f"Missing {index}"
+
+    text = index.read_text(encoding="utf-8")
+    for phase in CORE_WORKFLOW_PHASES:
+        assert f"| `{phase}` |" in text
+        assert f"({phase}.md)" in text
+        assert f"quoin/core/skills/{phase}.md" in text
+
+
+def test_codex_procedures_link_portable_contracts_and_workflow_docs():
+    """Each procedure must be grounded in the portable core contracts."""
+    for phase in CORE_WORKFLOW_PHASES:
+        path = CODEX_PROCEDURES_DIR / f"{phase}.md"
+        assert path.is_file(), f"Missing {path}"
+
+        text = path.read_text(encoding="utf-8")
+        assert f"Portable contract: `quoin/core/skills/{phase}.md`" in text
+        assert "## Codex Procedure" in text
+        assert "## Codex Native Notes" in text
+        assert ".workflow_artifacts/" in text
+        for workflow_doc in [
+            "quoin/core/workflow/rules.md",
+            "quoin/core/workflow/task-layout.md",
+            "quoin/core/workflow/session-state.md",
+            "quoin/core/workflow/cost-ledger.md",
+        ]:
+            assert workflow_doc in text
+        assert "quoin/adapters/codex/handoff.md" in text
+        assert "validate_codex_handoff.py" in text
+
+
+def test_codex_handoff_doc_links_portable_contracts_and_shape():
+    """Codex handoff guidance must be repo-local and grounded in portable contracts."""
+    text = HANDOFF_DOC_PATH.read_text(encoding="utf-8")
+    for token in [
+        ".workflow_artifacts/memory/sessions/",
+        "<YYYY-MM-DD>-<task-name>-codex.md",
+        "quoin/core/workflow/session-state.md",
+        "quoin/core/workflow/task-layout.md",
+        "quoin/core/workflow/rules.md",
+        "quoin/core/skills/end_of_day.md",
+        "## Required Shape",
+        "## Reading Procedure",
+        "validate_codex_handoff.py",
+    ]:
+        assert token in text
+
+
+def test_codex_cost_doc_and_writer_link_portable_core():
+    """Codex cost docs and writer must use portable cost core without guessed telemetry."""
+    doc = CODEX_COST_DOC_PATH.read_text(encoding="utf-8")
+    writer = CODEX_COST_EVENT_PATH.read_text(encoding="utf-8")
+    combined = doc + "\n" + writer
+
+    for token in [
+        "quoin/core/scripts/cost_event.py",
+        "quoin/core/workflow/cost-ledger.md",
+        "not_available",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "cost_usd",
+        "telemetry_source",
+        "unknown-codex-",
+        "format_row",
+        "parse_row",
+    ]:
+        assert token in combined
+
+    for token in CLAUDE_ONLY_PATH_PATTERNS:
+        assert token not in combined
+    for token in REQUIRED_CCUSAGE_PATTERNS:
+        assert token not in combined.lower()
+
+
+def test_codex_handoff_validator_accepts_fixture():
+    """The handoff validator must accept the documented fixture shape."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(HANDOFF_VALIDATOR_PATH),
+            "--self-test",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, (
+        f"Handoff validation failed:\nstdout={result.stdout}\nstderr={result.stderr}"
+    )
+    assert "HANDOFF PASS" in result.stdout
+
+
+def test_codex_handoff_validator_rejects_missing_required_shape():
+    """The handoff validator must fail deterministically on malformed handoff files."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        handoff_path = root / ".workflow_artifacts" / "memory" / "sessions" / "bad-codex.md"
+        handoff_path.parent.mkdir(parents=True)
+        handoff_path.write_text(
+            "# Codex Session Handoff: bad\n\n## Metadata\n- runtime: codex\n",
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(HANDOFF_VALIDATOR_PATH),
+                "--project-root",
+                str(root),
+                "--file",
+                ".workflow_artifacts/memory/sessions/bad-codex.md",
+            ],
+            capture_output=True,
+            text=True,
+        )
+    assert result.returncode != 0
+    assert "HANDOFF FAIL" in result.stderr
+    assert "missing required section" in result.stderr
+
+
+def test_codex_procedures_use_optional_discovery_map():
+    """Discovery map support must be advisory and repo-local."""
+    discover = (CODEX_PROCEDURES_DIR / "discover.md").read_text(encoding="utf-8")
+    workflow = (CODEX_ADAPTER_DIR / "workflow.md").read_text(encoding="utf-8")
+    combined = discover + "\n" + workflow
+
+    assert ".workflow_artifacts/discovery-map.json" in combined
+    assert "quoin/scripts/generate_discovery_map.py" in discover
+    assert "If generation fails" in discover
+    assert "advisory" in workflow.lower()
+
+
+def test_codex_procedures_avoid_install_and_invocation_leakage():
+    """Procedure docs must not grow runtime install or command assumptions."""
+    docs = [
+        CODEX_ADAPTER_DIR / "workflow.md",
+        CODEX_ADAPTER_DIR / "handoff.md",
+        CODEX_PROCEDURES_DIR / "README.md",
+    ]
+    docs.extend(CODEX_PROCEDURES_DIR / f"{phase}.md" for phase in CORE_WORKFLOW_PHASES)
+
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in docs)
+    for token in GUESSED_GLOBAL_PATTERNS:
+        assert token not in combined
+    for token in CLAUDE_ONLY_PATH_PATTERNS:
+        assert token not in combined
+    for pattern in SLASH_COMMAND_REQUIREMENT_PATTERNS:
+        assert pattern.search(combined) is None
+
+    lower = combined.lower()
+    assert "global codex installer is supported" not in lower
+    assert "codex command files are implemented" not in lower
+    assert "native codex" in lower
+
+
+# ---------------------------------------------------------------------------
 # Readiness tests
 # ---------------------------------------------------------------------------
 
@@ -401,7 +637,8 @@ def test_claude_install_remains_codex_free():
     install_sh = PKG_DIR / "install.sh"
     text = install_sh.read_text(encoding="utf-8").lower()
     assert "codex" not in text
-    assert ".claude" in text
+    assert '"install"' in text
+    assert "source-dir" in text
     assert "adapters/codex" not in text
 
 

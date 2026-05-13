@@ -65,16 +65,31 @@ def test_wheel_contents_no_private_files(built_wheel):
 
 
 @_requires_build
+def test_wheel_contents_include_codex_cli_assets(built_wheel):
+    """Wheel installs must include the repo-local assets used by Codex CLI helpers."""
+    with zipfile.ZipFile(built_wheel) as whl:
+        names = whl.namelist()
+
+    required = [
+        "quoin/data/core/workflow/skills.json",
+        "quoin/data/core/workflow/rules.md",
+        "quoin/data/adapters/codex/generate_codex_assets.py",
+        "quoin/data/adapters/codex/verify_codex_readiness.py",
+        "quoin/data/adapters/codex/smoke_codex_workflow.py",
+    ]
+    for path in required:
+        assert any(name.endswith(path) for name in names), f"Missing wheel asset: {path}"
+
+
+@_requires_build
 def test_wheel_install_and_quoin_install(built_wheel):
     """Install the wheel and run quoin install; verify ~/.claude/ tree populated."""
     pytest.importorskip("build")  # double-guard
 
     from quoin.installer import CANONICAL_SKILLS, TIER1_MEMORY_FILES  # noqa: PLC0415
 
-    with (
-        tempfile.TemporaryDirectory() as install_target,
-        tempfile.TemporaryDirectory() as home_dir,
-    ):
+    with tempfile.TemporaryDirectory() as install_target, \
+            tempfile.TemporaryDirectory() as home_dir:
         # pip-install the wheel into a temp target dir
         result = subprocess.run(
             [sys.executable, "-m", "pip", "install", "--target", install_target,
