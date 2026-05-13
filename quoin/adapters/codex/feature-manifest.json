@@ -1,14 +1,14 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "feature_name": "repo-local-workflow-bundle",
   "adapter": "codex",
-  "status": "repo-local-readiness",
-  "description": "Generates and verifies repo-local AGENTS.md guidance for Quoin workflow use in Codex. Does not install global Codex paths or command files.",
+  "status": "repo-local-readiness-plus-skill-docs",
+  "description": "Generates and verifies repo-local AGENTS.md guidance plus Codex facing skill adapter docs for Quoin workflow use in Codex. Does not install global Codex paths or command files.",
   "entrypoints": [
     {
       "type": "script",
       "path": "quoin/adapters/codex/generate_codex_assets.py",
-      "args": ["--project-root <path>", "--check"]
+      "args": ["--project-root <path>", "--check", "--adapter-assets", "--adapter-root <path>"]
     },
     {
       "type": "script",
@@ -20,6 +20,10 @@
     {
       "path": "quoin/core/workflow/skills.json",
       "description": "Portable skill names and effort values — referenced by name, not duplicated inline"
+    },
+    {
+      "path": "quoin/core/skills/*.md",
+      "description": "Portable per-skill workflow contracts used by generated Codex skill adapter docs"
     }
   ],
   "generated_outputs": [
@@ -27,6 +31,21 @@
       "path": "<project-root>/AGENTS.md",
       "scope": "repo-local",
       "description": "Codex repo instructions for Quoin workflow phases and .workflow_artifacts/ layout"
+    },
+    {
+      "path": "quoin/adapters/codex/skills/<skill>/README.md",
+      "scope": "repo-local",
+      "description": "Codex facing adapter doc for each portable skill; references the portable core contract and documents unsupported Claude-only translations"
+    },
+    {
+      "path": "quoin/adapters/codex/skills/README.md",
+      "scope": "repo-local",
+      "description": "Index of Codex facing skill adapter docs generated from portable skill metadata"
+    },
+    {
+      "path": "quoin/adapters/codex/unsupported-claude-behavior.md",
+      "scope": "repo-local",
+      "description": "Shared unsupported-translation notes for Claude-only runtime behavior"
     }
   ],
   "unsupported_outputs": [
@@ -46,6 +65,7 @@
   "validation": {
     "commands": [
       "python3 -m pytest quoin/dev/tests/test_codex_installable_feature.py",
+      "python3 quoin/adapters/codex/generate_codex_assets.py --project-root . --adapter-assets --check",
       "python3 quoin/adapters/codex/verify_codex_readiness.py --project-root ."
     ],
     "notes": "Run from the repository root. The readiness check verifies repo-local Codex setup evidence only; it does not inspect or write global Codex locations."

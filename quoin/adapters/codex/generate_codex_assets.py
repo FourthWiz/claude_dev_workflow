@@ -6,6 +6,7 @@ No global Codex paths or install registries are touched.
 Usage:
     python3 generate_codex_assets.py --project-root <path>
     python3 generate_codex_assets.py --project-root <path> --check
+    python3 generate_codex_assets.py --project-root <path> --adapter-assets --check
 """
 
 from __future__ import annotations
@@ -14,12 +15,13 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import List
+from typing import Dict, Iterable, List, Tuple
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 # quoin/adapters/codex/ -> up 2 levels -> quoin/ package directory
 QUOIN_PKG_DIR = SCRIPT_DIR.parent.parent
 SKILLS_JSON = QUOIN_PKG_DIR / "core" / "workflow" / "skills.json"
+CORE_SKILLS_DIR = QUOIN_PKG_DIR / "core" / "skills"
 
 
 def _load_skills() -> List[dict]:
@@ -27,6 +29,10 @@ def _load_skills() -> List[dict]:
     with SKILLS_JSON.open(encoding="utf-8") as f:
         data = json.load(f)
     return data.get("skills", [])
+
+
+def _all_skill_names(skills: Iterable[dict]) -> List[str]:
+    return [skill["name"] for skill in skills]
 
 
 def _render_skill_table(skills: List[dict]) -> str:
@@ -91,6 +97,8 @@ User-facing workflow skills with effort levels (from `quoin/core/workflow/skills
 {skill_table}
 
 Codex performs each phase natively using its own planning and reasoning capabilities.
+Use native Codex behavior for planning, progress tracking, approvals, sandboxing,
+repo-scoped instructions, and model or reasoning controls.
 No Claude slash-command compatibility is required or implied.
 
 ## Refactor guidance
@@ -119,6 +127,163 @@ No Claude slash-command compatibility is required or implied.
 """
 
 
+def _render_unsupported_translations() -> str:
+    return """\
+# Unsupported Claude-Only Translations
+
+Codex adapter files document Quoin's portable workflow behavior for Codex. They
+do not translate Claude runtime mechanics into Codex behavior.
+
+Unsupported translations:
+
+- Claude slash-command invocation is not a Codex command system.
+- Claude skill frontmatter and model tier names are not Codex packaging or model
+  selection rules.
+- Claude subagent dispatch prompts are not Codex adapter requirements.
+- Claude prompt-cache preambles are not generated for Codex.
+- Claude session-log, usage, and cost-capture plumbing are not implemented as
+  Codex behavior.
+- Claude installer routing is not reused for Codex.
+
+Codex should use native planning, progress tracking, approvals, sandboxing,
+repo-scoped instructions, and model or reasoning controls. If a Codex runtime
+extension point is later verified, it should be added as a new adapter contract
+instead of inferred from Claude behavior.
+"""
+
+
+def _render_codex_skill_doc(skill: dict) -> str:
+    name = skill["name"]
+    phase = skill.get("phase", "")
+    effort = skill.get("effort", "")
+    user_facing = "yes" if skill.get("user_facing", False) else "no"
+    core_doc = f"quoin/core/skills/{name}.md"
+    return f"""\
+# {name} Codex Adapter
+
+Generated/scaffolded from portable Quoin metadata.
+
+Portable source:
+
+- `{core_doc}`
+- `quoin/core/workflow/skills.json`
+
+## Codex invocation
+
+Ask for this workflow phase in natural language. Codex does not get a generated
+command file for `{name}` in this phase.
+
+## Portable workflow contract
+
+Follow the runtime-neutral contract in `{core_doc}`. Preserve Quoin artifact
+semantics under the project-root `.workflow_artifacts/` directory:
+
+- phase: `{phase}`
+- effort: `{effort}`
+- user-facing: `{user_facing}`
+
+Use `quoin/core/workflow/` for shared task layout, session state, cost-ledger,
+artifact, and skill metadata rules.
+
+## Codex runtime notes
+
+- Treat the repository root containing `AGENTS.md` as the Quoin project root.
+- Read and write workflow artifacts at that project root, even when editing code
+  in a nested package.
+- Use Codex-native planning, progress tracking, approvals, sandboxing,
+  repo-scoped instructions, and model or reasoning controls.
+- Do not create a Codex global install, command file, approval layer, sandbox
+  layer, or model-dispatch mechanism from this adapter file.
+
+## Unsupported Claude-only translations
+
+This adapter file intentionally does not translate Claude runtime mechanics:
+
+- Claude slash-command invocation for this skill is unsupported in Codex.
+- Claude skill frontmatter and model tier routing are not Codex packaging.
+- Claude subagent dispatch and prompt-cache preamble behavior are not Codex
+  requirements.
+- Claude session-log and cost-capture plumbing are not implemented for Codex.
+- Claude installer routing is not reused for Codex.
+
+See `quoin/adapters/codex/unsupported-claude-behavior.md` for the shared
+unsupported-behavior contract.
+"""
+
+
+def _render_codex_skill_index(skills: List[dict]) -> str:
+    rows = []
+    for skill in skills:
+        name = skill["name"]
+        phase = skill.get("phase", "")
+        effort = skill.get("effort", "")
+        user_facing = "yes" if skill.get("user_facing", False) else "no"
+        rows.append(f"| [`{name}`]({name}/README.md) | {phase} | {effort} | {user_facing} |")
+    table = "| Skill | Phase | Effort | User-facing |\n|-------|-------|--------|-------------|\n"
+    table += "\n".join(rows)
+    return f"""\
+# Codex Skill Adapter Docs
+
+These files are Codex facing docs generated/scaffolded from Quoin's portable
+skill contracts under `quoin/core/skills/` and metadata in
+`quoin/core/workflow/skills.json`.
+
+They are repo-local adapter docs only. They do not define Codex command files,
+global install paths, approval behavior, sandbox behavior, or model-dispatch
+mechanics.
+
+{table}
+"""
+
+
+def render_codex_adapter_assets(skills: List[dict]) -> Dict[Path, str]:
+    """Render Codex adapter docs keyed by paths relative to adapters/codex."""
+    assets: Dict[Path, str] = {
+        Path("skills") / "README.md": _render_codex_skill_index(skills),
+        Path("unsupported-claude-behavior.md"): _render_unsupported_translations(),
+    }
+    for skill in skills:
+        assets[Path("skills") / skill["name"] / "README.md"] = _render_codex_skill_doc(skill)
+    return assets
+
+
+def _check_core_skill_docs(skills: List[dict]) -> List[str]:
+    missing = []
+    for name in _all_skill_names(skills):
+        if not (CORE_SKILLS_DIR / f"{name}.md").is_file():
+            missing.append(name)
+    return missing
+
+
+def _write_or_check_assets(
+    assets: Dict[Path, str],
+    output_root: Path,
+    check: bool,
+) -> Tuple[bool, List[str]]:
+    messages: List[str] = []
+    ok = True
+
+    for rel_path, content in sorted(assets.items(), key=lambda item: str(item[0])):
+        path = output_root / rel_path
+        if check:
+            if not path.is_file():
+                messages.append(f"FAIL: {path} does not exist")
+                ok = False
+                continue
+            if path.read_text(encoding="utf-8") != content:
+                messages.append(f"FAIL: {path} is out of date")
+                ok = False
+            else:
+                messages.append(f"OK: {path} is up to date")
+            continue
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        messages.append(f"Written: {path}")
+
+    return ok, messages
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -129,7 +294,20 @@ def main() -> int:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="Compare rendered output against existing AGENTS.md; exit nonzero on drift.",
+        help="Compare rendered output against existing files; exit nonzero on drift.",
+    )
+    parser.add_argument(
+        "--adapter-assets",
+        action="store_true",
+        help=(
+            "Also generate/check Codex adapter docs under adapters/codex. "
+            "This is a repo-development output, not a global Codex install."
+        ),
+    )
+    parser.add_argument(
+        "--adapter-root",
+        default=str(SCRIPT_DIR),
+        help="Codex adapter root for --adapter-assets; defaults to this script directory.",
     )
     args = parser.parse_args()
 
@@ -139,23 +317,55 @@ def main() -> int:
         return 1
 
     skills = _load_skills()
+    missing_core_docs = _check_core_skill_docs(skills)
+    if missing_core_docs:
+        print(f"error: missing core skill docs for: {', '.join(missing_core_docs)}", file=sys.stderr)
+        return 1
+
     rendered = render_agents_md(skills)
     output_path = project_root / "AGENTS.md"
+    adapter_root = Path(args.adapter_root).resolve()
 
     if args.check:
+        ok = True
         if not output_path.exists():
             print(f"FAIL: {output_path} does not exist (run without --check to generate)", file=sys.stderr)
-            return 1
-        current = output_path.read_text(encoding="utf-8")
-        if current == rendered:
-            print(f"OK: {output_path} is up to date")
-            return 0
+            ok = False
         else:
-            print(f"FAIL: {output_path} is out of date (run without --check to regenerate)", file=sys.stderr)
-            return 1
+            current = output_path.read_text(encoding="utf-8")
+            if current == rendered:
+                print(f"OK: {output_path} is up to date")
+            else:
+                print(f"FAIL: {output_path} is out of date (run without --check to regenerate)", file=sys.stderr)
+                ok = False
+
+        if args.adapter_assets:
+            asset_ok, messages = _write_or_check_assets(
+                render_codex_adapter_assets(skills),
+                adapter_root,
+                check=True,
+            )
+            ok = ok and asset_ok
+            for message in messages:
+                stream = sys.stdout if message.startswith("OK:") else sys.stderr
+                print(message, file=stream)
+
+        return 0 if ok else 1
 
     output_path.write_text(rendered, encoding="utf-8")
     print(f"Written: {output_path}")
+
+    if args.adapter_assets:
+        if not adapter_root.is_dir():
+            print(f"error: --adapter-root {adapter_root} is not a directory", file=sys.stderr)
+            return 1
+        _, messages = _write_or_check_assets(
+            render_codex_adapter_assets(skills),
+            adapter_root,
+            check=False,
+        )
+        for message in messages:
+            print(message)
     return 0
 
 

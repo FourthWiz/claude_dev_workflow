@@ -47,6 +47,16 @@ def _required_files(paths: Iterable[Path]) -> List[Path]:
     return [path for path in paths if not path.is_file()]
 
 
+def _codex_adapter_text_files() -> List[Path]:
+    suffixes = {".md", ".json", ".py"}
+    return [
+        path for path in SCRIPT_DIR.rglob("*")
+        if path.is_file()
+        and path.suffix in suffixes
+        and "__pycache__" not in path.parts
+    ]
+
+
 def check_project_root(project_root: Path) -> CheckResult:
     if not project_root.is_dir():
         return CheckResult("project-root", False, f"{project_root} is not a directory")
@@ -100,11 +110,52 @@ def check_codex_adapter_docs() -> CheckResult:
         SCRIPT_DIR / "installable-feature.md",
         SCRIPT_DIR / "feature-manifest.json",
         SCRIPT_DIR / "generate_codex_assets.py",
+        SCRIPT_DIR / "skills" / "README.md",
+        SCRIPT_DIR / "unsupported-claude-behavior.md",
     ]
     missing = _required_files(required)
     if missing:
         return CheckResult("codex-adapter-docs", False, f"missing files: {missing}")
     return CheckResult("codex-adapter-docs", True, "Codex adapter docs and generator found")
+
+
+def check_codex_skill_adapter_coverage() -> CheckResult:
+    skills_path = QUOIN_PKG_DIR / "core" / "workflow" / "skills.json"
+    skills = json.loads(_read(skills_path)).get("skills", [])
+
+    issues = []
+    for skill in skills:
+        name = skill["name"]
+        core_doc = QUOIN_PKG_DIR / "core" / "skills" / f"{name}.md"
+        adapter_doc = SCRIPT_DIR / "skills" / name / "README.md"
+
+        if not core_doc.is_file():
+            issues.append(f"{name}: missing portable core doc")
+            continue
+        if not adapter_doc.is_file():
+            issues.append(f"{name}: missing Codex adapter doc")
+            continue
+
+        text = _read(adapter_doc)
+        required_tokens = [
+            f"quoin/core/skills/{name}.md",
+            "## Codex invocation",
+            "## Portable workflow contract",
+            "## Unsupported Claude-only translations",
+            "does not get a generated",
+            "Do not create a Codex global install",
+        ]
+        missing = [token for token in required_tokens if token not in text]
+        if missing:
+            issues.append(f"{name}: adapter doc missing tokens {missing}")
+
+    if issues:
+        return CheckResult("codex-skill-adapter-coverage", False, "; ".join(issues))
+    return CheckResult(
+        "codex-skill-adapter-coverage",
+        True,
+        f"Codex adapter docs cover {len(skills)} portable skills",
+    )
 
 
 def check_manifest_scope() -> CheckResult:
@@ -140,12 +191,7 @@ def check_no_guessed_global_paths(project_root: Path) -> CheckResult:
         QUOIN_PKG_DIR / "docs" / "runtime-portability.md",
         QUOIN_PKG_DIR / "docs" / "runtime-portability-status.md",
         QUOIN_PKG_DIR / "docs" / "effort-levels.md",
-        SCRIPT_DIR / "README.md",
-        SCRIPT_DIR / "setup.md",
-        SCRIPT_DIR / "installable-feature.md",
-        SCRIPT_DIR / "feature-manifest.json",
-        SCRIPT_DIR / "generate_codex_assets.py",
-    ]
+    ] + _codex_adapter_text_files()
     hits = []
     for path in docs:
         if not path.is_file():
@@ -187,6 +233,7 @@ def run_checks(project_root: Path) -> List[CheckResult]:
         check_agents_md(project_root),
         check_portable_core(),
         check_codex_adapter_docs(),
+        check_codex_skill_adapter_coverage(),
         check_manifest_scope(),
         check_no_guessed_global_paths(project_root),
         check_claude_install_isolated(),

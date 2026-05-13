@@ -51,8 +51,11 @@ Status: repo-local setup/readiness only; no verified global install target.
   - Machine-readable manifest: `quoin/adapters/codex/feature-manifest.json`
   - Generator script: `quoin/adapters/codex/generate_codex_assets.py`
   - Readiness script: `quoin/adapters/codex/verify_codex_readiness.py`
+  - Skill adapter docs: `quoin/adapters/codex/skills/<skill>/README.md`
+  - Unsupported behavior notes: `quoin/adapters/codex/unsupported-claude-behavior.md`
   - Run `python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path>` to generate `AGENTS.md`.
   - Run with `--check` to verify an existing `AGENTS.md` is up to date.
+  - Run `python3 quoin/adapters/codex/generate_codex_assets.py --project-root . --adapter-assets --check` to verify generated Codex adapter skill docs.
   - Run `python3 quoin/adapters/codex/verify_codex_readiness.py --project-root .` to verify repo-local readiness.
 - There is no global Codex installer.
 - There are no Codex command files.
@@ -76,6 +79,14 @@ Codex global install target or command packaging contract. Codex remains
 repo-local setup/readiness only. Added `verify_codex_readiness.py` to check root
 instructions, portable workflow docs, Codex adapter docs, manifest scope, no
 guessed global Codex paths, and Claude install isolation.
+
+**Phase 26 (2026-05-13):** Generated/scaffolded Codex facing adapter docs for
+all 21 migrated portable skills under `quoin/adapters/codex/skills/`. Each doc
+references its portable `quoin/core/skills/<skill>.md` contract, records phase
+and effort metadata from `quoin/core/workflow/skills.json`, and documents
+unsupported Claude-only translations without introducing Codex command files or
+global install paths. Extended the Codex generator, manifest, readiness check,
+and tests to guard coverage and leakage.
 
 ## Still Claude-Specific
 

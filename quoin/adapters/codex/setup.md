@@ -15,6 +15,8 @@ For Codex, setup means:
 - follow `quoin/docs/runtime-portability.md`
 - use `quoin/core/workflow/` for shared workflow semantics
 - use `quoin/core/workflow/skills.json` for portable skill metadata
+- use `quoin/adapters/codex/skills/<skill>/README.md` as Codex facing
+  per-skill guidance generated/scaffolded from the portable core
 
 ## What Setup Does Not Mean
 
@@ -36,6 +38,7 @@ The repo-local readiness check verifies only evidence Quoin can inspect:
 - `AGENTS.md` exists at the project root and points workflow artifacts to that root
 - portable workflow docs and `quoin/core/workflow/skills.json` exist
 - Codex adapter docs and manifest exist
+- every portable skill has a Codex adapter doc under `quoin/adapters/codex/skills/`
 - generated Codex outputs are scoped to `repo-local`
 - Codex docs avoid guessed global paths and command packaging claims
 - `quoin/install.sh` remains Claude-only
@@ -66,6 +69,19 @@ python3 quoin/adapters/codex/generate_codex_assets.py --project-root . --check
 
 The feature contract and manifest are at `quoin/adapters/codex/installable-feature.md`
 and `quoin/adapters/codex/feature-manifest.json`.
+
+## Generating Codex Skill Docs
+
+Codex adapter skill docs are generated/scaffolded from portable skill metadata
+and core skill docs:
+
+```
+python3 quoin/adapters/codex/generate_codex_assets.py --project-root . --adapter-assets
+python3 quoin/adapters/codex/generate_codex_assets.py --project-root . --adapter-assets --check
+```
+
+These docs live under `quoin/adapters/codex/skills/`. They are not Codex command
+files and do not imply a global runtime install target.
 
 ## Current Use
 

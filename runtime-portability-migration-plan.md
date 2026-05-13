@@ -4,6 +4,11 @@
 
 Refactor Quoin in small, low-risk steps. Each step should leave Claude Code behavior intact and make one boundary clearer. Codex support starts as repo-local instructions and documentation, not a runtime installer.
 
+Status note: this was the first-pass migration plan. As of Phase 26, Codex
+support still has no global installer or command-file contract, but it now also
+includes generated/scaffolded repo-local skill adapter docs under
+`quoin/adapters/codex/skills/` for all 21 portable skills.
+
 ## Step 1: Add The Boundary Docs
 
 Create documentation only.

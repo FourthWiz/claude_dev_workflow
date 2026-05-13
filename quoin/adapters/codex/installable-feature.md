@@ -14,15 +14,22 @@ mean:
 - a Codex extension point or command file (not yet verified)
 - replacement approval, sandboxing, or model-selection logic
 
-The generated output is repo-local: an `AGENTS.md` at the project root. Nothing is
-written outside the project root.
+The default generated project output is repo-local: an `AGENTS.md` at the
+project root. Phase 26 also generates/scaffolds Codex adapter docs under
+`quoin/adapters/codex/` from portable core metadata. Nothing is written to a
+global Codex runtime.
 
 ## Supported first feature: repo-local workflow bundle
 
-The generator (`quoin/adapters/codex/generate_codex_assets.py`) produces one file:
+The generator (`quoin/adapters/codex/generate_codex_assets.py`) produces:
 
 - `<project-root>/AGENTS.md` — Codex repo instructions for using Quoin workflow
   phases, portable artifact conventions, and the `.workflow_artifacts/` layout
+- `quoin/adapters/codex/skills/<skill>/README.md` — Codex facing adapter docs
+  for all 21 portable skills when `--adapter-assets` is used
+- `quoin/adapters/codex/skills/README.md` — generated skill index
+- `quoin/adapters/codex/unsupported-claude-behavior.md` — shared unsupported
+  behavior notes for Claude-only runtime mechanics
 
 The generated content preserves the architectural boundaries already present in the
 root `AGENTS.md`:
@@ -37,6 +44,8 @@ root `AGENTS.md`:
 Project assets only:
 
 - Root `AGENTS.md` content (workflow guidance, artifact conventions, phase reference)
+- Codex adapter skill docs under `quoin/adapters/codex/skills/`
+- Unsupported Claude-only behavior notes
 - Quoin artifact layout guidance (`.workflow_artifacts/` structure and naming)
 - Skill metadata references (drawn from `quoin/core/workflow/skills.json`)
 - Validation commands (pytest invocation from the project root)
@@ -57,7 +66,7 @@ python3 quoin/adapters/codex/verify_codex_readiness.py --project-root .
 ```
 
 It verifies root `AGENTS.md`, portable workflow docs, Codex adapter docs,
-manifest scope, absence of guessed global Codex paths in active Codex-facing
+manifest scope, absence of guessed global Codex paths in active Codex facing
 docs, and isolation of the Claude installer. It does not inspect or write a
 global Codex runtime.
 
@@ -66,10 +75,13 @@ global Codex runtime.
 ```
 python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path>
 python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path> --check
+python3 quoin/adapters/codex/generate_codex_assets.py --project-root . --adapter-assets --check
 ```
 
-Default output writes to `<project-root>/AGENTS.md`. The `--check` flag compares
-rendered content against the existing file and exits nonzero on drift.
+Default output writes to `<project-root>/AGENTS.md`. The
+`--adapter-assets` option also writes/checks generated adapter docs under
+`quoin/adapters/codex/` (or an explicit `--adapter-root`). The `--check` flag
+compares rendered content against existing files and exits nonzero on drift.
 
 ## Manifest
 

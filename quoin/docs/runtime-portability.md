@@ -83,6 +83,23 @@ repo-local files. Global Codex install paths, package registry behavior, and
 Codex command file formats remain unresolved until a stable extension point is
 verified.
 
+### Phase 26 — Codex adapter skill docs
+
+Phase 26 adds generated/scaffolded Codex facing docs for all 21 migrated
+portable skills:
+
+- `quoin/adapters/codex/skills/<skill>/README.md` references the corresponding
+  `quoin/core/skills/<skill>.md` contract and records the skill phase, effort,
+  and user-facing status from `quoin/core/workflow/skills.json`.
+- `quoin/adapters/codex/skills/README.md` indexes the 21 skill docs.
+- `quoin/adapters/codex/unsupported-claude-behavior.md` documents Claude-only
+  behavior that is intentionally not translated into Codex.
+
+These files are adapter docs, not Codex command files. They do not define global
+Codex install paths, approval behavior, sandbox behavior, or model-dispatch
+mechanics. Codex still uses native runtime behavior and preserves Quoin only at
+the artifact/workflow layer.
+
 ## Candidate Shared Skills
 
 Most skill instructions contain portable workflow intent mixed with Claude runtime mechanics. For now, they stay in place as Claude skills.

@@ -17,11 +17,13 @@ THIS_FILE = Path(__file__).resolve()
 TESTS_DIR = THIS_FILE.parent
 PKG_DIR = TESTS_DIR.parent.parent
 CODEX_ADAPTER_DIR = PKG_DIR / "adapters" / "codex"
+CODEX_SKILLS_DIR = CODEX_ADAPTER_DIR / "skills"
 MANIFEST_PATH = CODEX_ADAPTER_DIR / "feature-manifest.json"
 GENERATOR_PATH = CODEX_ADAPTER_DIR / "generate_codex_assets.py"
 READINESS_PATH = CODEX_ADAPTER_DIR / "verify_codex_readiness.py"
 CONTRACT_PATH = CODEX_ADAPTER_DIR / "installable-feature.md"
 SKILLS_JSON_PATH = PKG_DIR / "core" / "workflow" / "skills.json"
+CORE_SKILLS_DIR = PKG_DIR / "core" / "skills"
 REPO_ROOT = PKG_DIR.parent
 
 GUESSED_GLOBAL_PATTERNS = [
@@ -30,6 +32,29 @@ GUESSED_GLOBAL_PATTERNS = [
     "codex install",
     "npm install" + " -g",
 ]
+
+CLAUDE_ONLY_PATH_PATTERNS = [
+    "~/." + "claude",
+    "$HOME/." + "claude",
+    ".claude/",
+    "CLAUDE.md",
+    "ccusage",
+]
+
+
+def _portable_skill_names():
+    skills_data = json.loads(SKILLS_JSON_PATH.read_text(encoding="utf-8"))
+    return [skill["name"] for skill in skills_data.get("skills", [])]
+
+
+def _codex_adapter_text_files():
+    suffixes = {".md", ".json", ".py"}
+    return [
+        path for path in CODEX_ADAPTER_DIR.rglob("*")
+        if path.is_file()
+        and path.suffix in suffixes
+        and "__pycache__" not in path.parts
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -95,17 +120,18 @@ def test_manifest_avoids_guessed_global_paths():
 
 def test_codex_adapter_active_files_avoid_guessed_global_paths():
     """Codex adapter files must not hardcode guessed global Codex paths."""
-    active_files = [
-        CODEX_ADAPTER_DIR / "README.md",
-        CODEX_ADAPTER_DIR / "setup.md",
-        CODEX_ADAPTER_DIR / "installable-feature.md",
-        CODEX_ADAPTER_DIR / "feature-manifest.json",
-        CODEX_ADAPTER_DIR / "generate_codex_assets.py",
-        CODEX_ADAPTER_DIR / "verify_codex_readiness.py",
-    ]
+    active_files = _codex_adapter_text_files()
     combined = "\n".join(path.read_text(encoding="utf-8") for path in active_files)
     hits = [p for p in GUESSED_GLOBAL_PATTERNS if p in combined]
     assert not hits, f"Codex adapter files contain guessed global paths: {hits}"
+
+
+def test_codex_adapter_files_avoid_claude_only_paths():
+    """Codex facing files may document unsupported Claude behavior, but not Claude paths."""
+    active_files = _codex_adapter_text_files()
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in active_files)
+    hits = [p for p in CLAUDE_ONLY_PATH_PATTERNS if p in combined]
+    assert not hits, f"Codex adapter files contain Claude-only path assumptions: {hits}"
 
 
 def test_manifest_documents_unsupported_global_install():
@@ -157,6 +183,62 @@ def test_generator_no_global_writes():
         assert len(written) == 1 and written[0].name == "AGENTS.md", (
             f"Generator wrote unexpected files: {written}"
         )
+
+
+def test_generator_writes_codex_adapter_assets_when_requested():
+    """Generator can materialize Codex skill docs without inventing runtime install paths."""
+    with tempfile.TemporaryDirectory() as tmpdir, tempfile.TemporaryDirectory() as adapter_tmp:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(GENERATOR_PATH),
+                "--project-root",
+                tmpdir,
+                "--adapter-assets",
+                "--adapter-root",
+                adapter_tmp,
+            ],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, f"Generator failed: {result.stderr}"
+
+        for name in _portable_skill_names():
+            path = Path(adapter_tmp) / "skills" / name / "README.md"
+            assert path.is_file(), f"Missing generated Codex adapter doc for {name}"
+            text = path.read_text(encoding="utf-8")
+            assert f"quoin/core/skills/{name}.md" in text
+            assert "## Unsupported Claude-only translations" in text
+
+
+def test_generator_check_covers_codex_adapter_assets():
+    """--check reports Codex adapter asset drift when the assets flag is used."""
+    with tempfile.TemporaryDirectory() as tmpdir, tempfile.TemporaryDirectory() as adapter_tmp:
+        subprocess.run(
+            [
+                sys.executable,
+                str(GENERATOR_PATH),
+                "--project-root",
+                tmpdir,
+                "--adapter-assets",
+                "--adapter-root",
+                adapter_tmp,
+            ],
+            check=True, capture_output=True,
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(GENERATOR_PATH),
+                "--project-root",
+                tmpdir,
+                "--adapter-assets",
+                "--adapter-root",
+                adapter_tmp,
+                "--check",
+            ],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
 
 
 def test_generator_check_passes_on_matching_output():
@@ -231,6 +313,41 @@ def test_generated_agents_md_uses_skills_json():
 
 
 # ---------------------------------------------------------------------------
+# Codex skill adapter coverage tests
+# ---------------------------------------------------------------------------
+
+
+def test_every_portable_skill_has_codex_adapter_doc():
+    """Every migrated portable skill must have a Codex facing adapter doc."""
+    names = _portable_skill_names()
+    assert len(names) == 21
+    for name in names:
+        assert (CORE_SKILLS_DIR / f"{name}.md").is_file(), f"Missing core doc for {name}"
+        assert (CODEX_SKILLS_DIR / name / "README.md").is_file(), (
+            f"Missing Codex adapter doc for {name}"
+        )
+
+
+def test_codex_skill_docs_reference_core_and_unsupported_contract():
+    """Each Codex skill doc points at the portable core and documents unsupported behavior."""
+    for name in _portable_skill_names():
+        text = (CODEX_SKILLS_DIR / name / "README.md").read_text(encoding="utf-8")
+        assert f"quoin/core/skills/{name}.md" in text
+        assert "## Codex invocation" in text
+        assert "## Portable workflow contract" in text
+        assert "## Unsupported Claude-only translations" in text
+        assert "Codex global install" in text
+        assert "generated\ncommand file" in text
+
+
+def test_codex_skill_index_covers_all_portable_skills():
+    """The Codex skill index must list every portable skill exactly once."""
+    text = (CODEX_SKILLS_DIR / "README.md").read_text(encoding="utf-8")
+    missing = [name for name in _portable_skill_names() if f"({name}/README.md)" not in text]
+    assert not missing, f"Codex skill index missing skills: {missing}"
+
+
+# ---------------------------------------------------------------------------
 # Readiness tests
 # ---------------------------------------------------------------------------
 
@@ -264,6 +381,7 @@ def test_claude_install_remains_codex_free():
     text = install_sh.read_text(encoding="utf-8").lower()
     assert "codex" not in text
     assert ".claude" in text
+    assert "adapters/codex" not in text
 
 
 # ---------------------------------------------------------------------------
