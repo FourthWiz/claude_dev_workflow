@@ -89,6 +89,17 @@ The cost-ledger row at `.workflow_artifacts/<task-name>/cost-ledger.md` is
 written ONLY when a task context is active for this invocation (see
 "Behavior contract" — conditional cost recording).
 
+## Discovery map (optional structured output)
+
+Adapters MAY invoke `quoin/scripts/generate_discovery_map.py` after the four
+markdown output files are written, in order to emit a structured
+`discovery-map.json` index alongside (NOT replacing) the markdown artifacts.
+
+The default write path is `<project_root>/.workflow_artifacts/discovery-map.json`.
+
+The generator is optional — `/discover` MUST NOT fail if generation fails;
+the markdown outputs remain the authoritative source.
+
 ## Behavior contract
 
 - The skill MUST be read-only against source repos. No commits, no edits

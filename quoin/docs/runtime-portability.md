@@ -220,9 +220,23 @@ and out of scope for Phase 30.
 - No new external dependencies — validator is pure stdlib
 - No `.workflow_artifacts/` layout changes — schema is additive
 
-**Future generator integration:** A future generator would be invoked (or called) by `/discover` after
-the Markdown inventory scan is complete. It would read `.workflow_artifacts/` structure, `git` state,
-and the knowledge cache to populate and emit `discovery-map.json` at the project root. The generator
-is FUTURE WORK; the schema and validator are in place to validate output when it exists. Per Phase 30
-plan D-09, a future third JSON validator (if added) should extract shared scaffolding into
-`quoin/core/scripts/_validator_common.py` rather than duplicating exit-code/CLI conventions.
+**Phase 32 generator implementation:** Phase 32 implements the generator. Paths:
+
+- `quoin/core/scripts/generate_discovery_map.py` — canonical stdlib-only generator
+- `quoin/scripts/generate_discovery_map.py` — compat wrapper (same two-line diff pattern as validate wrapper)
+
+Adapter wiring is documented as prose-only optional hooks in the `/discover` skill docs:
+
+- `quoin/core/skills/discover.md` — `## Discovery map (optional structured output)` H2 section
+- `quoin/adapters/claude/skills/discover/SKILL.md` — `### Structured-output hook (optional)` H3 section inside `## After scanning`
+
+The Claude adapter hook invokes `python3 ~/.claude/scripts/generate_discovery_map.py "$PROJECT_ROOT" --quiet`
+after the four markdown files are written. The hook is best-effort; a non-zero exit emits a warning
+and continues. The Codex adapter can run `python3 quoin/scripts/generate_discovery_map.py "$PROJECT_ROOT" --quiet`
+directly without any global-path assumption.
+
+**Remaining future work (Phase 32 deferred, per D-09):**
+- Language detection (`repos[].language`), entry-point detection, and `dependency_hints` derivation.
+- `--no-mtimes` flag for cloud-synced repo stability.
+- Per Phase 30 D-09, a future third JSON validator (if added) should extract shared scaffolding into
+  `quoin/core/scripts/_validator_common.py` rather than duplicating exit-code/CLI conventions.

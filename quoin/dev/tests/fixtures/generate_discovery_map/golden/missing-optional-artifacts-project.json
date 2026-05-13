@@ -1,0 +1,39 @@
+{
+  "artifact_roots": {
+    "finalized_path": ".workflow_artifacts/finalized",
+    "memory_path": ".workflow_artifacts/memory",
+    "tasks_path": ".workflow_artifacts",
+    "workflow_artifacts_path": ".workflow_artifacts"
+  },
+  "freshness": {
+    "solo": {
+      "head_sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "recorded_at": "2026-05-13T00:00:00Z"
+    }
+  },
+  "generated_at": "2026-05-13T00:00:00Z",
+  "memory": {
+    "daily_dir": ".workflow_artifacts/memory/daily",
+    "lessons_learned": ".workflow_artifacts/memory/lessons-learned.md",
+    "sessions_dir": ".workflow_artifacts/memory/sessions",
+    "weekly_dir": ".workflow_artifacts/memory/weekly"
+  },
+  "project": {
+    "name": "missing-optional-artifacts-project",
+    "root_path": "/Users/ivgo/Library/CloudStorage/GoogleDrive-ivan.gorban@gmail.com/My Drive/Storage/Codex_workflow/quoin/quoin/dev/tests/fixtures/generate_discovery_map/missing-optional-artifacts-project",
+    "runtime_adapters": []
+  },
+  "repos": [
+    {
+      "head_sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "head_short": "ccccccc",
+      "name": "solo",
+      "path": "solo"
+    }
+  ],
+  "schema_version": 1,
+  "tasks": {
+    "active": [],
+    "finalized": []
+  }
+}
