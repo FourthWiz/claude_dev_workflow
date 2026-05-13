@@ -136,6 +136,7 @@ def _cmd_install(args: argparse.Namespace) -> int:
     # T-05
     installer.deploy_skills(source_dir, dest_root)
     installer.deploy_scripts(source_dir, dest_root)
+    installer.deploy_core_scripts(source_dir, dest_root)
     installer.cleanup_obsolete_scripts(dest_root)
 
     # Hooks

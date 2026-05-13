@@ -78,6 +78,31 @@ def test_fresh_clone_install_e2e(transport: str):
             skill_md = skills_dir / skill / "SKILL.md"
             assert skill_md.exists(), f"[{transport}] Missing skill SKILL.md: {skill}"
 
+        # Phase 6 / Phase 7 migrated skills: each is installed from the Claude
+        # adapter path. Verify the deployed file is byte-identical to the
+        # adapter source AND NOT identical to the legacy stub (i.e., the
+        # installer override actually fired).
+        MIGRATED_SKILLS = ("capture_insight", "triage", "start_of_day")
+        for migrated in MIGRATED_SKILLS:
+            adapter_src = (
+                REPO_ROOT / "quoin" / "adapters" / "claude" / "skills"
+                / migrated / "SKILL.md"
+            )
+            adapter_dst = skills_dir / migrated / "SKILL.md"
+            assert adapter_dst.exists(), (
+                f"install.sh did not deploy {migrated}"
+            )
+            assert adapter_src.read_bytes() == adapter_dst.read_bytes(), (
+                f"Deployed {migrated} SKILL.md is not byte-identical to the "
+                f"Claude adapter source "
+                f"quoin/adapters/claude/skills/{migrated}/SKILL.md"
+            )
+            legacy_src = REPO_ROOT / "quoin" / "skills" / migrated / "SKILL.md"
+            assert legacy_src.read_bytes() != adapter_dst.read_bytes(), (
+                f"Deployed {migrated} matches legacy stub — "
+                "installer override did not fire"
+            )
+
         memory_dir = tmp_home / ".claude" / "memory"
         for mem_file in TIER1_MEMORY_FILES:
             assert (memory_dir / mem_file).exists(), (

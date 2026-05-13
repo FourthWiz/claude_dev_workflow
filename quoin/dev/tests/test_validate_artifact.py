@@ -23,12 +23,12 @@ pytest.importorskip("yaml", reason="pyyaml required: pip install -e '.[dev]'")
 # Resolve from the location of this test file upward to the project root
 TEST_DIR = os.path.dirname(os.path.abspath(__file__))
 FIXTURES_DIR = os.path.join(TEST_DIR, 'fixtures')
-DEV_DIR = os.path.dirname(TEST_DIR)            # quoin/dev/
-QUOIN_DIR = os.path.dirname(DEV_DIR)           # quoin/
-SCRIPTS_DIR = os.path.join(QUOIN_DIR, 'scripts')  # quoin/scripts/
-PROJECT_ROOT = os.path.dirname(QUOIN_DIR)      # project root
+DEV_DIR = os.path.dirname(TEST_DIR)              # quoin/dev/
+QUOIN_DIR = os.path.dirname(DEV_DIR)             # quoin/
+CORE_SCRIPTS_DIR = os.path.join(QUOIN_DIR, 'core', 'scripts')
+PROJECT_ROOT = os.path.dirname(QUOIN_DIR)        # project root
 
-VALIDATOR = os.path.join(SCRIPTS_DIR, 'validate_artifact.py')
+VALIDATOR = os.path.join(CORE_SCRIPTS_DIR, 'validate_artifact.py')
 TEST_SIDECAR = os.path.join(FIXTURES_DIR, 'format-kit.sections.json')
 
 

@@ -22,6 +22,25 @@ import pytest
 
 TESTS_DIR = Path(__file__).parent
 SKILLS_DIR = TESTS_DIR.parent.parent / "skills"
+ADAPTER_SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
+
+
+# Skills migrated to the three-file adapter pattern (Phase 6 / Phase 7).
+# When this set grows, add the skill name here AND verify the install.sh
+# override branch exists.
+MIGRATED_TO_ADAPTER = {"capture_insight", "triage", "start_of_day"}
+
+
+def skill_md_path(skill_name: str) -> Path:
+    """Return the canonical SKILL.md path for a given skill.
+
+    Migrated skills (per `MIGRATED_TO_ADAPTER`) are installed from the
+    Claude adapter path, so their authoritative SKILL.md lives under
+    adapters/claude/skills/. All other skills still live under skills/.
+    """
+    if skill_name in MIGRATED_TO_ADAPTER:
+        return ADAPTER_SKILLS_DIR / skill_name / "SKILL.md"
+    return SKILLS_DIR / skill_name / "SKILL.md"
 
 SO_HEADING = "## §0 Model dispatch (FIRST STEP — execute before anything else)"
 
@@ -66,7 +85,7 @@ def extract_preamble_block(skill_path: Path) -> str:
 # -----------------------------------------------------------------------------
 @pytest.mark.parametrize("skill", CHEAP_TIER_SKILLS)
 def test_block_describes_dispatch_branch(skill):
-    slice_text = extract_preamble_block(SKILLS_DIR / skill / "SKILL.md")
+    slice_text = extract_preamble_block(skill_md_path(skill))
     assert "Spawn an Agent subagent" in slice_text, (
         f"{skill}/SKILL.md §0 missing `Spawn an Agent subagent` dispatch instruction"
     )
@@ -85,7 +104,7 @@ def test_block_describes_dispatch_branch(skill):
 # -----------------------------------------------------------------------------
 @pytest.mark.parametrize("skill", CHEAP_TIER_SKILLS)
 def test_block_describes_proceed_branch(skill):
-    slice_text = extract_preamble_block(SKILLS_DIR / skill / "SKILL.md")
+    slice_text = extract_preamble_block(skill_md_path(skill))
     assert "Otherwise" in slice_text, (
         f"{skill}/SKILL.md §0 missing `Otherwise` proceed-branch lead-in"
     )
@@ -100,7 +119,7 @@ def test_block_describes_proceed_branch(skill):
 # -----------------------------------------------------------------------------
 @pytest.mark.parametrize("skill", CHEAP_TIER_SKILLS)
 def test_block_describes_abort_branch(skill):
-    slice_text = extract_preamble_block(SKILLS_DIR / skill / "SKILL.md")
+    slice_text = extract_preamble_block(skill_md_path(skill))
     assert "[no-redispatch:N]" in slice_text, (
         f"{skill}/SKILL.md §0 missing counter-form sentinel `[no-redispatch:N]` "
         "in the abort-rule prose"
@@ -120,7 +139,7 @@ def test_block_describes_abort_branch(skill):
 # -----------------------------------------------------------------------------
 @pytest.mark.parametrize("skill", CHEAP_TIER_SKILLS)
 def test_block_describes_manual_kill_switch(skill):
-    slice_text = extract_preamble_block(SKILLS_DIR / skill / "SKILL.md")
+    slice_text = extract_preamble_block(skill_md_path(skill))
     # Count bare-form occurrences. The §0 prose contains `[no-redispatch]`
     # at multiple sites: sentinel-parsing rule, the dispatch action's
     # prompt-prefix line, the manual-kill-switch paragraph, and the
@@ -145,7 +164,7 @@ def test_block_describes_manual_kill_switch(skill):
 # -----------------------------------------------------------------------------
 @pytest.mark.parametrize("skill", CHEAP_TIER_SKILLS)
 def test_block_describes_fail_graceful_branch(skill):
-    slice_text = extract_preamble_block(SKILLS_DIR / skill / "SKILL.md")
+    slice_text = extract_preamble_block(skill_md_path(skill))
     expected = "[quoin-stage-1: subagent dispatch unavailable; proceeding at current tier]"
     assert expected in slice_text, (
         f"{skill}/SKILL.md §0 missing fail-graceful warning string: {expected!r}. "
@@ -197,7 +216,7 @@ def test_synthetic_abort_branch_simulation():
 @pytest.mark.smoke
 @pytest.mark.parametrize("skill", CHEAP_TIER_SKILLS)
 def test_block_present_in_all_12_skills(skill):
-    slice_text = extract_preamble_block(SKILLS_DIR / skill / "SKILL.md")
+    slice_text = extract_preamble_block(skill_md_path(skill))
     assert slice_text, (
         f"{skill}/SKILL.md has empty §0 slice — the §0 block was deleted "
         "or its heading no longer matches the canonical literal. "
