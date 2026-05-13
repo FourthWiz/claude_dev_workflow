@@ -2,6 +2,18 @@
 
 All notable changes to Quoin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- End-to-end installability validation for source-layout and built-wheel installs across both supported runtime paths: Claude global adapter deployment to `~/.claude` and Codex repo-local `AGENTS.md` generation/checking.
+- Package artifact checks for wheel and sdist outputs to keep generated caches, `.workflow_artifacts/`, benchmark results, `__pycache__`, and pytest cache out of distributions.
+- CI wheel smoke coverage for installed-package Claude and Codex install commands, using a temporary `HOME` and temporary Codex project root.
+
+### Changed
+
+- README and runtime portability docs now describe `pip install quoin`, `quoin install --runtime claude`, `quoin install --runtime codex --project-root .`, and the backward-compatible default `quoin install` behavior.
+
 ## [1.0.0] — 2026-04-27
 
 ### Added
