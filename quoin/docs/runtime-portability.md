@@ -200,3 +200,29 @@ Phase 22 added an adapter drift validator at `quoin/core/scripts/validate_adapte
 - Did not change `install.sh` — the validator is purely a dev/CI tool.
 
 **How to extend for future runtime adapters:** per D-09, a Codex adapter drift validator would be a parallel script (`validate_adapter_drift_codex.py` in `quoin/core/scripts/`), not a generalization of this one. The Claude-specific concepts (§0 dispatch, `adapters/claude/` paths, install.sh routing) are intrinsic to the Claude adapter.
+
+
+## Discovery Map (additive structured-data layer)
+
+Phase 30 adds a portable structured snapshot format for quoin project state. The schema, validator,
+and example fixture are implemented now. The generator integration with `/discover` is FUTURE WORK
+and out of scope for Phase 30.
+
+**Implemented files (Phase 30):**
+- `quoin/core/schemas/discovery-map.schema.json` — JSON Schema Draft-07 contract for `discovery-map.json`
+- `quoin/core/schemas/discovery-map.md` — prose schema reference (field types, path conventions, timestamp conventions, extensions namespace, versioning)
+- `quoin/dev/tests/fixtures/discovery-map/example-map.json` — valid example fixture modeled on the Codex_workflow project
+- `quoin/core/scripts/validate_discovery_map.py` — stdlib-only validator (9 invariants DM-01..DM-09); compat wrapper at `quoin/scripts/validate_discovery_map.py`
+
+**Non-goals for Phase 30 (future work):**
+- No Markdown artifact changes — existing `.workflow_artifacts/` layout is unchanged
+- No `/discover` SKILL.md modifications — `/discover` continues to write existing Markdown outputs
+- No new external dependencies — validator is pure stdlib
+- No `.workflow_artifacts/` layout changes — schema is additive
+
+**Future generator integration:** A future generator would be invoked (or called) by `/discover` after
+the Markdown inventory scan is complete. It would read `.workflow_artifacts/` structure, `git` state,
+and the knowledge cache to populate and emit `discovery-map.json` at the project root. The generator
+is FUTURE WORK; the schema and validator are in place to validate output when it exists. Per Phase 30
+plan D-09, a future third JSON validator (if added) should extract shared scaffolding into
+`quoin/core/scripts/_validator_common.py` rather than duplicating exit-code/CLI conventions.
