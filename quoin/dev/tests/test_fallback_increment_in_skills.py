@@ -30,6 +30,7 @@ MIGRATED_SKILLS_DIR_OVERRIDES = {
     "critic": ADAPTER_SKILLS_DIR,
     "revise": ADAPTER_SKILLS_DIR,
     "revise-fast": ADAPTER_SKILLS_DIR,
+    "gate": ADAPTER_SKILLS_DIR,
 }
 
 STEP5_CANONICAL = (
