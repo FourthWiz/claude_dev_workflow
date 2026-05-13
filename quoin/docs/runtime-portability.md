@@ -7,6 +7,12 @@ This document defines the boundary for the first migration pass. It is intention
 For the current evidence-based feature-by-feature status, see
 `quoin/docs/runtime-parity-matrix.md`.
 
+For the Phase 29 benchmark design, see `quoin/benchmarks/`. The benchmark
+framework compares simple Claude, Quoin + Claude, simple Codex, and Quoin +
+Codex workflows across repeatable workflow-usefulness scenarios. It is a design
+and evidence-capture framework only; it does not record results or claim
+cross-runtime performance before actual runs exist.
+
 ## Portable Core
 
 The portable core is the workflow contract that every runtime adapter should preserve:
@@ -121,6 +127,20 @@ links a Codex session would need are present and coherent:
 The smoke test also guards the Codex path against Claude global paths,
 Claude slash-command requirements, Claude install routing, guessed Codex global
 paths, and `ccusage` as a required Codex dependency.
+
+### Phase 29 — Cross-runtime workflow benchmarks
+
+Phase 29 adds `quoin/benchmarks/`, a design-only benchmark framework for
+comparing Quoin-assisted workflows against simple Claude and simple Codex
+workflows. The suite covers fresh repo discovery, medium refactor planning,
+scoped implementation, review, and session handoff / memory reuse. It defines
+the four comparison modes, scoring metrics, run sheets, result templates, and a
+deterministic structure validator at
+`quoin/benchmarks/scripts/validate_benchmarks.py`.
+
+This framework intentionally separates benchmark design from benchmark results.
+No measured outcomes are bundled, and cost remains optional because runtime cost
+capture is not equally implemented across Claude and Codex.
 
 ## Candidate Shared Skills
 

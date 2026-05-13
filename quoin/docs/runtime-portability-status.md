@@ -5,6 +5,8 @@ This page tracks the current migration state.
 For the cross-runtime feature matrix, see
 `quoin/docs/runtime-parity-matrix.md`.
 
+For the Phase 29 cross-runtime benchmark framework, see `quoin/benchmarks/`.
+
 ## Claude Code
 
 Status: installable.
@@ -112,6 +114,17 @@ unsupported behavior, and planned work across major workflow semantics and all
 21 migrated skills. Static docs tests now require both runtime-portability docs
 to link to the matrix, require matrix coverage for all migrated skills and major
 semantics, and guard against Codex global install or command-file overclaims.
+
+**Phase 29 (2026-05-13):** Added the design-only cross-runtime benchmark
+framework under `quoin/benchmarks/`. The framework defines repeatable scenarios
+for fresh repo discovery, medium refactor planning, scoped implementation,
+review, and session handoff / memory reuse. It compares `simple-claude`,
+`quoin-claude`, `simple-codex`, and `quoin-codex` modes with metrics for task
+completion quality, correctness / tests, artifact quality, context reuse, time
+/ turn count, optional cost, and setup overhead. The framework includes run and
+result templates plus `quoin/benchmarks/scripts/validate_benchmarks.py` for
+deterministic structure checks. It does not bundle results or claim measured
+benefits before actual benchmark runs exist.
 
 ## Still Claude-Specific
 

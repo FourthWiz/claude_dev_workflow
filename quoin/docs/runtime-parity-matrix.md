@@ -18,6 +18,11 @@ No global Codex installer is supported. No Codex command files, global Codex
 paths, approval layer, sandbox layer, model-dispatch mechanism, live runtime
 automation, or Codex cost collector are implemented in this repository today.
 
+Phase 29 adds a design-only benchmark framework at `quoin/benchmarks/` for
+comparing simple Claude, Quoin + Claude, simple Codex, and Quoin + Codex
+workflows. The framework captures scenarios, metrics, run sheets, and result
+templates; it does not include measured results or cross-runtime claims.
+
 ## Workflow Semantics
 
 | Dimension | Portable core | Claude-supported | Codex-supported | Unsupported / planned | Evidence |
@@ -35,6 +40,7 @@ automation, or Codex cost collector are implemented in this repository today.
 | Preambles and model dispatch | Portable effort levels exist; runtime-specific dispatch is adapter-owned. | Claude owns section 0 model dispatch, Haiku/Sonnet/Opus frontmatter, and prompt-cache preamble generation. | Codex uses native model or reasoning controls; Codex docs do not hardcode Codex model names. | Codex preamble generation and model-dispatch mechanics are unsupported. | `quoin/adapters/claude/models.md`, `quoin/core/workflow/skills.md`, `quoin/adapters/codex/effort.md`, `quoin/dev/tests/test_runtime_portability_docs.py` |
 | Generated adapter coverage | Portable core has 21 migrated skill contracts. | Claude adapter has per-skill `SKILL.md` files and install routing for the 21 migrated skills. | Codex adapter has generated/scaffolded per-skill README docs for all 21 migrated skills. | Generated active Claude skill files and active Codex runtime command files are not implemented. | `quoin/core/skills/`, `quoin/adapters/claude/skills/`, `quoin/adapters/codex/skills/`, `quoin/core/scripts/validate_adapter_drift.py`, `quoin/adapters/codex/generate_codex_assets.py` |
 | Smoke-test coverage | Portable docs and scripts have pytest coverage for structure and contracts. | Claude adapter drift validator and install-related tests guard Claude compatibility. | Codex readiness and smoke scripts guard repo-local setup, skill docs, and minimal architecture-plan-review path. | Live Codex runtime execution is manual and not smoke-tested by this repository. | `quoin/dev/tests/test_runtime_portability_docs.py`, `quoin/dev/tests/test_validate_adapter_drift.py`, `quoin/dev/tests/test_codex_installable_feature.py`, `quoin/dev/tests/test_codex_runtime_smoke.py` |
+| Benchmark framework | `quoin/benchmarks/` defines runtime-neutral workflow-usefulness scenarios, metrics, run sheets, result templates, and a structure validator. | Claude can be benchmarked in simple mode or with the existing Quoin Claude adapter. | Codex can be benchmarked in simple mode or with repo-local Quoin guidance. | The framework has no bundled benchmark results, live runtime automation, or Codex cost collector. | `quoin/benchmarks/benchmark-suite.json`, `quoin/benchmarks/README.md`, `quoin/benchmarks/scripts/validate_benchmarks.py`, `quoin/dev/tests/test_benchmarks.py` |
 
 ## Migrated Skill Coverage
 
