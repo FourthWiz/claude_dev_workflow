@@ -67,6 +67,16 @@ The initial Codex adapter is intentionally thin:
 
 Codex support starts as instructions and workflow discipline around shared artifacts, not as feature parity with Claude slash commands.
 
+### Codex installable feature
+
+A repo-local installable scaffold ships under `quoin/adapters/codex/`:
+
+- `installable-feature.md` — feature contract (what is and is not supported)
+- `feature-manifest.json` — machine-readable manifest; references `quoin/core/workflow/skills.json` by path, not by inline duplication
+- `generate_codex_assets.py` — generates `AGENTS.md` at a given `--project-root`
+
+The generator produces only repo-local output. Global Codex install paths, package registry behavior, and Codex command file formats remain unresolved until a stable extension point is verified.
+
 ## Candidate Shared Skills
 
 Most skill instructions contain portable workflow intent mixed with Claude runtime mechanics. For now, they stay in place as Claude skills.

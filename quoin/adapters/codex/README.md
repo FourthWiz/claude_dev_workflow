@@ -41,3 +41,21 @@ installer, and no global Codex paths are introduced.
 Execution-loop skills (implement, gate, run) and lifecycle/setup/support skills
 (end_of_task, end_of_day, weekly_review, cost_snapshot, init_workflow, discover,
 expand, rollback) remain future work.
+
+## Installable feature scaffold
+
+A repo-local installable scaffold is available under this directory:
+
+- `installable-feature.md` — feature contract (scope, generated outputs, unsupported outputs)
+- `feature-manifest.json` — machine-readable manifest referencing `quoin/core/workflow/skills.json`
+- `generate_codex_assets.py` — generates `<project-root>/AGENTS.md` from portable skill metadata
+
+Usage:
+
+```
+python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path>
+python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path> --check
+```
+
+The generator writes only to the given `--project-root`. No global Codex install paths
+or command files are produced.

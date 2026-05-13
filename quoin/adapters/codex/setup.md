@@ -27,6 +27,23 @@ Codex setup does not include:
 
 Codex should use native planning, approvals, sandboxing, repo-scoped instructions, and model or reasoning controls.
 
+## Generating AGENTS.md
+
+A generator script produces a repo-local `AGENTS.md` from portable skill metadata:
+
+```
+python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path>
+```
+
+Use `--check` to verify an existing `AGENTS.md` is up to date (exits nonzero on drift):
+
+```
+python3 quoin/adapters/codex/generate_codex_assets.py --project-root . --check
+```
+
+The feature contract and manifest are at `quoin/adapters/codex/installable-feature.md`
+and `quoin/adapters/codex/feature-manifest.json`.
+
 ## Current Use
 
 When using Codex in this repo, ask for Quoin workflow phases in natural language, for example:

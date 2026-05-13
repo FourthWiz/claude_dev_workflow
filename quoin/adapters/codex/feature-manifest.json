@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "feature_name": "repo-local-workflow-bundle",
+  "adapter": "codex",
+  "status": "experimental",
+  "description": "Generates a repo-local AGENTS.md with Quoin workflow guidance. Does not install global Codex paths or command files.",
+  "entrypoints": [
+    {
+      "type": "script",
+      "path": "quoin/adapters/codex/generate_codex_assets.py",
+      "args": ["--project-root <path>", "--check"]
+    }
+  ],
+  "portable_inputs": [
+    {
+      "path": "quoin/core/workflow/skills.json",
+      "description": "Portable skill names and effort values — referenced by name, not duplicated inline"
+    }
+  ],
+  "generated_outputs": [
+    {
+      "path": "<project-root>/AGENTS.md",
+      "scope": "repo-local",
+      "description": "Codex repo instructions for Quoin workflow phases and .workflow_artifacts/ layout"
+    }
+  ],
+  "unsupported_outputs": [
+    {
+      "name": "global Codex install",
+      "reason": "Global Codex install paths and package registry behavior are unresolved until a stable extension point is verified"
+    },
+    {
+      "name": "Codex command files",
+      "reason": "Codex command file format and discovery mechanism are not yet confirmed"
+    },
+    {
+      "name": "approval or sandbox logic",
+      "reason": "Use Codex native approval and sandboxing; Quoin must not duplicate these"
+    }
+  ],
+  "validation": {
+    "commands": [
+      "python3 -m pytest quoin/quoin/dev/tests/test_codex_installable_feature.py",
+      "python3 quoin/quoin/adapters/codex/generate_codex_assets.py --project-root . --check"
+    ],
+    "notes": "Run from the repository root. The --check flag exits nonzero on AGENTS.md drift."
+  }
+}
