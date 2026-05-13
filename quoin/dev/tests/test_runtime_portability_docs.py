@@ -51,6 +51,7 @@ def test_portable_scripts_have_core_implementation_and_wrappers():
         "path_resolve.py",
         "validate_artifact.py",
         "classify_critic_issues.py",
+        "validate_adapter_drift.py",
     ]:
         core_path = REPO_ROOT / "quoin" / "core" / "scripts" / name
         wrapper_path = REPO_ROOT / "quoin" / "scripts" / name
