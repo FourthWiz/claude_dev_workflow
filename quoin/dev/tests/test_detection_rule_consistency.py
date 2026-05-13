@@ -17,7 +17,8 @@ ADAPTER_SKILLS_DIR = PKG_DIR / "adapters" / "claude" / "skills"
 SKILL_FILES = [
     # Phase 11 migration: gate's authoritative SKILL.md lives in the Claude adapter path.
     ADAPTER_SKILLS_DIR / "gate" / "SKILL.md",
-    SKILLS_DIR / "expand" / "SKILL.md",
+    # Phase 19 migration: expand's authoritative SKILL.md lives in the Claude adapter path.
+    ADAPTER_SKILLS_DIR / "expand" / "SKILL.md",
     # Phase 9 migration: critic's authoritative SKILL.md lives in the Claude adapter path.
     ADAPTER_SKILLS_DIR / "critic" / "SKILL.md",
     # Phase 12 migration: implement's authoritative SKILL.md lives in the Claude adapter path.
