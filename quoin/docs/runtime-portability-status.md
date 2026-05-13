@@ -41,12 +41,18 @@ Status: installable.
 
 ## Codex
 
-Status: scaffolded only.
+Status: repo-local installable scaffold.
 
 - Root `AGENTS.md` provides repo-local instructions.
 - Codex adapter docs live under `quoin/adapters/codex/`.
 - Codex setup is documented in `quoin/adapters/codex/setup.md`.
-- There is no Codex installer.
+- A repo-local installable scaffold is now available:
+  - Feature contract: `quoin/adapters/codex/installable-feature.md`
+  - Machine-readable manifest: `quoin/adapters/codex/feature-manifest.json`
+  - Generator script: `quoin/adapters/codex/generate_codex_assets.py`
+  - Run `python3 quoin/quoin/adapters/codex/generate_codex_assets.py --project-root <path>` to generate `AGENTS.md`.
+  - Run with `--check` to verify an existing `AGENTS.md` is up to date.
+- There is no global Codex installer.
 - There are no Codex command files.
 - No global Codex paths are assumed.
 
@@ -74,7 +80,6 @@ Status: partially extracted.
 ## Not Started
 
 - Generated Claude skill files.
-- Generated Codex adapter files.
 - Split shared skill intent from runtime overlays — partial: `capture_insight`, `triage`, `start_of_day`, `review`, `plan`, `critic`, `revise`, `revise-fast`, `architect`, `thorough_plan`, `gate`, `implement`, `rollback`, `end_of_task`, `run`, `end_of_day`, `weekly_review`, `cost_snapshot`, `expand`, `discover`, and `init_workflow` shipped under the adapter pattern across Phases 6–21.
 - Runtime-neutral cost capture (schema extracted in Phase 23; full SKILL.md-narrowing to call `cost_event.parse_row` is deferred to a future phase).
 - Codex install target verification.

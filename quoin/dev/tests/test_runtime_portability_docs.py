@@ -178,7 +178,9 @@ def test_codex_setup_and_status_are_explicitly_not_installable():
     assert "there is no codex installer" in setup
     assert "global install" in setup
     assert "native planning, approvals, sandboxing" in setup
-    assert "status: scaffolded only" in status
+    # Codex status upgraded to repo-local installable scaffold (no global installer)
+    assert "repo-local installable scaffold" in status
+    assert "no global codex installer" in status
     assert "no global codex paths are assumed" in status
     assert "claude code" in status
     assert "status: installable" in status
