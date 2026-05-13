@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-05-13T10:00:00Z",
+  "project": {
+    "name": "quoin",
+    "root_path": "/Users/ivgo/Library/CloudStorage/GoogleDrive-ivan.gorban@gmail.com/My Drive/Storage/Codex_workflow",
+    "runtime_adapters": ["claude", "codex"],
+    "description": "Quoin workflow memory toolkit for coding agents."
+  },
+  "artifact_roots": {
+    "workflow_artifacts_path": ".workflow_artifacts",
+    "tasks_path": ".workflow_artifacts",
+    "finalized_path": ".workflow_artifacts/finalized",
+    "memory_path": ".workflow_artifacts/memory",
+    "cache_path": ".workflow_artifacts/cache"
+  },
+  "memory": {
+    "lessons_learned": ".workflow_artifacts/memory/lessons-learned.md",
+    "daily_dir": ".workflow_artifacts/memory/daily",
+    "weekly_dir": ".workflow_artifacts/memory/weekly",
+    "sessions_dir": ".workflow_artifacts/memory/sessions",
+    "memory_md_index": ".workflow_artifacts/memory/MEMORY.md",
+    "staleness_path": ".workflow_artifacts/cache/_staleness.md",
+    "repo_heads_path": ".workflow_artifacts/memory/repo-heads.md"
+  },
+  "tasks": {
+    "active": [
+      {
+        "name": "json-discovery-map",
+        "status": "active",
+        "path": ".workflow_artifacts/json-discovery-map",
+        "last_updated": "2026-05-13T10:00:00Z",
+        "architecture_path": ".workflow_artifacts/json-discovery-map/architecture.md",
+        "current_plan_path": ".workflow_artifacts/json-discovery-map/current-plan.md",
+        "stages": [
+          {
+            "id": 1,
+            "path": ".workflow_artifacts/json-discovery-map/stage-1",
+            "status": "active"
+          }
+        ]
+      }
+    ],
+    "finalized": [
+      {
+        "name": "phase-29-benchmarks",
+        "status": "finalized",
+        "path": ".workflow_artifacts/finalized/phase-29-benchmarks",
+        "last_updated": "2026-05-12T18:30:00Z"
+      }
+    ]
+  },
+  "repos": [
+    {
+      "name": "quoin",
+      "path": "quoin",
+      "head_sha": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+      "head_short": "a1b2c3d",
+      "language": "Python",
+      "entry_points": [
+        "quoin/quoin/core/scripts/validate_artifact.py",
+        "quoin/quoin/scripts/path_resolve.py"
+      ],
+      "cache_index_path": ".workflow_artifacts/cache/quoin/_index.md"
+    }
+  ],
+  "dependency_hints": [
+    {
+      "from_task": "json-discovery-map",
+      "to_task": "phase-29-benchmarks",
+      "relation": "precedes",
+      "note": "Phase 30 builds on benchmark infrastructure from phase 29."
+    }
+  ],
+  "freshness": {
+    "quoin": {
+      "head_sha": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+      "recorded_at": "2026-05-13T10:00:00Z",
+      "cache_updated_at": "2026-05-13T09:50:00Z"
+    }
+  },
+  "extensions": {
+    "claude": {
+      "session_jsonl_dir": "~/.claude/projects/-Users-ivgo-Library-CloudStorage-GoogleDrive-ivan-gorban-gmail-com-My-Drive-Storage-Codex-workflow/",
+      "installed_skills_dir": "~/.claude/skills/"
+    }
+  }
+}

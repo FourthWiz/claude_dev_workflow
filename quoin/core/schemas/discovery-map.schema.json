@@ -1,0 +1,306 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Quoin Discovery Map",
+  "description": "Portable structured snapshot of a quoin project's layout, tasks, repos, and memory. Prose reference: quoin/core/schemas/discovery-map.md",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "project",
+    "artifact_roots",
+    "memory",
+    "tasks",
+    "repos"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "enum": [1],
+      "description": "Schema version integer. Currently 1."
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "ISO 8601 timestamp with timezone designator (Z or +HH:MM) indicating when the map was generated."
+    },
+    "project": {
+      "$ref": "#/definitions/ProjectIdentity"
+    },
+    "artifact_roots": {
+      "$ref": "#/definitions/ArtifactRoots"
+    },
+    "memory": {
+      "$ref": "#/definitions/MemoryIndex"
+    },
+    "tasks": {
+      "type": "object",
+      "description": "Container for active and finalized task summaries.",
+      "required": ["active", "finalized"],
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/TaskSummary" }
+        },
+        "finalized": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/TaskSummary" }
+        }
+      }
+    },
+    "repos": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/RepoSummary" }
+    },
+    "dependency_hints": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/DependencyHint" }
+    },
+    "freshness": {
+      "type": "object",
+      "description": "Object keyed by repo short-name; each value is a FreshnessEntry.",
+      "additionalProperties": { "$ref": "#/definitions/FreshnessEntry" }
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Adapter-specific extension namespace. Any string key is permitted; values must be objects. Keys should follow the convention extensions.<adapter-name> (e.g., extensions.claude).",
+      "additionalProperties": {
+        "type": "object"
+      }
+    }
+  },
+  "definitions": {
+    "ProjectIdentity": {
+      "type": "object",
+      "required": ["name", "root_path", "runtime_adapters"],
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Project short name (e.g., 'quoin')."
+        },
+        "root_path": {
+          "type": "string",
+          "description": "Absolute OS-native path to the project root. This is the only path-bearing field that is absolute; all others are repo-relative."
+        },
+        "runtime_adapters": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Open-ended list of runtime adapter names (e.g., ['claude', 'codex']). Validator does not validate adapter-name semantics."
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional human-readable project description."
+        }
+      }
+    },
+    "ArtifactRoots": {
+      "type": "object",
+      "required": [
+        "workflow_artifacts_path",
+        "tasks_path",
+        "finalized_path",
+        "memory_path"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "workflow_artifacts_path": {
+          "type": "string",
+          "description": "Repo-relative path to .workflow_artifacts/ root."
+        },
+        "tasks_path": {
+          "type": "string",
+          "description": "Repo-relative path to active tasks directory."
+        },
+        "finalized_path": {
+          "type": "string",
+          "description": "Repo-relative path to finalized tasks directory."
+        },
+        "memory_path": {
+          "type": "string",
+          "description": "Repo-relative path to memory directory."
+        },
+        "cache_path": {
+          "type": "string",
+          "description": "Repo-relative path to cache directory. Optional — may be absent if cache has not been built."
+        }
+      }
+    },
+    "MemoryIndex": {
+      "type": "object",
+      "required": [
+        "lessons_learned",
+        "daily_dir",
+        "weekly_dir",
+        "sessions_dir"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "lessons_learned": {
+          "type": "string",
+          "description": "Repo-relative path to lessons-learned.md."
+        },
+        "daily_dir": {
+          "type": "string",
+          "description": "Repo-relative path to daily briefings directory."
+        },
+        "weekly_dir": {
+          "type": "string",
+          "description": "Repo-relative path to weekly briefings directory."
+        },
+        "sessions_dir": {
+          "type": "string",
+          "description": "Repo-relative path to per-session state files directory."
+        },
+        "memory_md_index": {
+          "type": "string",
+          "description": "Optional repo-relative path to MEMORY.md index."
+        },
+        "staleness_path": {
+          "type": "string",
+          "description": "Optional repo-relative path to _staleness.md. Preferred over repo_heads_path per CLAUDE.md."
+        },
+        "repo_heads_path": {
+          "type": "string",
+          "description": "Optional repo-relative path to legacy repo-heads.md. Fallback if staleness_path absent."
+        }
+      }
+    },
+    "TaskSummary": {
+      "type": "object",
+      "required": ["name", "status", "path", "last_updated"],
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Task name (kebab-case, e.g., 'auth-refactor')."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "finalized"],
+          "description": "Task lifecycle status."
+        },
+        "path": {
+          "type": "string",
+          "description": "Repo-relative path to the task's artifact directory."
+        },
+        "last_updated": {
+          "type": "string",
+          "description": "ISO 8601 timestamp with timezone designator of most recent update."
+        },
+        "stages": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/StageSummary" },
+          "description": "Optional list of stage summaries for multi-stage tasks."
+        },
+        "architecture_path": {
+          "type": "string",
+          "description": "Optional repo-relative path to architecture.md."
+        },
+        "current_plan_path": {
+          "type": "string",
+          "description": "Optional repo-relative path to current-plan.md."
+        }
+      }
+    },
+    "StageSummary": {
+      "type": "object",
+      "required": ["id", "path", "status"],
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "type": "integer",
+          "description": "Stage number (1-based)."
+        },
+        "path": {
+          "type": "string",
+          "description": "Repo-relative path to the stage artifact directory."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "active", "finalized"],
+          "description": "Stage lifecycle status."
+        }
+      }
+    },
+    "RepoSummary": {
+      "type": "object",
+      "required": ["name", "path", "head_sha", "head_short"],
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Repository short name."
+        },
+        "path": {
+          "type": "string",
+          "description": "Repo-relative path to repository root."
+        },
+        "head_sha": {
+          "type": "string",
+          "description": "Full 40-character git SHA of HEAD."
+        },
+        "head_short": {
+          "type": "string",
+          "description": "7-character abbreviated git SHA of HEAD."
+        },
+        "language": {
+          "type": "string",
+          "description": "Optional primary programming language."
+        },
+        "entry_points": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional list of repo-relative paths to entry-point files."
+        },
+        "cache_index_path": {
+          "type": "string",
+          "description": "Optional repo-relative path to cache _index.md. Absent if cache not built."
+        }
+      }
+    },
+    "DependencyHint": {
+      "type": "object",
+      "required": ["from_task", "to_task", "relation"],
+      "additionalProperties": true,
+      "properties": {
+        "from_task": {
+          "type": "string",
+          "description": "Source task name."
+        },
+        "to_task": {
+          "type": "string",
+          "description": "Target task name."
+        },
+        "relation": {
+          "type": "string",
+          "enum": ["references", "precedes", "derives_from"],
+          "description": "Relationship type between tasks."
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional human-readable note about the dependency."
+        }
+      }
+    },
+    "FreshnessEntry": {
+      "type": "object",
+      "required": ["head_sha", "recorded_at"],
+      "additionalProperties": true,
+      "properties": {
+        "head_sha": {
+          "type": "string",
+          "description": "Full git SHA at time of recording."
+        },
+        "recorded_at": {
+          "type": "string",
+          "description": "ISO 8601 timestamp with timezone designator when freshness was recorded."
+        },
+        "cache_updated_at": {
+          "type": "string",
+          "description": "Optional ISO 8601 timestamp with timezone designator when cache was last updated. Absent if cache not built."
+        }
+      }
+    }
+  }
+}
