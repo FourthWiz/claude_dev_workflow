@@ -101,26 +101,63 @@ def deploy_quickstart(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None
 # ── T-05 ──────────────────────────────────────────────────────────────────────
 
 def deploy_skills(source_dir: pathlib.Path, dest_root: pathlib.Path) -> int:
-    """Copy skills from source_dir/skills/ to dest_root/skills/. Returns count copied."""
+    """Copy skills from source_dir/skills/ to dest_root/skills/. Returns count copied.
+
+    When a Claude adapter SKILL.md exists at
+    source_dir/adapters/claude/skills/<name>/SKILL.md, it takes precedence over
+    the legacy stub at source_dir/skills/<name>/SKILL.md. This supports the
+    runtime-portability migration where real skill content moves to the adapter
+    path and the skills/ entry becomes a thin stub.
+    """
     src_skills = source_dir / "skills"
+    src_adapter = source_dir / "adapters" / "claude" / "skills"
     dst_skills = dest_root / "skills"
     count = 0
     for skill_dir in sorted(src_skills.iterdir()):
         if not skill_dir.is_dir():
             continue
-        dst_skill = dst_skills / skill_dir.name
+        skill_name = skill_dir.name
+        dst_skill = dst_skills / skill_name
         dst_skill.mkdir(parents=True, exist_ok=True)
-        skill_md = skill_dir / "SKILL.md"
+        # Prefer Claude adapter path when available (runtime-portability migration).
+        adapter_md = src_adapter / skill_name / "SKILL.md"
+        skill_md = adapter_md if adapter_md.exists() else skill_dir / "SKILL.md"
         if not skill_md.exists():
             print(f"quoin: Expected SKILL.md at {skill_md} but not found", file=sys.stderr)
             sys.exit(1)
         shutil.copyfile(skill_md, dst_skill / "SKILL.md")
+        if adapter_md.exists():
+            print(f"Deploying {skill_name} from Claude adapter path")
         preamble = skill_dir / "preamble.md"
         if preamble.exists():
             shutil.copyfile(preamble, dst_skill / "preamble.md")
         count += 1
     print(f"Copied {count} skills to ~/.claude/skills/")
     return count
+
+
+# Portable core scripts deployed alongside the adapter wrappers in ~/.claude/scripts/.
+CORE_SCRIPTS = (
+    "validate_artifact.py",
+    "path_resolve.py",
+    "classify_critic_issues.py",
+)
+
+
+def deploy_core_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
+    """Copy portable core scripts from source_dir/core/scripts/ to dest_root/core/scripts/."""
+    src_core = source_dir / "core" / "scripts"
+    dst_core = dest_root / "core" / "scripts"
+    dst_core.mkdir(parents=True, exist_ok=True)
+    for fname in CORE_SCRIPTS:
+        src = src_core / fname
+        if not src.exists():
+            print(f"quoin: Expected core script {fname} at {src} but not found", file=sys.stderr)
+            sys.exit(1)
+        dst = dst_core / fname
+        shutil.copyfile(src, dst)
+        os.chmod(dst, 0o755)
+        print(f"Copied core {fname} to ~/.claude/core/scripts/")
 
 
 def deploy_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
