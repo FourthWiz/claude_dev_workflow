@@ -41,11 +41,8 @@ htmlcov/
 .claude/
 .venv/
 
-# Benchmark run output is generated evidence, not source. Keep generated runs
-# ignored by default, but allow curated checked-in evidence folders explicitly.
-/benchmark-results/*
-!/benchmark-results/phase-37-codex-2026-05-14/
-!/benchmark-results/phase-37-codex-2026-05-14/**
+# Benchmark run output is generated evidence, not source.
+/benchmark-results/
 # /expand --save output files (scratch; use sparingly)
 *.expanded-*.md
 
