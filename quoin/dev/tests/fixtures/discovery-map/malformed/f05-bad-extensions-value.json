@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-05-13T10:00:00Z",
+  "project": {
+    "name": "quoin",
+    "root_path": "/Users/ivgo/example",
+    "runtime_adapters": ["claude"]
+  },
+  "artifact_roots": {
+    "workflow_artifacts_path": ".workflow_artifacts",
+    "tasks_path": ".workflow_artifacts",
+    "finalized_path": ".workflow_artifacts/finalized",
+    "memory_path": ".workflow_artifacts/memory"
+  },
+  "memory": {
+    "lessons_learned": ".workflow_artifacts/memory/lessons-learned.md",
+    "daily_dir": ".workflow_artifacts/memory/daily",
+    "weekly_dir": ".workflow_artifacts/memory/weekly",
+    "sessions_dir": ".workflow_artifacts/memory/sessions"
+  },
+  "tasks": {
+    "active": [],
+    "finalized": []
+  },
+  "repos": [],
+  "extensions": {
+    "claude": "this-should-be-an-object-not-a-string"
+  }
+}
