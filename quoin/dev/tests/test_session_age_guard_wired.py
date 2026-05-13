@@ -14,7 +14,7 @@ Checks:
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-EOT_SKILL = REPO_ROOT / "quoin" / "skills" / "end_of_task" / "SKILL.md"
+EOT_SKILL = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "end_of_task" / "SKILL.md"
 RUN_SKILL = REPO_ROOT / "quoin" / "skills" / "run" / "SKILL.md"
 
 
