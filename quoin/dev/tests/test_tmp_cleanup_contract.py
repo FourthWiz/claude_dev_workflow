@@ -13,6 +13,7 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 SKILLS_DIR = PROJECT_ROOT / "quoin" / "skills"
 ADAPTER_SKILLS_DIR = PROJECT_ROOT / "quoin" / "adapters" / "claude" / "skills"
 MIGRATED_SKILLS_DIR_OVERRIDES = {
+    "architect": ADAPTER_SKILLS_DIR,
     "review": ADAPTER_SKILLS_DIR,
     "plan": ADAPTER_SKILLS_DIR,
     "revise": ADAPTER_SKILLS_DIR,

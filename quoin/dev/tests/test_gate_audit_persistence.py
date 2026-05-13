@@ -11,7 +11,7 @@ import re
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent
 GATE_SKILL = PROJECT_ROOT / "quoin" / "skills" / "gate" / "SKILL.md"
 RUN_SKILL = PROJECT_ROOT / "quoin" / "skills" / "run" / "SKILL.md"
-THOROUGH_PLAN_SKILL = PROJECT_ROOT / "quoin" / "skills" / "thorough_plan" / "SKILL.md"
+THOROUGH_PLAN_SKILL = PROJECT_ROOT / "quoin" / "adapters" / "claude" / "skills" / "thorough_plan" / "SKILL.md"
 
 
 def _lines_after_heading(text: str, heading: str, window: int = 35) -> str:
