@@ -77,6 +77,8 @@ A repo-local setup scaffold ships under `quoin/adapters/codex/`:
 - `feature-manifest.json` — machine-readable manifest; references `quoin/core/workflow/skills.json` by path, not by inline duplication
 - `generate_codex_assets.py` — generates `AGENTS.md` at a given `--project-root`
 - `verify_codex_readiness.py` — verifies root instructions, portable core docs, Codex adapter docs, manifest scope, no guessed global Codex paths, and Claude install isolation
+- `smoke_codex_workflow.py` — validates the documented repo-local Codex path
+  from setup instructions to portable workflow artifacts
 
 The generator produces only repo-local output. The readiness check reads only
 repo-local files. Global Codex install paths, package registry behavior, and
@@ -99,6 +101,23 @@ These files are adapter docs, not Codex command files. They do not define global
 Codex install paths, approval behavior, sandbox behavior, or model-dispatch
 mechanics. Codex still uses native runtime behavior and preserves Quoin only at
 the artifact/workflow layer.
+
+### Phase 27 — Codex runtime smoke test
+
+Phase 27 adds `quoin/adapters/codex/smoke_codex_workflow.py`, a deterministic
+repository smoke test for the minimal Codex workflow path. It does not attempt
+to automate live Codex runtime behavior. Instead, it checks that the files and
+links a Codex session would need are present and coherent:
+
+- root `AGENTS.md`
+- Codex setup and adapter docs
+- Codex skill adapter docs for `architect`, `plan`, and `review`
+- portable core skill docs
+- portable workflow docs for task layout, session state, and cost ledger
+
+The smoke test also guards the Codex path against Claude global paths,
+Claude slash-command requirements, Claude install routing, guessed Codex global
+paths, and `ccusage` as a required Codex dependency.
 
 ## Candidate Shared Skills
 

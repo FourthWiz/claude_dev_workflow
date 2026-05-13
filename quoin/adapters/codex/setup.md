@@ -53,6 +53,25 @@ Passing this check means the repository is ready for Codex to use Quoin's
 repo-local artifact workflow. It does not mean Quoin has installed anything into
 a global Codex runtime.
 
+## Runtime Smoke Test
+
+Phase 27 adds a deterministic repo-local smoke test for the Codex path:
+
+```
+python3 quoin/adapters/codex/smoke_codex_workflow.py --project-root .
+```
+
+The smoke test follows the documented path from `AGENTS.md` and Codex adapter
+setup docs to `quoin/adapters/codex/skills/`, `quoin/core/skills/`, and
+`quoin/core/workflow/`. It verifies that minimal architecture, plan, review,
+and cost-ledger artifact semantics are reachable without Claude global paths,
+Claude slash-command requirements, Claude install routing, or `ccusage` as a
+required Codex dependency.
+
+Passing this smoke test means the files and assumptions needed for a minimal
+repo-local Codex Quoin workflow are coherent. It still does not automate live
+Codex runtime behavior or install a Codex extension.
+
 ## Generating AGENTS.md
 
 A generator script produces a repo-local `AGENTS.md` from portable skill metadata:

@@ -29,6 +29,7 @@ def test_runtime_portability_docs_exist():
         "quoin/adapters/codex/effort.md",
         "quoin/adapters/codex/setup.md",
         "quoin/adapters/codex/verify_codex_readiness.py",
+        "quoin/adapters/codex/smoke_codex_workflow.py",
     ]
     missing = [path for path in expected if not (REPO_ROOT / path).is_file()]
     assert not missing, f"Missing runtime-portability docs: {missing}"

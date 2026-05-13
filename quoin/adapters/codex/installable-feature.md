@@ -70,6 +70,18 @@ manifest scope, absence of guessed global Codex paths in active Codex facing
 docs, and isolation of the Claude installer. It does not inspect or write a
 global Codex runtime.
 
+The Phase 27 smoke test is:
+
+```
+python3 quoin/adapters/codex/smoke_codex_workflow.py --project-root .
+```
+
+It validates the repo-local path a Codex session would need for a minimal
+Quoin workflow: root `AGENTS.md`, Codex setup docs, Codex skill adapter docs,
+portable skill contracts, and portable workflow artifact docs. It also checks
+that this path does not require Claude global paths, Claude slash-command
+invocation, Claude install routing, or `ccusage` for Codex.
+
 ## Generator usage
 
 ```

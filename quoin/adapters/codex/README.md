@@ -44,6 +44,9 @@ A repo-local setup scaffold is available under this directory:
 - `feature-manifest.json` — machine-readable manifest referencing `quoin/core/workflow/skills.json`
 - `generate_codex_assets.py` — generates `<project-root>/AGENTS.md` and, when requested, Codex skill adapter docs from portable skill metadata
 - `verify_codex_readiness.py` — verifies the repo-local Codex setup contract without inspecting global Codex locations
+- `smoke_codex_workflow.py` — follows the repo-local Codex setup path through
+  adapter docs and portable core workflow docs to prove a minimal workflow is
+  coherent
 - `skills/` — generated/scaffolded Codex adapter docs for all portable skills
 - `unsupported-claude-behavior.md` — shared notes for Claude-only behavior that is not translated into Codex
 
@@ -54,10 +57,11 @@ python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path>
 python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path> --check
 python3 quoin/adapters/codex/generate_codex_assets.py --project-root . --adapter-assets --check
 python3 quoin/adapters/codex/verify_codex_readiness.py --project-root .
+python3 quoin/adapters/codex/smoke_codex_workflow.py --project-root .
 ```
 
 The default generator path writes only to the given `--project-root`. The
 `--adapter-assets` option writes generated/scaffolded docs under the
 repo-local Codex adapter directory (or an explicit `--adapter-root`). The
-readiness check reads repository files only. No global Codex install paths or
-command files are produced.
+readiness and smoke checks read repository files only. No global Codex install
+paths or command files are produced.

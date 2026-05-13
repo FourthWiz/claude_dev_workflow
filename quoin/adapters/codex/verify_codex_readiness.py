@@ -110,6 +110,7 @@ def check_codex_adapter_docs() -> CheckResult:
         SCRIPT_DIR / "installable-feature.md",
         SCRIPT_DIR / "feature-manifest.json",
         SCRIPT_DIR / "generate_codex_assets.py",
+        SCRIPT_DIR / "smoke_codex_workflow.py",
         SCRIPT_DIR / "skills" / "README.md",
         SCRIPT_DIR / "unsupported-claude-behavior.md",
     ]

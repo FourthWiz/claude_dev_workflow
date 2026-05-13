@@ -14,6 +14,11 @@
       "type": "script",
       "path": "quoin/adapters/codex/verify_codex_readiness.py",
       "args": ["--project-root <path>"]
+    },
+    {
+      "type": "script",
+      "path": "quoin/adapters/codex/smoke_codex_workflow.py",
+      "args": ["--project-root <path>"]
     }
   ],
   "portable_inputs": [
@@ -66,7 +71,8 @@
     "commands": [
       "python3 -m pytest quoin/dev/tests/test_codex_installable_feature.py",
       "python3 quoin/adapters/codex/generate_codex_assets.py --project-root . --adapter-assets --check",
-      "python3 quoin/adapters/codex/verify_codex_readiness.py --project-root ."
+      "python3 quoin/adapters/codex/verify_codex_readiness.py --project-root .",
+      "python3 quoin/adapters/codex/smoke_codex_workflow.py --project-root ."
     ],
     "notes": "Run from the repository root. The readiness check verifies repo-local Codex setup evidence only; it does not inspect or write global Codex locations."
   }

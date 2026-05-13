@@ -21,6 +21,7 @@ CODEX_SKILLS_DIR = CODEX_ADAPTER_DIR / "skills"
 MANIFEST_PATH = CODEX_ADAPTER_DIR / "feature-manifest.json"
 GENERATOR_PATH = CODEX_ADAPTER_DIR / "generate_codex_assets.py"
 READINESS_PATH = CODEX_ADAPTER_DIR / "verify_codex_readiness.py"
+SMOKE_PATH = CODEX_ADAPTER_DIR / "smoke_codex_workflow.py"
 CONTRACT_PATH = CODEX_ADAPTER_DIR / "installable-feature.md"
 SKILLS_JSON_PATH = PKG_DIR / "core" / "workflow" / "skills.json"
 CORE_SKILLS_DIR = PKG_DIR / "core" / "skills"
@@ -38,7 +39,13 @@ CLAUDE_ONLY_PATH_PATTERNS = [
     "$HOME/." + "claude",
     ".claude/",
     "CLAUDE.md",
-    "ccusage",
+]
+
+REQUIRED_CCUSAGE_PATTERNS = [
+    "requires ccusage",
+    "require ccusage",
+    "depends on ccusage",
+    "install ccusage",
 ]
 
 
@@ -93,12 +100,14 @@ def test_manifest_references_skills_json():
 
 
 def test_manifest_exposes_readiness_check():
-    """Manifest entrypoints and validation must include the repo-local readiness check."""
+    """Manifest entrypoints and validation must include repo-local checks."""
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     entrypoint_paths = [entry.get("path", "") for entry in manifest.get("entrypoints", [])]
     validation = "\n".join(manifest.get("validation", {}).get("commands", []))
     assert any("verify_codex_readiness.py" in path for path in entrypoint_paths)
     assert "verify_codex_readiness.py" in validation
+    assert any("smoke_codex_workflow.py" in path for path in entrypoint_paths)
+    assert "smoke_codex_workflow.py" in validation
 
 
 def test_manifest_generated_output_is_repo_local():
@@ -134,6 +143,14 @@ def test_codex_adapter_files_avoid_claude_only_paths():
     assert not hits, f"Codex adapter files contain Claude-only path assumptions: {hits}"
 
 
+def test_codex_adapter_files_do_not_require_ccusage():
+    """Codex facing files may mention ccusage only as unsupported Claude cost tooling."""
+    active_files = _codex_adapter_text_files()
+    combined = "\n".join(path.read_text(encoding="utf-8").lower() for path in active_files)
+    hits = [p for p in REQUIRED_CCUSAGE_PATTERNS if p in combined]
+    assert not hits, f"Codex adapter files make ccusage a required dependency: {hits}"
+
+
 def test_manifest_documents_unsupported_global_install():
     """Manifest must explicitly document that global install is unsupported."""
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
@@ -154,6 +171,10 @@ def test_generator_script_exists():
 
 def test_readiness_script_exists():
     assert READINESS_PATH.is_file(), f"Missing {READINESS_PATH}"
+
+
+def test_smoke_script_exists():
+    assert SMOKE_PATH.is_file(), f"Missing {SMOKE_PATH}"
 
 
 def test_generator_writes_agents_md_to_project_root():
