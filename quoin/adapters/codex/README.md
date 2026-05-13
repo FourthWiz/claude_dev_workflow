@@ -1,6 +1,6 @@
 # Codex Adapter
 
-The Codex adapter starts as a thin repo-local instruction layer.
+The Codex adapter starts as a thin repo-local instruction and readiness layer.
 
 Codex should use Quoin's portable artifact workflow:
 
@@ -21,7 +21,9 @@ Codex should also use native Codex behavior where it already exists:
 
 Quoin must not guess Codex global install paths, create a custom approval system, or duplicate sandbox enforcement.
 
-The initial Codex entrypoint is the repository `AGENTS.md`. There is no Codex installer in this pass.
+The initial Codex entrypoint is the repository `AGENTS.md`. There is no verified
+stable Codex global install target in this repository, so there is no Codex
+installer in this pass.
 
 Per-skill portable intent docs now exist at
 `quoin/core/skills/capture_insight.md`,
@@ -42,20 +44,23 @@ Execution-loop skills (implement, gate, run) and lifecycle/setup/support skills
 (end_of_task, end_of_day, weekly_review, cost_snapshot, init_workflow, discover,
 expand, rollback) remain future work.
 
-## Installable feature scaffold
+## Repo-local setup scaffold
 
-A repo-local installable scaffold is available under this directory:
+A repo-local setup scaffold is available under this directory:
 
 - `installable-feature.md` — feature contract (scope, generated outputs, unsupported outputs)
 - `feature-manifest.json` — machine-readable manifest referencing `quoin/core/workflow/skills.json`
 - `generate_codex_assets.py` — generates `<project-root>/AGENTS.md` from portable skill metadata
+- `verify_codex_readiness.py` — verifies the repo-local Codex setup contract without inspecting global Codex locations
 
 Usage:
 
 ```
 python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path>
 python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path> --check
+python3 quoin/adapters/codex/verify_codex_readiness.py --project-root .
 ```
 
-The generator writes only to the given `--project-root`. No global Codex install paths
-or command files are produced.
+The generator writes only to the given `--project-root`. The readiness check
+reads repository files only. No global Codex install paths or command files are
+produced.

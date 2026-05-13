@@ -1,6 +1,8 @@
 # Codex Setup
 
-Codex support is repo-local in this pass. There is no Codex installer.
+Codex support is repo-local in this pass. There is no verified stable Codex
+global install target in this repository, so Quoin does not provide a Codex
+installer.
 
 ## What Setup Means
 
@@ -26,6 +28,27 @@ Codex setup does not include:
 - Claude slash-command compatibility
 
 Codex should use native planning, approvals, sandboxing, repo-scoped instructions, and model or reasoning controls.
+
+## Readiness Check
+
+The repo-local readiness check verifies only evidence Quoin can inspect:
+
+- `AGENTS.md` exists at the project root and points workflow artifacts to that root
+- portable workflow docs and `quoin/core/workflow/skills.json` exist
+- Codex adapter docs and manifest exist
+- generated Codex outputs are scoped to `repo-local`
+- Codex docs avoid guessed global paths and command packaging claims
+- `quoin/install.sh` remains Claude-only
+
+Run from the repository root:
+
+```
+python3 quoin/adapters/codex/verify_codex_readiness.py --project-root .
+```
+
+Passing this check means the repository is ready for Codex to use Quoin's
+repo-local artifact workflow. It does not mean Quoin has installed anything into
+a global Codex runtime.
 
 ## Generating AGENTS.md
 

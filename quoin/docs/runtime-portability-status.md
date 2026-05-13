@@ -41,20 +41,24 @@ Status: installable.
 
 ## Codex
 
-Status: repo-local installable scaffold.
+Status: repo-local setup/readiness only; no verified global install target.
 
 - Root `AGENTS.md` provides repo-local instructions.
 - Codex adapter docs live under `quoin/adapters/codex/`.
 - Codex setup is documented in `quoin/adapters/codex/setup.md`.
-- A repo-local installable scaffold is now available:
+- A repo-local setup scaffold is now available:
   - Feature contract: `quoin/adapters/codex/installable-feature.md`
   - Machine-readable manifest: `quoin/adapters/codex/feature-manifest.json`
   - Generator script: `quoin/adapters/codex/generate_codex_assets.py`
-  - Run `python3 quoin/quoin/adapters/codex/generate_codex_assets.py --project-root <path>` to generate `AGENTS.md`.
+  - Readiness script: `quoin/adapters/codex/verify_codex_readiness.py`
+  - Run `python3 quoin/adapters/codex/generate_codex_assets.py --project-root <path>` to generate `AGENTS.md`.
   - Run with `--check` to verify an existing `AGENTS.md` is up to date.
+  - Run `python3 quoin/adapters/codex/verify_codex_readiness.py --project-root .` to verify repo-local readiness.
 - There is no global Codex installer.
 - There are no Codex command files.
 - No global Codex paths are assumed.
+- Passing readiness means Codex can use Quoin's repo-local artifact workflow; it
+  does not mean a Codex runtime extension has been installed.
 
 ## Portable Core
 
@@ -66,6 +70,12 @@ Status: partially extracted.
 - Shared reference material still lives under `quoin/memory/`.
 
 **Phase 23 (2026-05-12):** Extracted the portable cost-event schema (`quoin/core/scripts/cost_event.py`) with a `CostEvent` dataclass and pure functions `parse_row`, `format_row`, and `iter_events`. Expanded the portable cost-ledger contract (`quoin/core/workflow/cost-ledger.md`) from a 35-line stub into a full ~110-line portable contract covering row shape, append-only invariant, schema mapping, tolerated variations, malformed inputs, and out-of-scope boundaries. Runtime-specific cost collection (Claude session-log parsing, ccusage, model pricing) remains adapter-owned at `quoin/scripts/cost_from_jsonl.py`, `session_age_guard.py`, and `measure_revise_crossover_cost.py`, each annotated with a CLAUDE-ADAPTER-OWNED banner. A Codex cost collector is explicitly future work; no Codex pricing or session-ID acquisition is implemented in this phase.
+
+**Phase 25 (2026-05-13):** Verified that this repository contains no stable
+Codex global install target or command packaging contract. Codex remains
+repo-local setup/readiness only. Added `verify_codex_readiness.py` to check root
+instructions, portable workflow docs, Codex adapter docs, manifest scope, no
+guessed global Codex paths, and Claude install isolation.
 
 ## Still Claude-Specific
 
@@ -82,4 +92,3 @@ Status: partially extracted.
 - Generated Claude skill files.
 - Split shared skill intent from runtime overlays — partial: `capture_insight`, `triage`, `start_of_day`, `review`, `plan`, `critic`, `revise`, `revise-fast`, `architect`, `thorough_plan`, `gate`, `implement`, `rollback`, `end_of_task`, `run`, `end_of_day`, `weekly_review`, `cost_snapshot`, `expand`, `discover`, and `init_workflow` shipped under the adapter pattern across Phases 6–21.
 - Runtime-neutral cost capture (schema extracted in Phase 23; full SKILL.md-narrowing to call `cost_event.parse_row` is deferred to a future phase).
-- Codex install target verification.

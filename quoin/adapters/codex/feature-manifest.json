@@ -2,13 +2,18 @@
   "schema_version": 1,
   "feature_name": "repo-local-workflow-bundle",
   "adapter": "codex",
-  "status": "experimental",
-  "description": "Generates a repo-local AGENTS.md with Quoin workflow guidance. Does not install global Codex paths or command files.",
+  "status": "repo-local-readiness",
+  "description": "Generates and verifies repo-local AGENTS.md guidance for Quoin workflow use in Codex. Does not install global Codex paths or command files.",
   "entrypoints": [
     {
       "type": "script",
       "path": "quoin/adapters/codex/generate_codex_assets.py",
       "args": ["--project-root <path>", "--check"]
+    },
+    {
+      "type": "script",
+      "path": "quoin/adapters/codex/verify_codex_readiness.py",
+      "args": ["--project-root <path>"]
     }
   ],
   "portable_inputs": [
@@ -40,9 +45,9 @@
   ],
   "validation": {
     "commands": [
-      "python3 -m pytest quoin/quoin/dev/tests/test_codex_installable_feature.py",
-      "python3 quoin/quoin/adapters/codex/generate_codex_assets.py --project-root . --check"
+      "python3 -m pytest quoin/dev/tests/test_codex_installable_feature.py",
+      "python3 quoin/adapters/codex/verify_codex_readiness.py --project-root ."
     ],
-    "notes": "Run from the repository root. The --check flag exits nonzero on AGENTS.md drift."
+    "notes": "Run from the repository root. The readiness check verifies repo-local Codex setup evidence only; it does not inspect or write global Codex locations."
   }
 }

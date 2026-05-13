@@ -15,18 +15,20 @@ from pathlib import Path
 
 THIS_FILE = Path(__file__).resolve()
 TESTS_DIR = THIS_FILE.parent
-PKG_DIR = TESTS_DIR.parent.parent              # quoin/quoin/
+PKG_DIR = TESTS_DIR.parent.parent
 CODEX_ADAPTER_DIR = PKG_DIR / "adapters" / "codex"
 MANIFEST_PATH = CODEX_ADAPTER_DIR / "feature-manifest.json"
 GENERATOR_PATH = CODEX_ADAPTER_DIR / "generate_codex_assets.py"
+READINESS_PATH = CODEX_ADAPTER_DIR / "verify_codex_readiness.py"
 CONTRACT_PATH = CODEX_ADAPTER_DIR / "installable-feature.md"
 SKILLS_JSON_PATH = PKG_DIR / "core" / "workflow" / "skills.json"
+REPO_ROOT = PKG_DIR.parent
 
 GUESSED_GLOBAL_PATTERNS = [
-    "~/.codex",
-    "/usr/local/codex",
+    "~/." + "codex",
+    "/usr/local/" + "codex",
     "codex install",
-    "npm install -g",
+    "npm install" + " -g",
 ]
 
 
@@ -65,6 +67,15 @@ def test_manifest_references_skills_json():
     )
 
 
+def test_manifest_exposes_readiness_check():
+    """Manifest entrypoints and validation must include the repo-local readiness check."""
+    manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    entrypoint_paths = [entry.get("path", "") for entry in manifest.get("entrypoints", [])]
+    validation = "\n".join(manifest.get("validation", {}).get("commands", []))
+    assert any("verify_codex_readiness.py" in path for path in entrypoint_paths)
+    assert "verify_codex_readiness.py" in validation
+
+
 def test_manifest_generated_output_is_repo_local():
     """Generated outputs must be repo-local (no global paths)."""
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
@@ -80,6 +91,21 @@ def test_manifest_avoids_guessed_global_paths():
     text = MANIFEST_PATH.read_text(encoding="utf-8")
     hits = [p for p in GUESSED_GLOBAL_PATTERNS if p in text]
     assert not hits, f"Manifest contains guessed global paths: {hits}"
+
+
+def test_codex_adapter_active_files_avoid_guessed_global_paths():
+    """Codex adapter files must not hardcode guessed global Codex paths."""
+    active_files = [
+        CODEX_ADAPTER_DIR / "README.md",
+        CODEX_ADAPTER_DIR / "setup.md",
+        CODEX_ADAPTER_DIR / "installable-feature.md",
+        CODEX_ADAPTER_DIR / "feature-manifest.json",
+        CODEX_ADAPTER_DIR / "generate_codex_assets.py",
+        CODEX_ADAPTER_DIR / "verify_codex_readiness.py",
+    ]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in active_files)
+    hits = [p for p in GUESSED_GLOBAL_PATTERNS if p in combined]
+    assert not hits, f"Codex adapter files contain guessed global paths: {hits}"
 
 
 def test_manifest_documents_unsupported_global_install():
@@ -98,6 +124,10 @@ def test_manifest_documents_unsupported_global_install():
 
 def test_generator_script_exists():
     assert GENERATOR_PATH.is_file(), f"Missing {GENERATOR_PATH}"
+
+
+def test_readiness_script_exists():
+    assert READINESS_PATH.is_file(), f"Missing {READINESS_PATH}"
 
 
 def test_generator_writes_agents_md_to_project_root():
@@ -198,6 +228,42 @@ def test_generated_agents_md_uses_skills_json():
             f"Generated AGENTS.md should include multiple skill names from skills.json; "
             f"found only: {present}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Readiness tests
+# ---------------------------------------------------------------------------
+
+
+def test_readiness_check_passes_for_repo_root():
+    """Readiness check must pass for this repo-local Codex setup."""
+    result = subprocess.run(
+        [sys.executable, str(READINESS_PATH), "--project-root", str(REPO_ROOT)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, (
+        f"Readiness check failed:\nstdout={result.stdout}\nstderr={result.stderr}"
+    )
+    assert "READY: repo-local Codex setup contract is satisfied" in result.stdout
+
+
+def test_readiness_check_fails_without_agents_md():
+    """Readiness check must fail if the project root lacks AGENTS.md."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = subprocess.run(
+            [sys.executable, str(READINESS_PATH), "--project-root", tmpdir],
+            capture_output=True, text=True,
+        )
+        assert result.returncode != 0
+        assert "agents-md" in result.stdout
+
+
+def test_claude_install_remains_codex_free():
+    """Claude install behavior stays isolated from the Codex setup flow."""
+    install_sh = PKG_DIR / "install.sh"
+    text = install_sh.read_text(encoding="utf-8").lower()
+    assert "codex" not in text
+    assert ".claude" in text
 
 
 # ---------------------------------------------------------------------------

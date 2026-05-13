@@ -28,6 +28,7 @@ def test_runtime_portability_docs_exist():
         "quoin/adapters/codex/README.md",
         "quoin/adapters/codex/effort.md",
         "quoin/adapters/codex/setup.md",
+        "quoin/adapters/codex/verify_codex_readiness.py",
     ]
     missing = [path for path in expected if not (REPO_ROOT / path).is_file()]
     assert not missing, f"Missing runtime-portability docs: {missing}"
@@ -166,7 +167,7 @@ def test_codex_docs_do_not_guess_global_install_paths():
         read_rel("quoin/docs/effort-levels.md"),
     ]
     combined = "\n".join(docs)
-    forbidden = ["~/.codex"]
+    forbidden = ["~/." + "codex"]
     for token in forbidden:
         assert token not in combined
 
@@ -175,13 +176,14 @@ def test_codex_setup_and_status_are_explicitly_not_installable():
     setup = read_rel("quoin/adapters/codex/setup.md").lower()
     status = read_rel("quoin/docs/runtime-portability-status.md").lower()
 
-    assert "there is no codex installer" in setup
+    assert "no verified stable codex" in setup
     assert "global install" in setup
     assert "native planning, approvals, sandboxing" in setup
-    # Codex status upgraded to repo-local installable scaffold (no global installer)
-    assert "repo-local installable scaffold" in status
+    assert "verify_codex_readiness.py" in setup
+    assert "repo-local setup/readiness only" in status
     assert "no global codex installer" in status
     assert "no global codex paths are assumed" in status
+    assert "no verified global install target" in status
     assert "claude code" in status
     assert "status: installable" in status
 

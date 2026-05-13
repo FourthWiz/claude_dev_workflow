@@ -1,13 +1,14 @@
-# Codex Installable Feature Contract
+# Codex Repo-Local Setup Contract
 
-This document describes the first installable Codex feature for Quoin: a repo-local
-workflow bundle that materializes Codex-ready scaffolding without guessing global
-Codex install paths.
+This document describes the Codex setup surface Quoin can honestly verify today:
+a repo-local workflow bundle that materializes Codex-ready scaffolding without
+guessing global Codex install paths.
 
 ## What "installable" means here
 
-"Installable" in this context means the feature can be generated into a project
-repository from a known source in the Quoin codebase. It does not mean:
+"Installable" in this context means the setup can be generated into and checked
+inside a project repository from known sources in the Quoin codebase. It does not
+mean:
 
 - a global Codex package install
 - a Codex extension point or command file (not yet verified)
@@ -29,7 +30,7 @@ root `AGENTS.md`:
 - Codex performs planning, architecture, review, and session-handoff phases natively
 - Quoin artifact paths and conventions are shared with the Claude adapter
 - No Claude slash-command compatibility is implied or emulated
-- No global Codex paths, no `~/.codex` assumptions
+- No global Codex paths are assumed
 
 ## What the feature installs
 
@@ -46,6 +47,19 @@ Project assets only:
 - Codex command files — format and discovery mechanism not yet confirmed
 - Codex-specific approval or sandboxing logic — use Codex native behavior
 - Claude slash-command wrappers
+
+## Readiness verification
+
+The repo-local readiness check is:
+
+```
+python3 quoin/adapters/codex/verify_codex_readiness.py --project-root .
+```
+
+It verifies root `AGENTS.md`, portable workflow docs, Codex adapter docs,
+manifest scope, absence of guessed global Codex paths in active Codex-facing
+docs, and isolation of the Claude installer. It does not inspect or write a
+global Codex runtime.
 
 ## Generator usage
 

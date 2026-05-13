@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import List
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-# quoin/quoin/adapters/codex/ → up 3 levels → quoin/ (git root)
-QUOIN_PKG_DIR = SCRIPT_DIR.parent.parent  # quoin/quoin/
+# quoin/adapters/codex/ -> up 2 levels -> quoin/ package directory
+QUOIN_PKG_DIR = SCRIPT_DIR.parent.parent
 SKILLS_JSON = QUOIN_PKG_DIR / "core" / "workflow" / "skills.json"
 
 
@@ -112,9 +112,9 @@ No Claude slash-command compatibility is required or implied.
 - Report exactly which checks were run and which were not.
 - Key validation commands:
   ```
-  python3 -m pytest quoin/quoin/dev/tests/
-  python3 quoin/quoin/scripts/build_preambles.py --check
-  python3 quoin/quoin/adapters/codex/generate_codex_assets.py --project-root . --check
+  python3 -m pytest quoin/dev/tests/
+  python3 quoin/scripts/build_preambles.py --check
+  python3 quoin/adapters/codex/verify_codex_readiness.py --project-root .
   ```
 """
 

@@ -56,7 +56,7 @@ The first migration pass must not break `bash quoin/install.sh` or change the in
 
 ## Codex Adapter
 
-The initial Codex adapter is intentionally thin:
+The initial Codex adapter is intentionally thin and repo-local:
 
 - Root-level `AGENTS.md` provides repo-local Codex guidance.
 - Codex uses the same `.workflow_artifacts/` conventions as the portable core.
@@ -65,17 +65,23 @@ The initial Codex adapter is intentionally thin:
 - Quoin should not guess local Codex installation paths.
 - Quoin should not duplicate Codex approvals or sandbox enforcement.
 
-Codex support starts as instructions and workflow discipline around shared artifacts, not as feature parity with Claude slash commands.
+Codex support starts as instructions, readiness verification, and workflow
+discipline around shared artifacts, not as feature parity with Claude slash
+commands.
 
-### Codex installable feature
+### Codex repo-local setup
 
-A repo-local installable scaffold ships under `quoin/adapters/codex/`:
+A repo-local setup scaffold ships under `quoin/adapters/codex/`:
 
 - `installable-feature.md` — feature contract (what is and is not supported)
 - `feature-manifest.json` — machine-readable manifest; references `quoin/core/workflow/skills.json` by path, not by inline duplication
 - `generate_codex_assets.py` — generates `AGENTS.md` at a given `--project-root`
+- `verify_codex_readiness.py` — verifies root instructions, portable core docs, Codex adapter docs, manifest scope, no guessed global Codex paths, and Claude install isolation
 
-The generator produces only repo-local output. Global Codex install paths, package registry behavior, and Codex command file formats remain unresolved until a stable extension point is verified.
+The generator produces only repo-local output. The readiness check reads only
+repo-local files. Global Codex install paths, package registry behavior, and
+Codex command file formats remain unresolved until a stable extension point is
+verified.
 
 ## Candidate Shared Skills
 
