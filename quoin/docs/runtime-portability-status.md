@@ -2,6 +2,9 @@
 
 This page tracks the current migration state.
 
+For the cross-runtime feature matrix, see
+`quoin/docs/runtime-parity-matrix.md`.
+
 ## Claude Code
 
 Status: installable.
@@ -101,6 +104,14 @@ requirements, Claude install routing, guessed Codex global paths, or `ccusage`
 as a required Codex dependency. This is a deterministic repository smoke test;
 live Codex runtime execution remains manual and no global Codex installer or
 command packaging is implemented.
+
+**Phase 28 (2026-05-13):** Added the evidence-based cross-runtime parity matrix
+at `quoin/docs/runtime-parity-matrix.md`. The matrix separates portable core
+contracts, Claude-supported behavior, repo-local Codex-supported behavior,
+unsupported behavior, and planned work across major workflow semantics and all
+21 migrated skills. Static docs tests now require both runtime-portability docs
+to link to the matrix, require matrix coverage for all migrated skills and major
+semantics, and guard against Codex global install or command-file overclaims.
 
 ## Still Claude-Specific
 

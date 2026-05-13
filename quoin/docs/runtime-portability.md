@@ -4,6 +4,9 @@ Quoin is moving from a Claude-specific workflow toolkit to a runtime-portable wo
 
 This document defines the boundary for the first migration pass. It is intentionally conservative: existing Claude Code behavior remains the compatibility baseline.
 
+For the current evidence-based feature-by-feature status, see
+`quoin/docs/runtime-parity-matrix.md`.
+
 ## Portable Core
 
 The portable core is the workflow contract that every runtime adapter should preserve:

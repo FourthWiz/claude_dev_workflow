@@ -15,6 +15,7 @@ def test_runtime_portability_docs_exist():
         "AGENTS.md",
         "quoin/docs/runtime-portability.md",
         "quoin/docs/runtime-portability-status.md",
+        "quoin/docs/runtime-parity-matrix.md",
         "quoin/docs/effort-levels.md",
         "quoin/core/workflow/rules.md",
         "quoin/core/workflow/task-layout.md",
@@ -46,6 +47,74 @@ def test_runtime_boundary_classifies_portable_and_claude_files():
         "build_preambles.py",
     ]:
         assert f"`{claude_specific}` is Claude-specific" in text
+
+
+def test_runtime_portability_docs_link_to_parity_matrix():
+    for path in [
+        "quoin/docs/runtime-portability.md",
+        "quoin/docs/runtime-portability-status.md",
+    ]:
+        text = read_rel(path)
+        assert "runtime-parity-matrix.md" in text
+
+
+def test_runtime_parity_matrix_covers_major_semantics_and_all_migrated_skills():
+    matrix = read_rel("quoin/docs/runtime-parity-matrix.md")
+    manifest = json.loads(read_rel("quoin/core/workflow/skills.json"))
+    skill_names = [skill["name"] for skill in manifest["skills"]]
+
+    assert len(skill_names) == 21
+    for name in skill_names:
+        assert f"`{name}`" in matrix
+        assert f"quoin/core/skills/{name}.md" in matrix
+        assert f"quoin/adapters/claude/skills/{name}/SKILL.md" in matrix
+        assert f"quoin/adapters/codex/skills/{name}/README.md" in matrix
+
+    for semantic in [
+        "Artifact layout",
+        "Planning and review artifacts",
+        "Memory and session handoff",
+        "Cost ledger row shape",
+        "Skill invocation",
+        "Install and setup",
+        "Runtime permissions and approvals",
+        "Subagents / agents",
+        "Preambles and model dispatch",
+        "Generated adapter coverage",
+        "Smoke-test coverage",
+    ]:
+        assert semantic in matrix
+
+
+def test_runtime_parity_matrix_does_not_overclaim_codex_support():
+    matrix = read_rel("quoin/docs/runtime-parity-matrix.md")
+    lower = matrix.lower()
+
+    assert "no global codex installer is supported" in lower
+    assert "codex command files" in lower
+    assert "unsupported" in lower
+    assert "live codex runtime execution is manual" in lower
+
+    forbidden = [
+        "~/." + "codex",
+        "$HOME/." + "codex",
+        "/usr/local/" + "codex",
+        "codex global install is supported",
+        "codex command files are implemented",
+    ]
+    for token in forbidden:
+        assert token.lower() not in lower
+
+    for claude_only in [
+        "claude slash-command invocation",
+        "claude skill frontmatter",
+        "section 0 model dispatch",
+        "claude prompt-cache preambles",
+        "claude permission files",
+        "claude session-log",
+        "claude installer routing",
+    ]:
+        assert claude_only in lower
 
 
 def test_portable_scripts_have_core_implementation_and_wrappers():
