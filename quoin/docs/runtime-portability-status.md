@@ -9,8 +9,12 @@ For the Phase 29 cross-runtime benchmark framework, see `quoin/benchmarks/`.
 
 ## Claude Code
 
-Status: installable.
+Status: installable global adapter.
 
+- `pip install quoin` plus `quoin install --runtime claude` installs the
+  Claude adapter to `~/.claude`.
+- `quoin install` remains backward-compatible and defaults to
+  `--runtime claude`.
 - `bash quoin/install.sh` remains the supported install command.
 - Active Claude rules remain in `quoin/CLAUDE.md`.
 - Active Claude skills remain in `quoin/skills/`, EXCEPT the twenty-one skills
@@ -43,10 +47,13 @@ Status: installable.
   `quoin/core/skills/init_workflow.md`.
 - Compatibility wrappers deploy to `~/.claude/scripts/`.
 - Extracted portable implementations deploy to `~/.claude/core/scripts/`.
+- End-to-end tests cover source-layout and wheel-layout Claude installs using
+  a temporary `HOME` and verify deployed skills are active Claude adapter files,
+  not deprecated portability stubs.
 
 ## Codex
 
-Status: repo-local setup/readiness only; no verified global install target.
+Status: installable repo-local scaffold/readiness only; no verified global install target.
 
 - Root `AGENTS.md` provides repo-local instructions.
 - Codex adapter docs live under `quoin/adapters/codex/`.
@@ -84,6 +91,8 @@ Status: repo-local setup/readiness only; no verified global install target.
 - No global Codex paths are assumed.
 - Passing readiness means Codex can use Quoin's repo-local artifact workflow; it
   does not mean a Codex runtime extension has been installed.
+- End-to-end tests cover source-layout and wheel-layout Codex installs into a
+  temporary project root, then run readiness plus deterministic smoke checks.
 - Phase 33 makes the repo-local workflow practically executable in Codex for
   `discover`, `plan`, `implement`, `review`, and `gate` through documentation
   and static checks. It still does not add a global Codex installer or Codex
@@ -103,6 +112,10 @@ Status: repo-local setup/readiness only; no verified global install target.
   `quoin install` runtime. These commands delegate to the existing Codex
   generator, readiness, and optional smoke scripts; they do not add global Codex
   install behavior.
+- PR 3 adds end-to-end installability validation for both runtime paths from
+  source layout and built wheel artifacts. Package artifact checks guard against
+  generated caches, `.workflow_artifacts/`, benchmark results, `__pycache__`,
+  and pytest cache leaking into wheel or sdist outputs.
 
 ## Portable Core
 

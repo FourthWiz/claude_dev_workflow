@@ -24,10 +24,53 @@ jobs:
       - name: Build wheel and sdist
         run: python -m build
 
+      - name: Check distribution contents
+        run: |
+          python - <<'PY'
+          import pathlib
+          import tarfile
+          import zipfile
+
+          forbidden = (
+              ".workflow_artifacts/",
+              ".pytest_cache/",
+              "__pycache__/",
+              ".pyc",
+              "benchmark-results/",
+              "quoin/benchmarks/",
+          )
+          dist = pathlib.Path("dist")
+          names_by_artifact = {}
+          for wheel in dist.glob("*.whl"):
+              with zipfile.ZipFile(wheel) as archive:
+                  names_by_artifact[wheel.name] = archive.namelist()
+          for sdist in dist.glob("*.tar.gz"):
+              with tarfile.open(sdist, "r:gz") as archive:
+                  names_by_artifact[sdist.name] = archive.getnames()
+
+          failures = []
+          for artifact, names in names_by_artifact.items():
+              for token in forbidden:
+                  hits = [name for name in names if token in name]
+                  if hits:
+                      failures.append(f"{artifact} contains {token}: {hits[:5]}")
+          if failures:
+              raise SystemExit("\n".join(failures))
+          PY
+
       - name: Smoke-test the wheel
         run: |
           pip install dist/*.whl
           quoin --version
+          tmp_home="$(mktemp -d)"
+          fake_bin="$(mktemp -d)"
+          printf '#!/bin/sh\nexit 0\n' > "$fake_bin/claude"
+          chmod +x "$fake_bin/claude"
+          HOME="$tmp_home" PATH="$fake_bin:$PATH" quoin install --runtime claude
+          test -f "$tmp_home/.claude/skills/plan/SKILL.md"
+          codex_root="$(mktemp -d)"
+          quoin install --runtime codex --project-root "$codex_root"
+          quoin doctor --runtime codex --project-root "$codex_root" --smoke
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

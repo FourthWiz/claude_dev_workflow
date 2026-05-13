@@ -19,14 +19,6 @@ Without Quoin, each agent session starts cold. With Quoin, sessions share accumu
 - **Claude Code** — supported today through the existing installer, skills, slash commands, and `quoin/CLAUDE.md`.
 - **Codex** — scaffolded through repo-local `AGENTS.md` instructions and shared `.workflow_artifacts/` semantics. Codex uses native approvals, sandboxing, planning, and repo-scoped instructions; Quoin does not install Codex commands in this pass.
 
-Codex repo-local setup and readiness:
-
-```bash
-quoin install --runtime codex --project-root .
-quoin codex init --project-root .
-quoin doctor --runtime codex
-```
-
 ## Why Quoin?
 
 - **Cost discipline** — §0 model dispatch preamble routes each skill to the right tier (Haiku/Sonnet/Opus). `/cost_snapshot` shows live spend. `ccusage` fallback tracks every session.
@@ -34,16 +26,36 @@ quoin doctor --runtime codex
 - **Audit trail** — every phase produces a structured artifact: `architecture.md`, `current-plan.md`, `critic-response-N.md`, `review-N.md`, `cost-ledger.md`.
 - **Six stages of foundation** — stages 1–6 of the Quoin foundation hardened the system: §0 dispatch preamble (1), ccusage fallback (2), stage-subfolder path resolution (3), architect Phase 4 critic loop (4), native Haiku summarizer (5), and this rebrand + QUICKSTART relocation (6).
 
-## Install Claude Code Adapter
+## Install
 
-**Via pip (recommended):**
+Install the Quoin package:
 
 ```bash
 pip install quoin
-quoin install  # defaults to --runtime claude and deploys to ~/.claude
 ```
 
-**From source:**
+Install the Claude Code adapter globally:
+
+```bash
+quoin install --runtime claude
+```
+
+Install the Codex scaffold into the current project:
+
+```bash
+quoin install --runtime codex --project-root .
+```
+
+`quoin install` with no `--runtime` is backward-compatible and still defaults to `--runtime claude`, deploying Quoin to `~/.claude`. The Codex path is repo-local only: it generates or checks `AGENTS.md` in the selected project root and does not install global Codex commands, plugins, hooks, or runtime extensions.
+
+Readiness checks:
+
+```bash
+quoin doctor --runtime claude
+quoin doctor --runtime codex --project-root . --smoke
+```
+
+**From source, for Claude-only legacy installs:**
 
 ```bash
 git clone https://github.com/FourthWiz/quoin

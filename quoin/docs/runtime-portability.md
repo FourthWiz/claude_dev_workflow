@@ -63,6 +63,17 @@ Claude-specific behavior includes:
 
 The first migration pass must not break `bash quoin/install.sh` or change the installed Claude workflow.
 
+The package installer is also supported for Claude:
+
+```text
+pip install quoin
+quoin install --runtime claude
+```
+
+`quoin install` without `--runtime` remains a backward-compatible alias for the
+Claude global adapter install. It deploys to `~/.claude`; it does not create
+repo-local Codex files.
+
 ## Codex Adapter
 
 The initial Codex adapter is intentionally thin and repo-local:
@@ -103,6 +114,34 @@ The generator produces only repo-local output. The readiness check reads only
 repo-local files. Global Codex install paths, package registry behavior, and
 Codex command file formats remain unresolved until a stable extension point is
 verified.
+
+The package installer exposes Codex as a repo-local scaffold command:
+
+```text
+pip install quoin
+quoin install --runtime codex --project-root .
+quoin doctor --runtime codex --project-root . --smoke
+```
+
+This generates `AGENTS.md` in the selected project root and validates the
+repo-local setup path. It does not install global Codex commands, plugins,
+hooks, runtime extensions, approval handling, or sandbox behavior.
+
+### PR 3 — installability validation
+
+The installability cleanup now has end-to-end tests for four supported paths:
+
+- source-layout Claude install with a temporary `HOME`
+- built-wheel Claude install with a temporary `HOME`
+- source-layout Codex scaffold generation into a temporary project root
+- built-wheel Codex scaffold generation into a temporary project root
+
+Claude checks verify deployed skills come from active adapter files when a
+Claude adapter skill exists, and never from deprecated portability stubs. Codex
+checks verify generated `AGENTS.md` exists and that readiness plus deterministic
+smoke checks pass. Package artifact checks verify wheel and sdist outputs do not
+include generated caches, `.workflow_artifacts/`, benchmark results,
+`__pycache__`, or pytest cache.
 
 ### Phase 33 — Codex workflow execution procedures
 

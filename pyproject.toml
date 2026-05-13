@@ -33,6 +33,16 @@ path = "src/quoin/__about__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/quoin"]
+exclude = [
+    "quoin/.workflow_artifacts/",
+    "quoin/**/.workflow_artifacts/",
+    "quoin/.pytest_cache/",
+    "quoin/**/.pytest_cache/",
+    "quoin/**/__pycache__/",
+    "quoin/**/*.pyc",
+    "benchmark-results/",
+    "quoin/benchmarks/",
+]
 
 [tool.hatch.build.targets.wheel.force-include]
 "quoin/skills" = "src/quoin/data/skills"
