@@ -8,6 +8,7 @@ Skipped when `claude` is absent (CI-friendly) and when `build` is not installed.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -26,7 +27,6 @@ try:
 except ImportError:
     _BUILD_AVAILABLE = False
 
-import shutil
 _CLAUDE_AVAILABLE = shutil.which("claude") is not None
 
 _requires_build = pytest.mark.skipif(
@@ -141,14 +141,42 @@ def test_wheel_contents_include_codex_cli_assets(built_wheel):
 
 
 @_requires_build
+def test_wheel_contents_include_claude_adapter_skill_assets(built_wheel):
+    """Wheel installs must include active Claude adapter skills, not only stubs."""
+    with zipfile.ZipFile(built_wheel) as whl:
+        names = whl.namelist()
+        adapter_skills = [
+            name for name in names
+            if "/data/adapters/claude/skills/" in name and name.endswith("/SKILL.md")
+        ]
+        contents = {
+            name: whl.read(name).decode("utf-8")
+            for name in adapter_skills
+        }
+
+    expected = QUOIN_SRC / "adapters" / "claude" / "skills"
+    expected_skills = sorted(p.parent.name for p in expected.glob("*/SKILL.md"))
+
+    assert sorted(Path(name).parent.name for name in adapter_skills) == expected_skills
+    for name, content in contents.items():
+        assert "DEPRECATED LOCATION" not in content, name
+        assert "deprecated stub" not in content, name
+
+
+@_requires_build
 def test_wheel_install_and_quoin_install(built_wheel):
-    """Install the wheel and run quoin install; verify ~/.claude/ tree populated."""
+    """Install the wheel and run quoin install from bundled quoin/data."""
     pytest.importorskip("build")  # double-guard
 
-    from quoin.installer import CANONICAL_SKILLS, TIER1_MEMORY_FILES  # noqa: PLC0415
+    from quoin.installer import (  # noqa: PLC0415
+        CANONICAL_SKILLS,
+        DEPRECATED_SKILL_MARKERS,
+        TIER1_MEMORY_FILES,
+    )
 
     with tempfile.TemporaryDirectory() as install_target, \
-            tempfile.TemporaryDirectory() as home_dir:
+            tempfile.TemporaryDirectory() as home_dir, \
+            tempfile.TemporaryDirectory() as fake_bin:
         # pip-install the wheel into a temp target dir
         result = subprocess.run(
             [sys.executable, "-m", "pip", "install", "--target", install_target,
@@ -160,20 +188,21 @@ def test_wheel_install_and_quoin_install(built_wheel):
         if result.returncode != 0:
             pytest.skip(f"pip install failed:\n{result.stderr[:300]}")
 
-        # Run quoin install via the installed wheel
-        quoin_bin = Path(install_target) / "bin" / "quoin"
-        if not quoin_bin.exists():
-            # fallback: run via python -m quoin with modified PYTHONPATH
-            env = {
-                **os.environ,
-                "HOME": home_dir,
-                "PYTHONPATH": install_target,
-            }
-            cmd = [sys.executable, "-m", "quoin", "install",
-                   "--source-dir", str(QUOIN_SRC)]
-        else:
-            env = {**os.environ, "HOME": home_dir}
-            cmd = [str(quoin_bin), "install", "--source-dir", str(QUOIN_SRC)]
+        fake_bin_path = Path(fake_bin)
+        for executable in ("claude", "git"):
+            tool = fake_bin_path / executable
+            tool.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            tool.chmod(0o755)
+
+        # Run from the installed wheel without --source-dir so _resolve_source_dir
+        # must use importlib.resources.files("quoin") / "data".
+        env = {
+            **os.environ,
+            "HOME": home_dir,
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+            "PYTHONPATH": install_target,
+        }
+        cmd = [sys.executable, "-m", "quoin", "install"]
 
         result = subprocess.run(
             cmd, env=env, capture_output=True, text=True, timeout=60,
@@ -190,9 +219,18 @@ def test_wheel_install_and_quoin_install(built_wheel):
 
         # Skills present
         for skill in CANONICAL_SKILLS:
-            assert (claude_dir / "skills" / skill / "SKILL.md").exists(), (
+            skill_md = claude_dir / "skills" / skill / "SKILL.md"
+            assert skill_md.exists(), (
                 f"Missing skill: {skill}"
             )
+            content = skill_md.read_text(encoding="utf-8")
+            for marker in DEPRECATED_SKILL_MARKERS:
+                assert marker not in content, f"Deprecated marker in deployed {skill}"
+
+        migrated = "plan"
+        deployed_plan = claude_dir / "skills" / migrated / "SKILL.md"
+        source_plan = QUOIN_SRC / "adapters" / "claude" / "skills" / migrated / "SKILL.md"
+        assert deployed_plan.read_bytes() == source_plan.read_bytes()
 
         # QUICKSTART
         assert (claude_dir / "QUICKSTART.md").exists()

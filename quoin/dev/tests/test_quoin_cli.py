@@ -183,6 +183,55 @@ def test_installer_idempotent():
         assert first == second, "deploy functions are not idempotent"
 
 
+def test_deploy_skills_rejects_deprecated_stub_without_adapter(capsys):
+    from quoin import installer  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        src = root / "source"
+        skill_dir = src / "skills" / "plan"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "# Plan (deprecated stub)\n\n"
+            "> **DEPRECATED LOCATION.** Active content moved.\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            installer.deploy_skills(src, root / ".claude")
+
+        assert exc_info.value.code == 1
+        assert "Refusing to deploy deprecated Claude skill stub" in capsys.readouterr().err
+
+
+def test_deploy_skills_from_wheel_style_data_prefers_claude_adapter():
+    from quoin import installer  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        source = root / "data"
+        stub_dir = source / "skills" / "plan"
+        adapter_dir = source / "adapters" / "claude" / "skills" / "plan"
+        stub_dir.mkdir(parents=True)
+        adapter_dir.mkdir(parents=True)
+
+        (stub_dir / "SKILL.md").write_text(
+            "# Plan (deprecated stub)\n\n"
+            "> **DEPRECATED LOCATION.** Active content moved.\n",
+            encoding="utf-8",
+        )
+        active = "# Plan\n\nActive Claude adapter skill.\n"
+        (adapter_dir / "SKILL.md").write_text(active, encoding="utf-8")
+
+        dest = root / ".claude"
+        assert installer.deploy_skills(source, dest) == 1
+
+        deployed = (dest / "skills" / "plan" / "SKILL.md").read_text(encoding="utf-8")
+        assert deployed == active
+        for marker in installer.DEPRECATED_SKILL_MARKERS:
+            assert marker not in deployed
+
+
 # ── Byte-identical transport comparison ───────────────────────────────────────
 
 @pytest.mark.skipif(

@@ -69,6 +69,7 @@ OBSOLETE_TESTS = ("test_summarize_for_human.py", "test_with_env_sh.py")
 
 _MARKER_START = "# === DEV WORKFLOW START ==="
 _MARKER_END = "# === DEV WORKFLOW END ==="
+DEPRECATED_SKILL_MARKERS = ("DEPRECATED LOCATION", "deprecated stub")
 
 
 # ── T-04 ──────────────────────────────────────────────────────────────────────
@@ -100,6 +101,18 @@ def deploy_quickstart(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None
 
 # ── T-05 ──────────────────────────────────────────────────────────────────────
 
+def _assert_not_deprecated_skill(skill_name: str, skill_md: pathlib.Path) -> None:
+    content = skill_md.read_text(encoding="utf-8")
+    for marker in DEPRECATED_SKILL_MARKERS:
+        if marker in content:
+            print(
+                f"quoin: Refusing to deploy deprecated Claude skill stub for "
+                f"{skill_name}: {skill_md}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+
 def deploy_skills(source_dir: pathlib.Path, dest_root: pathlib.Path) -> int:
     """Copy skills from source_dir/skills/ to dest_root/skills/. Returns count copied.
 
@@ -125,6 +138,7 @@ def deploy_skills(source_dir: pathlib.Path, dest_root: pathlib.Path) -> int:
         if not skill_md.exists():
             print(f"quoin: Expected SKILL.md at {skill_md} but not found", file=sys.stderr)
             sys.exit(1)
+        _assert_not_deprecated_skill(skill_name, skill_md)
         shutil.copyfile(skill_md, dst_skill / "SKILL.md")
         if adapter_md.exists():
             print(f"Deploying {skill_name} from Claude adapter path")
