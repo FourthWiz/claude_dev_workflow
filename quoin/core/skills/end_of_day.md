@@ -1,0 +1,104 @@
+# end_of_day
+
+Runtime-neutral intent for the end_of_day skill. Any runtime adapter (Claude,
+Codex, …) that implements this skill should match the contract described here.
+
+## Purpose
+
+At the end of a working session, consolidate all of today's session-state files
+into a single daily-cache file under `.workflow_artifacts/memory/daily/<date>.md`,
+promote eligible insights into the lessons-learned file, prune lessons-learned when
+oversized, write a resume cookie, and flip `end_of_day_due: no` on processed
+session-state files. The skill never makes commits, never edits source files, and
+never invokes another workflow phase.
+
+## When to use
+
+- User is wrapping up a working session.
+- User says "done for the day", "save my progress", "EOD", "end of day".
+- User says "wrapping up" or "closing out".
+
+## Inputs
+
+- All of today's session-state files under `.workflow_artifacts/memory/sessions/<today>-*.md`.
+- Optional today's insights scratchpad at `.workflow_artifacts/memory/daily/insights-<today>.md`.
+- Existing `.workflow_artifacts/memory/lessons-learned.md` (advisory; created if absent).
+- Each active task's `.workflow_artifacts/<task-name>/cost-ledger.md` (advisory, for
+  session counts and fallback_fires aggregation).
+- The optional resume cookie target path at `.workflow_artifacts/memory/resume-cookie.md`.
+- Current version-control state across project repos (recent commits per repo).
+
+## Output
+
+- One daily-cache file at `.workflow_artifacts/memory/daily/<YYYY-MM-DD>.md` (Class B per
+  format-kit, with a `## For human` block composed by the runtime adapter's summarization
+  mechanism, written directly in the same generation as the body — no separate
+  post-processing script).
+- Updated git-log file at `.workflow_artifacts/memory/git-log.md` (rolling window of
+  recent commits across repos).
+- Zero-or-more new lessons appended to `.workflow_artifacts/memory/lessons-learned.md`
+  after user confirmation.
+- Zero-or-more workflow-suggestion entries appended to
+  `.workflow_artifacts/memory/workflow-suggestions.md`.
+- An updated resume cookie at `.workflow_artifacts/memory/resume-cookie.md` (2 KB cap,
+  allowlisted fields, ISO `expires`).
+- Session-state files for today rewritten with `end_of_day_due: no` (atomic-rename
+  pattern, flipped only after daily-cache write succeeds).
+- A short report rendered to the user.
+
+## Behavior contract
+
+- Read once: today's session files and insights file are read once per invocation; never
+  re-evaluated during the same run.
+- Error-tolerant: every input lookup MUST tolerate missing or unreadable files as "no
+  signal" and continue. A missing insights file or missing cost-ledger file is a no-op,
+  not an error.
+- Crash safety: the `end_of_day_due: yes` → `no` flip happens ONLY after the daily-cache
+  write succeeds. A crashed run MUST NOT mark sessions as processed.
+- Resume-cookie discipline: writer MUST refuse to include any field outside the allowlist
+  (`task`, `last_skill`, `branch`, `dirty_count`, `expires`); cookie body capped at 2 KB;
+  written via atomic-rename pattern.
+- Lessons-learned promotion is interactive: candidates are presented, user confirms which
+  to keep, only confirmed entries are appended.
+- Lessons-learned pruning prompt is shown only when entry count exceeds 30.
+- Daily cache file is Class B per format-kit: it MUST include a `## For human` block (5-8
+  lines, plain English) composed by the runtime adapter's summarization mechanism, written
+  in the same generation as the body. Detection: the first 50 lines of the daily-cache file
+  (no YAML frontmatter to skip) must contain a heading matching the regex
+  `^## For human\s*$` for the file to be recognized as v3-format by downstream readers
+  (notably `start_of_day`).
+- Cost summary inside the daily cache is built from per-task cost-ledger row counts
+  (today's rows only); the skill MUST NOT invoke a version-control cost-reporting CLI to
+  compute dollar amounts.
+- `fallback_fires` aggregation across today's session-state files MUST appear in the
+  daily cache when the day total > 0.
+- The skill MUST NOT push, commit, or modify source files.
+- The skill MUST NOT auto-invoke another workflow phase.
+- Cost-ledger writes by this skill itself are conditional: only when a task context is
+  unambiguously named by the user or unambiguously implied by an active session-state file.
+
+## Out of scope
+
+- Model tier and dispatch mechanism — the runtime adapter handles these.
+- The §0 self-dispatch grammar — runtime-specific.
+- Per-runtime session-file enumeration (Claude reads JSONL session IDs; other runtimes
+  may use different mechanisms).
+- The exact shell invocations for version-control status, log, and per-repo enumeration.
+- Cost-CLI invocations and dollar-amount computation.
+- The specific reformatting rules for the daily cache body beyond "Class B per format-kit".
+
+## Notes
+
+- The daily-cache section set is closed: `## For human`, `## Summary`,
+  `## Completed today`, `## Unfinished — carry forward`, `## Decisions log`,
+  `## Git activity summary`, `## Cost summary`, `## Tomorrow's priorities`. Adapters
+  MUST NOT silently introduce new top-level sections into the daily cache.
+- The resume-cookie expiry default is 24 hours from the write time.
+- Adapters MAY decompose Step 3 into multiple internal sub-steps (e.g., 3a/3b/3c/3d)
+  as the current Claude adapter does; the contract here is the closed list of side-effects,
+  not the sub-step decomposition.
+- This skill WRITES the v3 daily-cache file that `start_of_day` READS. The `## For human`
+  block MUST appear within the first 50 lines of the daily-cache file (no frontmatter) so
+  that `start_of_day`'s v3-format detection rule fires correctly.
+- The `.workflow_artifacts/<task-name>/` path pattern is the canonical location for
+  per-task artifacts; the skill reads cost-ledger files there.

@@ -18,8 +18,8 @@ DEV_WORKFLOW = REPO_ROOT / "quoin"
 SKILLS_DIR = DEV_WORKFLOW / "skills"
 INSTALL_SH = DEV_WORKFLOW / "install.sh"
 
-COST_SNAPSHOT_SKILL = SKILLS_DIR / "cost_snapshot" / "SKILL.md"
-END_OF_TASK_SKILL   = SKILLS_DIR / "end_of_task" / "SKILL.md"
+COST_SNAPSHOT_SKILL = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "cost_snapshot" / "SKILL.md"
+END_OF_TASK_SKILL   = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "end_of_task" / "SKILL.md"
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +144,7 @@ def test_install_sh_deploys_cost_from_jsonl():
 def test_no_fallback_in_other_skills():
     excluded = {
         COST_SNAPSHOT_SKILL.resolve(),
+        # END_OF_TASK_SKILL now resolves under adapters/; vestigial after Phase 14, kept for symmetry.
         END_OF_TASK_SKILL.resolve(),
     }
     contaminated = []

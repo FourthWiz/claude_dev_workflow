@@ -7,7 +7,10 @@ sequential step numbering 1-7, and the correct 7-step pipeline header.
 import pathlib
 import re
 
-EXPAND_SKILL = pathlib.Path(__file__).parent.parent.parent / "skills" / "expand" / "SKILL.md"
+EXPAND_SKILL = (
+    pathlib.Path(__file__).parent.parent.parent
+    / "adapters" / "claude" / "skills" / "expand" / "SKILL.md"
+)
 
 
 def test_expand_skill_has_no_original_md_references():
