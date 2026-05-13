@@ -111,7 +111,7 @@ def _derive_allow_writes(source_dir: pathlib.Path, source_dir_explicit: bool) ->
     return True
 
 
-def _cmd_install(args: argparse.Namespace) -> int:
+def _cmd_claude_install(args: argparse.Namespace) -> int:
     from quoin import installer
 
     source_dir_explicit = args.source_dir is not None
@@ -165,6 +165,19 @@ def _cmd_install(args: argparse.Namespace) -> int:
         print("  Install with: pip install pyyaml", file=sys.stderr)
 
     return 0
+
+
+def _cmd_install(args: argparse.Namespace) -> int:
+    if args.runtime == "codex":
+        return _cmd_codex_init(args)
+    if args.check:
+        print(
+            "quoin: install --check is only supported with --runtime codex; "
+            "use 'quoin doctor' for Claude install health checks",
+            file=sys.stderr,
+        )
+        return 2
+    return _cmd_claude_install(args)
 
 
 def _codex_script(source_dir: pathlib.Path, name: str) -> pathlib.Path:
@@ -328,7 +341,42 @@ def main(argv: list[str] | None = None) -> int:
 
     sub = parser.add_subparsers(dest="command")
 
-    install_p = sub.add_parser("install", help="Deploy quoin to ~/.claude/")
+    install_p = sub.add_parser(
+        "install",
+        description=(
+            "Install Quoin for a runtime. Claude installs globally to ~/.claude. "
+            "Codex generates or checks repo-local AGENTS.md scaffold only."
+        ),
+        help=(
+            "Install Quoin for a runtime: Claude globally to ~/.claude "
+            "(default), or Codex repo-local AGENTS.md scaffold"
+        ),
+    )
+    install_p.add_argument(
+        "--runtime",
+        choices=("claude", "codex"),
+        default="claude",
+        help=(
+            "Runtime target. 'claude' installs globally to ~/.claude; "
+            "'codex' generates repo-local AGENTS.md only. Defaults to claude."
+        ),
+    )
+    install_p.add_argument(
+        "--project-root",
+        default=".",
+        help=(
+            "Project root for --runtime codex AGENTS.md generation/checking; "
+            "defaults to the current directory."
+        ),
+    )
+    install_p.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "For --runtime codex, check AGENTS.md without writing files "
+            "(same behavior as 'quoin codex init --check')."
+        ),
+    )
     install_p.add_argument("--dev", action="store_true", help="Install dev dependencies")
     install_p.add_argument("--source-dir", metavar="PATH", help="Override data source directory")
     install_p.add_argument(
