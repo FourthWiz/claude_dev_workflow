@@ -39,10 +39,12 @@ htmlcov/
 .env
 .env.local
 .claude/
-/
+.venv/
+
+# Benchmark run output is generated evidence, not source.
+/benchmark-results/
 # /expand --save output files (scratch; use sparingly)
 *.expanded-*.md
-.venv/
 
 # Workflow cost ledgers — internal session tracking, never in repo
 **/cost-ledger.md
