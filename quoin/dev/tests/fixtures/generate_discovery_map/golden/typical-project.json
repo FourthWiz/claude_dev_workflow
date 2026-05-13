@@ -1,0 +1,83 @@
+{
+  "artifact_roots": {
+    "cache_path": ".workflow_artifacts/cache",
+    "finalized_path": ".workflow_artifacts/finalized",
+    "memory_path": ".workflow_artifacts/memory",
+    "tasks_path": ".workflow_artifacts",
+    "workflow_artifacts_path": ".workflow_artifacts"
+  },
+  "freshness": {
+    "example-repo": {
+      "cache_updated_at": "2026-05-12T20:00:00Z",
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "recorded_at": "2026-05-13T00:00:00Z"
+    }
+  },
+  "generated_at": "2026-05-13T00:00:00Z",
+  "memory": {
+    "daily_dir": ".workflow_artifacts/memory/daily",
+    "lessons_learned": ".workflow_artifacts/memory/lessons-learned.md",
+    "memory_md_index": ".workflow_artifacts/memory/MEMORY.md",
+    "repo_heads_path": ".workflow_artifacts/memory/repo-heads.md",
+    "sessions_dir": ".workflow_artifacts/memory/sessions",
+    "staleness_path": ".workflow_artifacts/cache/_staleness.md",
+    "weekly_dir": ".workflow_artifacts/memory/weekly"
+  },
+  "project": {
+    "name": "typical-project",
+    "root_path": "/Users/ivgo/Library/CloudStorage/GoogleDrive-ivan.gorban@gmail.com/My Drive/Storage/Codex_workflow/quoin/quoin/dev/tests/fixtures/generate_discovery_map/typical-project",
+    "runtime_adapters": [
+      "claude",
+      "codex"
+    ]
+  },
+  "repos": [
+    {
+      "cache_index_path": ".workflow_artifacts/cache/example-repo/_index.md",
+      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "head_short": "aaaaaaa",
+      "name": "example-repo",
+      "path": "example-repo"
+    }
+  ],
+  "schema_version": 1,
+  "tasks": {
+    "active": [
+      {
+        "current_plan_path": ".workflow_artifacts/feature-a/current-plan.md",
+        "last_updated": "2026-05-12T20:00:00Z",
+        "name": "feature-a",
+        "path": ".workflow_artifacts/feature-a",
+        "status": "active"
+      },
+      {
+        "architecture_path": ".workflow_artifacts/feature-b/architecture.md",
+        "last_updated": "2026-05-12T20:00:00Z",
+        "name": "feature-b",
+        "path": ".workflow_artifacts/feature-b",
+        "stages": [
+          {
+            "id": 1,
+            "path": ".workflow_artifacts/feature-b/stage-1",
+            "status": "pending"
+          },
+          {
+            "id": 2,
+            "path": ".workflow_artifacts/feature-b/stage-2",
+            "status": "pending"
+          }
+        ],
+        "status": "active"
+      }
+    ],
+    "finalized": [
+      {
+        "architecture_path": ".workflow_artifacts/finalized/old-feature/architecture.md",
+        "last_updated": "2026-05-12T20:00:00Z",
+        "name": "old-feature",
+        "path": ".workflow_artifacts/finalized/old-feature",
+        "status": "finalized"
+      }
+    ]
+  }
+}

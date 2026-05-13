@@ -1,0 +1,47 @@
+{
+  "artifact_roots": {
+    "finalized_path": ".workflow_artifacts/finalized",
+    "memory_path": ".workflow_artifacts/memory",
+    "tasks_path": ".workflow_artifacts",
+    "workflow_artifacts_path": ".workflow_artifacts"
+  },
+  "freshness": {
+    "single-repo-at-root-project": {
+      "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
+      "recorded_at": "2026-05-13T00:00:00Z"
+    }
+  },
+  "generated_at": "2026-05-13T00:00:00Z",
+  "memory": {
+    "daily_dir": ".workflow_artifacts/memory/daily",
+    "lessons_learned": ".workflow_artifacts/memory/lessons-learned.md",
+    "sessions_dir": ".workflow_artifacts/memory/sessions",
+    "weekly_dir": ".workflow_artifacts/memory/weekly"
+  },
+  "project": {
+    "name": "single-repo-at-root-project",
+    "root_path": "/Users/ivgo/Library/CloudStorage/GoogleDrive-ivan.gorban@gmail.com/My Drive/Storage/Codex_workflow/quoin/quoin/dev/tests/fixtures/generate_discovery_map/single-repo-at-root-project",
+    "runtime_adapters": []
+  },
+  "repos": [
+    {
+      "head_sha": "dddddddddddddddddddddddddddddddddddddddd",
+      "head_short": "ddddddd",
+      "name": "single-repo-at-root-project",
+      "path": "."
+    }
+  ],
+  "schema_version": 1,
+  "tasks": {
+    "active": [
+      {
+        "current_plan_path": ".workflow_artifacts/my-task/current-plan.md",
+        "last_updated": "2026-05-12T20:00:00Z",
+        "name": "my-task",
+        "path": ".workflow_artifacts/my-task",
+        "status": "active"
+      }
+    ],
+    "finalized": []
+  }
+}

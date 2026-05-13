@@ -373,6 +373,21 @@ When `/discover` runs incrementally (some repos skipped because HEAD unchanged):
 
 ## After scanning
 
+### Structured-output hook (optional)
+
+After writing the four markdown files (`repos-inventory.md`, `architecture-overview.md`,
+`dependencies-map.md`, `git-log.md`) and verifying cache writes, invoke:
+
+```
+python3 ~/.claude/scripts/generate_discovery_map.py "$PROJECT_ROOT" --quiet
+```
+
+This emits a structured `discovery-map.json` index at
+`<project_root>/.workflow_artifacts/discovery-map.json`. The hook is
+best-effort: a non-zero exit prints a single-line warning and continues — never
+aborts `/discover`. The JSON index is supplemental; the markdown files remain
+the authoritative source.
+
 Tell the user:
 - How many repos were found
 - Brief summary of the architecture

@@ -80,6 +80,16 @@ No Claude slash-command compatibility is required or implied.
 - Minimize duplication of templates, scripts, and rules.
 - Keep documentation honest about implemented vs planned behavior.
 
+## Discovery map (structured project index)
+
+The portable generator `quoin/scripts/generate_discovery_map.py` produces a structured
+`discovery-map.json` index at `<project_root>/.workflow_artifacts/discovery-map.json`.
+Codex can run it directly without any global-path assumption:
+
+- `python3 quoin/scripts/generate_discovery_map.py "$PROJECT_ROOT" --quiet`
+
+The generator is optional; `discover` MUST NOT fail if it errors.
+
 ## Validation
 - Run relevant checks after making changes.
 - Report exactly which checks were run and which were not.
