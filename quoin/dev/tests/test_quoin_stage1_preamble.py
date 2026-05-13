@@ -29,7 +29,7 @@ ADAPTER_SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
 # Skills migrated to the three-file adapter pattern (Phase 6 / Phase 7).
 # When this set grows, add the skill name here AND verify the install.sh
 # override branch exists.
-MIGRATED_TO_ADAPTER = {"capture_insight", "triage", "start_of_day"}
+MIGRATED_TO_ADAPTER = {"capture_insight", "triage", "start_of_day", "plan", "critic", "revise", "revise-fast"}
 
 
 def skill_md_path(skill_name: str) -> Path:
@@ -291,8 +291,8 @@ def test_load_bearing_rules_preserved(skill, heading):
 # Promotes the SYNC WARNING comment from documentation to enforced contract.
 # -----------------------------------------------------------------------------
 def test_revise_revise_fast_sync_contract():
-    revise_text = (SKILLS_DIR / "revise" / "SKILL.md").read_text(encoding="utf-8")
-    revise_fast_text = (SKILLS_DIR / "revise-fast" / "SKILL.md").read_text(encoding="utf-8")
+    revise_text = (ADAPTER_SKILLS_DIR / "revise" / "SKILL.md").read_text(encoding="utf-8")
+    revise_fast_text = (ADAPTER_SKILLS_DIR / "revise-fast" / "SKILL.md").read_text(encoding="utf-8")
 
     # Slice from the H1 line (anchored regex — substring match would land inside
     # the SYNC WARNING comment block in revise-fast, which references the H1

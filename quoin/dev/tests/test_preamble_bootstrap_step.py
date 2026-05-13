@@ -33,9 +33,19 @@ WRITE_SITE_PATTERN = "Reference files (apply HERE at the body-generation"
 # so the additive-only invariant is checked at the bootstrap-section scope only.
 SKILLS_WITH_WRITE_SITE = {"critic", "revise", "revise-fast", "plan", "review", "architect"}
 
+ADAPTER_SKILLS_DIR = QUOIN_DIR / "adapters" / "claude" / "skills"
+MIGRATED_SKILLS_DIR_OVERRIDES = {
+    "review": ADAPTER_SKILLS_DIR,
+    "plan": ADAPTER_SKILLS_DIR,
+    "critic": ADAPTER_SKILLS_DIR,
+    "revise": ADAPTER_SKILLS_DIR,
+    "revise-fast": ADAPTER_SKILLS_DIR,
+}
+
 
 def _skill_md(skill: str) -> pathlib.Path:
-    return QUOIN_DIR / "skills" / skill / "SKILL.md"
+    base = MIGRATED_SKILLS_DIR_OVERRIDES.get(skill, QUOIN_DIR / "skills")
+    return base / skill / "SKILL.md"
 
 
 def _find_line_numbers(lines: list, pattern: str) -> list:

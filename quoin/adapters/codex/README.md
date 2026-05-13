@@ -25,8 +25,13 @@ The initial Codex entrypoint is the repository `AGENTS.md`. There is no Codex in
 
 Per-skill portable intent docs now exist at
 `quoin/core/skills/capture_insight.md`,
-`quoin/core/skills/triage.md`, and
-`quoin/core/skills/start_of_day.md`. Codex performs each of these phases
+`quoin/core/skills/triage.md`,
+`quoin/core/skills/start_of_day.md`,
+`quoin/core/skills/review.md`,
+`quoin/core/skills/plan.md`,
+`quoin/core/skills/critic.md`,
+`quoin/core/skills/revise.md`, and
+`quoin/core/skills/revise-fast.md`. Codex performs each of these phases
 natively against project-root `.workflow_artifacts/`, following the
 runtime-neutral contract in those docs. No Codex command files, no Codex
 installer, and no global Codex paths are introduced.

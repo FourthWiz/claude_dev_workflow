@@ -22,6 +22,13 @@ from pathlib import Path
 
 QUOIN_DIR = Path(__file__).parent.parent.parent  # quoin/ directory (3 levels up from test file)
 SKILLS_DIR = QUOIN_DIR / "skills"
+MIGRATED_SKILLS_DIR_OVERRIDES = {
+    "review": QUOIN_DIR / "adapters" / "claude" / "skills",
+    "plan": QUOIN_DIR / "adapters" / "claude" / "skills",
+    "critic": QUOIN_DIR / "adapters" / "claude" / "skills",
+    "revise": QUOIN_DIR / "adapters" / "claude" / "skills",
+    "revise-fast": QUOIN_DIR / "adapters" / "claude" / "skills",
+}
 
 STEP5_CANONICAL = (
     "Before logging the `format-kit-skipped` warning, increment the session-state `fallback_fires`"
@@ -48,7 +55,8 @@ STEP2_ANCHORS = {
 
 
 def skill_path(name: str) -> Path:
-    return SKILLS_DIR / name / "SKILL.md"
+    base = MIGRATED_SKILLS_DIR_OVERRIDES.get(name, SKILLS_DIR)
+    return base / name / "SKILL.md"
 
 
 def test_step5_emit_canonical_phrase_present_exactly_once():
