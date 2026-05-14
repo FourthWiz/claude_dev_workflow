@@ -353,36 +353,49 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     import shutil
 
     errors: list[str] = []
+    warnings: list[str] = []
 
     print(f"quoin version: {__version__}")
     print(f"Python: {sys.version.split()[0]}")
     print()
 
-    # Prerequisites
-    for tool in ("claude", "git", "gh", "npx"):
-        found = shutil.which(tool) is not None
-        status = "✓" if found else "✗"
-        print(f"  {status} {tool}")
-        if tool in ("claude", "git") and not found:
-            errors.append(f"Required tool missing: {tool}")
+    # Resolve dest_root via --scope (T-08: project-mode support)
+    scope: str = getattr(args, "scope", None) or "user"
+    is_project_mode = scope.startswith("project")
+    if is_project_mode:
+        dest_root = _resolve_dest_root(args)
+        dest_label = str(dest_root)
+    else:
+        dest_root = pathlib.Path.home() / ".claude"
+        dest_label = "~/.claude"
 
+    print(f"Checking install scope: {scope}  →  {dest_label}")
     print()
 
-    # Tier-1 memory files
-    dest_root = pathlib.Path.home() / ".claude"
-    print("Memory files (~/.claude/memory/):")
-    for fname in installer.TIER1_MEMORY_FILES:
-        p = dest_root / "memory" / fname
-        found = p.exists()
-        status = "✓" if found else "✗"
-        print(f"  {status} {fname}")
-        if not found:
-            errors.append(f"Missing memory file: {fname}")
+    # Prerequisites (user-scope only — project-scope doesn't need these)
+    if not is_project_mode:
+        for tool in ("claude", "git", "gh", "npx"):
+            found = shutil.which(tool) is not None
+            status = "✓" if found else "✗"
+            print(f"  {status} {tool}")
+            if tool in ("claude", "git") and not found:
+                errors.append(f"Required tool missing: {tool}")
+        print()
 
-    print()
+    # Tier-1 memory files (user-scope only — not deployed in project mode)
+    if not is_project_mode:
+        print(f"Memory files ({dest_label}/memory/):")
+        for fname in installer.TIER1_MEMORY_FILES:
+            p = dest_root / "memory" / fname
+            found = p.exists()
+            status = "✓" if found else "✗"
+            print(f"  {status} {fname}")
+            if not found:
+                errors.append(f"Missing memory file: {fname}")
+        print()
 
     # Scripts
-    print("Scripts (~/.claude/scripts/):")
+    print(f"Scripts ({dest_label}/scripts/):")
     for fname in installer.DEPLOYED_SCRIPTS:
         p = dest_root / "scripts" / fname
         found = p.exists()
@@ -394,7 +407,7 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     print()
 
     # Skills
-    print("Skills (~/.claude/skills/):")
+    print(f"Skills ({dest_label}/skills/):")
     for skill in installer.CANONICAL_SKILLS:
         p = dest_root / "skills" / skill
         found = p.is_dir()
@@ -405,23 +418,69 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
 
     print()
 
+    # T-08 CRIT-2: skill conflict warning for project mode
+    # User-scope skills shadow project-scope skills of the same name.
+    if is_project_mode:
+        home_skills = pathlib.Path.home() / ".claude" / "skills"
+        if home_skills.is_dir():
+            shadowed = []
+            for skill in installer.CANONICAL_SKILLS:
+                if (home_skills / skill).is_dir() and (dest_root / "skills" / skill).is_dir():
+                    shadowed.append(skill)
+            if shadowed:
+                print("⚠ Skill shadow warning:")
+                print(
+                    f"  The following skills exist in BOTH {dest_label}/skills/ AND "
+                    "~/.claude/skills/."
+                )
+                print(
+                    "  Claude Code resolves user scope (~/.claude/skills/) BEFORE project scope."
+                )
+                print(
+                    "  The project-scope versions below will be HIDDEN by the user-scope versions:"
+                )
+                for skill in shadowed:
+                    print(f"    - {skill}")
+                print(
+                    "  To use project-scope skills, remove the user-scope versions or"
+                    " run 'quoin install' without --scope project."
+                )
+                print()
+                warnings.append(
+                    f"{len(shadowed)} skill(s) shadowed by user-scope install: "
+                    + ", ".join(shadowed)
+                )
+
     # CLAUDE.md marker count
-    claude_md = dest_root / "CLAUDE.md"
+    if is_project_mode:
+        # In project mode, CLAUDE.md is at the project root (parent of .claude/)
+        claude_md = dest_root.parent / "CLAUDE.md"
+        claude_md_label = f"{dest_root.parent}/CLAUDE.md"
+    else:
+        claude_md = dest_root / "CLAUDE.md"
+        claude_md_label = f"{dest_label}/CLAUDE.md"
+
     if claude_md.exists():
         content = claude_md.read_text()
         marker_count = content.count("# === DEV WORKFLOW START ===")
         status = "✓" if marker_count == 1 else "✗"
-        print(f"  {status} ~/.claude/CLAUDE.md — {marker_count} DEV WORKFLOW marker pair(s)")
+        print(f"  {status} {claude_md_label} — {marker_count} DEV WORKFLOW marker pair(s)")
         if marker_count != 1:
             errors.append(
                 f"CLAUDE.md has {marker_count} marker pairs (expected 1); "
                 "run 'quoin install --force-merge' to fix"
             )
     else:
-        print("  ✗ ~/.claude/CLAUDE.md — not found")
-        errors.append("CLAUDE.md not found; run 'quoin install'")
+        print(f"  ✗ {claude_md_label} — not found")
+        errors.append(f"CLAUDE.md not found at {claude_md_label}; run 'quoin install'")
 
     print()
+    if warnings:
+        print(f"doctor: {len(warnings)} warning(s):")
+        for w in warnings:
+            print(f"  ⚠ {w}")
+        print()
+
     if errors:
         print(f"doctor: {len(errors)} issue(s) found:")
         for err in errors:
@@ -524,6 +583,15 @@ def main(argv: list[str] | None = None) -> int:
         choices=("claude", "codex"),
         default="claude",
         help="Runtime to check; defaults to claude.",
+    )
+    doctor_p.add_argument(
+        "--scope",
+        default="user",
+        metavar="user|project[:DIR]",
+        help=(
+            "Installation scope to check. 'user' (default) checks ~/.claude/. "
+            "'project' checks <CWD>/.claude/. 'project:/path' checks /path/.claude/."
+        ),
     )
     doctor_p.add_argument(
         "--project-root",
