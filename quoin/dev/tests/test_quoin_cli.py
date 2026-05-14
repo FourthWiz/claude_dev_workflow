@@ -593,31 +593,35 @@ def test_cli_stdout_contract():
         )
         assert result.returncode == 0, f"install failed:\n{result.stderr}"
         stdout = result.stdout
+        # dest_root for user-mode install with HOME=tmp
+        dest_root = Path(tmp) / ".claude"
 
-        # T-04: memory file lines
+        # T-04: memory file lines (now use dest_root-relative paths per MAJ-1)
         for fname in installer.TIER1_MEMORY_FILES:
-            assert f"Copied {fname} to ~/.claude/memory/" in stdout, (
+            assert f"Copied {fname} to {dest_root}/memory/" in stdout, (
                 f"missing stdout line for {fname}"
             )
 
         # T-04: quickstart
-        assert "QUICKSTART deployed to ~/.claude/QUICKSTART.md" in stdout
+        assert f"QUICKSTART deployed to {dest_root}/QUICKSTART.md" in stdout
 
         # T-05: skill count (programmatic — no hardcoded literal per MAJ-6)
-        m = re.search(r"Copied (\d+) skills to ~/\.claude/skills/", stdout)
+        # Pattern matches absolute path (dest_root ends in .claude)
+        m = re.search(r"Copied (\d+) skills to .+/skills/", stdout)
         assert m is not None, f"missing skill count line in stdout:\n{stdout}"
         assert int(m.group(1)) == len(installer.CANONICAL_SKILLS), (
             f"skill count mismatch: got {m.group(1)}, expected {len(installer.CANONICAL_SKILLS)}"
         )
 
-        # T-05: script lines
+        # T-05: script lines (now use dest_root-relative paths per MAJ-1)
         for fname in ("validate_artifact.py", "path_resolve.py", "build_preambles.py"):
-            assert f"Copied {fname} to ~/.claude/scripts/" in stdout
+            assert f"Copied {fname} to {dest_root}/scripts/" in stdout
 
-        # T-06: CLAUDE.md
+        # T-06: CLAUDE.md (now uses absolute path per MAJ-1)
+        claude_md = dest_root / "CLAUDE.md"
         assert (
-            "Updated quoin section in ~/.claude/CLAUDE.md" in stdout
-            or "Appended quoin rules to ~/.claude/CLAUDE.md" in stdout
+            f"Updated quoin section in {claude_md}" in stdout
+            or f"Appended quoin rules to {claude_md}" in stdout
         )
 
         # T-07: prerequisites
