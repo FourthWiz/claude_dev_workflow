@@ -409,6 +409,127 @@ else
   fail "(q) no postcompact sentinel → unexpected block emitted: $out_q"
 fi
 
+# ─── T-06d: /checkpoint --after-compact → exempt (falls through to *) arm) ───
+# Verify that /checkpoint --after-compact at BLOCK_BPS range does NOT produce block JSON.
+# It should be exempt (the *) arm in the case statement covers all /checkpoint variants
+# except --purge).
+
+SID_D="test-session-t06d"
+stdin_d=$(make_stdin '/checkpoint --after-compact' "$TRANSCRIPT_97" "$SID_D" "$TMPDIR_TEST")
+out_d=$(run_hook "$stdin_d")
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-${SID_D}.txt" 2>/dev/null || true
+
+if [ -z "$out_d" ]; then
+  ok "(T-06d) /checkpoint --after-compact → exempt (no output, not blocked)"
+else
+  fail "(T-06d) /checkpoint --after-compact → expected exempt (no output), got: $out_d"
+fi
+
+# ─── T-06f: defer marker suppresses advisory ──────────────────────────────────
+# Fixture: write checkpoint-defer-<sid>.txt; stdin JSON sets matching session_id and cwd.
+# Invocation: stdin JSON at advisory range (STOP_BPS <= util < BLOCK_BPS).
+# Assertion: stdout empty (no advisory). Without marker: same fixture emits advisory.
+
+SID_F="test-session-t06f"
+DEFER_F="$TMPDIR_TEST/.workflow_artifacts/memory/checkpoint-defer-${SID_F}.txt"
+
+# First verify WITHOUT defer marker → advisory IS emitted at 88%
+rm -f "$DEFER_F" 2>/dev/null || true
+stdin_f_no_defer=$(printf '{"prompt":"do some work","transcript_path":"%s","session_id":"%s","cwd":"%s"}' \
+  "$TRANSCRIPT_88" "$SID_F" "$TMPDIR_TEST")
+out_f_no_defer=$(printf '%s' "$stdin_f_no_defer" | sh "$HOOK" 2>/dev/null)
+
+if printf '%s' "$out_f_no_defer" | grep -q 'additionalContext' 2>/dev/null; then
+  ok "(T-06f-1) Without defer marker → advisory emitted at 88% (baseline verified)"
+else
+  fail "(T-06f-1) Without defer marker → expected advisory at 88%, got: $out_f_no_defer"
+fi
+
+# Now write the defer marker and verify advisory is SUPPRESSED
+printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date +%Y-%m-%dT%H:%M:%SZ)" \
+  > "$DEFER_F"
+
+stdin_f_defer=$(printf '{"prompt":"do some work","transcript_path":"%s","session_id":"%s","cwd":"%s"}' \
+  "$TRANSCRIPT_88" "$SID_F" "$TMPDIR_TEST")
+out_f_defer=$(printf '%s' "$stdin_f_defer" | sh "$HOOK" 2>/dev/null)
+
+if [ -z "$out_f_defer" ]; then
+  ok "(T-06f-2) With defer marker → advisory SUPPRESSED (empty stdout)"
+else
+  fail "(T-06f-2) With defer marker → advisory NOT suppressed, got: $out_f_defer"
+fi
+
+rm -f "$DEFER_F" 2>/dev/null || true
+
+# (T-06f-3) Sub-fixture: uppercase UUID round-trip
+# When session_id is uppercase in both defer marker filename and stdin JSON,
+# the defer marker is correctly found and advisory is suppressed.
+SID_F_UPPER="AAAA-BBBB-CCCC-DDDD"
+DEFER_F_UPPER="$TMPDIR_TEST/.workflow_artifacts/memory/checkpoint-defer-${SID_F_UPPER}.txt"
+printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date +%Y-%m-%dT%H:%M:%SZ)" \
+  > "$DEFER_F_UPPER"
+
+stdin_f_upper=$(printf '{"prompt":"do some work","transcript_path":"%s","session_id":"%s","cwd":"%s"}' \
+  "$TRANSCRIPT_88" "$SID_F_UPPER" "$TMPDIR_TEST")
+out_f_upper=$(printf '%s' "$stdin_f_upper" | sh "$HOOK" 2>/dev/null)
+
+if [ -z "$out_f_upper" ]; then
+  ok "(T-06f-3) Uppercase UUID round-trip: defer marker suppresses advisory"
+else
+  fail "(T-06f-3) Uppercase UUID round-trip: advisory NOT suppressed, got: $out_f_upper"
+fi
+
+rm -f "$DEFER_F_UPPER" 2>/dev/null || true
+
+# ─── T-06g: defer marker invalidated on post-compact ─────────────────────────
+# Fixture: both checkpoint-defer-<sid>.txt and postcompact-reset-<sid>.txt present.
+# Assertion: defer marker trash-moved; postcompact sentinel also trash-moved.
+
+SID_G="test-session-t06g"
+DEFER_G="$TMPDIR_TEST/.workflow_artifacts/memory/checkpoint-defer-${SID_G}.txt"
+POSTCOMPACT_G="$TMPDIR_TEST/.workflow_artifacts/memory/postcompact-reset-${SID_G}.txt"
+
+# Write defer marker
+printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date +%Y-%m-%dT%H:%M:%SZ)" \
+  > "$DEFER_G"
+
+# Write postcompact sentinel
+printf 'compacted_at=%s\nsession_id=%s\ntranscript_path=%s\ntranscript_bytes_after=1000\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date +%Y-%m-%dT%H:%M:%SZ)" \
+  "$SID_G" "$TRANSCRIPT_70" \
+  > "$POSTCOMPACT_G"
+
+# Verify both files exist before hook invocation
+if [ -f "$DEFER_G" ] && [ -f "$POSTCOMPACT_G" ]; then
+  ok "(T-06g-1) Both defer marker and postcompact sentinel exist before hook"
+else
+  fail "(T-06g-1) One or both fixture files missing before hook invocation"
+fi
+
+# Run hook (70% transcript — below block threshold, hook processes STEP 0.5)
+stdin_g=$(printf '{"prompt":"hello","transcript_path":"%s","session_id":"%s","cwd":"%s"}' \
+  "$TRANSCRIPT_70" "$SID_G" "$TMPDIR_TEST")
+printf '%s' "$stdin_g" | sh "$HOOK" 2>/dev/null > /dev/null || true
+
+# (T-06g-2) Postcompact sentinel was consumed (trash-moved, no longer in memory/)
+if [ ! -f "$POSTCOMPACT_G" ]; then
+  ok "(T-06g-2) Postcompact sentinel consumed (trash-moved) after hook ran"
+else
+  fail "(T-06g-2) Postcompact sentinel still present at $POSTCOMPACT_G"
+fi
+
+# (T-06g-3) Defer marker was also trash-moved (on post-compact boundary)
+if [ ! -f "$DEFER_G" ]; then
+  ok "(T-06g-3) Defer marker trash-moved on post-compact (meaningful work boundary)"
+else
+  fail "(T-06g-3) Defer marker still present at $DEFER_G (should be trash-moved by STEP 0.5)"
+fi
+
+# Cleanup any trash files
+TODAY_T06=$(date -u +%Y-%m-%d 2>/dev/null) || TODAY_T06=$(date +%Y-%m-%d)
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/trash/$TODAY_T06/checkpoint-defer-${SID_G}.txt" 2>/dev/null || true
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/trash/$TODAY_T06/postcompact-reset-${SID_G}.txt" 2>/dev/null || true
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 
 printf '\n'
