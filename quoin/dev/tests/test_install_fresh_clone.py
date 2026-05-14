@@ -151,7 +151,8 @@ def test_fresh_clone_install_e2e(transport: str):
         )
 
         # Skill count matches programmatic constant (MAJ-6)
-        m = re.search(r"Copied (\d+) skills to ~/\.claude/skills/", result.stdout)
+        # The installer emits dest_root-relative path (e.g. /tmp/.../skills/), not ~/-relative.
+        m = re.search(r"Copied (\d+) skills to .+/skills/", result.stdout)
         assert m is not None, f"[{transport}] missing skill count line in stdout"
         assert int(m.group(1)) == len(CANONICAL_SKILLS), (
             f"[{transport}] skill count {m.group(1)} != len(CANONICAL_SKILLS)={len(CANONICAL_SKILLS)}"
