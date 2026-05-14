@@ -266,11 +266,29 @@ def deploy_hooks(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
     _append_stanza("SessionStart",     "resume",  f"{hooks_dir}/sessionstart.sh",     5)
     _append_stanza("SessionEnd",       "*",       f"{hooks_dir}/sessionend.sh",       5)
 
+    # Merge rm -rf / rm -fr deny rules into permissions.deny (idempotent).
+    # These prevent accidental recursive deletes while still allowing plain rm.
+    _DENY_RULES = [
+        "Bash(rm -rf:*)",
+        "Bash(rm -rf *)",
+        "Bash(rm -fr:*)",
+        "Bash(rm -fr *)",
+    ]
+    permissions = settings.setdefault("permissions", {})
+    deny_list = permissions.setdefault("deny", [])
+    added = 0
+    for rule in _DENY_RULES:
+        if rule not in deny_list:
+            deny_list.append(rule)
+            added += 1
+
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
         f.write("\n")
     print("Merged 6 hook stanzas into ~/.claude/settings.json")
+    if added:
+        print(f"Added {added} rm -rf/rm -fr deny rule(s) to ~/.claude/settings.json")
 
 
 def cleanup_obsolete_scripts(dest_root: pathlib.Path) -> None:
