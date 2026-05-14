@@ -25,26 +25,25 @@ REPO_ROOT = QUOIN_PKG_DIR.parent
 
 SMOKE_SKILLS = ["discover", "plan", "implement", "review", "gate"]
 
-CODEX_PATH_FILES = [
-    "AGENTS.md",
-    "quoin/adapters/codex/README.md",
-    "quoin/adapters/codex/setup.md",
-    "quoin/adapters/codex/installable-feature.md",
-    "quoin/adapters/codex/feature-manifest.json",
-    "quoin/adapters/codex/workflow.md",
-    "quoin/adapters/codex/handoff.md",
-    "quoin/adapters/codex/validate_codex_handoff.py",
-    "quoin/adapters/codex/fixtures/valid-handoff.md",
-    "quoin/adapters/codex/cost.md",
-    "quoin/adapters/codex/cost_event.py",
-    "quoin/adapters/codex/procedures/README.md",
-    "quoin/adapters/codex/procedures/discover.md",
-    "quoin/adapters/codex/procedures/plan.md",
-    "quoin/adapters/codex/procedures/implement.md",
-    "quoin/adapters/codex/procedures/review.md",
-    "quoin/adapters/codex/procedures/gate.md",
-    "quoin/adapters/codex/skills/README.md",
-    "quoin/adapters/codex/unsupported-claude-behavior.md",
+CODEX_SOURCE_FILES = [
+    "README.md",
+    "setup.md",
+    "installable-feature.md",
+    "feature-manifest.json",
+    "workflow.md",
+    "handoff.md",
+    "validate_codex_handoff.py",
+    "fixtures/valid-handoff.md",
+    "cost.md",
+    "cost_event.py",
+    "procedures/README.md",
+    "procedures/discover.md",
+    "procedures/plan.md",
+    "procedures/implement.md",
+    "procedures/review.md",
+    "procedures/gate.md",
+    "skills/README.md",
+    "unsupported-claude-behavior.md",
 ]
 
 FORBIDDEN_CLAUDE_RUNTIME_PATTERNS = [
@@ -107,7 +106,8 @@ def _missing(paths: Iterable[Path]) -> List[str]:
 
 
 def _codex_smoke_files(project_root: Path) -> List[Path]:
-    files = [project_root / rel for rel in CODEX_PATH_FILES]
+    files = [project_root / "AGENTS.md"]
+    files.extend(SCRIPT_DIR / rel for rel in CODEX_SOURCE_FILES)
     for skill in SMOKE_SKILLS:
         files.append(SCRIPT_DIR / "skills" / skill / "README.md")
     return files

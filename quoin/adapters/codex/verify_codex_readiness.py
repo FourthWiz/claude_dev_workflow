@@ -373,6 +373,12 @@ def check_no_guessed_global_paths(project_root: Path) -> CheckResult:
 def check_claude_install_isolated() -> CheckResult:
     install_sh = QUOIN_PKG_DIR / "install.sh"
     if not install_sh.is_file():
+        if QUOIN_PKG_DIR.name == "data":
+            return CheckResult(
+                "claude-install-isolated",
+                True,
+                "Claude legacy install.sh is not bundled in wheel data; CLI installer remains isolated",
+            )
         return CheckResult("claude-install-isolated", False, f"missing {install_sh}")
 
     text = _read(install_sh).lower()
