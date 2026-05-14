@@ -63,7 +63,7 @@ Otherwise (already at or below declared tier, OR prompt has [no-redispatch] sent
 At entry — immediately after §0 dispatch resolves:
 
 ```
-. ~/.claude/scripts/pidfile_helpers.sh && pidfile_acquire checkpoint
+. __QUOIN_HOME__/scripts/pidfile_helpers.sh && pidfile_acquire checkpoint
 ```
 
 If the script is missing or fails (e.g., fresh install before Step 2b has run):
@@ -380,9 +380,9 @@ Trash-move consumed sentinels to `.workflow_artifacts/memory/trash/<YYYY-MM-DD>/
 - `pending-prompt-${session_id}.txt` — if it was CASE B and user chose `y` or `n`.
 - `pending-restore-${session_id}.txt` — always on successful restore (CASE A or B).
 
-Use the `trash_move` helper from `~/.claude/hooks/_lib.sh` (fail-OPEN — if the move fails, warn and leave in place):
+Use the `trash_move` helper from `__QUOIN_HOME__/hooks/_lib.sh` (fail-OPEN — if the move fails, warn and leave in place):
 ```bash
-. ~/.claude/hooks/_lib.sh && trash_move "<sentinel-path>" "$(pwd)/.workflow_artifacts/memory"
+. __QUOIN_HOME__/hooks/_lib.sh && trash_move "<sentinel-path>" "$(pwd)/.workflow_artifacts/memory"
 ```
 
 Stale CASE C pending-prompt files left alone unless user chose `delete` (see CASE C below).

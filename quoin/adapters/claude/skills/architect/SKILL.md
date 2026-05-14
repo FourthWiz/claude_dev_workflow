@@ -18,12 +18,12 @@ This skill requires the strongest available model (currently Claude Opus). If yo
 ## Session bootstrap
 
 This skill may run in a fresh chat session with no prior context. On start:
-1. Read `~/.claude/skills/architect/preamble.md` if it exists; if missing or empty, proceed normally. Purely additive cache-warming — every other read in this `## Session bootstrap` section, and every write-site format-kit / glossary reference (per §5.3 / §5.4 write-site instructions), stays in force unchanged. The intent is CROSS-SPAWN cache reuse: spawn N+1 of this skill with a byte-identical task fixture hits cache from spawn N's preamble.md tool_result, within the 5-minute prompt-cache TTL. Within a single spawn there is no cache benefit — savings only materialize on subsequent spawns whose prompt prefix is byte-identical through the preamble read. (Stage 2-alt of pipeline-efficiency-improvements.)
+1. Read `__QUOIN_HOME__/skills/architect/preamble.md` if it exists; if missing or empty, proceed normally. Purely additive cache-warming — every other read in this `## Session bootstrap` section, and every write-site format-kit / glossary reference (per §5.3 / §5.4 write-site instructions), stays in force unchanged. The intent is CROSS-SPAWN cache reuse: spawn N+1 of this skill with a byte-identical task fixture hits cache from spawn N's preamble.md tool_result, within the 5-minute prompt-cache TTL. Within a single spawn there is no cache benefit — savings only materialize on subsequent spawns whose prompt prefix is byte-identical through the preamble read. (Stage 2-alt of pipeline-efficiency-improvements.)
 2. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights
 3. Read `.workflow_artifacts/memory/sessions/` for any active session state for this task
-4. Read the task subfolder if it exists: architecture.md is ALWAYS at task root (`<task-root>/architecture.md`); for `current-plan.md`, resolve via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` and read `<task_dir>/current-plan.md`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md` (line 5 — NOT edited per D-03).
+4. Read the task subfolder if it exists: architecture.md is ALWAYS at task root (`<task-root>/architecture.md`); for `current-plan.md`, resolve via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` and read `<task_dir>/current-plan.md`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md` (line 5 — NOT edited per D-03).
 5. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `architect`
-6. Read deployed v3 references at session start: `~/.claude/memory/format-kit.md` and `~/.claude/memory/glossary.md`.
+6. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`.
 7. Then proceed with the work below
 
 ## How you work
@@ -216,11 +216,11 @@ Where `<task-name>` is a descriptive kebab-case name derived from the task (ask 
 `architecture.md` is a Class B artifact per artifact-format-architecture v3 §4.1. Write it using the §5.3 5-step Class B mechanism:
 
 **Step 1: Body generation.**
-Read `~/.claude/memory/format-kit-pitfalls.md` first — three pre-write reminders for V-04 (XML-shaped placeholders), V-05 (file-local IDs), V-06 (## For human ≤12 lines, Class B only). Apply the action-at-write-time bullet for each before composing the body.
+Read `__QUOIN_HOME__/memory/format-kit-pitfalls.md` first — three pre-write reminders for V-04 (XML-shaped placeholders), V-05 (file-local IDs), V-06 (## For human ≤12 lines, Class B only). Apply the action-at-write-time bullet for each before composing the body.
 Reference files (apply HERE at the body-generation WRITE-SITE — per format-kit.md §1; this is the only place these references apply, per lesson 2026-04-23):
-- `~/.claude/memory/format-kit.md` — primitives + standard sections per artifact type
-- `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs
-- `~/.claude/memory/terse-rubric.md` — prose discipline (compose with format-kit per §5)
+- `__QUOIN_HOME__/memory/format-kit.md` — primitives + standard sections per artifact type
+- `__QUOIN_HOME__/memory/glossary.md` — abbreviation whitelist + status glyphs
+- `__QUOIN_HOME__/memory/terse-rubric.md` — prose discipline (compose with format-kit per §5)
 
 # V-05 reminder: T-NN/D-NN/R-NN/F-NN/Q-NN/S-NN are FILE-LOCAL.
 # When referring to a sibling artifact's task or risk, use plain English (e.g., "the parent plan's T-04"), NOT a bare T-NN token. See format-kit.md §1 / glossary.md.
@@ -242,7 +242,7 @@ Apply `format-kit.md` §1 pick rules per section. DO NOT include the `## For hum
 
 **Step 2: Summary generation (Agent subagent, with empty-output check).**
 
-Read the frozen prompt template from `~/.claude/memory/summary-prompt.md` using
+Read the frozen prompt template from `__QUOIN_HOME__/memory/summary-prompt.md` using
 the Read tool. Read the artifact body from `<path>.body.tmp` using the Read tool.
 Compose the prompt as: <prompt-template-with-`<<<BODY>>>`-replaced-by-body-text>.
 
@@ -275,7 +275,7 @@ lesson 2026-04-24.)
 This guarantees exactly one `## For human` line regardless of Haiku output shape.
 
 **Step 4: Structural validation.** Invoke the deployed validator:
-  `python3 ~/.claude/scripts/validate_artifact.py <path>.tmp`
+  `python3 __QUOIN_HOME__/scripts/validate_artifact.py <path>.tmp`
 Filename auto-detection identifies the type as `architecture` (matches `^architecture` regex in `detect_type()`). Exit code 0 = PASS; non-zero = at least one V-01..V-07 invariant failed.
 
 **Step 5: Retry / English-fallback (failure-class-aware).** Differentiate by which step failed:
@@ -313,7 +313,7 @@ Phase 4 runs immediately after Step 6 above — `architecture.md` now exists on 
 - `architect/SKILL\.md`
 - `critic/SKILL\.md`
 - `quoin/skills/(architect|critic)/SKILL\.md`
-- `~/.claude/skills/(architect|critic)/SKILL\.md`
+- `__QUOIN_HOME__/skills/(architect|critic)/SKILL\.md`
 
 If any form matches AND the user did NOT pass `strict:` or `max_rounds: N` (N ≥ 2) explicitly:
 - Warn the user: "This task modifies architect or critic SKILL.md — recursive self-critique applies."
@@ -346,7 +346,7 @@ while round <= max_rounds:
     if verdict == PASS: break
 
     # Classify issues — always run (informs same-class detection):
-    run: python3 ~/.claude/scripts/classify_critic_issues.py \
+    run: python3 __QUOIN_HOME__/scripts/classify_critic_issues.py \
          --critic-response .workflow_artifacts/<task-name>/architecture-critic-{round}.md
     # Capture: structural_count, dominant_surface_family for this round.
     #

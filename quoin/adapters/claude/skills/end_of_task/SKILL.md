@@ -60,7 +60,7 @@ session is a known cause of stream-idle timeouts (Apr 28 18:13 incident).
 Before doing any work, check session activity age:
 
 ```
-python3 ~/.claude/scripts/session_age_guard.py --threshold-hours 6.0 --project-root "$(pwd)"
+python3 __QUOIN_HOME__/scripts/session_age_guard.py --threshold-hours 6.0 --project-root "$(pwd)"
 ```
 
 If exit 1 (`OVER|...`): STOP. Tell the user verbatim:
@@ -105,7 +105,7 @@ Execute these steps inline (never dispatch for interactive steps):
 
 Before touching git, verify everything is clean:
 
-1. **Review status** — resolve the artifact path via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` (or stage=None for legacy tasks), then look for `<task_dir>/review-*.md`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate. If no review file exists at the resolved path, STOP and tell the user: "No review found — please run `/review` first." If a review exists, read the latest one and confirm verdict is APPROVED. If not approved, stop and tell the user. (architecture.md and cost-ledger.md ALWAYS at task root per D-03.)
+1. **Review status** — resolve the artifact path via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` (or stage=None for legacy tasks), then look for `<task_dir>/review-*.md`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate. If no review file exists at the resolved path, STOP and tell the user: "No review found — please run `/review` first." If a review exists, read the latest one and confirm verdict is APPROVED. If not approved, stop and tell the user. (architecture.md and cost-ledger.md ALWAYS at task root per D-03.)
 2. **Tests pass** — run the test suite one final time. If anything fails, stop.
 3. **Branch state** — check if the branch is up to date with the base branch. If behind, rebase/merge and re-run tests.
 4. **No secrets** — quick scan of the diff for passwords, API keys, tokens.
@@ -235,8 +235,8 @@ Spawn an Agent subagent:
           Path-agnostic all-failed gate: whichever of the per-UUID loop or bulk call was taken,
           if NO ledger UUID was successfully resolved, fall back to cost_from_jsonl.py for all UUIDs.
        c. Fallback (from binary-check branch OR all-failed gate):
-          Per-UUID mode: `python3 ~/.claude/scripts/cost_from_jsonl.py session -i UUID --json`
-          Bulk mode: `python3 ~/.claude/scripts/cost_from_jsonl.py session --json --since <date>`
+          Per-UUID mode: `python3 __QUOIN_HOME__/scripts/cost_from_jsonl.py session -i UUID --json`
+          Bulk mode: `python3 __QUOIN_HOME__/scripts/cost_from_jsonl.py session --json --since <date>`
           Filter results to only UUIDs in the ledger. Parse output identically to ccusage.
           Prepend: `[fallback: cost_from_jsonl.py — prices as of <LAST_UPDATED>]`
           Read LAST_UPDATED via: `python3 -c "from pathlib import Path; import sys; sys.path.insert(0, str(Path.home() / '.claude' / 'scripts')); import cost_from_jsonl; print(cost_from_jsonl.LAST_UPDATED)"`

@@ -9,6 +9,12 @@ import runpy
 import sys
 from typing import Optional
 
+
+def _abort(msg: str, code: int = 2) -> None:
+    """Print msg to stderr and sys.exit(code)."""
+    print(msg, file=sys.stderr)
+    sys.exit(code)
+
 from quoin.__about__ import __version__
 
 
@@ -111,12 +117,93 @@ def _derive_allow_writes(source_dir: pathlib.Path, source_dir_explicit: bool) ->
     return True
 
 
+def _resolve_dest_root(args: argparse.Namespace) -> pathlib.Path:
+    """Resolve the dest_root for a Claude install based on --scope (proc:T-03).
+
+    --scope user (default)  → ~/.claude/
+    --scope project         → <CWD>/.claude/
+    --scope project:/path   → /path/.claude/
+
+    Validates that the resolved path is not home's .claude, that the parent is
+    writable, and that the parent is not / or HOME.
+    """
+    scope: str = getattr(args, "scope", None) or "user"
+
+    if not scope.startswith("project"):
+        return pathlib.Path.home() / ".claude"
+
+    # Parse "project" or "project:/absolute/path"
+    parts = scope.split(":", 1)
+    raw_dir = parts[1] if len(parts) == 2 else None
+    project_dir = pathlib.Path(raw_dir or os.getcwd()).resolve()
+
+    # Refuse root and home as project dir
+    if project_dir == pathlib.Path("/") or project_dir == pathlib.Path.home():
+        _abort(
+            f"quoin: --scope project resolved to {project_dir}; "
+            "refusing to use root or home directory as project root"
+        )
+
+    # Refuse if parent is not writable
+    if not os.access(project_dir, os.W_OK):
+        _abort(
+            f"quoin: --scope project dir {project_dir} is not writable"
+        )
+
+    dest = project_dir / ".claude"
+
+    # Refuse if dest resolves to the home .claude (catches --scope project:~)
+    if dest.resolve() == (pathlib.Path.home() / ".claude").resolve():
+        _abort(
+            "quoin: --scope project resolved to the user home install path; "
+            "use bare 'quoin install' (default --scope user) instead"
+        )
+
+    return dest
+
+
 def _cmd_claude_install(args: argparse.Namespace) -> int:
     from quoin import installer
 
     source_dir_explicit = args.source_dir is not None
     source_dir = _resolve_source_dir(args.source_dir)
+
+    # Resolve dest_root via --scope flag
+    dest_root = _resolve_dest_root(args)
+    scope: str = getattr(args, "scope", None) or "user"
+    is_project_mode = scope.startswith("project")
+
+    # Mutex: --scope project is only valid with --runtime claude
+    if is_project_mode and getattr(args, "runtime", "claude") == "codex":
+        _abort("quoin: --scope project is only valid with --runtime claude")
+
+    # Mutex: --scope project cannot combine with --check
+    if is_project_mode and getattr(args, "check", False):
+        _abort("quoin: --scope project cannot combine with --check")
+
+    # T-13: fail-fast when home ~/.claude/settings.json has quoin hook stanzas
+    # (hooks MERGE across scopes and fire multiple times; double-fire has real side-effects)
+    allow_hook_merge: bool = getattr(args, "allow_hook_merge", False)
+    if is_project_mode and not allow_hook_merge:
+        if installer.detect_home_hook_conflict():
+            _abort(
+                "quoin: Home-level quoin hook stanzas detected in ~/.claude/settings.json.\n"
+                "Running project-mode install alongside home-mode hooks causes each hook to\n"
+                "fire TWICE per event (hooks MERGE across settings.json files, not override).\n"
+                "Options:\n"
+                "  (a) Remove home-level quoin stanzas manually or via\n"
+                "      'quoin uninstall --scope user --hooks-only' (not yet implemented).\n"
+                "  (b) Run with --allow-hook-merge to proceed anyway (documents the double-fire)."
+            )
+
+    # allow_writes: project mode never regenerates preambles into the source tree
     allow_writes = _derive_allow_writes(source_dir, source_dir_explicit)
+    if is_project_mode:
+        allow_writes = False  # T-07 MAJ-6: project installs never write to source tree
+
+    # Emit mode banner
+    mode_label = "project mode" if is_project_mode else "user mode"
+    print(f"Installing under {dest_root.resolve()} ({mode_label})")
 
     # T-07: prerequisites first
     missing = installer.check_prerequisites()
@@ -127,8 +214,6 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
         print("\nInstall them and re-run this script.", file=sys.stderr)
         return 1
     print("Prerequisites OK")
-
-    dest_root = pathlib.Path.home() / ".claude"
 
     # T-04
     installer.deploy_memory(source_dir, dest_root)
@@ -141,10 +226,45 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
     installer.cleanup_obsolete_scripts(dest_root)
 
     # Hooks
-    installer.deploy_hooks(source_dir, dest_root)
+    installer.deploy_hooks(source_dir, dest_root, is_project_mode=is_project_mode)
 
-    # T-06
-    installer.merge_workflow_rules(source_dir, dest_root, force_merge=args.force_merge)
+    # T-06: CLAUDE.md placement differs by mode (D-02)
+    if is_project_mode:
+        # project mode: write to <project>/CLAUDE.md (one level above .claude/)
+        claude_md_path = dest_root.parent / "CLAUDE.md"
+        # D-02: 3-second abort window so users can Ctrl-C if wrong project root
+        print(
+            f"Will write workflow rules to {claude_md_path} in 3 seconds. "
+            "Press Ctrl-C to abort."
+        )
+        import time
+        try:
+            time.sleep(3)
+        except KeyboardInterrupt:
+            print("\nAborted — no files written.", file=sys.stderr)
+            return 1
+    else:
+        claude_md_path = dest_root / "CLAUDE.md"
+    installer.merge_workflow_rules(
+        source_dir,
+        dest_root,
+        force_merge=args.force_merge,
+        claude_md_path=claude_md_path,
+    )
+
+    # proc:R-02: post-install placeholder validator
+    violations = installer.assert_no_placeholders(dest_root)
+    if violations:
+        print(
+            f"quoin: install error — {len(violations)} unsubstituted __QUOIN_HOME__ "
+            f"placeholder(s) found:",
+            file=sys.stderr,
+        )
+        for v in violations[:5]:
+            print(f"  {v}", file=sys.stderr)
+        if len(violations) > 5:
+            print(f"  ... ({len(violations) - 5} more)", file=sys.stderr)
+        return 1
 
     # T-07: preamble regeneration last
     installer.regenerate_preambles(source_dir, allow_writes=allow_writes)
@@ -168,6 +288,11 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
 
 
 def _cmd_install(args: argparse.Namespace) -> int:
+    # --scope project cannot combine with --runtime codex — check before dispatch
+    scope: str = getattr(args, "scope", None) or "user"
+    if scope.startswith("project") and getattr(args, "runtime", "claude") == "codex":
+        _abort("quoin: --scope project is only valid with --runtime claude")
+
     if args.runtime == "codex":
         return _cmd_codex_init(args)
     if args.check:
@@ -253,36 +378,49 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     import shutil
 
     errors: list[str] = []
+    warnings: list[str] = []
 
     print(f"quoin version: {__version__}")
     print(f"Python: {sys.version.split()[0]}")
     print()
 
-    # Prerequisites
-    for tool in ("claude", "git", "gh", "npx"):
-        found = shutil.which(tool) is not None
-        status = "✓" if found else "✗"
-        print(f"  {status} {tool}")
-        if tool in ("claude", "git") and not found:
-            errors.append(f"Required tool missing: {tool}")
+    # Resolve dest_root via --scope (T-08: project-mode support)
+    scope: str = getattr(args, "scope", None) or "user"
+    is_project_mode = scope.startswith("project")
+    if is_project_mode:
+        dest_root = _resolve_dest_root(args)
+        dest_label = str(dest_root)
+    else:
+        dest_root = pathlib.Path.home() / ".claude"
+        dest_label = "~/.claude"
 
+    print(f"Checking install scope: {scope}  →  {dest_label}")
     print()
 
-    # Tier-1 memory files
-    dest_root = pathlib.Path.home() / ".claude"
-    print("Memory files (~/.claude/memory/):")
-    for fname in installer.TIER1_MEMORY_FILES:
-        p = dest_root / "memory" / fname
-        found = p.exists()
-        status = "✓" if found else "✗"
-        print(f"  {status} {fname}")
-        if not found:
-            errors.append(f"Missing memory file: {fname}")
+    # Prerequisites (user-scope only — project-scope doesn't need these)
+    if not is_project_mode:
+        for tool in ("claude", "git", "gh", "npx"):
+            found = shutil.which(tool) is not None
+            status = "✓" if found else "✗"
+            print(f"  {status} {tool}")
+            if tool in ("claude", "git") and not found:
+                errors.append(f"Required tool missing: {tool}")
+        print()
 
-    print()
+    # Tier-1 memory files (user-scope only — not deployed in project mode)
+    if not is_project_mode:
+        print(f"Memory files ({dest_label}/memory/):")
+        for fname in installer.TIER1_MEMORY_FILES:
+            p = dest_root / "memory" / fname
+            found = p.exists()
+            status = "✓" if found else "✗"
+            print(f"  {status} {fname}")
+            if not found:
+                errors.append(f"Missing memory file: {fname}")
+        print()
 
     # Scripts
-    print("Scripts (~/.claude/scripts/):")
+    print(f"Scripts ({dest_label}/scripts/):")
     for fname in installer.DEPLOYED_SCRIPTS:
         p = dest_root / "scripts" / fname
         found = p.exists()
@@ -294,7 +432,7 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     print()
 
     # Skills
-    print("Skills (~/.claude/skills/):")
+    print(f"Skills ({dest_label}/skills/):")
     for skill in installer.CANONICAL_SKILLS:
         p = dest_root / "skills" / skill
         found = p.is_dir()
@@ -305,23 +443,79 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
 
     print()
 
+    # T-08 CRIT-2: skill conflict warning for project mode
+    # User-scope skills shadow project-scope skills of the same name.
+    if is_project_mode:
+        home_skills = pathlib.Path.home() / ".claude" / "skills"
+        if home_skills.is_dir():
+            shadowed = []
+            for skill in installer.CANONICAL_SKILLS:
+                if (home_skills / skill).is_dir() and (dest_root / "skills" / skill).is_dir():
+                    shadowed.append(skill)
+            if shadowed:
+                print("⚠ Skill shadow warning:")
+                print(
+                    f"  The following skills exist in BOTH {dest_label}/skills/ AND "
+                    "~/.claude/skills/."
+                )
+                print(
+                    "  Claude Code resolves user scope (~/.claude/skills/) BEFORE project scope."
+                )
+                print(
+                    "  The project-scope versions below will be HIDDEN by the user-scope versions:"
+                )
+                for skill in shadowed:
+                    print(f"    - {skill}")
+                print(
+                    "  To use project-scope skills, remove the user-scope versions or"
+                    " run 'quoin install' without --scope project."
+                )
+                print()
+                warnings.append(
+                    f"{len(shadowed)} skill(s) shadowed by user-scope install: "
+                    + ", ".join(shadowed)
+                )
+
     # CLAUDE.md marker count
-    claude_md = dest_root / "CLAUDE.md"
+    if is_project_mode:
+        # In project mode, CLAUDE.md is at the project root (parent of .claude/)
+        claude_md = dest_root.parent / "CLAUDE.md"
+        claude_md_label = f"{dest_root.parent}/CLAUDE.md"
+    else:
+        claude_md = dest_root / "CLAUDE.md"
+        claude_md_label = f"{dest_label}/CLAUDE.md"
+
     if claude_md.exists():
         content = claude_md.read_text()
         marker_count = content.count("# === DEV WORKFLOW START ===")
         status = "✓" if marker_count == 1 else "✗"
-        print(f"  {status} ~/.claude/CLAUDE.md — {marker_count} DEV WORKFLOW marker pair(s)")
-        if marker_count != 1:
+        print(f"  {status} {claude_md_label} — {marker_count} DEV WORKFLOW marker pair(s)")
+        if marker_count > 1 and is_project_mode:
+            # T-08 acceptance bullet: explicit warning for double-install in project mode
+            print(
+                f"  ⚠ {claude_md_label} — {marker_count} DEV WORKFLOW marker pairs "
+                "(expected 1); run 'quoin install --scope project --force-merge' to fix"
+            )
+            warnings.append(
+                f"CLAUDE.md has {marker_count} marker pairs (double-install detected); "
+                "run 'quoin install --scope project --force-merge' to fix"
+            )
+        elif marker_count != 1:
             errors.append(
                 f"CLAUDE.md has {marker_count} marker pairs (expected 1); "
                 "run 'quoin install --force-merge' to fix"
             )
     else:
-        print("  ✗ ~/.claude/CLAUDE.md — not found")
-        errors.append("CLAUDE.md not found; run 'quoin install'")
+        print(f"  ✗ {claude_md_label} — not found")
+        errors.append(f"CLAUDE.md not found at {claude_md_label}; run 'quoin install'")
 
     print()
+    if warnings:
+        print(f"doctor: {len(warnings)} warning(s):")
+        for w in warnings:
+            print(f"  ⚠ {w}")
+        print()
+
     if errors:
         print(f"doctor: {len(errors)} issue(s) found:")
         for err in errors:
@@ -391,6 +585,32 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Keep first DEV WORKFLOW marker pair; remove extra pairs",
     )
+    install_p.add_argument(
+        "--scope",
+        default="user",
+        metavar="SCOPE",
+        help=(
+            "Install under <project>/.claude/ instead of ~/.claude/. "
+            "Values: 'user' (default, installs to ~/.claude/), "
+            "'project' (installs to <CWD>/.claude/), "
+            "'project:/path/to/repo' (installs to /path/to/repo/.claude/). "
+            "All skills, scripts, hooks, and CLAUDE.md will be project-scoped. "
+            "Hooks register in <project>/.claude/settings.json only. "
+            "Note: for skills, Claude Code personal scope overrides project scope — "
+            "a prior home install shadows project skills. "
+            "Run 'quoin doctor --scope project' to detect conflicts."
+        ),
+    )
+    install_p.add_argument(
+        "--allow-hook-merge",
+        action="store_true",
+        default=False,
+        help=(
+            "For --scope project: proceed even if home ~/.claude/settings.json already "
+            "has quoin hook stanzas. By default, project-mode install fails fast when "
+            "home hooks are detected to prevent double-fire side effects."
+        ),
+    )
 
     doctor_p = sub.add_parser("doctor", help="Check quoin installation health (read-only)")
     doctor_p.add_argument(
@@ -398,6 +618,15 @@ def main(argv: list[str] | None = None) -> int:
         choices=("claude", "codex"),
         default="claude",
         help="Runtime to check; defaults to claude.",
+    )
+    doctor_p.add_argument(
+        "--scope",
+        default="user",
+        metavar="user|project[:DIR]",
+        help=(
+            "Installation scope to check. 'user' (default) checks ~/.claude/. "
+            "'project' checks <CWD>/.claude/. 'project:/path' checks /path/.claude/."
+        ),
     )
     doctor_p.add_argument(
         "--project-root",

@@ -1,6 +1,6 @@
 ---
 name: init_workflow
-description: "Initializes the development workflow in a project folder. Creates the .workflow_artifacts/ structure, runs /discover to scan the codebase, and generates a quickstart guide. Requires install.sh to have been run first (installs skills to ~/.claude/skills/ and workflow rules to ~/.claude/CLAUDE.md). Use this skill for: /init_workflow, 'initialize workflow', 'set up dev workflow', 'install workflow', 'bootstrap workflow'. Run this once per project."
+description: "Initializes the development workflow in a project folder. Creates the .workflow_artifacts/ structure, runs /discover to scan the codebase, and generates a quickstart guide. Requires install.sh to have been run first (installs skills to __QUOIN_HOME__/skills/ and workflow rules to __QUOIN_HOME__/CLAUDE.md). Use this skill for: /init_workflow, 'initialize workflow', 'set up dev workflow', 'install workflow', 'bootstrap workflow'. Run this once per project."
 model: opus
 ---
 
@@ -19,7 +19,7 @@ You set up the complete development workflow system in a project folder. This is
 
 ## Prerequisites
 
-`install.sh` must have been run first. It installs skills to `~/.claude/skills/` and writes workflow rules to `~/.claude/CLAUDE.md`. This skill handles per-project initialization only — not the one-time machine setup.
+`install.sh` must have been run first. It installs skills to `__QUOIN_HOME__/skills/` and writes workflow rules to `__QUOIN_HOME__/CLAUDE.md`. This skill handles per-project initialization only — not the one-time machine setup.
 
 ## Session bootstrap
 
@@ -95,7 +95,7 @@ mv quoin/memory .workflow_artifacts/memory
 
 If `.workflow_artifacts/memory/` already exists (partial migration), merge by copying missing files only — never overwrite existing ones.
 
-**Old symlinks cleanup:** Check for `.claude/skills/` containing symlinks into `quoin/skills/`. If found, remove them — skills are now global at `~/.claude/skills/`:
+**Old symlinks cleanup:** Check for `.claude/skills/` containing symlinks into `quoin/skills/`. If found, remove them — skills are now global at `__QUOIN_HOME__/skills/`:
 ```bash
 for f in .claude/skills/*/; do
   [ -L "${f%/}" ] && rm "${f%/}"
@@ -104,7 +104,7 @@ done
 
 **Old skills directory:** If `quoin/skills/` exists, it is no longer needed. Offer to remove it:
 ```
-quoin/skills/ is no longer needed (skills live at ~/.claude/skills/).
+quoin/skills/ is no longer needed (skills live at __QUOIN_HOME__/skills/).
 Remove it? (yes/no)
 ```
 
@@ -173,12 +173,12 @@ Create the memory structure under `.workflow_artifacts/` at the project root:
 │   │   └── workflow-suggestions.md   ← Tier 3 insight suggestions
 ```
 
-Note: Skills live at `~/.claude/skills/` (installed by `install.sh`), and the QUICKSTART command
-reference is deployed by `install.sh` to `~/.claude/QUICKSTART.md`. The interactive HTML guide lives
+Note: Skills live at `__QUOIN_HOME__/skills/` (installed by `install.sh`), and the QUICKSTART command
+reference is deployed by `install.sh` to `__QUOIN_HOME__/QUICKSTART.md`. The interactive HTML guide lives
 in your Quoin source clone at `<your-quoin-clone>/Workflow-User-Guide.html` — the only artifact
 /init_workflow still references from the source clone.
 
-Skills are already at `~/.claude/skills/` (installed by `install.sh`). Do not create a `skills/` directory in the project.
+Skills are already at `__QUOIN_HOME__/skills/` (installed by `install.sh`). Do not create a `skills/` directory in the project.
 
 ```bash
 mkdir -p .workflow_artifacts/memory/sessions .workflow_artifacts/memory/daily .workflow_artifacts/memory/weekly
@@ -203,7 +203,7 @@ For files that should start empty but exist as placeholders:
   # Workflow Rules
 
   Reference summary of the quoin system for Claude.
-  See ~/.claude/CLAUDE.md for the full rules.
+  See __QUOIN_HOME__/CLAUDE.md for the full rules.
   ```
 - `.workflow_artifacts/memory/workflow-suggestions.md` — create with the template header:
   ```markdown
@@ -272,10 +272,10 @@ Safety check: if `(project)/dev-workflow/install.sh` OR `(project)/dev-workflow/
 
 **Copy QUICKSTART from the deployed location:**
 
-`install.sh` deploys `quoin/QUICKSTART.md` to `~/.claude/QUICKSTART.md` at install time. Step 7 reads
+`install.sh` deploys `quoin/QUICKSTART.md` to `__QUOIN_HOME__/QUICKSTART.md` at install time. Step 7 reads
 from that stable path — no user prompt needed.
 
-- **Source path:** `~/.claude/QUICKSTART.md` (deployed by `install.sh`)
+- **Source path:** `__QUOIN_HOME__/QUICKSTART.md` (deployed by `install.sh`)
 - **Destination:** `.workflow_artifacts/QUICKSTART.md`
 
 ```bash
@@ -285,7 +285,7 @@ else
   cat > .workflow_artifacts/QUICKSTART.md <<'EOF'
 # Quoin — Quickstart (fallback)
 
-The full QUICKSTART could not be found at ~/.claude/QUICKSTART.md.
+The full QUICKSTART could not be found at __QUOIN_HOME__/QUICKSTART.md.
 This means install.sh has not been run, or was run from an older version.
 
 To get the full command reference, re-run install.sh from your Quoin source clone:
@@ -293,7 +293,7 @@ To get the full command reference, re-run install.sh from your Quoin source clon
 
 In the meantime:
   - Type /help inside Claude Code to see available slash commands.
-  - Browse the user skills directory at ~/.claude/skills/ for per-skill SKILL.md files.
+  - Browse the user skills directory at __QUOIN_HOME__/skills/ for per-skill SKILL.md files.
   - Open the interactive HTML guide at <your-quoin-clone>/Workflow-User-Guide.html in your browser.
 EOF
 fi

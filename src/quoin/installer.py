@@ -1,4 +1,4 @@
-"""Deploy quoin artifacts to ~/.claude/."""
+"""Deploy quoin artifacts to ~/.claude/ (user mode) or <project>/.claude/ (project mode)."""
 from __future__ import annotations
 
 import datetime
@@ -71,6 +71,88 @@ _MARKER_START = "# === DEV WORKFLOW START ==="
 _MARKER_END = "# === DEV WORKFLOW END ==="
 DEPRECATED_SKILL_MARKERS = ("DEPRECATED LOCATION", "deprecated stub")
 
+# ── T-06: deploy-time path substitution ──────────────────────────────────────
+
+# File extensions that may contain __QUOIN_HOME__ placeholders.
+_SUBSTITUTE_EXTS = frozenset({".md", ".py", ".sh", ".yaml", ".json", ".txt"})
+
+# Placeholder used in source files for load-bearing ~/.claude/ references.
+# Documentation-only prose keeps literal ~/.claude/... and is NOT substituted.
+QUOIN_HOME_PLACEHOLDER = "__QUOIN_HOME__"
+
+
+def substitute_quoin_home(text: str, dest_root: pathlib.Path) -> str:
+    """Replace all __QUOIN_HOME__ occurrences with str(dest_root.resolve()).
+
+    dest_root must be absolute. Substitution is verbatim — the caller is
+    responsible for only tagging load-bearing references in source files
+    (per D-03 / MAJ-2: documentation-only prose stays as literal ~/.claude/).
+    """
+    return text.replace(QUOIN_HOME_PLACEHOLDER, str(dest_root.resolve()))
+
+
+def _copy_with_substitution(
+    src: pathlib.Path,
+    dst: pathlib.Path,
+    dest_root: pathlib.Path,
+) -> None:
+    """Copy src to dst, performing __QUOIN_HOME__ substitution for text files.
+
+    Non-text extensions are byte-copied without substitution.
+    Sets +x for .py and .sh files.
+    """
+    if src.suffix in _SUBSTITUTE_EXTS:
+        dst.write_text(
+            substitute_quoin_home(src.read_text(encoding="utf-8"), dest_root),
+            encoding="utf-8",
+        )
+    else:
+        shutil.copyfile(src, dst)
+    if src.suffix in (".py", ".sh"):
+        os.chmod(dst, 0o755)
+
+
+# ── T-13: home hook conflict detection ───────────────────────────────────────
+
+# Canonical hook script basenames registered by quoin
+_QUOIN_HOOK_BASENAMES = frozenset({
+    "userpromptsubmit.sh",
+    "precompact.sh",
+    "postcompact.sh",
+    "sessionstart.sh",
+    "sessionend.sh",
+})
+
+
+def detect_home_hook_conflict() -> bool:
+    """Return True if ~/.claude/settings.json already has quoin hook stanzas.
+
+    Detection checks both basename AND that the command path contains
+    '/.claude/hooks/' to avoid false-positives from non-quoin scripts that
+    happen to share the same filename.
+    """
+    home_settings = pathlib.Path.home() / ".claude" / "settings.json"
+    if not home_settings.exists():
+        return False
+    try:
+        data = json.loads(home_settings.read_text(encoding="utf-8"))
+        hooks = data.get("hooks", {})
+        for stanzas in hooks.values():
+            stanza_list = stanzas if isinstance(stanzas, list) else [stanzas]
+            for stanza in stanza_list:
+                if not isinstance(stanza, dict):
+                    continue
+                for hook in stanza.get("hooks", []):
+                    if not isinstance(hook, dict):
+                        continue
+                    cmd = hook.get("command", "")
+                    basename = cmd.rsplit("/", 1)[-1]
+                    if basename in _QUOIN_HOOK_BASENAMES and "/.claude/hooks/" in cmd:
+                        return True
+    except (json.JSONDecodeError, KeyError, OSError):
+        pass
+    return False
+
 
 # ── T-04 ──────────────────────────────────────────────────────────────────────
 
@@ -84,8 +166,8 @@ def deploy_memory(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
         if not src.exists():
             print(f"quoin: Expected {fname} at {src} but not found", file=sys.stderr)
             sys.exit(1)
-        shutil.copyfile(src, dst_mem / fname)
-        print(f"Copied {fname} to ~/.claude/memory/")
+        _copy_with_substitution(src, dst_mem / fname, dest_root)
+        print(f"Copied {fname} to {dest_root}/memory/")
 
 
 def deploy_quickstart(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
@@ -95,8 +177,8 @@ def deploy_quickstart(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None
         print(f"quoin: Expected QUICKSTART.md at {src} but not found", file=sys.stderr)
         sys.exit(1)
     dest_root.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(src, dest_root / "QUICKSTART.md")
-    print("QUICKSTART deployed to ~/.claude/QUICKSTART.md")
+    _copy_with_substitution(src, dest_root / "QUICKSTART.md", dest_root)
+    print(f"QUICKSTART deployed to {dest_root}/QUICKSTART.md")
 
 
 # ── T-05 ──────────────────────────────────────────────────────────────────────
@@ -139,14 +221,14 @@ def deploy_skills(source_dir: pathlib.Path, dest_root: pathlib.Path) -> int:
             print(f"quoin: Expected SKILL.md at {skill_md} but not found", file=sys.stderr)
             sys.exit(1)
         _assert_not_deprecated_skill(skill_name, skill_md)
-        shutil.copyfile(skill_md, dst_skill / "SKILL.md")
+        _copy_with_substitution(skill_md, dst_skill / "SKILL.md", dest_root)
         if adapter_md.exists():
             print(f"Deploying {skill_name} from Claude adapter path")
         preamble = skill_dir / "preamble.md"
         if preamble.exists():
-            shutil.copyfile(preamble, dst_skill / "preamble.md")
+            _copy_with_substitution(preamble, dst_skill / "preamble.md", dest_root)
         count += 1
-    print(f"Copied {count} skills to ~/.claude/skills/")
+    print(f"Copied {count} skills to {dest_root}/skills/")
     return count
 
 
@@ -169,9 +251,8 @@ def deploy_core_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> No
             print(f"quoin: Expected core script {fname} at {src} but not found", file=sys.stderr)
             sys.exit(1)
         dst = dst_core / fname
-        shutil.copyfile(src, dst)
-        os.chmod(dst, 0o755)
-        print(f"Copied core {fname} to ~/.claude/core/scripts/")
+        _copy_with_substitution(src, dst, dest_root)
+        print(f"Copied core {fname} to {dest_root}/core/scripts/")
 
 
 def deploy_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
@@ -185,32 +266,37 @@ def deploy_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
             print(f"quoin: Expected {fname} at {src} but not found", file=sys.stderr)
             sys.exit(1)
         dst = dst_scripts / fname
-        shutil.copyfile(src, dst)
-        os.chmod(dst, 0o755)
-        print(f"Copied {fname} to ~/.claude/scripts/")
+        _copy_with_substitution(src, dst, dest_root)
+        print(f"Copied {fname} to {dest_root}/scripts/")
 
 
-def deploy_hooks(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
-    """Copy hook scripts and merge 6 stanzas into dest_root/../settings.json.
+def deploy_hooks(
+    source_dir: pathlib.Path,
+    dest_root: pathlib.Path,
+    *,
+    is_project_mode: bool = False,
+) -> None:
+    """Copy hook scripts and merge 6 stanzas into dest_root/settings.json.
 
-    Mirrors install.sh install_hooks() function. When jq is absent, writes
-    HOOK_MERGE_TODO.md and returns without modifying settings.json.
+    In project mode, hooks are scoped to <project>/.claude/settings.json only.
+    Home ~/.claude/settings.json is NOT modified.
+
+    Mirrors install.sh install_hooks() function.
     """
     hook_scripts = ("userpromptsubmit.sh", "precompact.sh", "postcompact.sh", "sessionstart.sh", "sessionend.sh", "_lib.sh")
     src_hooks = source_dir / "hooks"
     dst_hooks = dest_root / "hooks"
     dst_hooks.mkdir(parents=True, exist_ok=True)
 
-    # Copy hook scripts
+    # Copy hook scripts (with __QUOIN_HOME__ substitution for .sh files)
     for fname in hook_scripts:
         src = src_hooks / fname
         if not src.exists():
             print(f"quoin: Expected hook {fname} at {src} but not found", file=sys.stderr)
             sys.exit(1)
         dst = dst_hooks / fname
-        shutil.copyfile(src, dst)
-        os.chmod(dst, 0o755)
-        print(f"Copied hook {fname} to ~/.claude/hooks/")
+        _copy_with_substitution(src, dst, dest_root)
+        print(f"Copied hook {fname} to {dest_root}/hooks/")
 
     # Merge 6 hook stanzas into settings.json using Python json module
     # settings.json lives inside dest_root (~/.claude/settings.json)
@@ -286,9 +372,14 @@ def deploy_hooks(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
     with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
         f.write("\n")
-    print("Merged 6 hook stanzas into ~/.claude/settings.json")
+    print(f"Merged 6 hook stanzas into {settings_path}")
     if added:
-        print(f"Added {added} rm -rf/rm -fr deny rule(s) to ~/.claude/settings.json")
+        print(f"Added {added} rm -rf/rm -fr deny rule(s) to {settings_path}")
+    if is_project_mode:
+        print(
+            f"Hooks registered in {settings_path} (project-scoped). "
+            "Home hooks (if any) are NOT removed by this install — see T-13."
+        )
 
 
 def cleanup_obsolete_scripts(dest_root: pathlib.Path) -> None:
@@ -298,13 +389,13 @@ def cleanup_obsolete_scripts(dest_root: pathlib.Path) -> None:
         target = dst_scripts / fname
         if target.exists():
             target.unlink()
-            print(f"Removed obsolete {fname} from ~/.claude/scripts/ (Stage 5 cleanup)")
+            print(f"Removed obsolete {fname} from {dest_root}/scripts/ (Stage 5 cleanup)")
     dst_tests = dst_scripts / "tests"
     for fname in OBSOLETE_TESTS:
         target = dst_tests / fname
         if target.exists():
             target.unlink()
-            print(f"Removed obsolete {fname} from ~/.claude/scripts/tests/ (Stage 5 cleanup)")
+            print(f"Removed obsolete {fname} from {dest_root}/scripts/tests/ (Stage 5 cleanup)")
 
 
 # ── T-06 ──────────────────────────────────────────────────────────────────────
@@ -314,27 +405,43 @@ def merge_workflow_rules(
     dest_root: pathlib.Path,
     *,
     force_merge: bool = False,
+    claude_md_path: pathlib.Path | None = None,
 ) -> None:
-    """Merge quoin workflow rules into dest_root/CLAUDE.md."""
+    """Merge quoin workflow rules into the target CLAUDE.md file.
+
+    In user mode: target is dest_root/CLAUDE.md (i.e. ~/.claude/CLAUDE.md).
+    In project mode (D-02): caller passes claude_md_path = dest_root.parent/CLAUDE.md
+    (i.e. <project>/CLAUDE.md, NOT <project>/.claude/CLAUDE.md).
+
+    T-05 / CRIT-4: in project mode, __QUOIN_HOME__ placeholders in the source
+    CLAUDE.md are substituted with the actual dest_root before writing, so that
+    the deployed rules refer to the correct project-scoped paths.
+    """
     source_claude = source_dir / "CLAUDE.md"
     if not source_claude.exists():
         print(f"quoin: Expected CLAUDE.md at {source_claude} but not found", file=sys.stderr)
         sys.exit(1)
 
-    new_rules = source_claude.read_text()
+    raw_rules = source_claude.read_text(encoding="utf-8")
+    # CRIT-4: substitute __QUOIN_HOME__ before embedding in the marker section
+    new_rules = substitute_quoin_home(raw_rules, dest_root)
     new_section = f"{_MARKER_START}\n{new_rules}\n{_MARKER_END}"
 
-    dest_claude = dest_root / "CLAUDE.md"
-    content = dest_claude.read_text() if dest_claude.exists() else ""
+    # Resolve target CLAUDE.md path (explicit > user-mode default)
+    if claude_md_path is None:
+        claude_md_path = dest_root / "CLAUDE.md"
+
+    dest_claude = claude_md_path
+    content = dest_claude.read_text(encoding="utf-8") if dest_claude.exists() else ""
 
     pair_count = content.count(_MARKER_START)
 
     if pair_count == 0:
         # behavior B: append
-        dest_root.mkdir(parents=True, exist_ok=True)
-        with open(dest_claude, "a") as f:
+        dest_claude.parent.mkdir(parents=True, exist_ok=True)
+        with open(dest_claude, "a", encoding="utf-8") as f:
             f.write(f"\n{_MARKER_START}\n{new_rules}\n{_MARKER_END}\n")
-        print("Appended quoin rules to ~/.claude/CLAUDE.md")
+        print(f"Appended quoin rules to {dest_claude}")
 
     elif pair_count == 1:
         # behavior A: replace (DOTALL — spans newlines)
@@ -344,15 +451,15 @@ def merge_workflow_rules(
             content,
             flags=re.DOTALL,
         )
-        dest_claude.write_text(updated)
-        print("Updated quoin section in ~/.claude/CLAUDE.md")
+        dest_claude.write_text(updated, encoding="utf-8")
+        print(f"Updated quoin section in {dest_claude}")
 
     else:
         # pair_count > 1
         if not force_merge:
             # behavior C: abort with recovery hint
             print(
-                f"quoin: ~/.claude/CLAUDE.md contains {pair_count} '# === DEV WORKFLOW' marker pairs "
+                f"quoin: {dest_claude} contains {pair_count} '# === DEV WORKFLOW' marker pairs "
                 f"(expected 0 or 1); run 'quoin doctor' to inspect, OR re-run "
                 f"'quoin install --force-merge' to keep the first pair and remove the rest",
                 file=sys.stderr,
@@ -388,9 +495,9 @@ def merge_workflow_rules(
                 count=1,
                 flags=re.DOTALL,
             )
-            dest_claude.write_text(result)
+            dest_claude.write_text(result, encoding="utf-8")
             print(
-                f"Updated quoin section in ~/.claude/CLAUDE.md "
+                f"Updated quoin section in {dest_claude} "
                 f"(--force-merge: removed {extra_count} extra marker pairs)"
             )
 
@@ -433,7 +540,25 @@ def regenerate_preambles(source_dir: pathlib.Path, *, allow_writes: bool) -> Non
         runpy.run_path(str(script), run_name="__main__")
     finally:
         sys.argv = old_argv
-    print(f"Regenerated 7 subagent preambles in {source_dir}/skills/*/preamble.md")
+    print(f"Regenerated subagent preambles in {source_dir}/skills/*/preamble.md")
+
+
+def assert_no_placeholders(dest_root: pathlib.Path) -> list[str]:
+    """Return list of 'path:line_no' strings where __QUOIN_HOME__ was found after deploy.
+
+    Call this after all deploy functions complete to verify substitution was fully applied.
+    """
+    violations = []
+    for p in dest_root.rglob("*"):
+        if p.is_file() and p.suffix in (".md", ".sh", ".py", ".json", ".yaml", ".txt"):
+            try:
+                text = p.read_text(encoding="utf-8", errors="replace")
+                for i, line in enumerate(text.splitlines(), 1):
+                    if "__QUOIN_HOME__" in line:
+                        violations.append(f"{p}:{i}")
+            except Exception:
+                pass
+    return violations
 
 
 def install_dev_deps() -> None:

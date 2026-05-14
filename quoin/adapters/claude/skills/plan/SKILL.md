@@ -13,12 +13,12 @@ You are a senior technical planner. You produce detailed, implementation-ready p
 ## Session bootstrap
 
 This skill may run in a fresh chat session. On start:
-1. Read `~/.claude/skills/plan/preamble.md` if it exists; if missing or empty, proceed normally. Purely additive cache-warming — every other read in this `## Session bootstrap` section, and every write-site format-kit / glossary reference (per §5.3 / §5.4 write-site instructions), stays in force unchanged. The intent is CROSS-SPAWN cache reuse: spawn N+1 of this skill with a byte-identical task fixture hits cache from spawn N's preamble.md tool_result, within the 5-minute prompt-cache TTL. Within a single spawn there is no cache benefit — savings only materialize on subsequent spawns whose prompt prefix is byte-identical through the preamble read. (Stage 2-alt of pipeline-efficiency-improvements.)
+1. Read `__QUOIN_HOME__/skills/plan/preamble.md` if it exists; if missing or empty, proceed normally. Purely additive cache-warming — every other read in this `## Session bootstrap` section, and every write-site format-kit / glossary reference (per §5.3 / §5.4 write-site instructions), stays in force unchanged. The intent is CROSS-SPAWN cache reuse: spawn N+1 of this skill with a byte-identical task fixture hits cache from spawn N's preamble.md tool_result, within the 5-minute prompt-cache TTL. Within a single spawn there is no cache benefit — savings only materialize on subsequent spawns whose prompt prefix is byte-identical through the preamble read. (Stage 2-alt of pipeline-efficiency-improvements.)
 2. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights — apply relevant lessons
 3. Read `.workflow_artifacts/memory/sessions/` for active session state
-4. Read the task subfolder using `task_path(<task-name>, stage=<N>)` from `~/.claude/scripts/path_resolve.py` (or pass `stage=None` for legacy/default-root tasks); read `architecture.md` from the TASK ROOT, `current-plan.md` from the resolved path. Call pattern: `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate with integer form. architecture.md path: ALWAYS `<task-root>/architecture.md` (never under stage-N/). cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md`.
+4. Read the task subfolder using `task_path(<task-name>, stage=<N>)` from `__QUOIN_HOME__/scripts/path_resolve.py` (or pass `stage=None` for legacy/default-root tasks); read `architecture.md` from the TASK ROOT, `current-plan.md` from the resolved path. Call pattern: `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate with integer form. architecture.md path: ALWAYS `<task-root>/architecture.md` (never under stage-N/). cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md`.
 5. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `plan`
-6. Read deployed v3 references at session start: `~/.claude/memory/format-kit.md` and `~/.claude/memory/glossary.md`
+6. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`
 7. Then proceed with planning
 
 ## Model requirement
@@ -60,11 +60,11 @@ Before writing anything:
 The plan is a Class B artifact (`current-plan.md`) per artifact-format-architecture v3 §4.1. Write it using the §5.3 5-step Class B mechanism:
 
 **Step 1: Body generation.**
-Read `~/.claude/memory/format-kit-pitfalls.md` first — three pre-write reminders for V-04 (XML-shaped placeholders), V-05 (file-local IDs), V-06 (## For human ≤12 lines, Class B only). Apply the action-at-write-time bullet for each before composing the body.
+Read `__QUOIN_HOME__/memory/format-kit-pitfalls.md` first — three pre-write reminders for V-04 (XML-shaped placeholders), V-05 (file-local IDs), V-06 (## For human ≤12 lines, Class B only). Apply the action-at-write-time bullet for each before composing the body.
 Reference files (apply HERE at the body-generation WRITE-SITE — per format-kit.md §1; this is the only place these references apply, per lesson 2026-04-23):
-- `~/.claude/memory/format-kit.md` — primitives + standard sections per artifact type
-- `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs
-- `~/.claude/memory/terse-rubric.md` — prose discipline (compose with format-kit per §5)
+- `__QUOIN_HOME__/memory/format-kit.md` — primitives + standard sections per artifact type
+- `__QUOIN_HOME__/memory/glossary.md` — abbreviation whitelist + status glyphs
+- `__QUOIN_HOME__/memory/terse-rubric.md` — prose discipline (compose with format-kit per §5)
 
 # V-05 reminder: T-NN/D-NN/R-NN/F-NN/Q-NN/S-NN are FILE-LOCAL.
 # When referring to a sibling artifact's task or risk, use plain English (e.g., "the parent plan's T-04"), NOT a bare T-NN token. See format-kit.md §1 / glossary.md.
@@ -73,7 +73,7 @@ Compose the format-aware body for `current-plan.md` per format-kit.md §2 enumer
 
 **Step 2: Summary generation (Agent subagent, with empty-output check).**
 
-Read the frozen prompt template from `~/.claude/memory/summary-prompt.md` using
+Read the frozen prompt template from `__QUOIN_HOME__/memory/summary-prompt.md` using
 the Read tool. Read the artifact body from `<plan-path>.body.tmp` using the Read tool.
 Compose the prompt as: <prompt-template-with-`<<<BODY>>>`-replaced-by-body-text>.
 
@@ -106,7 +106,7 @@ lesson 2026-04-24.)
 This guarantees the assembled file contains exactly one `## For human` line, regardless of Haiku output shape.
 
 **Step 4: Structural validation.** Invoke the deployed validator via the Bash tool:
-  `python3 ~/.claude/scripts/validate_artifact.py <plan-path>.tmp`
+  `python3 __QUOIN_HOME__/scripts/validate_artifact.py <plan-path>.tmp`
 (Filename auto-detection identifies the type as `current-plan`; the explicit `--type current-plan` flag is unnecessary.) Exit code 0 = PASS; non-zero = at least one V-01..V-07 invariant failed (stderr names which). The validator is deterministic and side-effect-free.
 
 **Step 5: Retry / English-fallback (failure-class-aware).** Differentiate the retry path by which step failed:

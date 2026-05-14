@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Quoin installer — offline-first thin wrapper that delegates to `quoin install`.
 #
-# Usage: bash install.sh [--dev] [--upgrade] [--use-pip] [--force-merge] [-h]
+# Usage: bash install.sh [--dev] [--upgrade] [--use-pip] [--force-merge]
+#                        [--scope user|project[:DIR]] [--allow-hook-merge] [-h]
 #
 # Tier 1 (fast, no network): installed version matches local → exec quoin install
 # Tier 2 (offline stdlib):   quoin not installed → PYTHONPATH=src/ exec python -m quoin
@@ -14,25 +15,61 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # ── Argument parsing ──────────────────────────────────────────────────────────
 DEV_FLAG=""
 FORCE_MERGE_FLAG=""
+SCOPE_FLAG=""
+ALLOW_HOOK_MERGE_FLAG=""
 USE_PIP=0
 PIP_UPGRADE_FLAG=""
 
-for arg in "$@"; do
+# Two-pass arg loop: consume --scope value (which may be a separate token or
+# combined as --scope=project:/path).  We collect non-consumed args in REST so
+# that unknown flags still get the "ignored" warning.
+REST=()
+i=0
+ARGS=("$@")
+while [[ $i -lt ${#ARGS[@]} ]]; do
+  arg="${ARGS[$i]}"
   case "$arg" in
     --dev)          DEV_FLAG="--dev" ;;
     --upgrade)      USE_PIP=1; PIP_UPGRADE_FLAG="--upgrade" ;;
     --use-pip)      USE_PIP=1 ;;
     --force-merge)  FORCE_MERGE_FLAG="--force-merge" ;;
+    --allow-hook-merge) ALLOW_HOOK_MERGE_FLAG="--allow-hook-merge" ;;
+    --scope=*)      SCOPE_FLAG="--scope ${arg#--scope=}" ;;
+    --scope)
+      i=$(( i + 1 ))
+      if [[ $i -lt ${#ARGS[@]} ]]; then
+        SCOPE_FLAG="--scope ${ARGS[$i]}"
+      else
+        echo "quoin: --scope requires a value (user or project[:DIR])" >&2
+        exit 2
+      fi
+      ;;
     -h|--help)
       echo "Usage: bash install.sh [--dev] [--upgrade] [--use-pip] [--force-merge]"
-      echo "  --dev          Install dev dependencies (pyyaml, pytest)"
-      echo "  --upgrade      Re-install via pip before deploying (alias: --use-pip)"
-      echo "  --use-pip      Same as --upgrade"
-      echo "  --force-merge  Keep first DEV WORKFLOW marker pair; remove extras"
+      echo "                       [--scope user|project[:DIR]] [--allow-hook-merge]"
+      echo "  --dev                Install dev dependencies (pyyaml, pytest)"
+      echo "  --upgrade            Re-install via pip before deploying (alias: --use-pip)"
+      echo "  --use-pip            Same as --upgrade"
+      echo "  --force-merge        Keep first DEV WORKFLOW marker pair; remove extras"
+      echo "  --scope user         Install under ~/.claude/ (default)"
+      echo "  --scope project      Install under <CWD>/.claude/ instead of ~/.claude/."
+      echo "                       All skills, scripts, hooks, and CLAUDE.md will be"
+      echo "                       project-scoped. Hooks register in <project>/.claude/settings.json"
+      echo "                       only. Note: for skills, Claude Code personal scope overrides"
+      echo "                       project scope — a prior home install shadows project skills."
+      echo "                       Run 'quoin doctor --scope project' to detect conflicts."
+      echo "  --scope project:/path Install under /path/.claude/ (explicit project root)"
+      echo "  --allow-hook-merge   Proceed even if home ~/.claude/settings.json has quoin"
+      echo "                       hook stanzas (default: fail-fast to avoid double-fire)"
       exit 0
       ;;
-    *)  echo "Warning: unknown argument: $arg (ignored)" >&2 ;;
+    *)  REST+=("$arg") ;;
   esac
+  i=$(( i + 1 ))
+done
+
+for unknown in "${REST[@]+"${REST[@]}"}"; do
+  echo "Warning: unknown argument: $unknown (ignored)" >&2
 done
 
 # ── Find Python interpreter ───────────────────────────────────────────────────
@@ -50,8 +87,15 @@ fi
 
 # Build forwarded args for `quoin install` (array preserves paths with spaces)
 INSTALL_ARGS=("install" "--source-dir" "$SCRIPT_DIR")
-[[ -n "$DEV_FLAG" ]]         && INSTALL_ARGS+=("$DEV_FLAG")
-[[ -n "$FORCE_MERGE_FLAG" ]] && INSTALL_ARGS+=("$FORCE_MERGE_FLAG")
+[[ -n "$DEV_FLAG" ]]              && INSTALL_ARGS+=("$DEV_FLAG")
+[[ -n "$FORCE_MERGE_FLAG" ]]      && INSTALL_ARGS+=("$FORCE_MERGE_FLAG")
+# Forward --scope flag (stored as "--scope value" string; split into two tokens)
+if [[ -n "$SCOPE_FLAG" ]]; then
+  # Split "--scope value" into separate array elements (handles project:/path with colon)
+  read -r _scope_key _scope_val <<< "$SCOPE_FLAG"
+  INSTALL_ARGS+=("$_scope_key" "$_scope_val")
+fi
+[[ -n "$ALLOW_HOOK_MERGE_FLAG" ]] && INSTALL_ARGS+=("$ALLOW_HOOK_MERGE_FLAG")
 
 # ── Get versions ──────────────────────────────────────────────────────────────
 LOCAL_VERSION="$(PYTHONPATH="$PROJECT_ROOT/src" "$PYTHON" -c \
