@@ -1,4 +1,4 @@
-"""Tests for --scope user|project[:DIR] install flag (T-02 through T-05, T-13).
+"""Tests for --scope user|project[:DIR] install flag (T-02 through T-05, T-10, T-13).
 
 All in-process; no claude/npx/pip required.
 """
@@ -507,3 +507,103 @@ def test_project_install_allows_hook_merge_with_flag(tmp_path, monkeypatch, caps
     with unittest.mock.patch.object(pathlib.Path, "home", return_value=fake_home):
         result = _cmd_claude_install(args)
     assert result == 0
+
+
+# ── T-10: Idempotency tests ───────────────────────────────────────────────────
+
+def test_merge_workflow_rules_idempotent(tmp_path):
+    """Running merge_workflow_rules twice produces a single marker pair (not duplicated)."""
+    from quoin import installer
+
+    # Minimal source CLAUDE.md
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "CLAUDE.md").write_text("# Hello\nSome rules here.\n", encoding="utf-8")
+
+    dest_root = tmp_path / ".claude"
+    dest_root.mkdir()
+    claude_md = dest_root / "CLAUDE.md"
+
+    # First install
+    installer.merge_workflow_rules(source_dir, dest_root)
+    after_first = claude_md.read_text(encoding="utf-8")
+    assert after_first.count(installer._MARKER_START) == 1
+
+    # Second install (idempotent — should replace, not duplicate)
+    installer.merge_workflow_rules(source_dir, dest_root)
+    after_second = claude_md.read_text(encoding="utf-8")
+    assert after_second.count(installer._MARKER_START) == 1, (
+        "merge_workflow_rules produced more than one marker pair on second run (not idempotent)"
+    )
+    # Content should be byte-equal after second run (no changes)
+    assert after_first == after_second, (
+        "merge_workflow_rules content changed on second run (should be idempotent)"
+    )
+
+
+def test_merge_workflow_rules_project_mode_idempotent(tmp_path):
+    """Running merge_workflow_rules twice in project mode stays at one marker pair."""
+    from quoin import installer
+
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "CLAUDE.md").write_text("# Rules\n", encoding="utf-8")
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    dest_root = project_dir / ".claude"
+    dest_root.mkdir()
+    claude_md_path = project_dir / "CLAUDE.md"
+
+    # First install
+    installer.merge_workflow_rules(source_dir, dest_root, claude_md_path=claude_md_path)
+    after_first = claude_md_path.read_text(encoding="utf-8")
+    assert after_first.count(installer._MARKER_START) == 1
+
+    # Second install
+    installer.merge_workflow_rules(source_dir, dest_root, claude_md_path=claude_md_path)
+    after_second = claude_md_path.read_text(encoding="utf-8")
+    assert after_second.count(installer._MARKER_START) == 1, (
+        "project-mode merge_workflow_rules duplicated marker pair on second run"
+    )
+    assert after_first == after_second
+
+
+def test_deploy_hooks_settings_idempotent(tmp_path):
+    """Running deploy_hooks twice in project mode does not duplicate hook stanzas
+    in settings.json."""
+    from quoin import installer
+
+    source_dir = QUOIN_SRC
+    dest_root = tmp_path / ".claude"
+    dest_root.mkdir()
+    (dest_root / "hooks").mkdir()
+
+    # Copy just the hook scripts so deploy_hooks can find them
+    src_hooks = QUOIN_SRC / "hooks"
+    dst_hooks = dest_root / "hooks"
+    import shutil
+    for hook in ("userpromptsubmit.sh", "precompact.sh", "postcompact.sh",
+                 "sessionstart.sh", "sessionend.sh", "_lib.sh"):
+        src_file = src_hooks / hook
+        if src_file.exists():
+            shutil.copy(src_file, dst_hooks / hook)
+
+    # First deploy
+    installer.deploy_hooks(source_dir, dest_root, is_project_mode=True)
+    settings_path = dest_root / "settings.json"
+    assert settings_path.exists(), "settings.json not created by deploy_hooks"
+    settings_first = json.loads(settings_path.read_text(encoding="utf-8"))
+    hooks_first = settings_first.get("hooks", {})
+    first_count = sum(len(v) for v in hooks_first.values() if isinstance(v, list))
+
+    # Second deploy (idempotent)
+    installer.deploy_hooks(source_dir, dest_root, is_project_mode=True)
+    settings_second = json.loads(settings_path.read_text(encoding="utf-8"))
+    hooks_second = settings_second.get("hooks", {})
+    second_count = sum(len(v) for v in hooks_second.values() if isinstance(v, list))
+
+    assert second_count == first_count, (
+        f"deploy_hooks duplicated hook stanzas on second run: "
+        f"first={first_count} stanzas, second={second_count} stanzas"
+    )
