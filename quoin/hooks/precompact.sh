@@ -196,19 +196,46 @@ Run /checkpoint --restore in a fresh session to resume task '${active_task}' fro
 CPEOF
 
 # Substitute user-content placeholders via awk -v (no shell expansion of user content)
-if [ -n "$open_questions" ] || [ -n "$unfinished_work" ]; then
-  _oq="${open_questions:-(none)}"
-  _uw="${unfinished_work:-(none)}"
-  awk -v oq="$_oq" -v uw="$_uw" '
-    /^__OPEN_QUESTIONS_PLACEHOLDER__$/{print (oq=="" ? "(none)" : oq); next}
-    /^__UNFINISHED_WORK_PLACEHOLDER__$/{print (uw=="" ? "(none)" : uw); next}
-    {print}
-  ' "$checkpoint_file" > "${checkpoint_file}.tmp" 2>/dev/null \
-    && mv "${checkpoint_file}.tmp" "$checkpoint_file" 2>/dev/null || true
+# Primary fix: atomic write with visible-failure discipline — no '|| true' swallowing.
+# On any fill failure the heredoc-written file (with placeholders) is RETAINED (D-06):
+# better to have a visible placeholder than to lose the checkpoint entirely.
+_oq="${open_questions:-(none)}"
+_uw="${unfinished_work:-(none)}"
+
+awk -v oq="$_oq" -v uw="$_uw" '
+  /^__OPEN_QUESTIONS_PLACEHOLDER__$/{print (oq=="" ? "(none)" : oq); next}
+  /^__UNFINISHED_WORK_PLACEHOLDER__$/{print (uw=="" ? "(none)" : uw); next}
+  {print}
+' "$checkpoint_file" > "${checkpoint_file}.tmp" 2>/dev/null
+_awk_exit=$?
+
+if [ $_awk_exit -eq 0 ] && [ -s "${checkpoint_file}.tmp" ]; then
+  # Temp file is non-empty and awk succeeded — rename with explicit error capture
+  if mv -f "${checkpoint_file}.tmp" "$checkpoint_file" 2>/dev/null; then
+    # SUCCESS: verify no placeholders remain (anchored grep)
+    if grep -qE '^(__OPEN_QUESTIONS_PLACEHOLDER__|__UNFINISHED_WORK_PLACEHOLDER__)$' \
+        "$checkpoint_file" 2>/dev/null; then
+      # Rare: placeholders still in file after mv (content-check failure)
+      printf '[quoin-precompact] WARNING: placeholder substitution incomplete in %s; checkpoint retained with placeholders (better than losing it)\n' "$checkpoint_file" >&2
+      # Do NOT trash-move — user keeps the file, placeholders are visible
+    fi
+    # FALL THROUGH: success path, checkpoint_file is valid
+  else
+    # mv failed — clean up temp, warn, but KEEP the heredoc-written file with placeholders
+    _mv_exit=$?
+    printf '[quoin-precompact] WARNING: mv failed (exit %d) renaming %s; checkpoint retained with placeholder tokens\n' \
+      "$_mv_exit" "${checkpoint_file}.tmp" >&2
+    rm -f "${checkpoint_file}.tmp" 2>/dev/null || true
+    # checkpoint_file remains as-is (with placeholders) — sentinel write still runs below
+  fi
 else
-  sed 's/__OPEN_QUESTIONS_PLACEHOLDER__/(none)/;s/__UNFINISHED_WORK_PLACEHOLDER__/(none)/' \
-    "$checkpoint_file" > "${checkpoint_file}.tmp" 2>/dev/null \
-    && mv "${checkpoint_file}.tmp" "$checkpoint_file" 2>/dev/null || true
+  # awk produced empty output or failed — compute tmp size safely
+  _tmp_size=$(wc -c < "${checkpoint_file}.tmp" 2>/dev/null || echo 0)
+  _tmp_size=${_tmp_size:-0}
+  printf '[quoin-precompact] WARNING: placeholder fill failed (awk exit %d, tmp size %s); checkpoint retained with placeholder tokens\n' \
+    "$_awk_exit" "$_tmp_size" >&2
+  rm -f "${checkpoint_file}.tmp" 2>/dev/null || true
+  # checkpoint_file remains as-is — sentinel write still runs below
 fi
 
 # Check if write succeeded

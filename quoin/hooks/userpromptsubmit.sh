@@ -43,6 +43,9 @@ STDIN=$(cat)
                 _ups_postcompact="${_ups_mem}/postcompact-reset-${_ups_sid}.txt"
                 if [ -f "$_ups_postcompact" ]; then
                     trash_move "$_ups_postcompact" "$_ups_mem" 2>/dev/null || true
+                    # Also expire defer marker on post-compact (meaningful work boundary)
+                    _ups_defer="${_ups_mem}/checkpoint-defer-${_ups_sid}.txt"
+                    [ -f "$_ups_defer" ] && trash_move "$_ups_defer" "$_ups_mem" 2>/dev/null || true
                 fi
             fi
         fi
@@ -96,6 +99,16 @@ if [ "$util" -lt "$STOP_BPS" ]; then
   exit 0
 elif [ "$util" -ge "$STOP_BPS" ] && [ "$util" -lt "$BLOCK_BPS" ]; then
   # Branch (2): advisory range (STOP_BPS..BLOCK_BPS-1) — non-blocking advisory
+  # Defer-marker guard: re-parse cwd+session_id from stdin (cheap; $STDIN already in memory)
+  # These variables are NOT yet acquired — they are only parsed inside the BLOCK branch (lines below).
+  _adv_cwd=$(printf '%s' "$STDIN" | jq -r '.cwd // empty' 2>/dev/null)
+  [ -z "$_adv_cwd" ] && _adv_cwd="$PWD"
+  _adv_sid=$(printf '%s' "$STDIN" | jq -r '.session_id // empty' 2>/dev/null)
+  if [ -n "$_adv_sid" ]; then
+    _adv_defer="${_adv_cwd}/.workflow_artifacts/memory/checkpoint-defer-${_adv_sid}.txt"
+    [ -f "$_adv_defer" ] && exit 0
+  fi
+  # Defer marker not set — emit advisory
   pct_int=$((util / 100))
   pct_dec=$(printf '%02d' $((util % 100)))
   printf '{"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": "context at %d.%s%% — consider running /checkpoint and starting a fresh session"}}\n' \
