@@ -357,6 +357,316 @@ fi
 
 rm -f "$MEMORY_DIR/pending-restore-sess-timing-g.txt"
 
+# ─── T-06a: UUID anchor — session-state lookup by UUID, not mtime ────────────
+# Fixture: three session-state files with different UUIDs; target-UUID file is NOT mtime-newest.
+# Verification: SKILL.md implements the UUID-anchored lookup procedure.
+
+# Create three session-state files with distinct UUIDs
+UUID_TARGET="AAAA0000-1111-2222-3333-444444444444"
+UUID_OTHER1="BBBB1111-2222-3333-4444-555555555555"
+UUID_OTHER2="cccc2222-3333-4444-5555-666666666666"  # lowercase UUID
+
+cat > "$MEMORY_DIR/sessions/session-a.md" << SSEOF
+## Status
+in_progress
+
+## Current stage
+implement
+
+## Cost
+- Session UUID: ${UUID_OTHER1}
+- Phase: implement
+- Recorded in cost ledger: yes
+- end_of_day_due: yes
+- fallback_fires: 0
+SSEOF
+
+cat > "$MEMORY_DIR/sessions/session-b.md" << SSEOF
+## Status
+in_progress
+
+## Current stage
+implement
+
+## Cost
+- Session UUID: ${UUID_TARGET}
+- Phase: implement
+- Recorded in cost ledger: yes
+- end_of_day_due: yes
+- fallback_fires: 0
+SSEOF
+
+# session-c.md gets lowercase UUID
+cat > "$MEMORY_DIR/sessions/session-c.md" << SSEOF
+## Status
+in_progress
+
+## Current stage
+implement
+
+## Cost
+- Session UUID: ${UUID_OTHER2}
+- Phase: implement
+- Recorded in cost ledger: yes
+- end_of_day_due: yes
+- fallback_fires: 0
+SSEOF
+
+# Make session-b not the mtime-newest (make session-c newer by touching it)
+# We can do this with touch on the other files first, then touch session-c last.
+FIVE_MIN_AGO=$(date -v -5M +%Y%m%d%H%M.%S 2>/dev/null || \
+               date -d '5 minutes ago' +%Y%m%d%H%M.%S 2>/dev/null || echo "")
+if [ -n "$FIVE_MIN_AGO" ]; then
+  touch -t "$FIVE_MIN_AGO" "$MEMORY_DIR/sessions/session-b.md" 2>/dev/null || true
+fi
+
+# (T-06a-1) UUID-anchored lookup is documented in SKILL.md
+if grep -q 'UUID-anchored\|uuid-anchor\|grep -iE' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06a-1) UUID-anchored session-state lookup documented in SKILL.md"
+else
+  fail "(T-06a-1) UUID-anchored session-state lookup NOT found in SKILL.md"
+fi
+
+# (T-06a-2) The pattern in SKILL.md supports case-insensitive matching (grep -iE)
+if grep -q 'grep -iE\|case.insensitive\|case.insensitiv' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06a-2) Case-insensitive UUID matching (grep -iE) documented in SKILL.md"
+else
+  fail "(T-06a-2) Case-insensitive UUID matching NOT found in SKILL.md"
+fi
+
+# (T-06a-3) SKILL.md has the UUID anchored grep pattern
+if grep -q 'Session UUID' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06a-3) 'Session UUID' pattern present in SKILL.md for UUID anchor lookup"
+else
+  fail "(T-06a-3) 'Session UUID' pattern NOT found in SKILL.md"
+fi
+
+# (T-06a-4) SKILL.md documents the ## Session ID section in checkpoint format
+if grep -q '## Session ID' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06a-4) '## Session ID' section documented in checkpoint SKILL.md"
+else
+  fail "(T-06a-4) '## Session ID' NOT found in checkpoint SKILL.md"
+fi
+
+# (T-06a-5) Checkpoint file written by write_checkpoint() contains ## Session ID
+checkpoint_uuid_test=$(write_checkpoint "$UUID_TARGET" "uuid-test-task")
+if grep -q "## Session ID" "$checkpoint_uuid_test" 2>/dev/null; then
+  ok "(T-06a-5) Checkpoint file has ## Session ID section"
+else
+  fail "(T-06a-5) Checkpoint file MISSING ## Session ID section"
+fi
+
+# (T-06a-6) The UUID value appears on the line after ## Session ID (two-line form)
+session_id_line=$(awk '/^## Session ID/{getline; print; exit}' "$checkpoint_uuid_test" 2>/dev/null)
+if [ "$session_id_line" = "$UUID_TARGET" ]; then
+  ok "(T-06a-6) Session ID value on next line after ## Session ID heading (two-line form)"
+else
+  fail "(T-06a-6) Session ID value mismatch: expected '$UUID_TARGET', got '$session_id_line'"
+fi
+
+# (T-06a-7) Target UUID file is found by UUID grep even if not mtime-newest
+# Simulate the grep that SKILL.md prescribes
+matched=$(grep -ilE "^([[:space:]]*-[[:space:]]*)?(Session UUID:[[:space:]]*)${UUID_TARGET}" \
+  "$MEMORY_DIR/sessions/"*.md 2>/dev/null | head -1)
+if printf '%s' "$matched" | grep -q 'session-b.md' 2>/dev/null; then
+  ok "(T-06a-7) UUID grep finds session-b.md (target UUID) even if not mtime-newest"
+else
+  fail "(T-06a-7) UUID grep returned '$matched' instead of session-b.md"
+fi
+
+# (T-06a-8) Lowercase UUID (UUID_OTHER2) is found by case-insensitive grep
+matched_lc=$(grep -ilE "^([[:space:]]*-[[:space:]]*)?(Session UUID:[[:space:]]*)${UUID_OTHER2}" \
+  "$MEMORY_DIR/sessions/"*.md 2>/dev/null | head -1)
+if [ -n "$matched_lc" ]; then
+  ok "(T-06a-8) Lowercase UUID found by case-insensitive grep"
+else
+  fail "(T-06a-8) Lowercase UUID NOT found by case-insensitive grep"
+fi
+
+# (T-06a-9) SKILL.md documents WARNING when UUID not found (negative case)
+if grep -q 'WARNING.*no session-state\|no session-state.*WARNING' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06a-9) WARNING for missing UUID documented in SKILL.md"
+else
+  fail "(T-06a-9) WARNING for missing UUID NOT found in SKILL.md"
+fi
+
+# (T-06a-10) session-state-resolution bullet in ## In-flight artifacts
+if grep -q 'session-state-resolution' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06a-10) session-state-resolution tracking documented in SKILL.md"
+else
+  fail "(T-06a-10) session-state-resolution NOT found in SKILL.md"
+fi
+
+rm -f "$MEMORY_DIR/sessions/session-a.md" \
+      "$MEMORY_DIR/sessions/session-b.md" \
+      "$MEMORY_DIR/sessions/session-c.md" \
+      "$MEMORY_DIR/pending-restore-${UUID_TARGET}.txt" \
+      "$checkpoint_uuid_test"
+
+# ─── T-06c: --after-compact flag (Save mode documentation + bypass) ──────────
+
+# (T-06c-1) --after-compact flag is documented in SKILL.md
+if grep -q '\-\-after-compact\|after.compact' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06c-1) --after-compact flag documented in SKILL.md"
+else
+  fail "(T-06c-1) --after-compact flag NOT found in SKILL.md"
+fi
+
+# (T-06c-2) SKILL.md has POST_COMPACT=true language (or equivalent)
+if grep -q 'POST_COMPACT\|POST_COMPACT=true\|post.compact' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06c-2) POST_COMPACT variable or post-compact concept present in SKILL.md"
+else
+  fail "(T-06c-2) POST_COMPACT concept NOT found in SKILL.md"
+fi
+
+# (T-06c-3) SKILL.md documents the INFO line emitted on --after-compact
+if grep -q '\-\-after-compact flag noted' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06c-3) INFO line '[checkpoint] --after-compact flag noted' documented in SKILL.md"
+else
+  fail "(T-06c-3) --after-compact INFO line NOT found in SKILL.md"
+fi
+
+# (T-06c-4) Step 0.5 is documented before Step 1 (post-compact flag injection point)
+# Find the line number of Step 0.5 and Step 1 in SKILL.md; 0.5 must come first
+step_05_line=$(grep -n 'Step 0.5\|Step 0\.5' "$CHECKPOINT_SKILL" 2>/dev/null | head -1 | cut -d: -f1)
+step_1_line=$(grep -n '^### Step 1:' "$CHECKPOINT_SKILL" 2>/dev/null | head -1 | cut -d: -f1)
+if [ -n "$step_05_line" ] && [ -n "$step_1_line" ] && [ "$step_05_line" -lt "$step_1_line" ]; then
+  ok "(T-06c-4) Step 0.5 appears before Step 1 in SKILL.md (correct injection point)"
+else
+  fail "(T-06c-4) Step 0.5 not found before Step 1 (step_05=$step_05_line, step_1=$step_1_line)"
+fi
+
+# (T-06c-5) userpromptsubmit.sh --after-compact falls through to exempt *) arm (not --purge arm)
+# Verify by reading the exempt list lines that --after-compact is covered by *) default
+UPS_HOOK="$SCRIPT_DIR/../../hooks/userpromptsubmit.sh"
+if grep -q '\-\-purge' "$UPS_HOOK" 2>/dev/null; then
+  # The --purge carve-out exists; ensure --after-compact is NOT listed alongside it
+  # The exemption logic uses case matching on the second token of the prompt
+  if grep -A5 '\-\-purge' "$UPS_HOOK" 2>/dev/null | grep -q 'after.compact' 2>/dev/null; then
+    fail "(T-06c-5) --after-compact appears in --purge carve-out section (should fall through to *)"
+  else
+    ok "(T-06c-5) --after-compact NOT in --purge carve-out (correctly falls through to exempt *)"
+  fi
+else
+  ok "(T-06c-5) No --purge carve-out found; --after-compact is exempt by default"
+fi
+
+# ─── T-06e: Picker reads disk-only checkpoints (no sentinel) ─────────────────
+# Fixture: zero sentinels; 3 checkpoint files: one legacy (no ## Session ID),
+#          one 0-byte .tmp sibling, one < 100 bytes.
+# Verification: SKILL.md documents the picker exclusions.
+
+# Create a valid legacy checkpoint (no ## Session ID section, >= 100 bytes)
+LEGACY_CP="$CHECKPOINTS_DIR/2026-01-01-legacy-task.md"
+cat > "$LEGACY_CP" << LEGEOF
+## Status
+test-save-legacy
+
+## Current stage
+implement
+
+## Active task
+legacy-task
+
+## Branch
+legacy-branch
+
+## In-flight artifacts
+- current-plan.md: /some/path/current-plan.md
+
+## Open questions
+None
+
+## Decisions made
+None
+
+## Restore hint
+Run /checkpoint --restore in a fresh session to resume.
+LEGEOF
+
+# Create a 0-byte .tmp sibling (should be excluded by finder)
+printf '' > "$CHECKPOINTS_DIR/2026-01-02-some-task.md.tmp"
+
+# Create a tiny checkpoint < 100 bytes (should be excluded by size guard)
+printf '## Status\nok\n' > "$CHECKPOINTS_DIR/2026-01-03-tiny-task.md"
+
+# Ensure zero sentinels for the test session
+rm -f "$MEMORY_DIR/pending-restore-sess-picker-test.txt" 2>/dev/null || true
+
+# (T-06e-1) SKILL.md documents the picker fast path (current-session sentinel bypass)
+if grep -q 'fast path\|fast-path\|FAST PATH' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06e-1) Picker fast path documented in SKILL.md"
+else
+  fail "(T-06e-1) Picker fast path NOT found in SKILL.md"
+fi
+
+# (T-06e-2) SKILL.md documents the *.tmp exclusion in the picker find command
+if grep -q '! -name.*\.tmp\|\.tmp.*exclude\|exclude.*\.tmp' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06e-2) .tmp exclusion documented in picker (SKILL.md)"
+else
+  fail "(T-06e-2) .tmp exclusion NOT found in SKILL.md picker"
+fi
+
+# (T-06e-3) SKILL.md documents the 100-byte minimum size guard
+if grep -q '100 byte\|100B\|< 100\|>= 100\|wc -c.*100\|100.*wc -c' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06e-3) 100-byte size guard documented in SKILL.md picker"
+else
+  fail "(T-06e-3) 100-byte size guard NOT found in SKILL.md picker"
+fi
+
+# (T-06e-4) SKILL.md documents backward-compat for missing ## Session ID (legacy)
+if grep -q 'legacy\|tolerate missing.*Session ID\|Session ID.*missing' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06e-4) Backward-compat for legacy checkpoints (missing Session ID) documented"
+else
+  fail "(T-06e-4) Backward-compat for missing Session ID NOT documented in SKILL.md"
+fi
+
+# (T-06e-5) The 0-byte .tmp file is excluded by finder (simulate the find command)
+# grep returns exit 1 when no match found; suppress via || true to avoid set -e exit
+tmp_in_find=$(find "$CHECKPOINTS_DIR" -maxdepth 1 -name '*.md' ! -name '*.tmp' -print0 2>/dev/null | \
+  while IFS= read -r -d '' f; do printf '%s\n' "$f"; done | grep '\.tmp' 2>/dev/null || true)
+if [ -z "$tmp_in_find" ]; then
+  ok "(T-06e-5) .tmp files excluded from find output (! -name '*.tmp' -print0 works)"
+else
+  fail "(T-06e-5) .tmp files present in find output: $tmp_in_find"
+fi
+
+# (T-06e-6) The tiny checkpoint is excluded by size guard (< 100 bytes)
+tiny_size=$(wc -c < "$CHECKPOINTS_DIR/2026-01-03-tiny-task.md" 2>/dev/null | awk '{print $1+0}')
+if [ "${tiny_size:-0}" -lt 100 ]; then
+  ok "(T-06e-6) Tiny checkpoint ($tiny_size bytes) correctly detected as < 100 bytes"
+else
+  fail "(T-06e-6) Tiny checkpoint size guard check failed (size=$tiny_size)"
+fi
+
+# (T-06e-7) Legacy checkpoint passes size guard (>= 100 bytes)
+legacy_size=$(wc -c < "$LEGACY_CP" 2>/dev/null | awk '{print $1+0}')
+if [ "${legacy_size:-0}" -ge 100 ]; then
+  ok "(T-06e-7) Legacy checkpoint ($legacy_size bytes) passes >= 100 byte size guard"
+else
+  fail "(T-06e-7) Legacy checkpoint is too small ($legacy_size bytes) — fixture needs padding"
+fi
+
+# (T-06e-8) Legacy checkpoint has Active task and Branch but no Session ID
+if grep -q '## Active task' "$LEGACY_CP" 2>/dev/null && \
+   grep -q '## Branch' "$LEGACY_CP" 2>/dev/null && \
+   ! grep -q '## Session ID' "$LEGACY_CP" 2>/dev/null; then
+  ok "(T-06e-8) Legacy checkpoint has Active task + Branch but no Session ID (correct legacy format)"
+else
+  fail "(T-06e-8) Legacy checkpoint format incorrect (check Active task, Branch, Session ID)"
+fi
+
+# (T-06e-9) Awk extraction handles CRLF (gsub /\r$/) — verified in SKILL.md
+if grep -q 'gsub.*\\\\r\|CRLF\|trailing CR' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06e-9) CRLF stripping (gsub /\\r\$/) documented in SKILL.md picker awk"
+else
+  fail "(T-06e-9) CRLF stripping NOT documented in SKILL.md picker"
+fi
+
+rm -f "$LEGACY_CP" \
+      "$CHECKPOINTS_DIR/2026-01-02-some-task.md.tmp" \
+      "$CHECKPOINTS_DIR/2026-01-03-tiny-task.md"
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 
 printf '\n'

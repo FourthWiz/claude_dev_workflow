@@ -85,16 +85,43 @@ Purpose: lets `precompact.sh` hook know a `/checkpoint` session is active (for e
 
 Detect mode: if the user's invocation does NOT include `--restore`, run save mode.
 
+### Step 0.5: Post-compact flag (optional bypass documentation)
+
+Detect flag: if the user's invocation includes `--after-compact`, set POST_COMPACT=true.
+
+If POST_COMPACT is true:
+  - Continue to Step 1 normally (no blocking precondition gate exists today —
+    this flag is documentation of intent, not a runtime bypass).
+  - Emit one-line stderr INFO: "[checkpoint] --after-compact flag noted; proceeding to save."
+  - At Step 5 (Report to user): append "Mode: post-compact save (--after-compact flag was set)."
+
+If POST_COMPACT is false (flag absent):
+  - Continue to Step 1 normally.
+
+Note for implementers: The 'compaction needed first' nudge described in older bug reports
+does NOT exist in the current deployed SKILL.md or userpromptsubmit.sh. The exemption
+for /checkpoint from BLOCK_BPS context blocking is at userpromptsubmit.sh lines 71-82.
+The --after-compact flag is provided as an explicit intent signal for future maintainers
+and for users who want to document their workflow.
+
 ### Step 1: Gather session context
 
 Read the following sources (best-effort; skip gracefully if any file is absent):
 
-1. **Session state file** — most recently modified `<cwd>/.workflow_artifacts/memory/sessions/*.md` file (use `ls -t` mtime ordering; lex order is NOT reliable for UUID-shaped session names). Extract:
+1. **Session state file** — use UUID-anchored lookup (procedure below); fall back to mtime if UUID unavailable or unmatched. Extract:
    - Active task name (from filename pattern `YYYY-MM-DD-<task-name>.md` — strip the date prefix)
    - Current phase (from `## Cost` block → `Phase:` line)
    - Open questions (from `## Open questions` block)
    - Decisions made this session (from `## Decisions made` block, if present)
    - Unfinished work list (from `## Unfinished work` block)
+
+   **UUID-anchored session-state lookup (Step 1.1):**
+   (a) Obtain the current session UUID. Priority: harness-provided system context UUID; else most recently modified `~/.claude/projects/<project-hash>/<uuid>.jsonl` filename stem (same rule used for cost-ledger UUID acquisition). `<project-hash>` = project path with `/` replaced by `-`.
+   (b) If a UUID is obtained, grep `.workflow_artifacts/memory/sessions/*.md` for the UUID. Use `grep -iE` (case-insensitive on the full pattern) because the live tree has both uppercase and lowercase UUID values. Pattern: `grep -iE "^([[:space:]]*-[[:space:]]*)?(Session UUID:[[:space:]]*)${session_id}"`. The session-state file template uses the bulleted form `- Session UUID: <UUID>` — the pattern must match both `Session UUID:` and `- Session UUID:` prefixes.
+   (c) If exactly one match is found: use that file. Tag with INFO line `[checkpoint] session-state located by UUID anchor: <path>`.
+   (d) If zero matches AND a UUID was obtained: emit one-line WARNING `[checkpoint] WARNING: no session-state file contains Session UUID '<UUID>'; falling back to mtime ordering`; then fall back to `ls -t` most-recently-modified.
+   (e) If the UUID itself could not be obtained: skip the grep entirely; fall back to mtime ordering (current behavior). Tag with WARNING line `[checkpoint] WARNING: session UUID unavailable; using mtime fallback`.
+   (f) If two or more matches are found (rare; concurrent session-state files for the same UUID): pick the most recent by mtime among the matches and emit one-line WARNING `[checkpoint] WARNING: multiple session-state files match UUID '<UUID>'; picked '<path>' by mtime`.
 
 2. **Git branch** — `git rev-parse --abbrev-ref HEAD` in cwd. On failure, use `unknown`.
 
@@ -128,6 +155,9 @@ checkpoint save (voluntary)
 ## Branch
 <git branch>
 
+## Session ID
+<session UUID from Step 1.1, or "unknown" if unavailable>
+
 ## Last user intent
 <one-sentence restatement of what the user was working on>
 
@@ -137,6 +167,7 @@ checkpoint save (voluntary)
 - latest critic-response: <path or "(none found)">
 - latest review: <path or "(none found)">
 - session-state: <path or "(none found)">
+- session-state-resolution: <uuid-anchor | mtime-fallback>
 
 ## Open questions
 <content from session-state ## Open questions, or "(none)">
@@ -186,11 +217,42 @@ Print a brief confirmation:
 - Sentinel written: `<pending-restore-session_id.txt path>`
 - To resume: `/checkpoint --restore` in a fresh session
 
-### Step 6: Release pidfile
+If `--after-compact` was set (POST_COMPACT=true), append:
+`Mode: post-compact save (--after-compact flag was explicitly set).`
 
+### Step 6: Release pidfile and invalidate defer marker
+
+Release the pidfile:
 ```
 pidfile_release checkpoint
 ```
+
+Trash-move the defer marker for the current session_id (if it exists) — a successful voluntary save invalidates any pending defer:
+```sh
+_defer="${cwd}/.workflow_artifacts/memory/checkpoint-defer-${session_id}.txt"
+[ -f "$_defer" ] && trash_move "$_defer" "${cwd}/.workflow_artifacts/memory" 2>/dev/null || true
+```
+Note: `${cwd}` is from stdin JSON `.cwd` (NOT `$(pwd)` — the shell's current directory can diverge if a tool ran `cd` earlier).
+
+## Defer mode (`--defer` argument present)
+
+Detect mode: if the user's invocation includes `--defer`, run defer mode.
+
+**session_id acquisition** (same procedure as Save mode Step 1.1): priority is harness-provided system context UUID; else most recently modified `~/.claude/projects/<project-hash>/<uuid>.jsonl` filename stem. Case is preserved verbatim.
+
+**Write a defer marker file:**
+`.workflow_artifacts/memory/checkpoint-defer-${session_id}.txt`
+containing a single line — the ISO-8601 UTC timestamp of when defer was set.
+
+This marker is consumed by `userpromptsubmit.sh` STEP 3 advisory branch: when the marker is present for the current session_id, the advisory is suppressed (no "context at X%" advisory emitted).
+
+The marker is automatically expired on:
+- Post-compact (via `userpromptsubmit.sh` STEP 0.5 trash-move alongside the postcompact-reset sentinel)
+- Successful voluntary `/checkpoint` save (via Save mode Step 6 above)
+
+**Exit code:** 0.
+
+**Print:** `[checkpoint] defer marker written; userpromptsubmit advisory suppressed until next compact or voluntary save.`
 
 ## Restore mode (`--restore` argument present)
 
@@ -198,37 +260,44 @@ Detect mode: if the user's invocation includes `--restore`, run restore mode.
 
 ### Step 1: Locate checkpoint
 
-Enumerate `.workflow_artifacts/memory/pending-restore-*.txt`:
+Use a unified picker that covers both pending-restore sentinels and recent checkpoint files on disk.
 
-1. **Preferred:** check for `pending-restore-${session_id}.txt` matching the current session's session_id. If found, read its content to get the checkpoint file path.
+**Fast path (sub-second, bypass all enumeration):**
+Before building the candidate list, check for a current-session sentinel:
+```
+if exists pending-restore-${current_session_id}.txt:
+  read its single-line content (cp_path)
+  verify cp_path exists; if yes: return cp_path immediately (skip enumeration entirely)
+```
+`current_session_id` is obtained via the same UUID-acquisition procedure as Step 1.1 (harness-provided UUID; else most recently modified JSONL filename stem).
 
-2. **Fallback (disambiguation):** if no current-session match, enumerate all sentinels sorted by mtime:
+**Full enumeration path** (fires only when fast path finds nothing):
 
-   ```
-   sentinel_list=$(ls -t .workflow_artifacts/memory/pending-restore-*.txt 2>/dev/null)
-   ```
+1. Build a candidate list from two sources, de-duplicated by checkpoint-file path:
+   - **All sentinels:** `.workflow_artifacts/memory/pending-restore-*.txt` — each contains a checkpoint path on line 1.
+   - **All checkpoints (30-day window):** use `find .../checkpoints/ -maxdepth 1 -name '*.md' ! -name '*.tmp' -mtime -30 -print0 | while IFS= read -r -d '' cp; do ...` (null-delimited, space-safe for Google Drive paths with spaces). Skip any file whose byte-size < 100 bytes: `[ $(wc -c < "$cp") -ge 100 ] || continue`. This guards against 0-byte corrupt entries.
 
-   - **0 sentinels:** fall through to Step 3 directly (no pending-restore files exist).
+2. Annotate each candidate: task name (from `## Active task`), branch (from `## Branch`), date (from filename prefix), source (`sentinel` or `disk-only`). Awk extraction: `awk '/^## Active task[[:space:]]*$/{getline; gsub(/\r$/,""); print; exit}'` — strips trailing CR and handles value-on-next-line form. If `## Active task` cannot be extracted (parse failure), drop the candidate silently.
 
-   - **Exactly 1 sentinel:** use it automatically. Tag with a session-id mismatch warning:
-     `Session-id mismatch: sentinel is from a prior session. Using it anyway.`
+3. De-duplication: prefer the non-`-precompact` file over the `-precompact` file when one filename equals the other minus `-precompact.md` AND their mtimes are within `${QUOIN_PICKER_DEDUP_WINDOW:-7d}` (7 days) of each other. Pairs older than 7 days apart are treated as independent entries.
 
-   - **2 or more sentinels:** do NOT auto-pick. Read each sentinel file to get the checkpoint path it contains, then read `## Active task` and `## Branch` from that checkpoint file. Surface a numbered list to the user:
+4. Backward-compat reader: tolerate missing `## Session ID` (older voluntary checkpoints). When absent, display `(legacy)` in the picker source column.
 
+5. Auto-pick rules:
+   - **Zero candidates:** fall through to Step 3 (graceful error message: no checkpoints found).
+   - **Exactly 1 candidate:** auto-pick with session-id mismatch warning.
+   - **Two or more:** present the numbered picker:
      ```
-     Multiple pending-restore sentinels found. Which session do you want to restore?
-       1. Task: <TASK_1>  Branch: <BRANCH_1>  (checkpoint: <DATE_1>)
-       2. Task: <TASK_2>  Branch: <BRANCH_2>  (checkpoint: <DATE_2>)
+     Multiple recent checkpoints found. Which session do you want to restore?
+       1. * Task: TASK_1  Branch: BRANCH_1  Date: DATE_1  (sentinel)
+       2.   Task: TASK_2  Branch: BRANCH_2  Date: DATE_2  (disk-only)
+       ...
      Enter number, or 'skip' to proceed to direct checkpoint lookup:
      ```
-
-     Where `<DATE_N>` is the `YYYY-MM-DD` prefix from the checkpoint filename.
-
-     - On a valid number: use that sentinel's checkpoint file; tag with mismatch warning.
-     - On `skip`: fall through to Step 3 (direct checkpoint lookup by date).
+     `*` marks sentinel-backed entries. Cap at 10 items (mtime descending). If more: `... and <N> older. Use --defer to skip.`
+     - On a valid number: use that entry's checkpoint file.
+     - On `skip`: fall through to Step 3.
      - On invalid input: re-prompt once; on second invalid input, fall through to Step 3.
-
-3. **Direct checkpoint lookup:** if no pending-restore sentinel exists at all, fall back to the most recent `checkpoints/<YYYY-MM-DD>-*.md` sorted by mtime. If both `<date>-<task>.md` and `<date>-<task>-precompact.md` exist with the same date prefix, prefer the non-`-precompact` file (voluntary checkpoint takes precedence over the automatic precompact one). Tie-break by mtime.
 
 ### Step 2: Surface checkpoint state to user
 
