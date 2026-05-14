@@ -32,6 +32,15 @@ SRC = REPO_ROOT / "src"
 # PYTHONPATH is set via pyproject.toml [tool.pytest.ini_options] pythonpath = ["src"]
 from quoin.installer import CANONICAL_SKILLS, TIER1_MEMORY_FILES  # noqa: E402
 
+pytestmark = pytest.mark.skipif(
+    shutil.which("claude") is None or shutil.which("npx") is None,
+    reason=(
+        "install requires `claude` (hard) and `npx` (soft); dev-machine only. "
+        "check_prerequisites() aborts on missing claude, so test cannot run on CI."
+    ),
+)
+
+
 def _run_transport(transport: str, tmp_home: Path, timeout: int = 180) -> subprocess.CompletedProcess:
     if transport == "bash":
         return subprocess.run(
