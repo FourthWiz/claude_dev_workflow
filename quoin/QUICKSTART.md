@@ -77,6 +77,7 @@ Common use cases: reviewing a terse critic response; reading a compressed cache 
 ## Project-scope install (`--scope project`)
 
 By default, `bash install.sh` installs quoin globally to `~/.claude/` (user scope).
+For an isolated user install, use `pipx install quoin` (recommended over `pip install --user`).
 Use `--scope project` to install into a project's own `.claude/` directory instead:
 
 ```bash

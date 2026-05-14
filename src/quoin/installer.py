@@ -127,9 +127,9 @@ _QUOIN_HOOK_BASENAMES = frozenset({
 def detect_home_hook_conflict() -> bool:
     """Return True if ~/.claude/settings.json already has quoin hook stanzas.
 
-    Detection uses script basename matching (sufficient to catch quoin's own
-    stanzas; may have rare false-positives for non-quoin scripts with the same
-    filenames, but those cases are vanishingly unlikely in practice).
+    Detection checks both basename AND that the command path contains
+    '/.claude/hooks/' to avoid false-positives from non-quoin scripts that
+    happen to share the same filename.
     """
     home_settings = pathlib.Path.home() / ".claude" / "settings.json"
     if not home_settings.exists():
@@ -147,7 +147,7 @@ def detect_home_hook_conflict() -> bool:
                         continue
                     cmd = hook.get("command", "")
                     basename = cmd.rsplit("/", 1)[-1]
-                    if basename in _QUOIN_HOOK_BASENAMES:
+                    if basename in _QUOIN_HOOK_BASENAMES and "/.claude/hooks/" in cmd:
                         return True
     except (json.JSONDecodeError, KeyError, OSError):
         pass
@@ -541,6 +541,24 @@ def regenerate_preambles(source_dir: pathlib.Path, *, allow_writes: bool) -> Non
     finally:
         sys.argv = old_argv
     print(f"Regenerated subagent preambles in {source_dir}/skills/*/preamble.md")
+
+
+def assert_no_placeholders(dest_root: pathlib.Path) -> list[str]:
+    """Return list of 'path:line_no' strings where __QUOIN_HOME__ was found after deploy.
+
+    Call this after all deploy functions complete to verify substitution was fully applied.
+    """
+    violations = []
+    for p in dest_root.rglob("*"):
+        if p.is_file() and p.suffix in (".md", ".sh", ".py", ".json", ".yaml", ".txt"):
+            try:
+                text = p.read_text(encoding="utf-8", errors="replace")
+                for i, line in enumerate(text.splitlines(), 1):
+                    if "__QUOIN_HOME__" in line:
+                        violations.append(f"{p}:{i}")
+            except Exception:
+                pass
+    return violations
 
 
 def install_dev_deps() -> None:

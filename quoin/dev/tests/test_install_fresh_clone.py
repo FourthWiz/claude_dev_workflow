@@ -96,6 +96,11 @@ def test_fresh_clone_install_e2e(transport: str):
             "discover",
             "init_workflow",
         )
+        # FIX-3: Use substitution-aware comparison.  Source SKILL.md files may contain
+        # __QUOIN_HOME__ placeholders that the installer replaces at deploy time, so raw
+        # byte-identity between source and deployed file is no longer correct.
+        from quoin.installer import substitute_quoin_home  # noqa: E402
+        dest_root = tmp_home / ".claude"
         for migrated in MIGRATED_SKILLS:
             adapter_src = (
                 REPO_ROOT / "quoin" / "adapters" / "claude" / "skills"
@@ -105,9 +110,12 @@ def test_fresh_clone_install_e2e(transport: str):
             assert adapter_dst.exists(), (
                 f"install.sh did not deploy {migrated}"
             )
-            assert adapter_src.read_bytes() == adapter_dst.read_bytes(), (
-                f"Deployed {migrated} SKILL.md is not byte-identical to the "
-                f"Claude adapter source "
+            src_text = adapter_src.read_text(encoding="utf-8")
+            expected_text = substitute_quoin_home(src_text, dest_root)
+            deployed_text = adapter_dst.read_text(encoding="utf-8")
+            assert expected_text == deployed_text, (
+                f"Deployed {migrated} SKILL.md does not match expected substituted content "
+                f"from Claude adapter source "
                 f"quoin/adapters/claude/skills/{migrated}/SKILL.md"
             )
             legacy_src = REPO_ROOT / "quoin" / "skills" / migrated / "SKILL.md"

@@ -232,6 +232,17 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
     if is_project_mode:
         # project mode: write to <project>/CLAUDE.md (one level above .claude/)
         claude_md_path = dest_root.parent / "CLAUDE.md"
+        # D-02: 3-second abort window so users can Ctrl-C if wrong project root
+        print(
+            f"Will write workflow rules to {claude_md_path} in 3 seconds. "
+            "Press Ctrl-C to abort."
+        )
+        import time
+        try:
+            time.sleep(3)
+        except KeyboardInterrupt:
+            print("\nAborted — no files written.", file=sys.stderr)
+            return 1
     else:
         claude_md_path = dest_root / "CLAUDE.md"
     installer.merge_workflow_rules(
@@ -240,6 +251,20 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
         force_merge=args.force_merge,
         claude_md_path=claude_md_path,
     )
+
+    # proc:R-02: post-install placeholder validator
+    violations = installer.assert_no_placeholders(dest_root)
+    if violations:
+        print(
+            f"quoin: install error — {len(violations)} unsubstituted __QUOIN_HOME__ "
+            f"placeholder(s) found:",
+            file=sys.stderr,
+        )
+        for v in violations[:5]:
+            print(f"  {v}", file=sys.stderr)
+        if len(violations) > 5:
+            print(f"  ... ({len(violations) - 5} more)", file=sys.stderr)
+        return 1
 
     # T-07: preamble regeneration last
     installer.regenerate_preambles(source_dir, allow_writes=allow_writes)
@@ -465,7 +490,17 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         marker_count = content.count("# === DEV WORKFLOW START ===")
         status = "✓" if marker_count == 1 else "✗"
         print(f"  {status} {claude_md_label} — {marker_count} DEV WORKFLOW marker pair(s)")
-        if marker_count != 1:
+        if marker_count > 1 and is_project_mode:
+            # T-08 acceptance bullet: explicit warning for double-install in project mode
+            print(
+                f"  ⚠ {claude_md_label} — {marker_count} DEV WORKFLOW marker pairs "
+                "(expected 1); run 'quoin install --scope project --force-merge' to fix"
+            )
+            warnings.append(
+                f"CLAUDE.md has {marker_count} marker pairs (double-install detected); "
+                "run 'quoin install --scope project --force-merge' to fix"
+            )
+        elif marker_count != 1:
             errors.append(
                 f"CLAUDE.md has {marker_count} marker pairs (expected 1); "
                 "run 'quoin install --force-merge' to fix"

@@ -126,16 +126,29 @@ def test_detect_home_hook_conflict_empty_settings(tmp_path, monkeypatch):
 
 
 def test_detect_home_hook_conflict_quoin_stanza_present(tmp_path, monkeypatch):
-    """When ~/.claude/settings.json has userpromptsubmit.sh stanza → conflict."""
+    """When ~/.claude/settings.json has userpromptsubmit.sh stanza in a .claude/hooks/ path → conflict."""
     _make_home_settings(tmp_path, [{
         "matcher": "*",
-        "hooks": [{"type": "command", "command": "/some/path/userpromptsubmit.sh", "timeout": 5}],
+        "hooks": [{"type": "command", "command": "/home/user/.claude/hooks/userpromptsubmit.sh", "timeout": 5}],
     }])
     import quoin.installer as _inst
     import unittest.mock
     with unittest.mock.patch.object(pathlib.Path, "home", return_value=tmp_path):
         result = _inst.detect_home_hook_conflict()
     assert result is True
+
+
+def test_detect_home_hook_conflict_non_claude_hooks_path(tmp_path, monkeypatch):
+    """quoin hook basename at a non-/.claude/hooks/ path → no conflict (false-positive prevention)."""
+    _make_home_settings(tmp_path, [{
+        "matcher": "*",
+        "hooks": [{"type": "command", "command": "/some/other/path/userpromptsubmit.sh", "timeout": 5}],
+    }])
+    import quoin.installer as _inst
+    import unittest.mock
+    with unittest.mock.patch.object(pathlib.Path, "home", return_value=tmp_path):
+        result = _inst.detect_home_hook_conflict()
+    assert result is False
 
 
 def test_detect_home_hook_conflict_sessionstart(tmp_path, monkeypatch):
@@ -490,6 +503,7 @@ def test_project_install_allows_hook_merge_with_flag(tmp_path, monkeypatch, caps
     monkeypatch.setattr(inst, "deploy_hooks", lambda *a, **kw: None)
     monkeypatch.setattr(inst, "merge_workflow_rules", lambda *a, **kw: None)
     monkeypatch.setattr(inst, "regenerate_preambles", lambda *a, **kw: None)
+    monkeypatch.setattr(inst, "assert_no_placeholders", lambda *a, **kw: [])
 
     from quoin.cli import _cmd_claude_install
     import argparse
@@ -503,8 +517,10 @@ def test_project_install_allows_hook_merge_with_flag(tmp_path, monkeypatch, caps
         dev=False,
         use_pip=False,
     )
-    # Should NOT raise — Path.home() mock so detect_home_hook_conflict reads fake home
-    with unittest.mock.patch.object(pathlib.Path, "home", return_value=fake_home):
+    # Should NOT raise — Path.home() mock so detect_home_hook_conflict reads fake home.
+    # Patch time.sleep to skip the D-02 3-second abort window.
+    with unittest.mock.patch.object(pathlib.Path, "home", return_value=fake_home), \
+         unittest.mock.patch("time.sleep"):
         result = _cmd_claude_install(args)
     assert result == 0
 
@@ -607,3 +623,54 @@ def test_deploy_hooks_settings_idempotent(tmp_path):
         f"deploy_hooks duplicated hook stanzas on second run: "
         f"first={first_count} stanzas, second={second_count} stanzas"
     )
+
+
+# ── FIX-1: test_project_claude_md_has_no_home_refs ──────────────────────────
+
+def test_project_claude_md_has_no_home_refs(tmp_path):
+    """Deployed <project>/CLAUDE.md must not have literal ~/.claude refs
+    (except ~/.claude/projects/ which is Claude Code internal)."""
+    from quoin import installer
+
+    source_dir = QUOIN_SRC
+    dest_root = tmp_path / ".claude"
+    dest_root.mkdir(parents=True)
+    claude_md_path = tmp_path / "CLAUDE.md"
+
+    installer.merge_workflow_rules(source_dir, dest_root, claude_md_path=claude_md_path)
+
+    content = claude_md_path.read_text(encoding="utf-8")
+    # Allow ~/.claude/projects/ (Claude Code internal) and blockquoted lines (> prefix)
+    offending_lines = [
+        line for line in content.splitlines()
+        if "~/.claude" in line
+        and "~/.claude/projects" not in line
+        and not line.strip().startswith(">")
+    ]
+    assert offending_lines == [], (
+        f"Found literal ~/.claude refs in deployed CLAUDE.md (should be __QUOIN_HOME__ "
+        f"after substitution): {offending_lines[:3]}"
+    )
+
+
+# ── FIX-2: assert_no_placeholders tests ─────────────────────────────────────
+
+def test_assert_no_placeholders_catches_leaked_placeholder(tmp_path):
+    """assert_no_placeholders returns violations when __QUOIN_HOME__ found."""
+    from quoin.installer import assert_no_placeholders
+
+    (tmp_path / "skills").mkdir()
+    (tmp_path / "skills" / "test.md").write_text("python3 __QUOIN_HOME__/scripts/foo.py")
+    violations = assert_no_placeholders(tmp_path)
+    assert len(violations) == 1
+    assert "test.md" in violations[0]
+
+
+def test_assert_no_placeholders_passes_clean_deploy(tmp_path):
+    """assert_no_placeholders returns empty list when no placeholders remain."""
+    from quoin.installer import assert_no_placeholders
+
+    (tmp_path / "skills").mkdir()
+    (tmp_path / "skills" / "test.md").write_text("python3 /resolved/path/scripts/foo.py")
+    violations = assert_no_placeholders(tmp_path)
+    assert violations == []
