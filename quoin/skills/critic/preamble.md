@@ -1,7 +1,7 @@
 ---
 generated_by: build_preambles.py
 kind: full
-path: ~/.claude/skills/critic/preamble.md
+path: __QUOIN_HOME__/skills/critic/preamble.md
 source_files:
 - quoin/memory/format-kit.md
 - quoin/memory/glossary.md

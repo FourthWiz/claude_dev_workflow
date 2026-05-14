@@ -109,7 +109,7 @@ def compose_frontmatter(skill: str, kind: str, source_hashes: dict, total_bytes:
     lines = ["---"]
     lines.append("generated_by: build_preambles.py")
     lines.append(f"kind: {kind}")
-    lines.append(f"path: ~/.claude/skills/{skill}/preamble.md")
+    lines.append(f"path: __QUOIN_HOME__/skills/{skill}/preamble.md")
     if source_files:
         lines.append("source_files:")
         for path in source_files:

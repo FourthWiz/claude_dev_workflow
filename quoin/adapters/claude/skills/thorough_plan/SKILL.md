@@ -33,7 +33,7 @@ Before starting the loop, establish the working directory:
     `<task-name>/architecture.md`'s `## Stage decomposition` section.
   - No qualifier → `<stage>` = None (legacy / single-stage layout).
 - Compute the working directory by running:
-    `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`
+    `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`
   This returns an absolute path. Create the folder if it doesn't exist:
     `mkdir -p "<task_dir>"`
 - The architecture and cost-ledger always live at the task root, regardless of
@@ -202,7 +202,7 @@ The loop stops when ANY of these is true:
 After reading each critic response, run:
 
 ```
-python3 ~/.claude/scripts/classify_critic_issues.py \
+python3 __QUOIN_HOME__/scripts/classify_critic_issues.py \
   --critic-response <task_dir>/critic-response-<N>.md
 ```
 

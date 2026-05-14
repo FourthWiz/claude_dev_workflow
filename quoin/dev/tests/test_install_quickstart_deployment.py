@@ -99,9 +99,9 @@ def test_skill_md_step_7_no_clone_prompt():
     """
     step_7_body = _skill_md_step_7_body()
 
-    # Must reference the deployed path
-    assert "~/.claude/QUICKSTART.md" in step_7_body, (
-        "Step 7 body must reference ~/.claude/QUICKSTART.md (the deployed path)"
+    # Must reference the deployed path (T-06: source uses __QUOIN_HOME__ placeholder)
+    assert "__QUOIN_HOME__/QUICKSTART.md" in step_7_body, (
+        "Step 7 body must reference __QUOIN_HOME__/QUICKSTART.md (the deployed path)"
     )
 
     # Must NOT contain any clone-discovery prompt substrings
@@ -150,8 +150,9 @@ def test_skill_md_step_7_has_fallback_and_is_deterministic():
     assert "# Quoin — Quickstart (fallback)" in heredoc_body, (
         "Fallback heredoc body must contain the title '# Quoin — Quickstart (fallback)'"
     )
-    assert "~/.claude/skills/" in heredoc_body, (
-        "Fallback heredoc body must contain pointer to user skills directory '~/.claude/skills/'"
+    # T-06: source uses __QUOIN_HOME__ placeholder; substituted to real path at deploy time.
+    assert "__QUOIN_HOME__/skills/" in heredoc_body, (
+        "Fallback heredoc body must contain pointer to user skills directory '__QUOIN_HOME__/skills/'"
     )
     assert "<your-quoin-clone>/Workflow-User-Guide.html" in heredoc_body, (
         "Fallback heredoc body must contain the qualified HTML-guide pointer "

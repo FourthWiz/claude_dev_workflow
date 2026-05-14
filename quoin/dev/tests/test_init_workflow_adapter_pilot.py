@@ -254,7 +254,8 @@ def test_adapter_preserves_load_bearing_behaviors():
     assert "Legacy QUICKSTART location detected" in adapter
     assert "(project)/dev-workflow/QUICKSTART.md" in adapter
     assert "# Quoin — Quickstart (fallback)" in adapter
-    assert "~/.claude/QUICKSTART.md" in adapter
+    # T-06: source files use __QUOIN_HOME__ placeholder; ~/.claude/ substituted at deploy time.
+    assert "__QUOIN_HOME__/QUICKSTART.md" in adapter
     assert "dev-workflow/install.sh" in adapter
     assert "default to `[k]`" in adapter
 

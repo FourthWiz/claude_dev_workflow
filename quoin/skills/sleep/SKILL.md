@@ -51,7 +51,7 @@ Otherwise (already at or below declared tier, OR prompt has [no-redispatch] sent
 At entry — immediately after §0 dispatch resolves:
 
 ```
-. ~/.claude/scripts/pidfile_helpers.sh && pidfile_acquire sleep
+. __QUOIN_HOME__/scripts/pidfile_helpers.sh && pidfile_acquire sleep
 ```
 
 If the script is missing or fails (e.g., fresh install): emit one-line warning `[quoin-S-2: pidfile helpers unavailable; proceeding without lifecycle protection]` and continue without abort (fail-OPEN).
@@ -86,7 +86,7 @@ Four primary modes:
 
 **(b) Standalone** — user runs `/sleep` directly. Full default mode (Steps 0–6). Step 0 verifies today's daily briefing exists first.
 
-**(c) `--dry-run`** — scores entries and prints three-bucket decisions; **Makes NO writes**. Use during the first 30 days of production calibration. Also triggered automatically when `~/.claude/memory/sleep_dryrun_start.txt` exists and is less than 30 days old.
+**(c) `--dry-run`** — scores entries and prints three-bucket decisions; **Makes NO writes**. Use during the first 30 days of production calibration. Also triggered automatically when `__QUOIN_HOME__/memory/sleep_dryrun_start.txt` exists and is less than 30 days old.
 
 **(d) `--escalate`** — after default scoring, spawns a separate Opus Agent subagent for middle-band candidates. Opus returns revised decisions; user confirms each. NOTE: `[no-redispatch]` guards the parent `/sleep` from §0 re-dispatch only; it does NOT prevent `/sleep` from spawning Opus children via `--escalate`. The Opus subagent is an explicit forward dispatch, not a tier-switch.
 
@@ -111,7 +111,7 @@ Files `/sleep` does NOT read:
 
 ## Importance scoring
 
-At session start, read sleep config: try `~/.claude/memory/sleep-signals.yaml` first; if absent, read the `sleep_importance_signals` YAML block from `~/.claude/CLAUDE.md`; if missing, use hardcoded defaults. Emit `[sleep: config not found; using hardcoded defaults]` only when falling back to hardcoded.
+At session start, read sleep config: try `__QUOIN_HOME__/memory/sleep-signals.yaml` first; if absent, read the `sleep_importance_signals` YAML block from `__QUOIN_HOME__/CLAUDE.md`; if missing, use hardcoded defaults. Emit `[sleep: config not found; using hardcoded defaults]` only when falling back to hardcoded.
 
 For each candidate entry, compute:
 - `promote_score` — sum of matched promote signal weights
@@ -122,7 +122,7 @@ Three-bucket decision:
 - **Soft-Forget**: `forget_score >= forget_min_score` AND `promote_score <= forget_max_promote`
 - **Middle-Band**: everything else
 
-Scoring is performed by `python3 ~/.claude/scripts/sleep_score.py`. The skill invokes this script and parses its NDJSON output.
+Scoring is performed by `python3 __QUOIN_HOME__/scripts/sleep_score.py`. The skill invokes this script and parses its NDJSON output.
 
 ## Process (default mode)
 
@@ -137,17 +137,17 @@ Error: /sleep requires today's daily briefing (daily/<today>.md) — run /end_of
 
 This guard fires only in standalone invocations. In the auto-chain path, `/end_of_day` writes the daily briefing (Step 3) before invoking `/sleep` (Step 6), so the file always exists in that context.
 
-Also check whether dry-run mode should be forced: read `~/.claude/memory/sleep_dryrun_start.txt`. If it exists and the date within is less than 30 days ago, set `forced_dry_run = true` and emit: `Dry-run mode active until <start-date + 30 days>: no writes will occur (calibration period).`
+Also check whether dry-run mode should be forced: read `__QUOIN_HOME__/memory/sleep_dryrun_start.txt`. If it exists and the date within is less than 30 days ago, set `forced_dry_run = true` and emit: `Dry-run mode active until <start-date + 30 days>: no writes will occur (calibration period).`
 
 ### Step 1: Read config
 
-At session start, read sleep config: try `~/.claude/memory/sleep-signals.yaml` first; if absent, read the `sleep_importance_signals` YAML block from `~/.claude/CLAUDE.md`; if missing, use hardcoded defaults. Emit `[sleep: config not found; using hardcoded defaults]` only when falling back to hardcoded.
+At session start, read sleep config: try `__QUOIN_HOME__/memory/sleep-signals.yaml` first; if absent, read the `sleep_importance_signals` YAML block from `__QUOIN_HOME__/CLAUDE.md`; if missing, use hardcoded defaults. Emit `[sleep: config not found; using hardcoded defaults]` only when falling back to hardcoded.
 
 ### Step 2: Run sleep_score.py
 
 Invoke:
 ```
-python3 ~/.claude/scripts/sleep_score.py \
+python3 __QUOIN_HOME__/scripts/sleep_score.py \
   --scan-dir .workflow_artifacts/memory/daily/ \
   --scan-days 30 \
   --lessons-file .workflow_artifacts/memory/lessons-learned.md \

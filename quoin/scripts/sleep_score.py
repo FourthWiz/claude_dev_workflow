@@ -119,7 +119,7 @@ def load_config(claude_md_path: str = None, *, signals_yaml_path: str = None) ->
         yaml_path = Path(signals_yaml_path)
     elif claude_md_path is None:
         # No CLAUDE.md path provided → try home default
-        yaml_path = Path(os.path.expanduser("~/.claude/memory/sleep-signals.yaml"))
+        yaml_path = Path(os.path.expanduser("__QUOIN_HOME__/memory/sleep-signals.yaml"))
     else:
         yaml_path = None  # caller passed CLAUDE.md positionally → try CLAUDE.md first
 
@@ -654,7 +654,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--claude-md",
         default=None,
         help=(
-            "Path to CLAUDE.md for config. Search order: (1) ~/.claude/memory/sleep-signals.yaml "
+            "Path to CLAUDE.md for config. Search order: (1) __QUOIN_HOME__/memory/sleep-signals.yaml "
             "when --claude-md is omitted, (2) YAML block parsed from --claude-md path, "
             "(3) hardcoded defaults."
         ),

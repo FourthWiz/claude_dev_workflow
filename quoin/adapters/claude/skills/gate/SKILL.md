@@ -51,7 +51,7 @@ Otherwise (already at or below declared tier, OR prompt has [no-redispatch] sent
 
 ## Session bootstrap
 
-Read `~/.claude/skills/gate/preamble.md` if it exists; if missing or empty, proceed normally. Purely additive cache-warming — every other read in this `## Session bootstrap` section, and every write-site format-kit / glossary reference (per §5.3 / §5.4 write-site instructions), stays in force unchanged. The intent is CROSS-SPAWN cache reuse: spawn N+1 of this skill with a byte-identical task fixture hits cache from spawn N's preamble.md tool_result, within the 5-minute prompt-cache TTL. Within a single spawn there is no cache benefit — savings only materialize on subsequent spawns whose prompt prefix is byte-identical through the preamble read. (Stage 2-alt of pipeline-efficiency-improvements.)
+Read `__QUOIN_HOME__/skills/gate/preamble.md` if it exists; if missing or empty, proceed normally. Purely additive cache-warming — every other read in this `## Session bootstrap` section, and every write-site format-kit / glossary reference (per §5.3 / §5.4 write-site instructions), stays in force unchanged. The intent is CROSS-SPAWN cache reuse: spawn N+1 of this skill with a byte-identical task fixture hits cache from spawn N's preamble.md tool_result, within the 5-minute prompt-cache TTL. Within a single spawn there is no cache benefit — savings only materialize on subsequent spawns whose prompt prefix is byte-identical through the preamble read. (Stage 2-alt of pipeline-efficiency-improvements.)
 
 Cost tracking note: `/gate` runs between workflow phases. Append to the cost ledger only if a task folder path is determinable from context. If running as part of a named task, append your session to `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `gate`. If the task context is unclear, skip cost recording.
 
@@ -118,7 +118,7 @@ Within `/thorough_plan`, the orchestrator handles its own internal loop (plan→
 
 Determine which phase just completed by reading:
 - The task root for parent-level artifacts: `<task-root>/architecture.md`, `<task-root>/architecture-critic-<N>.md`, `<task-root>/cost-ledger.md` (these always live at the task root regardless of stage layout — D-03).
-- The resolved task subfolder for stage-scoped artifacts: `<task_dir>/current-plan.md`, `<task_dir>/critic-response-<round>.md`, `<task_dir>/review-<round>.md`, `<task_dir>/gate-*.md` — where `<task_dir>` is computed via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` (see "Multi-stage tasks" in CLAUDE.md). For legacy / single-stage tasks, `<task_dir>` equals `<task-root>`.
+- The resolved task subfolder for stage-scoped artifacts: `<task_dir>/current-plan.md`, `<task_dir>/critic-response-<round>.md`, `<task_dir>/review-<round>.md`, `<task_dir>/gate-*.md` — where `<task_dir>` is computed via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` (see "Multi-stage tasks" in CLAUDE.md). For legacy / single-stage tasks, `<task_dir>` equals `<task-root>`.
 - On `path_resolve.py` exit code 2, display the stderr message verbatim, fall back to `<task-root>`, and ask the user to disambiguate by re-invoking with `stage <N> of <task>` (per the per-file edit template's error-handling clause).
 - Git state (branches, uncommitted changes, recent commits)
 - Session state file if it exists (`.workflow_artifacts/memory/sessions/<date>-<task-name>.md`)
@@ -247,7 +247,7 @@ If automated checks failed:
 Regardless of invocation mode, Step 5 audit-log persistence is **mandatory**: every `/gate` invocation **MUST write** a `gate-{phase}-{date}.md` **audit log** before yielding control. This requirement applies whether invoked inline or as a subagent. **audit log persistence** is non-skippable on approval.
 
 **Inline mode note:** when invoked inline (post-implement, post-review), the executing agent skips both:
-- The `~/.claude/skills/gate/preamble.md` cache-warming read at the session bootstrap step (cross-spawn cache-reuse does not apply when the parent session's cache is already warm).
+- The `__QUOIN_HOME__/skills/gate/preamble.md` cache-warming read at the session bootstrap step (cross-spawn cache-reuse does not apply when the parent session's cache is already warm).
 - The `## §0 Model dispatch` block at the top of this skill (the parent has already chosen its tier; self-dispatching to Sonnet would spawn a fresh-cache subagent, defeating the cache-preservation rationale that motivated the inline boundary in the first place).
 
 The agent reads from `### Step 1: Detect context` onwards. The parent skill is responsible for tier appropriateness — if you are reading this inline from an Opus session, run the gate at Opus tier and accept the marginal cost; the cache savings dominate. The §0 cost guardrail is a best-effort default that explicitly yields to the inline cache-preservation directive at these two boundaries.
@@ -257,11 +257,11 @@ Once the user explicitly approves the gate (i.e., after the STOP-and-wait in Ste
 If the user rejects the gate (asks to fix something), do NOT write the audit log. Wait until the gate is re-run and approved before writing.
 
 Use the §5.4 Class A writer mechanism.
-Read `~/.claude/memory/format-kit-pitfalls.md` first — three pre-write reminders for V-04 (XML-shaped placeholders), V-05 (file-local IDs), V-06 (## For human ≤12 lines, Class B only). Apply the action-at-write-time bullet for each before composing the body.
+Read `__QUOIN_HOME__/memory/format-kit-pitfalls.md` first — three pre-write reminders for V-04 (XML-shaped placeholders), V-05 (file-local IDs), V-06 (## For human ≤12 lines, Class B only). Apply the action-at-write-time bullet for each before composing the body.
 Reference files (apply HERE at the body-generation write-site, per format-kit.md §1 / lesson 2026-04-23):
-- `~/.claude/memory/format-kit.md` — primitives + standard sections per artifact type
-- `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs
-- `~/.claude/memory/terse-rubric.md` — prose discipline
+- `__QUOIN_HOME__/memory/format-kit.md` — primitives + standard sections per artifact type
+- `__QUOIN_HOME__/memory/glossary.md` — abbreviation whitelist + status glyphs
+- `__QUOIN_HOME__/memory/terse-rubric.md` — prose discipline
 
 # V-05 reminder: T-NN/D-NN/R-NN/F-NN/Q-NN/S-NN are FILE-LOCAL.
 # When referring to a sibling artifact's task or risk, use plain English (e.g., "the parent plan's T-04"), NOT a bare T-NN token. See format-kit.md §1 / glossary.md.
@@ -273,7 +273,7 @@ Compose the format-aware body per format-kit.md §2 `gate-{phase}-{date}.md` enu
 - `## Summary of what was produced` — OPTIONAL — caveman prose, 2-3 sentences. (Reuse the `## For human` content already captured from Step 3a; do NOT re-read the source artifact.)
 - `## What's next` — OPTIONAL — caveman prose, 1-2 lines.
 
-Write the body to `{path}.body.tmp`; compose final file as `{frontmatter (YAML — task, phase, date, gate-level)}\n\n{body content}`; write to `{path}.tmp`. Validate via `python3 ~/.claude/scripts/validate_artifact.py {path}.tmp` (auto-detection → gate type via `^gate-` prefix). On V-failure: retry-once with section-discipline reminder; on persistent failure, Before falling back to v2-style write, increment the session-state `fallback_fires` field by 1 (atomic-rename pattern; same rules as the Step 5 increment described above), then fall back to v2-style terse-rubric-only write. Atomic rename: `mv {path}.tmp {path} && (rm -f {path}.body.tmp 2>/dev/null || true)`.
+Write the body to `{path}.body.tmp`; compose final file as `{frontmatter (YAML — task, phase, date, gate-level)}\n\n{body content}`; write to `{path}.tmp`. Validate via `python3 __QUOIN_HOME__/scripts/validate_artifact.py {path}.tmp` (auto-detection → gate type via `^gate-` prefix). On V-failure: retry-once with section-discipline reminder; on persistent failure, Before falling back to v2-style write, increment the session-state `fallback_fires` field by 1 (atomic-rename pattern; same rules as the Step 5 increment described above), then fall back to v2-style terse-rubric-only write. Atomic rename: `mv {path}.tmp {path} && (rm -f {path}.body.tmp 2>/dev/null || true)`.
 
 The user-facing checkpoint summary rendered in Step 3 is Tier 1 English (per CLAUDE.md "User-facing rendered output" carve-out); the audit log written here is the disk-side Class A artifact. Both must convey the same verdict and failure set.
 

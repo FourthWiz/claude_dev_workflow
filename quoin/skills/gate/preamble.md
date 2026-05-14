@@ -1,7 +1,7 @@
 ---
 generated_by: build_preambles.py
 kind: stub
-path: ~/.claude/skills/gate/preamble.md
+path: __QUOIN_HOME__/skills/gate/preamble.md
 source_files: []
 source_hashes: {}
 total_bytes: 125

@@ -13,12 +13,12 @@ You are a senior technical critic. Your job is to find real problems in implemen
 ## Session bootstrap
 
 This skill ALWAYS runs in a fresh session (that's the whole point — unbiased review). On start:
-1. Read `~/.claude/skills/critic/preamble.md` if it exists; if missing or empty, proceed normally. Purely additive cache-warming — every other read in this `## Session bootstrap` section, and every write-site format-kit / glossary reference (per §5.3 / §5.4 write-site instructions), stays in force unchanged. The intent is CROSS-SPAWN cache reuse: spawn N+1 of this skill with a byte-identical task fixture hits cache from spawn N's preamble.md tool_result, within the 5-minute prompt-cache TTL. Within a single spawn there is no cache benefit — savings only materialize on subsequent spawns whose prompt prefix is byte-identical through the preamble read. (Stage 2-alt of pipeline-efficiency-improvements.)
+1. Read `__QUOIN_HOME__/skills/critic/preamble.md` if it exists; if missing or empty, proceed normally. Purely additive cache-warming — every other read in this `## Session bootstrap` section, and every write-site format-kit / glossary reference (per §5.3 / §5.4 write-site instructions), stays in force unchanged. The intent is CROSS-SPAWN cache reuse: spawn N+1 of this skill with a byte-identical task fixture hits cache from spawn N's preamble.md tool_result, within the 5-minute prompt-cache TTL. Within a single spawn there is no cache benefit — savings only materialize on subsequent spawns whose prompt prefix is byte-identical through the preamble read. (Stage 2-alt of pipeline-efficiency-improvements.)
 2. **Round 1 only:** Read `.workflow_artifacts/memory/lessons-learned.md` for past insights — check if past lessons apply to this plan's domain. **On rounds 2+, skip this step** — the file cannot change mid-loop, so re-reading it wastes tokens without adding information. (The round number is indicated by the existing `critic-response-*.md` OR `architecture-critic-*.md` files: use whichever pattern matches the target type. If `critic-response-1.md` already exists, this is round 2 or later. If `architecture-critic-1.md` exists at task root, this is round 2 for an architecture critique.)
-3. Read the task subfolder: resolve the artifact path via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` — then read `<task_dir>/current-plan.md` and any prior `<task_dir>/critic-response-*.md`. architecture.md: ALWAYS `<task-root>/architecture.md`. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md` (line 5 above — NOT edited per D-03). If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
+3. Read the task subfolder: resolve the artifact path via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` — then read `<task_dir>/current-plan.md` and any prior `<task_dir>/critic-response-*.md`. architecture.md: ALWAYS `<task-root>/architecture.md`. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md` (line 5 above — NOT edited per D-03). If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
 4. Read the ACTUAL SOURCE CODE referenced by the plan (this is critical — don't trust the plan's claims)
 5. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `critic`
-6. Read deployed v3 references at session start: `~/.claude/memory/format-kit.md` and `~/.claude/memory/glossary.md`.
+6. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`.
 7. Then proceed with critique
 
 ## Model requirement
@@ -33,7 +33,7 @@ When invoked as part of `/thorough_plan`, by `/architect` Phase 4, or as a stand
 
 ### 1. Read the plan
 
-Read `<task_dir>/current-plan.md` carefully and completely, where `<task_dir>` is resolved via `python3 ~/.claude/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` (see Session bootstrap step 2). Apply the §5.7.1 detection rule below to determine v2 vs v3 format BEFORE invoking the Read tool, so the read strategy matches the file shape.
+Read `<task_dir>/current-plan.md` carefully and completely, where `<task_dir>` is resolved via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` (see Session bootstrap step 2). Apply the §5.7.1 detection rule below to determine v2 vs v3 format BEFORE invoking the Read tool, so the read strategy matches the file shape.
 
 # v3-format detection (architecture.md §5.7.1 — copy verbatim)
 # A file is v3-format iff:
@@ -116,15 +116,15 @@ Score the plan against each criterion:
 Write `critic-response-{round}.md` using the §5.4 Class A writer mechanism:
 
 **Step 1: Body generation.**
-Read `~/.claude/memory/format-kit-pitfalls.md` first — three pre-write reminders for V-04 (XML-shaped placeholders), V-05 (file-local IDs), V-06 (## For human ≤12 lines, Class B only). Apply the action-at-write-time bullet for each before composing the body.
+Read `__QUOIN_HOME__/memory/format-kit-pitfalls.md` first — three pre-write reminders for V-04 (XML-shaped placeholders), V-05 (file-local IDs), V-06 (## For human ≤12 lines, Class B only). Apply the action-at-write-time bullet for each before composing the body.
 Reference files (apply HERE at the body-generation write-site, per format-kit.md §1 / lesson 2026-04-23):
-- `~/.claude/memory/format-kit.md` — primitives + standard sections per artifact type.
-- `~/.claude/memory/glossary.md` — abbreviation whitelist + status glyphs.
-- `~/.claude/memory/terse-rubric.md` — prose discipline (compose with format-kit per format-kit §5).
+- `__QUOIN_HOME__/memory/format-kit.md` — primitives + standard sections per artifact type.
+- `__QUOIN_HOME__/memory/glossary.md` — abbreviation whitelist + status glyphs.
+- `__QUOIN_HOME__/memory/terse-rubric.md` — prose discipline (compose with format-kit per format-kit §5).
 
 Compose the format-aware body for `critic-response-{round}.md` per `format-kit.md` §2 `critic-response-N.md` enumeration. Apply format-kit §1 pick rules per section. Write the body to `{path}.body.tmp` using the Write tool.
 
-`{path}` is `{task_dir}/critic-response-{round}.md`, where `{task_dir}` is resolved via `python3 ~/.claude/scripts/path_resolve.py --task {task-name} [--stage <N-or-name>]`. When invoked by `/architect` as a subagent, `{path}` is `{project-folder}/.workflow_artifacts/{task-name}/architecture-critic-{round}.md` instead (architecture-critic-N.md ALWAYS at task root per D-03 — corollary: pre-resolves stage-4's Q-01; same body composition; T-08 ensures the validator detects it as critic-response type). **Target contract (D-01 spawn-prompt convention):** when invoked by `/architect` Phase 4, the caller MUST pass the target in the spawn prompt as plain English: `Target: <ABS_PATH>/architecture.md — critique this architecture.` The critic reads this target=architecture.md context from the spawn prompt to determine which file to critique and which output path to use.
+`{path}` is `{task_dir}/critic-response-{round}.md`, where `{task_dir}` is resolved via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task {task-name} [--stage <N-or-name>]`. When invoked by `/architect` as a subagent, `{path}` is `{project-folder}/.workflow_artifacts/{task-name}/architecture-critic-{round}.md` instead (architecture-critic-N.md ALWAYS at task root per D-03 — corollary: pre-resolves stage-4's Q-01; same body composition; T-08 ensures the validator detects it as critic-response type). **Target contract (D-01 spawn-prompt convention):** when invoked by `/architect` Phase 4, the caller MUST pass the target in the spawn prompt as plain English: `Target: <ABS_PATH>/architecture.md — critique this architecture.` The critic reads this target=architecture.md context from the spawn prompt to determine which file to critique and which output path to use.
 
 Body content example (Step 1 output):
 
@@ -183,7 +183,7 @@ Body content example (Step 1 output):
 Write to `{path}.tmp` using the Write tool. (No `## For human` heading; no Haiku call.)
 
 **Step 4: Structural validation.** Invoke the deployed validator via the Bash tool:
-  `python3 ~/.claude/scripts/validate_artifact.py {path}.tmp`
+  `python3 __QUOIN_HOME__/scripts/validate_artifact.py {path}.tmp`
 (Filename auto-detection → critic-response type via T-08 match_paths extension.) Exit code 0 = PASS; non-zero = invariant failure.
 
 **Step 5: Retry / English-fallback.** On V-02/V-03/V-05 failures: re-run Steps 1, 3, 4 once with explicit "use only allowed sections per format-kit §2 critic-response; group issues by severity; verdict in heading-line form" instruction. On V-01/V-04 failures: same re-run path. After retry also fails: fall back to v2-style write — regenerate body using terse-rubric only (no format-kit; use heading-line `## Verdict: PASS | REVISE` form). Write to `{path}.tmp` directly. Skip Step 4. Before logging the `format-kit-skipped` warning, increment the session-state `fallback_fires` field by 1: read the active session-state file at `.workflow_artifacts/memory/sessions/{today}-{task}.md`, parse the `## Cost` block, increment `fallback_fires` (atomic-rename pattern; mirror of the `end_of_day_due` flip described in CLAUDE.md "Session state tracking"), then proceed. If the session-state path is unknown (skill ran without bootstrap or no task context), skip the increment silently. Known race: under parallel subagent fallback fires the read-modify-write update can undercount; never overcounts (per Stage 4 D-03-rev2). Log a `format-kit-skipped` warning to stderr with the failing invariant ID(s).

@@ -113,10 +113,10 @@ If `npx` or `ccusage` is not available (binary not found), OR every ccusage
 call returns non-zero, fall back to `cost_from_jsonl.py`:
 
   # Per-UUID mode (parallel with the ccusage `-i UUID --json` path):
-  python3 ~/.claude/scripts/cost_from_jsonl.py session -i UUID --json
+  python3 __QUOIN_HOME__/scripts/cost_from_jsonl.py session -i UUID --json
 
   # Bulk mode (parallel with `ccusage session --since DATE --json`):
-  python3 ~/.claude/scripts/cost_from_jsonl.py session --json --since DATE
+  python3 __QUOIN_HOME__/scripts/cost_from_jsonl.py session --json --since DATE
 
 The output JSON shape is identical to ccusage (see /cost_snapshot Step 2
 parser). Parse it the same way.

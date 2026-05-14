@@ -23,8 +23,9 @@ sys.path.insert(0, str(QUOIN_DIR / "scripts"))
 from build_preambles import SPAWN_TARGETS  # noqa: E402
 
 PREAMBLE_STEP_FRAGMENT = "preamble.md` if it exists; if missing or empty, proceed normally."
-FORMAT_KIT_REF = "~/.claude/memory/format-kit.md"
-GLOSSARY_REF = "~/.claude/memory/glossary.md"
+# T-06: source files use __QUOIN_HOME__ placeholder; ~/.claude/ is substituted at deploy time.
+FORMAT_KIT_REF = "__QUOIN_HOME__/memory/format-kit.md"
+GLOSSARY_REF = "__QUOIN_HOME__/memory/glossary.md"
 WRITE_SITE_PATTERN = "Reference files (apply HERE at the body-generation"
 
 # Skills with a write-site reference inside ## Session bootstrap. Gate is excluded
@@ -62,9 +63,10 @@ def test_preamble_step_present(skill):
     assert PREAMBLE_STEP_FRAGMENT in content, (
         f"SKILL.md for {skill} is missing the preamble bootstrap step text"
     )
-    skill_path = f"~/.claude/skills/{skill}/preamble.md"
+    # T-06: source files use __QUOIN_HOME__ placeholder; ~/.claude/ is substituted at deploy time.
+    skill_path = f"__QUOIN_HOME__/skills/{skill}/preamble.md"
     assert skill_path in content, (
-        f"SKILL.md for {skill} should reference '~/.claude/skills/{skill}/preamble.md'"
+        f"SKILL.md for {skill} should reference '__QUOIN_HOME__/skills/{skill}/preamble.md'"
     )
 
 
@@ -101,7 +103,8 @@ def test_preamble_step_is_first_bootstrap_read(skill):
     """(e) New preamble step appears before all other bootstrap reads in source order."""
     lines = _skill_md(skill).read_text(encoding="utf-8").splitlines()
 
-    preamble_lines = _find_line_numbers(lines, f"~/.claude/skills/{skill}/preamble.md")
+    # T-06: source files use __QUOIN_HOME__ placeholder
+    preamble_lines = _find_line_numbers(lines, f"__QUOIN_HOME__/skills/{skill}/preamble.md")
     assert preamble_lines, f"No preamble step found in {skill}/SKILL.md"
     preamble_line = preamble_lines[0]
 
