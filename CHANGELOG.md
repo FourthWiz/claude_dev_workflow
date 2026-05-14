@@ -2,6 +2,14 @@
 
 All notable changes to Quoin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.3] — 2026-05-14
+
+### Fixed
+
+- **Checkpoint bug trio:** Three `/checkpoint` + precompact hook bugs fixed via a shared UUID identity model. The checkpoint restore now verifies task context matches the active task before loading artifacts. The `userpromptsubmit` hook correctly surfaces pending-restore state. See PR #82.
+- **Installer deny rules:** `installer.py` now writes `rm -rf` deny rules to `settings.json` during install, preventing accidental destructive operations.
+- **Test suite:** Restored `pytestmark skipif` on `test_install_fresh_clone`; added T-06 behavioral tests for the checkpoint-bug-trio fixes.
+
 ## [1.0.0] — 2026-04-27
 
 ### Added
