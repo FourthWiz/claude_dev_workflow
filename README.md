@@ -53,6 +53,34 @@ quoin doctor --runtime claude
 `quoin install` and bare `quoin` remain backward-compatible aliases for the
 Claude install path. They deploy to `~/.claude`.
 
+### Claude install scope: user vs project
+
+The Claude adapter can be installed at two scopes:
+
+**User scope (default)** — installs to `~/.claude/`. Skills, hooks, and workflow
+rules are available globally in every Claude Code session on the machine.
+
+```bash
+quoin install --runtime claude               # same as --scope user
+quoin install --runtime claude --scope user
+```
+
+**Project scope** — installs to `<project>/.claude/`. Skills and hooks activate
+only when Claude Code is opened in that directory. Hooks register in
+`<project>/.claude/settings.json` instead of your personal settings file.
+
+```bash
+# Install into the current directory's .claude/
+quoin install --runtime claude --scope project
+
+# Install into an explicit project root
+quoin install --runtime claude --scope project:/path/to/repo
+```
+
+> **Note:** Claude Code resolves personal scope (`~/.claude/skills/`) before
+> project scope. If you have a user-scope install, it will shadow a project-scope
+> install for skills. Run `quoin doctor --scope project` to detect conflicts.
+
 Generate the Codex repo-local scaffold:
 
 ```bash
