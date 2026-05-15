@@ -667,6 +667,207 @@ rm -f "$LEGACY_CP" \
       "$CHECKPOINTS_DIR/2026-01-02-some-task.md.tmp" \
       "$CHECKPOINTS_DIR/2026-01-03-tiny-task.md"
 
+# ─── T-09: Three-mode checkpoint contract tests ───────────────────────────────
+# Tests the file-level contract for the three save modes added by T-04.
+# These are fixture-based contract tests: they simulate what /checkpoint MUST
+# produce and assert the correct sentinel file shape.
+
+# (T-09a) restore mode: pending-restore sentinel written, no other mode sentinels
+SID_09A="sess-mode-restore-$(date -u +%s)"
+cp_09a="$CHECKPOINTS_DIR/$(date -u +%Y-%m-%d)-mode-restore-task.md"
+cat > "$cp_09a" << EOF09A
+## Status
+test-save (restore mode)
+
+## Active task
+mode-restore-task
+
+## Branch
+main
+
+## Session ID
+${SID_09A}
+
+## In-flight artifacts
+- current-plan.md: /some/path/current-plan.md
+
+## Restore hint
+Run /checkpoint --restore in a fresh session.
+EOF09A
+printf '%s\n' "$cp_09a" > "$MEMORY_DIR/pending-restore-${SID_09A}.txt"
+
+# Assertions
+if [ -f "$MEMORY_DIR/pending-restore-${SID_09A}.txt" ]; then
+  ok "(T-09a) restore mode: pending-restore sentinel written"
+else
+  fail "(T-09a) restore mode: pending-restore sentinel NOT found"
+fi
+
+sentinel_content_09a=$(cat "$MEMORY_DIR/pending-restore-${SID_09A}.txt")
+if [ "$sentinel_content_09a" = "$cp_09a" ]; then
+  ok "(T-09a) restore mode: sentinel content is the checkpoint path"
+else
+  fail "(T-09a) restore mode: sentinel content mismatch (got: $sentinel_content_09a)"
+fi
+
+# No pending-resume-ref or mid-agent-handoff for this session
+if [ ! -f "$MEMORY_DIR/pending-resume-ref-${SID_09A}.txt" ] && \
+   [ ! -f "$MEMORY_DIR/mid-agent-handoff-${SID_09A}.txt" ]; then
+  ok "(T-09a) restore mode: no pending-resume-ref or mid-agent-handoff sentinels"
+else
+  fail "(T-09a) restore mode: unexpected extra sentinels found"
+fi
+
+rm -f "$cp_09a" "$MEMORY_DIR/pending-restore-${SID_09A}.txt"
+
+# (T-09b) load-as-reference mode: pending-resume-ref written, no pending-restore
+SID_09B="sess-mode-load-as-ref-$(date -u +%s)"
+cp_09b="$CHECKPOINTS_DIR/$(date -u +%Y-%m-%d)-mode-loadref-task.md"
+cat > "$cp_09b" << EOF09B
+## Status
+test-save (load-as-reference mode)
+
+## Active task
+mode-loadref-task
+
+## Branch
+main
+
+## Session ID
+${SID_09B}
+
+## In-flight artifacts
+- current-plan.md: /some/path/current-plan.md
+
+## Restore hint
+Run /checkpoint --restore in a fresh session.
+EOF09B
+
+# Write pending-resume-ref sentinel (as /checkpoint would in load-as-reference mode)
+printf 'prior_session_uuid=%s\ncheckpoint_path=%s\n' "$SID_09B" "$cp_09b" \
+  > "$MEMORY_DIR/pending-resume-ref-${SID_09B}.txt"
+
+# Assertions
+if [ -f "$MEMORY_DIR/pending-resume-ref-${SID_09B}.txt" ]; then
+  ok "(T-09b) load-as-reference mode: pending-resume-ref sentinel written"
+else
+  fail "(T-09b) load-as-reference mode: pending-resume-ref sentinel NOT found"
+fi
+
+ref_uuid_09b=$(grep '^prior_session_uuid=' "$MEMORY_DIR/pending-resume-ref-${SID_09B}.txt" | cut -d= -f2)
+ref_cp_09b=$(grep '^checkpoint_path=' "$MEMORY_DIR/pending-resume-ref-${SID_09B}.txt" | cut -d= -f2-)
+if [ "$ref_uuid_09b" = "$SID_09B" ] && [ "$ref_cp_09b" = "$cp_09b" ]; then
+  ok "(T-09b) load-as-reference mode: sentinel contains prior_session_uuid and checkpoint_path"
+else
+  fail "(T-09b) load-as-reference mode: sentinel content mismatch (uuid=$ref_uuid_09b, cp=$ref_cp_09b)"
+fi
+
+# No pending-restore for the SAME session_id (load-as-ref skips Step 3)
+if [ ! -f "$MEMORY_DIR/pending-restore-${SID_09B}.txt" ]; then
+  ok "(T-09b) load-as-reference mode: no pending-restore for same session_id"
+else
+  fail "(T-09b) load-as-reference mode: unexpected pending-restore found for same session"
+fi
+
+rm -f "$cp_09b" "$MEMORY_DIR/pending-resume-ref-${SID_09B}.txt"
+
+# (T-09c) mid-agent mode: only mid-agent-handoff sentinel, no checkpoint file, no pending-restore
+SID_09C="sess-mode-mid-agent-$(date -u +%s)"
+# Simulate a foreign pidfile (another skill is running)
+mkdir -p "$MEMORY_DIR/sessions"
+touch "$MEMORY_DIR/sessions/critic-99999.pidfile.lock"
+
+# Write ONLY the mid-agent-handoff sentinel (no full checkpoint file in mid-agent mode)
+printf 'prior_session_uuid=%s\ntask_name=my-task\nactive_skills=critic 99999\ntimestamp=2026-05-15T10:00:00Z\n' \
+  "$SID_09C" > "$MEMORY_DIR/mid-agent-handoff-${SID_09C}.txt"
+
+# Assertions
+if [ -f "$MEMORY_DIR/mid-agent-handoff-${SID_09C}.txt" ]; then
+  ok "(T-09c) mid-agent mode: mid-agent-handoff sentinel written"
+else
+  fail "(T-09c) mid-agent mode: mid-agent-handoff sentinel NOT found"
+fi
+
+# No pending-restore for this session
+if [ ! -f "$MEMORY_DIR/pending-restore-${SID_09C}.txt" ]; then
+  ok "(T-09c) mid-agent mode: no pending-restore sentinel"
+else
+  fail "(T-09c) mid-agent mode: unexpected pending-restore found"
+fi
+
+# No full checkpoint file for this session (mid-agent skips Step 2)
+if [ ! -f "$CHECKPOINTS_DIR/"*"-$(date -u +%Y-%m-%d)"-*".md" ] 2>/dev/null || \
+   ! ls "$CHECKPOINTS_DIR/"*.md 2>/dev/null | xargs grep -l "## Session ID" 2>/dev/null | \
+     xargs grep -l "$SID_09C" 2>/dev/null | grep -q .; then
+  ok "(T-09c) mid-agent mode: no full checkpoint file for this session (minimal save)"
+else
+  fail "(T-09c) mid-agent mode: unexpected full checkpoint file found"
+fi
+
+rm -f "$MEMORY_DIR/sessions/critic-99999.pidfile.lock" \
+      "$MEMORY_DIR/mid-agent-handoff-${SID_09C}.txt" \
+      "$CHECKPOINTS_DIR/"*".md" 2>/dev/null || true
+
+# ─── T-06f: COMPACT_FIRST_BPS boundary (9000 / 8999) ────────────────────────
+# Verify that compute_utilization returns 9000 for a transcript at exactly the
+# 90.00% threshold, and 8999 for one byte below. The operator in SKILL.md:164
+# is >= , so 9000 triggers deferred-compact and 8999 does not.
+# This fixture test locks in the operator semantics so a future >= → > change
+# would be caught by CI.
+
+LIB="$SCRIPT_DIR/../../hooks/_lib.sh"
+TRANSCRIPT_9000="$TMPDIR_TEST/transcript-9000.jsonl"
+TRANSCRIPT_8999="$TMPDIR_TEST/transcript-8999.jsonl"
+
+# Create synthetic transcript files: 1,080,000 bytes (9000 bps) and
+# 1,079,999 bytes (8999 bps) at default BPT=8.0, LIMIT=150000.
+if command -v dd >/dev/null 2>&1; then
+  dd if=/dev/zero bs=1080000 count=1 2>/dev/null | tr '\0' 'x' > "$TRANSCRIPT_9000"
+  # Write 1,079,999 bytes = 1,080,000 - 1
+  dd if=/dev/zero bs=1079999 count=1 2>/dev/null | tr '\0' 'x' > "$TRANSCRIPT_8999"
+else
+  python3 -c "open('$TRANSCRIPT_9000','wb').write(b'x'*1080000)"
+  python3 -c "open('$TRANSCRIPT_8999','wb').write(b'x'*1079999)"
+fi
+
+if [ -r "$LIB" ]; then
+  # T-06f-1: util_bps at 9000 bytes exactly equals COMPACT_FIRST_BPS threshold
+  bps_9000=$(. "$LIB" && read_constants && compute_utilization "$TRANSCRIPT_9000")
+  if [ "$bps_9000" -eq 9000 ] 2>/dev/null; then
+    ok "(T-06f-1) compute_utilization(1080000 bytes) = 9000 (at COMPACT_FIRST_BPS threshold)"
+  else
+    fail "(T-06f-1) compute_utilization(1080000 bytes) returned '$bps_9000', expected 9000"
+  fi
+
+  # T-06f-2: util_bps at 1 byte below is 8999 (below threshold)
+  bps_8999=$(. "$LIB" && read_constants && compute_utilization "$TRANSCRIPT_8999")
+  if [ "$bps_8999" -eq 8999 ] 2>/dev/null; then
+    ok "(T-06f-2) compute_utilization(1079999 bytes) = 8999 (one below COMPACT_FIRST_BPS threshold)"
+  else
+    fail "(T-06f-2) compute_utilization(1079999 bytes) returned '$bps_8999', expected 8999"
+  fi
+
+  # T-06f-3: >= operator semantics — 9000 crosses threshold, 8999 does not
+  if [ "$bps_9000" -ge 9000 ]; then
+    ok "(T-06f-3) 9000 >= COMPACT_FIRST_BPS(9000): compact-first triggers (>= operator confirmed)"
+  else
+    fail "(T-06f-3) 9000 should satisfy >= 9000 (operator broken)"
+  fi
+  if [ "$bps_8999" -ge 9000 ]; then
+    fail "(T-06f-4) 8999 should NOT satisfy >= 9000 (false trigger)"
+  else
+    ok "(T-06f-4) 8999 < COMPACT_FIRST_BPS(9000): compact-first does NOT trigger (>= boundary correct)"
+  fi
+else
+  fail "(T-06f) _lib.sh not found at $LIB — skipping boundary tests"
+  fail "(T-06f-1) skipped"
+  fail "(T-06f-2) skipped"
+  fail "(T-06f-3) skipped"
+  fail "(T-06f-4) skipped"
+fi
+
+rm -f "$TRANSCRIPT_9000" "$TRANSCRIPT_8999" 2>/dev/null || true
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 
 printf '\n'

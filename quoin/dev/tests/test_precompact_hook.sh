@@ -94,17 +94,18 @@ rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/sessions/implement-12345.pidfile.
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-auto-pidfile.txt"
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
 
-# ─── (b) auto trigger, no pidfile → block + warning + state saved ─────────────
+# ─── (b) auto trigger, no pidfile → ALLOW + pending-restore sentinel written ──
+# (Previously blocked; changed by T-03 non-blocking precompact)
 
 stdin=$(make_stdin "auto" "sess-auto-nopidfile")
 stderr_out=$(printf '%s' "$stdin" | sh "$HOOK" 2>&1 >/dev/null) || true
 out=$(printf '%s' "$stdin" | sh "$HOOK" 2>/dev/null)
 
-# Should still block
-if printf '%s' "$out" | grep -q '"block"' 2>/dev/null; then
-  ok "(b) auto trigger no pidfile → block JSON emitted"
+# Should now allow (not block)
+if printf '%s' "$out" | grep -q '"allow"' 2>/dev/null; then
+  ok "(b) auto trigger no pidfile → allow JSON emitted (non-blocking)"
 else
-  fail "(b) auto trigger no pidfile → expected block, got: $out"
+  fail "(b) auto trigger no pidfile → expected allow, got: $out"
 fi
 
 # INFO log should appear in stderr
@@ -114,7 +115,15 @@ else
   fail "(b) auto trigger no pidfile → stderr missing 'no active pidfiles' INFO log; got: $stderr_out"
 fi
 
-rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-auto-nopidfile.txt"
+# pending-restore sentinel MUST be written in the no-pidfile path
+pending_restore_file="$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-auto-nopidfile.txt"
+if [ -f "$pending_restore_file" ]; then
+  ok "(b) non-blocking-with-sentinel: pending-restore sentinel written in no-pidfile path"
+else
+  fail "(b) non-blocking-with-sentinel: pending-restore sentinel NOT written for no-pidfile path"
+fi
+
+rm -f "$pending_restore_file"
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
 
 # ─── (c) manual trigger → exit 0 immediately, no state save ──────────────────
@@ -136,14 +145,15 @@ else
   fail "(c) manual trigger → checkpoint was written (should not be)"
 fi
 
-# ─── (d) CLAUDE_ALLOW_COMPACT=1 → exit 0 ────────────────────────────────────
+# ─── (d) CLAUDE_ALLOW_COMPACT env var removed (T-03) — hook always allows ─────
+# The CLAUDE_ALLOW_COMPACT override was a workaround for the block path.
+# Since the hook is now always non-blocking, this workaround is removed.
+# Verify the env var no longer appears in precompact.sh.
 
-stdin=$(make_stdin "auto" "sess-allow-compact")
-out=$(printf '%s' "$stdin" | CLAUDE_ALLOW_COMPACT=1 sh "$HOOK" 2>/dev/null)
-if [ -z "$out" ]; then
-  ok "(d) CLAUDE_ALLOW_COMPACT=1 → exit 0 no output"
+if ! grep -q 'CLAUDE_ALLOW_COMPACT' "$HOOK" 2>/dev/null; then
+  ok "(d) CLAUDE_ALLOW_COMPACT env var removed from precompact.sh (no longer needed)"
 else
-  fail "(d) CLAUDE_ALLOW_COMPACT=1 → expected no output, got: $out"
+  fail "(d) CLAUDE_ALLOW_COMPACT still present in precompact.sh (should have been removed)"
 fi
 
 # ─── (e) save failure → exit 0 (fail-OPEN) ───────────────────────────────────
@@ -193,27 +203,49 @@ fi
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/sessions/plan-67890.pidfile.lock"
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
 
-# ─── (h) sentinel pre-exists + pidfiles active → block (conservative) ────────
+# ─── (h) sentinel pre-exists + no pidfiles → allow (early-skip path; existing sentinel preserved)
+# Previously this tested the "conservative block" path. Since the hook is now non-blocking,
+# the early-skip path (sentinel already exists) allows AND does NOT overwrite the existing sentinel.
 
-# Write a sentinel as if a prior /checkpoint already ran
-touch "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-prior-checkpoint.txt"
-echo "/some/prior/checkpoint.md" > "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-prior-checkpoint.txt"
-
-# Also have a pidfile active
-touch "$TMPDIR_TEST/.workflow_artifacts/memory/sessions/implement-55555.pidfile.lock"
+pending_restore_h="$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-prior-checkpoint.txt"
+printf '/some/prior/checkpoint.md\n' > "$pending_restore_h"
+# Record mtime before hook invocation
+mtime_before=$(stat -f %m "$pending_restore_h" 2>/dev/null || stat -c %Y "$pending_restore_h" 2>/dev/null || echo "0")
 
 stdin=$(make_stdin "auto" "sess-prior-checkpoint")
 out=$(printf '%s' "$stdin" | sh "$HOOK" 2>/dev/null)
 
-# In early-skip path, pidfile_info stays "none" → should block
-if printf '%s' "$out" | grep -q '"block"' 2>/dev/null; then
-  ok "(h) sentinel pre-exists + pidfiles → block (conservative: existing sentinel preserved)"
+# Early-skip path → allow (no new checkpoint written; hook exits via early-skip + allow)
+if printf '%s' "$out" | grep -q '"allow"' 2>/dev/null; then
+  ok "(h) sentinel pre-exists → allow (early-skip path; non-blocking)"
 else
-  fail "(h) sentinel pre-exists + pidfiles → expected block (conservative), got: $out"
+  fail "(h) sentinel pre-exists → expected allow (early-skip), got: $out"
 fi
 
-rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-prior-checkpoint.txt"
-rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/sessions/implement-55555.pidfile.lock"
+# Existing sentinel MUST still exist (not overwritten or deleted)
+if [ -f "$pending_restore_h" ]; then
+  ok "(h) sentinel pre-exists → existing sentinel preserved after hook run"
+else
+  fail "(h) sentinel pre-exists → existing sentinel was deleted or not found"
+fi
+
+# Mtime must be unchanged (sentinel not re-written in early-skip path)
+mtime_after=$(stat -f %m "$pending_restore_h" 2>/dev/null || stat -c %Y "$pending_restore_h" 2>/dev/null || echo "0")
+if [ "$mtime_before" = "$mtime_after" ]; then
+  ok "(h) sentinel pre-exists → sentinel mtime unchanged (not re-written in early-skip)"
+else
+  fail "(h) sentinel pre-exists → sentinel mtime changed (should be unchanged); before=$mtime_before after=$mtime_after"
+fi
+
+# non-blocking-no-double-sentinel: only one pending-restore file for this session
+sentinel_count_h=$(ls "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-prior-checkpoint"*.txt 2>/dev/null | wc -l | awk '{print $1}')
+if [ "$sentinel_count_h" -eq 1 ]; then
+  ok "(h) non-blocking-no-double-sentinel: exactly one sentinel file for this session"
+else
+  fail "(h) non-blocking-no-double-sentinel: expected 1 sentinel, found $sentinel_count_h"
+fi
+
+rm -f "$pending_restore_h"
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
 
 # ─── (i) STOP_BPS default structural assertion ────────────────────────────────

@@ -76,23 +76,40 @@ fi
 # === end S-4 missing-EOD banner ===
 
 # STEP 2: Sweep stale sentinel files
-# Trash-move pending-prompt-*.txt and pending-restore-*.txt older than STALE_DAYS days.
+# Trash-move pending-prompt-*.txt, pending-restore-*.txt, pending-resume-ref-*.txt,
+# and mid-agent-handoff-*.txt older than STALE_DAYS days.
 # STALE_DAYS sourced from read_constants() (default 7, override via QUOIN_STALE_SENTINEL_DAYS)
 # Using find -exec sh -c to avoid word-splitting on paths containing spaces.
 HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
-find "$MEMORY_DIR" -maxdepth 1 \( -name 'pending-prompt-*.txt' -o -name 'pending-restore-*.txt' \) -mtime +"$STALE_DAYS" \
+find "$MEMORY_DIR" -maxdepth 1 \( -name 'pending-prompt-*.txt' -o -name 'pending-restore-*.txt' -o -name 'pending-resume-ref-*.txt' -o -name 'mid-agent-handoff-*.txt' \) -mtime +"$STALE_DAYS" \
   -exec sh -c ". \"$HOOKS_DIR/_lib.sh\" && trash_move \"\$1\" \"\$2\"" _ {} "$MEMORY_DIR" \; 2>/dev/null || true
 
-# STEP 3: Look for current-session pending-restore sentinel
+# STEP 3: Look for sentinel files (priority order: pending-restore > pending-resume-ref > mid-agent-handoff)
+# Emit AT MOST ONE banner per session start.
 pending_restore=""
+pending_resume_ref=""
+mid_agent_handoff=""
 session_id_match="current-session"
+banner_text=""
+banner_type=""
 
+# STEP 3a: Check for pending-restore (highest priority — direct resume)
 if [ -n "$session_id" ] && [ -f "${MEMORY_DIR}/pending-restore-${session_id}.txt" ]; then
   pending_restore="${MEMORY_DIR}/pending-restore-${session_id}.txt"
   session_id_match="current-session"
 fi
 
-# STEP 4: Fallback to mtime-most-recent if no current-session match
+# STEP 3b: Check for pending-resume-ref (informational — load as background reference)
+if [ -n "$session_id" ] && [ -f "${MEMORY_DIR}/pending-resume-ref-${session_id}.txt" ]; then
+  pending_resume_ref="${MEMORY_DIR}/pending-resume-ref-${session_id}.txt"
+fi
+
+# STEP 3c: Check for mid-agent-handoff (advisory — skill was running at checkpoint)
+if [ -n "$session_id" ] && [ -f "${MEMORY_DIR}/mid-agent-handoff-${session_id}.txt" ]; then
+  mid_agent_handoff="${MEMORY_DIR}/mid-agent-handoff-${session_id}.txt"
+fi
+
+# STEP 4: Fallback to mtime-most-recent if no current-session match for pending-restore
 # (UUID-shaped session_ids have no time-ordering; lex order is meaningless)
 if [ -z "$pending_restore" ]; then
   most_recent=$(ls -t "${MEMORY_DIR}"/pending-restore-*.txt 2>/dev/null | head -1)
@@ -102,18 +119,33 @@ if [ -z "$pending_restore" ]; then
   fi
 fi
 
-# STEP 5: If no sentinel found → exit 0 transparently
-if [ -z "$pending_restore" ]; then
-  exit 0
+# STEP 5: Build banner text (AT MOST ONE banner; use highest-priority sentinel)
+# Priority: pending-restore > pending-resume-ref > mid-agent-handoff
+if [ -n "$pending_restore" ]; then
+  sentinel_content=$(cat "$pending_restore" 2>/dev/null)
+  if [ -n "$sentinel_content" ]; then
+    banner_text="Pending restore detected. A /checkpoint --restore is recommended (checkpoint: ${sentinel_content} — session-id match: ${session_id_match})"
+    banner_type="pending-restore"
+  fi
+elif [ -n "$pending_resume_ref" ]; then
+  # Read prior_session_uuid and checkpoint_path from the sentinel
+  ref_prior_uuid=$(grep '^prior_session_uuid=' "$pending_resume_ref" 2>/dev/null | cut -d= -f2)
+  ref_checkpoint=$(grep '^checkpoint_path=' "$pending_resume_ref" 2>/dev/null | cut -d= -f2-)
+  banner_text="Prior session loaded as reference. Checkpoint: ${ref_checkpoint:-unknown}. Run /checkpoint --restore only if you want to resume; otherwise this prior context is read-only background (prior session UUID: ${ref_prior_uuid:-unknown})."
+  banner_type="pending-resume-ref"
+elif [ -n "$mid_agent_handoff" ]; then
+  # Read prior_session_uuid and active_skills from the sentinel
+  handoff_uuid=$(grep '^prior_session_uuid=' "$mid_agent_handoff" 2>/dev/null | cut -d= -f2)
+  handoff_skills=$(grep '^active_skills=' "$mid_agent_handoff" 2>/dev/null | cut -d= -f2-)
+  banner_text="Mid-agent handoff detected: session ${handoff_uuid:-unknown} had active skill(s) [${handoff_skills:-unknown}] when paused. Inspect ${mid_agent_handoff} and decide whether to /checkpoint --restore, /clear and re-run, or abandon."
+  banner_type="mid-agent-handoff"
 fi
 
-# STEP 6: Read sentinel content (the checkpoint file path)
-sentinel_content=$(cat "$pending_restore" 2>/dev/null) || exit 0
-[ -z "$sentinel_content" ] && exit 0
-
-# Emit banner JSON
-printf '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "Pending restore detected. A /checkpoint --restore is recommended (checkpoint: %s — session-id match: %s)"}}\n' \
-  "$sentinel_content" "$session_id_match"
+# STEP 6: Emit banner if any sentinel was found
+if [ -n "$banner_text" ]; then
+  printf '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "%s"}}\n' \
+    "$banner_text"
+fi
 
 # === S-1 pollution-score writer (stub — populated by S-1) ===
 # (intentionally empty; S-1 implementation extends this block)
