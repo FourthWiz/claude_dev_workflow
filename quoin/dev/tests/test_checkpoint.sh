@@ -808,6 +808,66 @@ rm -f "$MEMORY_DIR/sessions/critic-99999.pidfile.lock" \
       "$MEMORY_DIR/mid-agent-handoff-${SID_09C}.txt" \
       "$CHECKPOINTS_DIR/"*".md" 2>/dev/null || true
 
+# ─── T-06f: COMPACT_FIRST_BPS boundary (9000 / 8999) ────────────────────────
+# Verify that compute_utilization returns 9000 for a transcript at exactly the
+# 90.00% threshold, and 8999 for one byte below. The operator in SKILL.md:164
+# is >= , so 9000 triggers deferred-compact and 8999 does not.
+# This fixture test locks in the operator semantics so a future >= → > change
+# would be caught by CI.
+
+LIB="$SCRIPT_DIR/../../hooks/_lib.sh"
+TRANSCRIPT_9000="$TMPDIR_TEST/transcript-9000.jsonl"
+TRANSCRIPT_8999="$TMPDIR_TEST/transcript-8999.jsonl"
+
+# Create synthetic transcript files: 1,080,000 bytes (9000 bps) and
+# 1,079,999 bytes (8999 bps) at default BPT=8.0, LIMIT=150000.
+if command -v dd >/dev/null 2>&1; then
+  dd if=/dev/zero bs=1080000 count=1 2>/dev/null | tr '\0' 'x' > "$TRANSCRIPT_9000"
+  # Write 1,079,999 bytes = 1,080,000 - 1
+  dd if=/dev/zero bs=1079999 count=1 2>/dev/null | tr '\0' 'x' > "$TRANSCRIPT_8999"
+else
+  python3 -c "open('$TRANSCRIPT_9000','wb').write(b'x'*1080000)"
+  python3 -c "open('$TRANSCRIPT_8999','wb').write(b'x'*1079999)"
+fi
+
+if [ -r "$LIB" ]; then
+  # T-06f-1: util_bps at 9000 bytes exactly equals COMPACT_FIRST_BPS threshold
+  bps_9000=$(. "$LIB" && read_constants && compute_utilization "$TRANSCRIPT_9000")
+  if [ "$bps_9000" -eq 9000 ] 2>/dev/null; then
+    ok "(T-06f-1) compute_utilization(1080000 bytes) = 9000 (at COMPACT_FIRST_BPS threshold)"
+  else
+    fail "(T-06f-1) compute_utilization(1080000 bytes) returned '$bps_9000', expected 9000"
+  fi
+
+  # T-06f-2: util_bps at 1 byte below is 8999 (below threshold)
+  bps_8999=$(. "$LIB" && read_constants && compute_utilization "$TRANSCRIPT_8999")
+  if [ "$bps_8999" -eq 8999 ] 2>/dev/null; then
+    ok "(T-06f-2) compute_utilization(1079999 bytes) = 8999 (one below COMPACT_FIRST_BPS threshold)"
+  else
+    fail "(T-06f-2) compute_utilization(1079999 bytes) returned '$bps_8999', expected 8999"
+  fi
+
+  # T-06f-3: >= operator semantics — 9000 crosses threshold, 8999 does not
+  if [ "$bps_9000" -ge 9000 ]; then
+    ok "(T-06f-3) 9000 >= COMPACT_FIRST_BPS(9000): compact-first triggers (>= operator confirmed)"
+  else
+    fail "(T-06f-3) 9000 should satisfy >= 9000 (operator broken)"
+  fi
+  if [ "$bps_8999" -ge 9000 ]; then
+    fail "(T-06f-4) 8999 should NOT satisfy >= 9000 (false trigger)"
+  else
+    ok "(T-06f-4) 8999 < COMPACT_FIRST_BPS(9000): compact-first does NOT trigger (>= boundary correct)"
+  fi
+else
+  fail "(T-06f) _lib.sh not found at $LIB — skipping boundary tests"
+  fail "(T-06f-1) skipped"
+  fail "(T-06f-2) skipped"
+  fail "(T-06f-3) skipped"
+  fail "(T-06f-4) skipped"
+fi
+
+rm -f "$TRANSCRIPT_9000" "$TRANSCRIPT_8999" 2>/dev/null || true
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 
 printf '\n'
