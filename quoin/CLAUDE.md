@@ -231,68 +231,36 @@ Keep entries concise — 2-4 lines each. This file grows over time and becomes t
 
 ### Session state tracking
 
-Every skill that does meaningful work (architect, plan, critic, revise, implement, review, run) should update the session state file as it progresses. Write or update:
+Every skill that does meaningful work (architect, plan, critic, revise, implement, review, run) writes/updates `.workflow_artifacts/memory/sessions/<date>-<task-name>.md` at natural checkpoints. Update `Current stage`, `Completed in this session`, `Unfinished work` so `/end_of_day` and `/start_of_day` see accurate state.
 
-```
-.workflow_artifacts/memory/sessions/<date>-<task-name>.md
-```
-
-At minimum, update the `Current stage`, `Completed in this session`, and `Unfinished work` sections as tasks complete. This way, if the session is interrupted, `/end_of_day` (or the next `/start_of_day`) has accurate state to work from.
-
-Don't obsess over keeping this perfectly up to date on every micro-step — update it at natural checkpoints (after completing a plan, finishing a critic round, implementing a task, etc.).
-
-The session state file template includes a `## Cost` section:
+The session-state template includes a `## Cost` section:
 
 ```markdown
 ## Cost
-- Session UUID: <UUID — see Cost tracking rules for acquisition>
+- Session UUID: <UUID — see Cost tracking rules>
 - Phase: <phase>
 - Recorded in cost ledger: yes/no
 - end_of_day_due: yes
 - fallback_fires: 0
 ```
 
-The `end_of_day_due` field defaults to `yes` at every session-state write. `/end_of_day` Step 3d flips it to `no` for each session it processes after the daily-cache write succeeds. `/start_of_day` reads this field (in addition to the existing insights-file check) as a second signal for the missing-EOD banner — if any session file written within the last 36 hours has `end_of_day_due: yes`, the banner fires.
+`end_of_day_due: yes` defaults at every write; `/end_of_day` Step 3d flips to `no` per processed session; `sessionstart.sh` + `/start_of_day` use it as the second signal for the missing-EOD banner (36 h window). `fallback_fires` counts Class B writer Step 5 English-fallback invocations + Step 2 Haiku-dispatch retries; atomic-rename increment; never decremented; under-counts under parallel subagents (acceptable per D-03-rev2). Full semantics: `__QUOIN_HOME__/memory/lifecycle-guide.md`.
 
-The `fallback_fires` field counts Class B writer Step 5 English-fallback invocations and Step 2 Haiku dispatch retries during this session. The active skill increments the field in place (atomic-rename pattern, mirror of end_of_day_due flip) immediately before emitting the `format-kit-skipped` warning. Default value is `0` at every session-state write; never decremented. KNOWN ISSUE: under parallel subagent fallback fires (rare; <1/day in practice given pre-Stage-4 finalized-artifact data), the read-modify-write update can undercount — it never overcounts. For low-frequency telemetry visibility this undercounting is acceptable; if a future post-merge measurement shows >5% undercounting, escalate to a per-skill append-only counter file (per Stage 4 D-03-rev2 option 3 — currently deferred).
-
-This is informational — the cost ledger (`.workflow_artifacts/<task-name>/cost-ledger.md`) is the source of truth for per-session costs.
+The cost ledger (`.workflow_artifacts/<task-name>/cost-ledger.md`) is the source of truth for per-session costs.
 
 ### Cost tracking
 
-Every skill that does meaningful work should record its session to the task's cost ledger at the start of the session. This enables `/end_of_task` to aggregate total cost across all sessions, including crashed sessions.
+Every skill records its session to the task's cost ledger at session start.
 
-**Ledger path:** `.workflow_artifacts/<task-name>/cost-ledger.md`. Create with header `# Cost Ledger — <task-name>` if new.
-
-**Row format — executable one-liner (7-column form):**
-
-```bash
-uuid=$(uuidgen) && printf '%s | %s | %s | %s | task | %s | %s\n' \
-  "$uuid" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" "NOTE" "FALLBACK_FIRES" \
-  >> "$LEDGER"
-```
-
-Substitute the bareword placeholders `PHASE`, `MODEL`, `NOTE`, `FALLBACK_FIRES` with session-specific values before running. `LEDGER` must be set to the ledger path (e.g., `.workflow_artifacts/<task-name>/cost-ledger.md`) before invocation. `NOTE` MUST be quoted — unquoted values containing spaces or pipes will produce malformed rows. Columns: `UUID | DATE | PHASE | MODEL | task | NOTE | FALLBACK_FIRES`.
-
-**6-column form** (for Conditional skills `/discover`, `/triage` that omit `fallback_fires`):
-
-```bash
-uuid=$(uuidgen) && printf '%s | %s | %s | %s | task | %s\n' \
-  "$uuid" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" "NOTE" \
-  >> "$LEDGER"
-```
-
-The 7th column (`fallback_fires`) is OPTIONAL. Existing 6-column rows are valid forever; readers MUST tolerate both shapes. When present, the value is a non-negative integer (`0` if no fires occurred during the session). When absent, parsers treat it as `0`. Writers SHOULD emit the 7th column on new rows; readers MUST NOT fail on a missing 7th column. Append-only ledger semantics are unchanged.
-
-**Writer guidance:** Skills emitting a new ledger row SHOULD include the 7th column when they have a session-state `fallback_fires` value available (typically at session-end emits, not session-open). Skills MAY emit a 6-column row when no session-state exists (e.g., `/discover`, `/triage`) or when `fallback_fires` is 0; readers tolerate both shapes per the row-format spec.
-
-**UUID acquisition:** Most recently modified `<uuid>.jsonl` under `~/.claude/projects/<project-hash>/` (project-hash = project path with `/` replaced by `-`). Fall back to `unknown-<ISO-timestamp>` if none found.
+**Ledger path:** `.workflow_artifacts/<task-name>/cost-ledger.md`. Create with header `# Cost Ledger — <task-name>` if new. Columns: `UUID | DATE | PHASE | MODEL | task | NOTE | FALLBACK_FIRES` (7-col); 6-col rows (no FALLBACK_FIRES) remain valid forever — readers tolerate both. Append-only; never delete or rewrite rows.
 
 **Phase values:** `discover`, `architect`, `plan`, `critic`, `revise`, `implement`, `review`, `gate`, `end-of-task`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `triage`, `expand`, `checkpoint`, `sleep`, `session-close-hook`, `next-steps`, `ad-hoc`
 
-**Category:** Always write `task`. The ledger is append-only — never delete or rewrite rows.
+**Category:** Always write `task`.
 
 **Conditional skills:** `/discover`, `/gate`, `/start_of_day`, `/capture_insight`, and `/triage` skip cost recording if no task context is active.
+
+Bash one-liner (7-col + 6-col), UUID acquisition rules, writer guidance, NOTE-quoting requirement, and parser tolerance details: `__QUOIN_HOME__/memory/cost-ledger-format.md` (and portable shape in `quoin/core/workflow/cost-ledger.md`).
 
 ### Knowledge cache
 
@@ -324,6 +292,10 @@ The following files are explicitly **excluded** from terse-style writing — the
 - `__QUOIN_HOME__/memory/sleep-signals.yaml` (deployed copy — overwritten on re-install)
 - `quoin/memory/cache-guide.md` (Tier 1 hand-edited cache entry format reference)
 - `__QUOIN_HOME__/memory/cache-guide.md` (deployed copy — overwritten on re-install)
+- `quoin/memory/cost-ledger-format.md` (+ `__QUOIN_HOME__/memory/cost-ledger-format.md` deployed copy — extracted verbose Cost tracking row-format from CLAUDE.md 2026-05-15).
+- `quoin/memory/dispatch-guide.md` (+ `__QUOIN_HOME__/memory/dispatch-guide.md` deployed copy — extracted verbose §0 / §0' dispatch details from CLAUDE.md 2026-05-15).
+- `quoin/memory/hooks-table.md` (+ `__QUOIN_HOME__/memory/hooks-table.md` deployed copy — extracted hooks event/matcher table from CLAUDE.md 2026-05-15).
+- `quoin/memory/lifecycle-guide.md` (+ `__QUOIN_HOME__/memory/lifecycle-guide.md` deployed copy — extracted verbose Lifecycle skills + memory-layers details from CLAUDE.md 2026-05-15).
 
 NOTE: QUICKSTART.md sits at `quoin/` root and deploys to `__QUOIN_HOME__/QUICKSTART.md` (NOT under `memory/`) — this is intentional. Do NOT normalize paths.
 - `quoin/QUICKSTART.md` (+ `__QUOIN_HOME__/QUICKSTART.md` deployed copy).
@@ -373,134 +345,44 @@ The 7 spawn-target skills (critic, revise, revise-fast, plan, review, gate, arch
 
 ### §0 Model dispatch preamble
 
-The 15 cheap-tier skills (gate, end_of_day, start_of_day, triage, capture_insight, cost_snapshot, weekly_review, end_of_task, implement, rollback, expand, revise-fast, sleep, next_steps, checkpoint) carry a `## §0 Model dispatch (FIRST STEP — execute before anything else)` block as the first body H2 after the H1. When invoked from a session running on a model strictly more expensive than the declared tier, the skill self-dispatches via the Agent tool to its declared model and prefixes the child prompt with the bare `[no-redispatch]` sentinel to prevent infinite recursion. The counter form `[no-redispatch:N]` is reserved for an abort signal: if a child sees N≥2, it aborts instead of proceeding (the bare form is the normal parent-emit; counter forms catch buggy parents or mistaken manual overrides). The 9 Opus-tier skills do NOT carry the preamble — they should run on Opus regardless of session model.
+The 15 cheap-tier skills (gate, end_of_day, start_of_day, triage, capture_insight, cost_snapshot, weekly_review, end_of_task, implement, rollback, expand, revise-fast, sleep, next_steps, checkpoint) carry a `## §0 Model dispatch` block as the first body H2 after the H1. When invoked from a session running on a model strictly more expensive than the declared tier, the skill self-dispatches via the Agent tool to its declared model and prefixes the child prompt with `[no-redispatch]` to prevent recursion. Counter form `[no-redispatch:N]` (N≥2) is an abort signal. The 9 Opus-tier skills do NOT carry the preamble.
 
-If the harness's subagent-spawn tool is unavailable or returns an error, dispatch falls back to a fail-OPEN path (proceed at current tier, emit a one-line `[quoin-stage-1: subagent dispatch unavailable; ...]` warning). This is intentional per architecture I-01: cost guardrail is best-effort, not load-bearing for correctness.
-
-Worktree-class errors (substring match: `Cannot create agent worktree` OR `worktree` + `not in a git repository`) are classified BEFORE the fail-OPEN warning is emitted. The skill uses the AskUserQuestion tool (always available in the parent session where §0 fires) to present recovery options. Available options depend on harness support (resolved by the pre-implementation spike): `retry-no-isolation` (if the harness exposes an isolation parameter that can be omitted), `retry-with-base <path>` (if the harness exposes a per-call base-path parameter), and `proceed-current-tier` (always available). A `[worktree-retry]` sentinel is prepended as the FIRST LINE of the retry prompt to prevent re-prompting on retry failure. Retry failures and other-class errors fall through to the bare fail-OPEN path. When the worktree branch was taken, a second classification line is also emitted: `[quoin-stage-1: error-class=worktree; user-choice=<a|b|c|retry-failed>; proceeding at current tier]`. The bare warning `[quoin-stage-1: subagent dispatch unavailable; proceeding at current tier]` is always emitted verbatim first so downstream string-matching consumers are unaffected.
-
-Manual override: prefix any user-typed slash invocation with bare `[no-redispatch]` to skip dispatch entirely. Use this only when intentionally overriding the cost guardrail (e.g., for one-off debugging on a different tier).
-
-Mechanical drift detection lives in `quoin/dev/tests/test_quoin_stage1_preamble.py` and `quoin/dev/tests/test_quoin_stage1_recursion_abort.py`; manual production-dispatch verification is captured in `quoin/dev/verify_subagent_dispatch.md`.
+Fail-OPEN on Agent unavailable (one-line `[quoin-stage-1: subagent dispatch unavailable; ...]` warning); architecture I-01 = best-effort cost guardrail. Worktree-class errors → AskUserQuestion recovery prompt. Manual override: prefix slash invocation with `[no-redispatch]`. Drift detection: `quoin/dev/tests/test_quoin_stage1_preamble.py`, `quoin/dev/tests/test_quoin_stage1_recursion_abort.py`. Verbose details (worktree-error classification, sentinel forms, recovery options): `__QUOIN_HOME__/memory/dispatch-guide.md`.
 
 ### §0' Pollution dispatch
 
-The 7 Opus-tier skills that are NOT orchestrators (architect, plan, critic, revise, review, init_workflow, discover) carry a `## §0' Pollution dispatch (execute after §0 / §0c if present — before skill body)` block. When `pollution_score` exceeds `POLLUTION_THRESHOLD`, the skill self-dispatches as a fresh Agent subagent carrying per-skill paths (not content).
-
-**Detection:** reads `pollution_score: N` from session-state file or `pollution-score-latest.txt`. Fires if N >= threshold AND no `[no-redispatch]` AND no prior §0 dispatch. Score formula: `transcript_kb + (agent_returns × 5) + (read_calls × 1) + (bash_calls × 1)` — implemented in `quoin/hooks/_lib.sh`. Written by `userpromptsubmit.sh` STEP 0.5 on every prompt submit.
-
-**Per-skill dispatch contract:**
-
-| Skill | What the dispatch prompt carries |
-|-------|----------------------------------|
-| /architect | task description + paths to /discover output |
-| /plan | task description + path to architecture.md + stage identifier |
-| /critic | absolute path to target artifact |
-| /revise | path to current-plan.md + path to critic-response-N.md |
-| /review | path to current-plan.md + branch ref |
-| /init_workflow | project root absolute path |
-| /discover | project root absolute path |
-
-**Ordering:** §0 fires FIRST; §0' fires only if no §0 dispatch. For §0c skills (architect, review): §0c → §0' → body. **Excluded:** /run and /thorough_plan. **Threshold:** `QUOIN_POLLUTION_THRESHOLD` (default 5000). Fail-OPEN on Agent unavailable. `[no-redispatch]` skips. Drift detection: `test_quoin_pollution_preamble.py`; verification: `quoin/dev/verify_pollution_dispatch.md`.
+The 7 Opus-tier non-orchestrator skills (architect, plan, critic, revise, review, init_workflow, discover) carry a `## §0' Pollution dispatch` block. Fires when `pollution_score >= QUOIN_POLLUTION_THRESHOLD` (default 5000) AND no `[no-redispatch]` AND no prior §0 dispatch. Score = `transcript_kb + (agent_returns × 5) + (read_calls × 1) + (bash_calls × 1)`; written by `userpromptsubmit.sh` STEP 0.5. Dispatches a fresh Agent subagent carrying per-skill paths (not content). §0 fires first; §0' fires only if no §0 dispatch. Excluded: `/run`, `/thorough_plan`. Fail-OPEN on Agent unavailable. Drift: `quoin/dev/tests/test_quoin_pollution_preamble.py`. Per-skill dispatch contract + verbose detection rules: `__QUOIN_HOME__/memory/dispatch-guide.md`.
 
 ### Hooks deployed by quoin
 
-`bash install.sh` deploys hook scripts to `__QUOIN_HOME__/hooks/` and registers six (event, matcher) stanzas in `__QUOIN_HOME__/settings.json`:
+`bash install.sh` deploys hook scripts to `__QUOIN_HOME__/hooks/` and registers six (event, matcher) stanzas in `__QUOIN_HOME__/settings.json`: UserPromptSubmit/`*`, PreCompact/`auto`, PostCompact/`auto`, SessionStart/`startup`, SessionStart/`resume`, SessionEnd/`*`. `userpromptsubmit.sh` enforces context-utilization advisory/block; `precompact.sh`/`postcompact.sh` manage compaction sentinels; `sessionstart.sh`/`sessionend.sh` handle S-4 banners.
 
-| Event | Matcher | Script | Timeout | Contract |
-|-------|---------|--------|---------|----------|
-| UserPromptSubmit | `*` | `userpromptsubmit.sh` | 5s | Context utilization check; advisory or block |
-| PreCompact | `auto` | `precompact.sh` | 10s | Last-resort save; ALWAYS allows auto-compaction; writes pending-restore sentinel for direct-conversation case (no active pidfiles); sessionstart.sh surfaces the restore banner on next session start |
-| PostCompact | `auto` | `postcompact.sh` | 5s | Writes `postcompact-reset-${session_id}.txt` sentinel; `userpromptsubmit.sh` STEP 0.5 consumes it to confirm compaction occurred and trash-moves the sentinel |
-| SessionStart | `startup` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) |
-| SessionStart | `resume` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) |
-| SessionEnd | `*` | `sessionend.sh` | 5s | EOD nudge if `end_of_day_due: yes` |
-
-All hooks fail-OPEN (exit 0 on any error). jq is a soft-required dependency (`brew install jq`). Tunable constants (`QUOIN_BYTES_PER_TOKEN`, `QUOIN_EFFECTIVE_CONTEXT_LIMIT`, `QUOIN_STOP_BPS`, `QUOIN_BLOCK_BPS`, `QUOIN_COMPACT_FIRST_BPS`, etc.) use `${QUOIN_*:-default}` expansion; thresholds use integer basis-points arithmetic (e.g., `8500` = 85.00%, `9000` = 90.00%). `QUOIN_COMPACT_FIRST_BPS` (default 9000 = 90.00%) controls the threshold at which `/checkpoint` prompts the user to run `/compact` before saving. Verbose details: `quoin/docs/hooks-guide.md`.
+All hooks fail-OPEN (exit 0 on any error). jq is a soft-required dependency. Tunable constants (`QUOIN_BYTES_PER_TOKEN`, `QUOIN_EFFECTIVE_CONTEXT_LIMIT`, `QUOIN_STOP_BPS`, `QUOIN_BLOCK_BPS`, `QUOIN_COMPACT_FIRST_BPS`, etc.) use `${QUOIN_*:-default}` expansion with integer basis-points arithmetic. Full table + verbose details: `__QUOIN_HOME__/memory/hooks-table.md` and `quoin/docs/hooks-guide.md`.
 
 ### Lifecycle skills (checkpoint / end_of_day / sleep)
 
-Three skills handle session lifecycle at different granularities (v3 lifecycle separation per architecture):
+Three skills handle session lifecycle at different granularities (v3 lifecycle separation):
+- `/checkpoint` — general-purpose state-save (mid-session, between tasks, between sessions). Three save modes: `--mode restore` (default), `--mode load-as-reference`, `--mode mid-agent`. Auto-detects compact-first flow at `COMPACT_FIRST_BPS` (default 90.00%); auto-detects mid-agent mode if other skills are active via pidfiles. Paths-not-content rule (D-04). `/checkpoint --restore` re-hydrates in fresh session.
+- `/end_of_day` — rolls up daily session state into `.workflow_artifacts/memory/daily/<date>.md`. Touches `lessons-learned.md` if insights promoted. Auto-invokes `/sleep`.
+- `/sleep` — Haiku-tier. Scans daily insights + session files (30-day window). Three-bucket decisions: Promote → `lessons-learned.md`; Soft-Forget → `forgotten/<date>.md`; Middle-Band → deferred. Subcommands: `--restore <pattern>`, `--purge --older-than 90d`, `--escalate`, `--dry-run`. Writes ONLY to `lessons-learned.md` + `forgotten/`; never touches `~/.claude/projects/<hash>/memory/`.
 
-**`/checkpoint`** — general-purpose state-save (mid-session, between tasks, between sessions). Supports three save modes via `--mode <name>` (auto-detected if omitted):
-- `--mode restore` (default): writes the full checkpoint file and `pending-restore-${session_id}.txt` sentinel; use for standard resume-in-new-session flow.
-- `--mode load-as-reference`: writes the full checkpoint AND `pending-resume-ref-${session_id}.txt`; instruct user to start a new session with `claude --resume SESSION_ID --fork-session`. The forked session sees the prior transcript as background context; sessionstart.sh emits a banner.
-- `--mode mid-agent`: writes a minimal `mid-agent-handoff-${session_id}.txt` only (skips full checkpoint write); for use when another skill is actively running. User can type `/clear` then `/checkpoint --restore` in the same session, or `claude --resume SESSION_ID` in a new terminal.
-
-Does NOT roll up dailies, does NOT touch `lessons-learned.md`, does NOT touch `forgotten/`. Use it mid-session before context exhaustion (when the context-utilization advisory fires), between tasks, between sessions, or proactively before starting new heavy work. **Paths-not-content rule (D-04):** checkpoint files record only PATHS to in-flight artifacts — never file contents. Restore re-fires Read tool on disk artifacts in the new session.
-
-Auto-detection at invocation time: (1) if context utilization >= `COMPACT_FIRST_BPS` (default 90.00%), prompt user to run `/compact` then `/checkpoint --after-compact` (compact-first flow); (2) if other skills are detected via pidfiles, default to mid-agent mode; (3) otherwise, ask user to choose restore vs load-as-reference.
-
-**`--restore` subcommand:** Run `/checkpoint --restore` in a fresh session to re-hydrate state. Locates the most recent checkpoint (or follows the `pending-restore-${session_id}.txt` sentinel from the compaction-block flow), surfaces task state, and optionally re-fires the saved pending prompt. Sentinel cleanup happens on restore. Voluntary `/checkpoint` now records `## Session ID` (UUID-anchored; two-line form) to disambiguate session-state lookup; restore picker now covers both pending-restore sentinels and recent (<= 30 day) checkpoint files (with fast-path bypass when current-session sentinel exists); `--defer` writes a marker that suppresses the userpromptsubmit advisory until the next compact or successful voluntary save; `--after-compact` is an explicit intent flag for the post-compact bypass case (also trash-moves the `checkpoint-pending-compact-${session_id}.txt` deferred-compact marker).
-
-**`/end_of_day`** — rolls up daily session state into `.workflow_artifacts/memory/daily/<date>.md`. Touches `lessons-learned.md` if insights are promoted. Run at end of each work session.
-
-**Session hooks (S-4):** `/start_of_day` checks `end_of_day_due: yes` in session files (Signal B, 36 h window). The `sessionstart.sh` hook provides the same check unconditionally at session-open (no need to invoke `/start_of_day`). The `sessionend.sh` hook nudges at session-close if the active session still has `end_of_day_due: yes`. Both hooks are non-blocking (exit 0) and informational only. Dedup: the sentinel file prevents duplicate banners within a 5-minute window.
-
-**`/sleep`** — Haiku-tier. Auto-invoked by `/end_of_day` as its final step (opt-out via `--skip-sleep`). Scans daily insights + session files within a 30-day window. Three-bucket decisions:
-- Promote → `lessons-learned.md` (per-entry user confirmation)
-- Soft-Forget → `forgotten/<date>.md` archive (per-entry user confirmation in default mode; skipped above `forget_quiet_floor` score with `--quiet-forget`)
-- Middle-Band → deferred
-
-First 30 days of production: `/sleep --dry-run` mode only (no writes); inspect proposed decisions to tune weights.
-
-Subcommands:
-- `/sleep --restore <pattern>`: moves entries back from `forgotten/` to their source (or today's insights if source gone)
-- `/sleep --purge --older-than 90d`: true-deletes archive files; per-file confirmation; never auto-run
-- `/sleep --escalate`: re-examines middle-band candidates on Opus for deeper reasoning
-
-**Boundary:** `/sleep` writes ONLY to `lessons-learned.md` and `forgotten/<date>.md`. Does NOT touch `~/.claude/projects/<hash>/memory/` (auto-memory). Distinct from `/checkpoint` (general-purpose state-save) and `/end_of_day` (end-of-workday rollup).
-
-**Boundary summary:**
-- `/checkpoint` → general-purpose state-save (`checkpoints/`, `sessions/`, `pending-*` sentinels — mid-session, between tasks, between sessions)
-- `/end_of_day` → end-of-workday only — daily rollup (`daily/`, `lessons-learned.md`) + auto-invokes `/sleep`
-- `/sleep` → long-term memory promote/forget (S-3 scope)
+Session hooks (S-4): `sessionstart.sh` + `sessionend.sh` check `end_of_day_due: yes` (36 h window); non-blocking informational banners; 5-min sentinel dedup. Full subcommand contracts, mode auto-detection rules, restore-picker logic, and `--after-compact`/`--defer` semantics: `__QUOIN_HOME__/memory/lifecycle-guide.md`.
 
 ### /sleep importance signals
 
-`/sleep` reads importance signals from `__QUOIN_HOME__/memory/sleep-signals.yaml` (deployed by install.sh from `quoin/memory/sleep-signals.yaml`). Source of truth: `quoin/memory/sleep-signals.yaml`. All thresholds override via `QUOIN_SLEEP_<KEY>` env vars. The `_source: claude_md` sentinel in the YAML distinguishes a live parse from hardcoded defaults. Fallback: if YAML absent, `sleep_score.py` parses from CLAUDE.md, then hardcoded defaults.
+`/sleep` reads signals from `__QUOIN_HOME__/memory/sleep-signals.yaml` (source: `quoin/memory/sleep-signals.yaml`). Thresholds override via `QUOIN_SLEEP_<KEY>` env vars. Fallback if YAML absent: `sleep_score.py` parses this section, then hardcoded defaults.
 
 ### Workflow memory layers
 
-The workflow uses several distinct memory layers. Each has a different lifecycle, writer, and consumer:
+The workflow uses several distinct memory layers, each with a different lifecycle:
 
-| Memory layer | Purpose | Today's mechanism |
+| Memory layer | Purpose | Writer |
 |---|---|---|
-| auto-memory | user/feedback/project facts | written ad-hoc by Claude |
-| `lessons-learned.md` | reusable engineering takeaways | `/end_of_task` + `/sleep` promote |
-| `daily/insights-<date>.md` | in-session insight scratchpad | written ad-hoc via `/capture_insight` |
-| `daily/<date>.md` | rendered daily briefing | written by `/end_of_day` |
-| `weekly/<iso-week>.md` | rendered weekly review | written by `/weekly_review` |
-| `forgotten/<date>.md` (NEW in S-3) | soft-forget archive | written by `/sleep` |
+| auto-memory | user/feedback/project facts | Claude ad-hoc |
+| `lessons-learned.md` | reusable engineering takeaways | `/end_of_task` + `/sleep` |
+| `daily/insights-<date>.md` | in-session scratchpad | `/capture_insight` |
+| `daily/<date>.md` | rendered daily briefing | `/end_of_day` |
+| `weekly/<iso-week>.md` | rendered weekly review | `/weekly_review` |
+| `forgotten/<date>.md` | soft-forget archive | `/sleep` |
 
-**Hard boundary:** `/sleep` writes ONLY to `lessons-learned.md` and `forgotten/<date>.md`. It does NOT touch `~/.claude/projects/<hash>/memory/` (auto-memory). This restriction is enforced by the write-target restriction in the `/sleep` SKILL.md and tested by the `test_sleep_write_boundary.py` test.
-
-The `forgotten/` directory structure:
-```
-.workflow_artifacts/memory/
-├── sessions/          ← per-session state files
-├── daily/             ← rendered briefings + insights scratchpads
-├── weekly/            ← weekly review summaries
-├── checkpoints/       ← /checkpoint restore sentinels
-├── forgotten/         ← soft-forget archive (NEW — S-3)
-│   └── <date>.md      ← one file per day /sleep ran with forgets
-├── trash/             ← recoverable delete archive (sentinel trash-moves land here)
-│   └── <YYYY-MM-DD>/  ←   dated subdirs, one per trash day
-└── lessons-learned.md ← long-term institutional memory
-```
-
-Note: `trash/` accumulates sentinel files moved by `trash_move()` (in `_lib.sh`) instead of hard-deleted. The `/sleep --purge --older-than 90d` scope does not yet include `trash/` — this is a known gap (R-7); a follow-up task will extend `/sleep --purge` to cover `trash/`.
-
-Each `forgotten/<date>.md` file is append-only. Each entry block follows this format:
-
-```
-> Source: <absolute-path-to-source-file>:<start-line>..<end-line>
-> Forgotten: <ISO timestamp>
-> Score: forget=<N>, promote=<N>
-
-<original entry text verbatim>
-
----
-```
-
-The `> Source:` line is the restore anchor for `/sleep --restore`. Use `/sleep --restore <pattern>` to search `forgotten/` and move entries back to their source location.
+**Hard boundary:** `/sleep` writes ONLY to `lessons-learned.md` and `forgotten/<date>.md`. Enforced by `test_sleep_write_boundary.py`. `trash/` (sentinel trash-moves from `trash_move()` in `_lib.sh`) is currently outside `/sleep --purge` scope (gap R-7). Directory tree + `forgotten/<date>.md` entry-format + `> Source:` restore anchor: `__QUOIN_HOME__/memory/lifecycle-guide.md`.

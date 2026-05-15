@@ -20,6 +20,11 @@ TIER1_MEMORY_FILES = (
     "format-kit-pitfalls.md",
     "sleep-signals.yaml",
     "cache-guide.md",
+    # Added 2026-05-15: extracted verbose sections from CLAUDE.md
+    "hooks-table.md",
+    "dispatch-guide.md",
+    "lifecycle-guide.md",
+    "cost-ledger-format.md",
 )
 
 # T-05: canonical skill list — must match quoin/skills/ on disk exactly
