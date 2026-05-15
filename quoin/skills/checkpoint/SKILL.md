@@ -152,7 +152,7 @@ If `--mode` was explicitly passed, skip auto-detection and go to the dispatch at
 
 **A. Compact-first check:** Read the current utilization. Invoke via Bash tool:
 ```sh
-. ~/.claude/hooks/_lib.sh && read_constants && compute_utilization TRANSCRIPT_PATH
+. __QUOIN_HOME__/hooks/_lib.sh && read_constants && compute_utilization TRANSCRIPT_PATH
 ```
 Where `TRANSCRIPT_PATH` is the current session's JSONL path (obtain from the harness
 system context, or from `~/.claude/projects/<project-hash>/<uuid>.jsonl`).
