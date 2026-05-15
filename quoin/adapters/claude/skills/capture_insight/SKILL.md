@@ -42,11 +42,40 @@ Manual kill switch:
   - This is the user-facing escape hatch and intentionally shares syntax with the parent-emit form: a child cannot tell whether the bare sentinel came from the parent or the user, and that is by design — both paths want the same proceed-to-§1 outcome.
   - Use this only when intentionally overriding the cost guardrail (e.g., for one-off debugging on a different tier).
 
-Fail-graceful path (per architecture I-01):
-  - If the harness's subagent-spawn tool is unavailable or returns an error during dispatch, do NOT abort the user's invocation.
-  - Emit the one-line warning: `[quoin-stage-1: subagent dispatch unavailable; proceeding at current tier]`
-  - Then proceed to §1 at the current tier. This is fail-OPEN on the cost guardrail (better to overspend than to abort the user's invocation).
+<!-- §0-worktree-fallback-begin -->
+Fail-graceful path with error-class triage (per architecture I-01):
+  - If the Agent tool returns an error during dispatch, classify the error
+    message text BEFORE proceeding:
 
+  - Error classification:
+      * Worktree-class: the error text contains the substring
+        `Cannot create agent worktree`, OR (the substring `worktree` AND
+        the substring `not in a git repository`). This is recoverable —
+        the harness tried to create a git worktree for isolation and the
+        project root is not a git repo. Continue to Worktree-class branch.
+      * Other-class: any other tool error, exception, or harness rejection
+        — skip to Other-class path below (existing fail-OPEN behavior).
+
+  - Worktree-class branch:
+      Worktree creation is hook-driven and cannot be skipped by omitting a
+      parameter. Use the AskUserQuestion tool to present the user with one
+      option:
+        (c) `proceed-current-tier` — Skip dispatch, proceed at the current
+            (more expensive) tier. This is the only available recovery path.
+      Question header: `Subagent dispatch failed (worktree creation). Proceeding at current tier.`
+      Note for the user: "Worktree dispatch failed and no retry mechanism
+      is available — worktree creation is unconditional in this harness.
+      Proceeding at current tier."
+
+  - Other-class path (also: worktree-class after user acknowledges c):
+      Do NOT abort the user's invocation.
+      Emit the bare warning (verbatim):
+        `[quoin-stage-1: subagent dispatch unavailable; proceeding at current tier]`
+      If this path was reached via a worktree-class error, ALSO emit the
+      classification line (second, separate):
+        `[quoin-stage-1: error-class=worktree; user-choice=c; proceeding at current tier]`
+      Then proceed to §1 at the current tier (fail-OPEN per I-01).
+<!-- §0-worktree-fallback-end -->
 Otherwise (already at or below declared tier, OR prompt has [no-redispatch] sentinel, OR dispatch unavailable): proceed to §1 (skill body).
 
 ## Session bootstrap
