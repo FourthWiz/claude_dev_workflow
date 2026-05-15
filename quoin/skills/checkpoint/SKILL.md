@@ -114,26 +114,99 @@ Purpose: lets `precompact.sh` hook know a `/checkpoint` session is active (for e
 
 Detect mode: if the user's invocation does NOT include `--restore`, run save mode.
 
-### Step 0.5: Post-compact flag (optional bypass documentation)
+**Arg parsing (first in save mode):** Scan the user's prompt for these flags:
+- `--mode restore` | `--mode load-as-reference` | `--mode mid-agent` → sets SELECTED_MODE
+- `--after-compact` → sets POST_COMPACT=true
+- If no `--mode` flag: SELECTED_MODE will be determined by auto-detection in Step 1.5
+
+### Step 0.5: Post-compact flag and deferred-checkpoint marker cleanup
 
 Detect flag: if the user's invocation includes `--after-compact`, set POST_COMPACT=true.
 
 If POST_COMPACT is true:
-  - Continue to Step 1 normally (no blocking precondition gate exists today —
-    this flag is documentation of intent, not a runtime bypass).
-  - Emit one-line stderr INFO: "[checkpoint] --after-compact flag noted; proceeding to save."
-  - At Step 5 (Report to user): append "Mode: post-compact save (--after-compact flag was set)."
+  - Trash-move the deferred-checkpoint marker for the current session_id (if it exists):
+    ```sh
+    _cwd=$(cwd from system context or stdin .cwd)
+    _sid=$(current session UUID via Step 1.1 acquisition procedure)
+    _marker="${_cwd}/.workflow_artifacts/memory/checkpoint-pending-compact-${_sid}.txt"
+    [ -f "$_marker" ] && . __QUOIN_HOME__/hooks/_lib.sh && trash_move "$_marker" "${_cwd}/.workflow_artifacts/memory" 2>/dev/null || true
+    ```
+  - Emit one-line INFO: "[checkpoint] --after-compact flag noted; deferred-compact marker consumed; proceeding to save."
+  - At Step 5 (Report to user): append "Mode: post-compact save (--after-compact flag was explicitly set)."
+  - Proceed to Step 1.5 (which will skip the compact-first check because the marker was just consumed).
 
 If POST_COMPACT is false (flag absent):
-  - Continue to Step 1 normally.
+  - Proceed to Step 1.5.
 
-Note for implementers: The 'compaction needed first' nudge described in older bug reports
-does NOT exist in the current deployed SKILL.md or userpromptsubmit.sh. The exemption
-for /checkpoint from BLOCK_BPS context blocking is at userpromptsubmit.sh lines 71-82.
-The --after-compact flag is provided as an explicit intent signal for future maintainers
-and for users who want to document their workflow.
+Note: The exemption for /checkpoint from BLOCK_BPS context blocking is at
+userpromptsubmit.sh lines 71-82. The --after-compact flag is provided as an explicit
+intent signal for users who want to document their workflow and to enable the
+deferred-compact marker cleanup path.
+
+### Step 1.5: Orchestrate mode (auto-detect if --mode not explicitly given)
+
+This step determines which sentinel to write (restore, load-as-reference, or mid-agent).
+If `--mode` was explicitly passed, skip auto-detection and go to the dispatch at the end.
+
+**Auto-detection sequence (only when SELECTED_MODE is unset):**
+
+**A. Compact-first check:** Read the current utilization. Invoke via Bash tool:
+```sh
+. ~/.claude/hooks/_lib.sh && read_constants && compute_utilization TRANSCRIPT_PATH
+```
+Where `TRANSCRIPT_PATH` is the current session's JSONL path (obtain from the harness
+system context, or from `~/.claude/projects/<project-hash>/<uuid>.jsonl`).
+
+Compare the returned basis-point integer against `COMPACT_FIRST_BPS` (default 9000 = 90.00%).
+This constant is defined in `_lib.sh:read_constants()` as:
+  `COMPACT_FIRST_BPS=${QUOIN_COMPACT_FIRST_BPS:-9000}`
+
+If `util_bps >= COMPACT_FIRST_BPS`:
+  - Write a deferred-checkpoint marker:
+    `.workflow_artifacts/memory/checkpoint-pending-compact-${session_id}.txt`
+    Content: one line — `timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)`.
+  - Ask the user (AskUserQuestion tool or inline prompt):
+    "Context is at PCT_VALUE% (COMPACT_FIRST_BPS=90.00% threshold). Please run
+    /compact to compress context, then re-invoke /checkpoint --after-compact."
+  - STOP (do not proceed to Steps 1–5; the save will complete on next invocation).
+
+If `util_bps < COMPACT_FIRST_BPS` OR if the compact-first check fails (e.g., transcript
+path unavailable): continue to sub-step B.
+
+Note: if POST_COMPACT was true (--after-compact flag set), the marker was already
+consumed in Step 0.5 and this utilization check is skipped entirely (marker absent = check not needed).
+
+**B. Mid-agent check:** Detect whether other skills are currently active (pidfiles present).
+Invoke via Bash tool:
+```sh
+. __QUOIN_HOME__/scripts/pidfile_helpers.sh && pidfile_active_skills | awk -v me=$$ '$2 != me'
+```
+(Filter by PID `$$` — excludes this /checkpoint invocation's own pidfile only.)
+
+If the output is non-empty (other skills are running):
+  - Set SELECTED_MODE="mid-agent" (ask user to confirm via one-line prompt).
+  - Prompt: "Active skills detected: SKILL_LIST. Saving in mid-agent mode (minimal sentinel only). Confirm? [y/n]"
+  - On `n`: ask user to choose a mode (restore / load-as-reference / mid-agent).
+  - On `y`: proceed with SELECTED_MODE="mid-agent".
+
+**C. User choice:** If no mid-agent detection:
+  - If invoked with a clear user intent from the prompt (e.g., "checkpoint for reference"),
+    pick the matching mode.
+  - Otherwise: ask user to choose:
+    "Save mode: [restore (resume this session later) / load-as-reference (open as background in new session)]"
+    Default: restore.
+  - Set SELECTED_MODE accordingly.
+
+**Dispatch:** based on SELECTED_MODE:
+- `restore` → proceed to Step 1 (full save), then Step 3 → Step 4a
+- `load-as-reference` → proceed to Step 1 (full save), then skip Step 3 → Step 4b
+- `mid-agent` → SKIP Steps 1 and 2, proceed directly to Step 4c
 
 ### Step 1: Gather session context
+
+(Conditional: SKIP this step if SELECTED_MODE is "mid-agent")
+
+Read the following sources (best-effort; skip gracefully if any file is absent):
 
 Read the following sources (best-effort; skip gracefully if any file is absent):
 
@@ -164,6 +237,8 @@ Read the following sources (best-effort; skip gracefully if any file is absent):
    - Active session-state file path
 
 ### Step 2: Write checkpoint file
+
+(Conditional: SKIP this step if SELECTED_MODE is "mid-agent". In mid-agent mode, no full checkpoint file is written — only the minimal sentinel in Step 4c.)
 
 Write to: `.workflow_artifacts/memory/checkpoints/<YYYY-MM-DD>-<task-name>.md`
 
@@ -219,6 +294,8 @@ Continue; do NOT abort.
 
 ### Step 3: Write pending-restore sentinel
 
+(Conditional: run ONLY for SELECTED_MODE="restore". In "load-as-reference" mode, SKIP Step 3 and proceed to Step 4b. In "mid-agent" mode, Steps 1, 2, and 3 are all skipped.)
+
 Write the checkpoint file path (single line) to:
 `.workflow_artifacts/memory/pending-restore-${session_id}.txt`
 
@@ -230,24 +307,105 @@ The `sessionstart.sh` hook surfaces this sentinel on next session start.
 
 ### Step 4: Append cost-ledger row
 
-Append a row to `.workflow_artifacts/<task-name>/cost-ledger.md`:
+Append a row to `.workflow_artifacts/<task-name>/cost-ledger.md`.
+Include a mode tag in the NOTE column:
+- "save (restore mode)"
+- "save (load-as-reference mode)"
+- "save (mid-agent mode)"
 
 ```
-<uuid> | <date> | checkpoint | haiku | task | save | 0
+<uuid> | <date> | checkpoint | haiku | task | save (MODE mode) | 0
 ```
 
 UUID: read the most-recently-modified `~/.claude/projects/<project-hash>/<uuid>.jsonl`.
 The ledger row is written ONCE — either by the Haiku-dispatched subagent (§0 dispatch path) OR by the parent (if already at Haiku tier). Never by both.
 
+### Step 4a: Restore mode sentinel
+
+(Run only when SELECTED_MODE="restore")
+
+The pending-restore sentinel was written in Step 3. No additional sentinel is needed.
+
+Step 5 report mentions:
+- "Sentinel written: pending-restore-SESSION_ID.txt"
+- "To resume: /checkpoint --restore in a fresh session"
+
+### Step 4b: Load-as-reference mode sentinel
+
+(Run only when SELECTED_MODE="load-as-reference")
+
+Write a reference sentinel file at:
+`.workflow_artifacts/memory/pending-resume-ref-${session_id}.txt`
+
+Content (two lines):
+```
+prior_session_uuid=SESSION_ID
+checkpoint_path=CHECKPOINT_FILE_PATH
+```
+
+Where SESSION_ID is the current session's UUID and CHECKPOINT_FILE_PATH is the path
+written in Step 2.
+
+Step 5 report says:
+"Reference sentinel written: pending-resume-ref-SESSION_ID.txt
+Start a new session with: claude --resume SESSION_ID --fork-session
+The new session will load this session as background context; sessionstart.sh will
+emit a banner informing you of the reference checkpoint."
+
+Note: Session-state file IS written in load-as-reference mode (Step 1+2 ran normally).
+The user's prior session content is available as background reference in the forked session.
+
+### Step 4c: Mid-agent mode sentinel
+
+(Run only when SELECTED_MODE="mid-agent". Steps 1, 2, 3, 4b are all skipped.)
+
+Write a minimal handoff sentinel at:
+`.workflow_artifacts/memory/mid-agent-handoff-${session_id}.txt`
+
+Content:
+```
+prior_session_uuid=SESSION_ID
+task_name=TASK_NAME
+active_skills=SKILL_LIST
+timestamp=ISO_TIMESTAMP
+```
+
+Where:
+- SESSION_ID is the current session's UUID
+- TASK_NAME is extracted from the most-recent session-state filename (best-effort; "unknown" if unavailable)
+- SKILL_LIST is the output of:
+  `. __QUOIN_HOME__/scripts/pidfile_helpers.sh && pidfile_active_skills | awk -v me=$$ '$2 != me'`
+  (filtered to exclude this /checkpoint invocation's own PID)
+- ISO_TIMESTAMP is `$(date -u +%Y-%m-%dT%H:%M:%SZ)`
+
+Do NOT write the full Step 2 checkpoint file. Rationale: a heavy skill is running; reading
+session-state, plan, architecture, and critic files could itself fail or take too long.
+The mid-agent path is intentionally minimal.
+
+Note: Session-state file is NOT touched in mid-agent mode (intentional — a skill is in
+flight; modifying its session-state file would race with the running skill).
+
+Step 5 report says:
+"Mid-agent handoff sentinel written: mid-agent-handoff-SESSION_ID.txt
+Active skills at save time: SKILL_LIST
+
+To resume this session:
+Option 1: Type /clear to reset context in this same session, then run
+  /checkpoint --restore to reload the mid-agent handoff.
+Option 2: Start a new terminal session with: claude --resume SESSION_ID
+  Then run /checkpoint --restore in that session."
+
 ### Step 5: Report to user
 
-Print a brief confirmation:
-- Checkpoint saved to: `<path>`
-- Sentinel written: `<pending-restore-session_id.txt path>`
-- To resume: `/checkpoint --restore` in a fresh session
+Print a brief confirmation. Content depends on SELECTED_MODE (see Steps 4a, 4b, 4c for
+the mode-specific report text). Always include:
+- Checkpoint saved to: `<path>` (or "(no checkpoint file — mid-agent mode)" for mid-agent)
+- Mode: `<restore | load-as-reference | mid-agent>`
+- Sentinel written: `<sentinel-path>`
+- Next step instruction (mode-specific — see Steps 4a, 4b, 4c above)
 
 If `--after-compact` was set (POST_COMPACT=true), append:
-`Mode: post-compact save (--after-compact flag was explicitly set).`
+`Mode: post-compact save (--after-compact flag was explicitly set; deferred-compact marker consumed).`
 
 ### Step 6: Release pidfile and invalidate defer marker
 
