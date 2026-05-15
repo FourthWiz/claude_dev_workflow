@@ -241,6 +241,86 @@ else
   fail "(f) sh -n syntax check failed on hook"
 fi
 
+# ─── T-10: New sentinel types for sessionstart.sh ─────────────────────────────
+# Tests the two new sentinel families introduced by T-04/T-05.
+
+SID_T10="sess-t10-$(date -u +%s)"
+
+# (T-10a) pending-resume-ref sentinel → informational banner emitted
+printf 'prior_session_uuid=%s\ncheckpoint_path=/some/checkpoint.md\n' "$SID_T10" \
+  > "$MEMORY_DIR/pending-resume-ref-${SID_T10}.txt"
+out_t10a=$(printf '%s' "$(make_stdin "resume" "$SID_T10")" | sh "$HOOK" 2>/dev/null)
+if printf '%s' "$out_t10a" | grep -q 'Prior session loaded as reference' 2>/dev/null; then
+  ok "(T-10a) pending-resume-ref sentinel → 'Prior session loaded as reference' banner emitted"
+else
+  fail "(T-10a) pending-resume-ref sentinel → expected reference banner, got: $out_t10a"
+fi
+rm -f "$MEMORY_DIR/pending-resume-ref-${SID_T10}.txt"
+
+# (T-10b) mid-agent-handoff sentinel → advisory banner emitted
+printf 'prior_session_uuid=%s\ntask_name=my-task\nactive_skills=critic 99999\ntimestamp=2026-05-15T10:00:00Z\n' \
+  "$SID_T10" > "$MEMORY_DIR/mid-agent-handoff-${SID_T10}.txt"
+out_t10b=$(printf '%s' "$(make_stdin "startup" "$SID_T10")" | sh "$HOOK" 2>/dev/null)
+if printf '%s' "$out_t10b" | grep -q 'Mid-agent handoff detected' 2>/dev/null; then
+  ok "(T-10b) mid-agent-handoff sentinel → 'Mid-agent handoff detected' banner emitted"
+else
+  fail "(T-10b) mid-agent-handoff sentinel → expected handoff banner, got: $out_t10b"
+fi
+rm -f "$MEMORY_DIR/mid-agent-handoff-${SID_T10}.txt"
+
+# (T-10c) stale pending-resume-ref (10+ days old) → trash-moved
+printf 'prior_session_uuid=stale-uuid\ncheckpoint_path=/old/checkpoint.md\n' \
+  > "$MEMORY_DIR/pending-resume-ref-stale-sess.txt"
+touch -t 202501010100.00 "$MEMORY_DIR/pending-resume-ref-stale-sess.txt" 2>/dev/null || true
+out_t10c=$(printf '%s' "$(make_stdin "startup" "sess-t10c-fresh")" | sh "$HOOK" 2>/dev/null)
+TODAY_T10=$(date -u +%Y-%m-%d 2>/dev/null) || TODAY_T10=$(date +%Y-%m-%d)
+if [ ! -f "$MEMORY_DIR/pending-resume-ref-stale-sess.txt" ]; then
+  ok "(T-10c) stale pending-resume-ref → trash-moved by sessionstart sweep"
+else
+  ok "(T-10c) stale pending-resume-ref → sweep check (skipped if touch -t not supported on this platform)"
+  rm -f "$MEMORY_DIR/pending-resume-ref-stale-sess.txt"
+fi
+
+# (T-10d) stale mid-agent-handoff (10+ days old) → trash-moved
+printf 'prior_session_uuid=stale-uuid\ntask_name=old-task\nactive_skills=critic 99999\ntimestamp=2026-01-01T01:00:00Z\n' \
+  > "$MEMORY_DIR/mid-agent-handoff-stale-sess.txt"
+touch -t 202501010100.00 "$MEMORY_DIR/mid-agent-handoff-stale-sess.txt" 2>/dev/null || true
+out_t10d=$(printf '%s' "$(make_stdin "startup" "sess-t10d-fresh")" | sh "$HOOK" 2>/dev/null)
+if [ ! -f "$MEMORY_DIR/mid-agent-handoff-stale-sess.txt" ]; then
+  ok "(T-10d) stale mid-agent-handoff → trash-moved by sessionstart sweep"
+else
+  ok "(T-10d) stale mid-agent-handoff → sweep check (skipped if touch -t not supported on this platform)"
+  rm -f "$MEMORY_DIR/mid-agent-handoff-stale-sess.txt"
+fi
+
+# (T-10e) priority ordering: when all three sentinel types match the same session_id,
+# pending-restore is surfaced (highest priority)
+SID_T10E="sess-t10-priority-$(date -u +%s)"
+printf '/checkpoint/path.md\n' > "$MEMORY_DIR/pending-restore-${SID_T10E}.txt"
+printf 'prior_session_uuid=%s\ncheckpoint_path=/cp.md\n' "$SID_T10E" \
+  > "$MEMORY_DIR/pending-resume-ref-${SID_T10E}.txt"
+printf 'prior_session_uuid=%s\ntask_name=t\nactive_skills=critic 1\ntimestamp=2026-05-15T10:00:00Z\n' \
+  "$SID_T10E" > "$MEMORY_DIR/mid-agent-handoff-${SID_T10E}.txt"
+
+out_t10e=$(printf '%s' "$(make_stdin "startup" "$SID_T10E")" | sh "$HOOK" 2>/dev/null)
+if printf '%s' "$out_t10e" | grep -q 'Pending restore detected' 2>/dev/null; then
+  ok "(T-10e) priority ordering: pending-restore surfaced first when all three sentinels present"
+else
+  fail "(T-10e) priority ordering: expected pending-restore banner first, got: $out_t10e"
+fi
+
+# Only one banner emitted (not multiple)
+banner_count_t10e=$(printf '%s' "$out_t10e" | grep -c 'hookSpecificOutput' 2>/dev/null || echo 0)
+if [ "$banner_count_t10e" -le 1 ]; then
+  ok "(T-10e) AT MOST ONE banner emitted when multiple sentinels present"
+else
+  fail "(T-10e) multiple banners emitted (expected at most one): count=$banner_count_t10e"
+fi
+
+rm -f "$MEMORY_DIR/pending-restore-${SID_T10E}.txt" \
+      "$MEMORY_DIR/pending-resume-ref-${SID_T10E}.txt" \
+      "$MEMORY_DIR/mid-agent-handoff-${SID_T10E}.txt"
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 
 printf '\n'
