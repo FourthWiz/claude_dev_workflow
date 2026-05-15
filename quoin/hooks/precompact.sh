@@ -3,9 +3,11 @@
 # Deployed to ~/.claude/hooks/ by bash install.sh
 #
 # Contract: fires on PreCompact event (auto compaction only — manual /compact
-# is passed through). Saves checkpoint state. If skill pidfiles are active:
-# allows compaction (workflow continues uninterrupted). If no pidfiles (direct
-# conversation): writes pending-restore sentinel and blocks compaction.
+# is passed through). Saves checkpoint state. ALWAYS allows compaction (never
+# blocks). If skill pidfiles are active: allows with no sentinel write (workflow
+# continues uninterrupted). If no pidfiles (direct conversation): writes
+# pending-restore sentinel AND allows (non-blocking; sessionstart.sh surfaces
+# the restore banner on next session start).
 # Fail-OPEN: any error → exit 0, no output (compaction proceeds unblocked).
 #
 # Shebang assertion: head -1 ... | grep -qE '^#!/bin/sh( |$)'
@@ -23,11 +25,6 @@ trigger=$(printf '%s' "$STDIN" | jq -r '.trigger // empty' 2>/dev/null) || exit 
 
 # Manual /compact: pass through immediately — do not block user-initiated compaction
 if [ "$trigger" = "manual" ]; then
-  exit 0
-fi
-
-# Override: user opted in to allow compact even during auto trigger
-if [ "${CLAUDE_ALLOW_COMPACT:-0}" = "1" ]; then
   exit 0
 fi
 
@@ -248,25 +245,26 @@ fi  # end: if [ ! -f "$pending_restore_file" ]
 
 # STEP 4: Branch on pidfile presence
 # If skills are running (pidfiles present): allow compact — workflow must continue.
-# If no pidfiles (direct conversation): block — user must manually restore in fresh session.
+# If no pidfiles (direct conversation): write pending-restore sentinel AND allow —
+#   sessionstart.sh surfaces the restore banner on next session start.
 # NOTE: when the pending_restore_file already exists (early-skip path at the top), pidfile_info
 # stays "none" because the pidfile-collection block was skipped. The decision always falls
-# through to block in that path — intentional conservative behavior: the user already ran
-# /checkpoint manually, so they knew what they were doing.
+# through to the allow-with-sentinel path — intentional behavior: the existing sentinel is
+# preserved (guard: checkpoint_file is unset in early-skip path, so no overwrite occurs).
 #
 # KNOWN LIMITATION: stale pidfiles
 # The pidfile liveness check is NOT performed. If a skill crashed without releasing its
-# .pidfile.lock file, pidfile_info will be non-"none" and the hook will emit "allow".
-# Rationale: liveness checking (kill -0 <pid>) requires parsing the PID from the filename,
-# a POSIX loop, and fragile format coupling. The crash-without-cleanup failure mode is rare
-# and bounded — the checkpoint saved in STEP 2 is always available for recovery.
-# To clean up after a crash: rm .workflow_artifacts/memory/sessions/*.pidfile.lock
+# .pidfile.lock file, pidfile_info will be non-"none" and the hook will emit "allow" without
+# writing a sentinel. Rationale: liveness checking (kill -0 <pid>) requires parsing the PID
+# from the filename, a POSIX loop, and fragile format coupling. The crash-without-cleanup
+# failure mode is rare and bounded — the checkpoint saved in STEP 2 is always available
+# for recovery. To clean up after a crash: rm .workflow_artifacts/memory/sessions/*.pidfile.lock
 if [ "$pidfile_info" != "none" ]; then
   printf '[quoin-precompact] INFO: skills running (%s); allowing auto-compact; checkpoint saved at %s\n' "$pidfile_info" "${checkpoint_file:-unknown}" >&2
   printf '{"decision": "allow"}\n'
 else
-  # Block path: no active skills detected (direct conversation mode).
-  # STEP 3 (block path only): Write pending-restore sentinel.
+  # Non-blocking path: no active skills detected (direct conversation mode).
+  # STEP 3 (direct-conversation path only): Write pending-restore sentinel.
   # Guard: [ -n "$checkpoint_file" ] ensures we only write in the full checkpoint path,
   # not the early-skip path where checkpoint_file is unset and the existing sentinel
   # is already correct — no need to overwrite it.
@@ -274,9 +272,8 @@ else
     mkdir -p "$MEMORY_DIR" 2>/dev/null || true
     printf '%s\n' "$checkpoint_file" > "$pending_restore_file" 2>/dev/null || {
       printf '[quoin-precompact] WARNING: cannot write pending-restore sentinel; sessionstart hook cannot surface restore banner\n' >&2
-      # Still block — checkpoint was written, just sentinel is missing
     }
   fi
-  printf '[quoin-precompact] INFO: no active pidfiles → blocking auto-compaction (direct conversation mode); checkpoint saved at %s\n' "${checkpoint_file:-unknown}" >&2
-  printf '{"decision": "block", "reason": "auto-compaction intercepted; session state saved automatically; start a fresh session and run /checkpoint --restore to resume"}\n'
+  printf '[quoin-precompact] INFO: no active pidfiles → allowing auto-compaction (direct conversation mode); checkpoint saved at %s; pending-restore sentinel written\n' "${checkpoint_file:-unknown}" >&2
+  printf '{"decision": "allow"}\n'
 fi
