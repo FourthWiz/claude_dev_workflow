@@ -1,7 +1,7 @@
 """
 Quoin Stage 1 — structural consistency tests for the §0 self-dispatch preamble.
 
-The 14 cheap-tier SKILL.md files carry a `## §0 Model dispatch ...` block as
+The 15 cheap-tier SKILL.md files carry a `## §0 Model dispatch ...` block as
 the first body H2 after the H1. This test file enforces the static-structural
 invariants of that block: heading uniqueness, ordering, two-layer dispatch
 contract (load-bearing `model:` parameter line + defensive `dispatched-tier:`
@@ -47,7 +47,7 @@ SO_HEADING = "## §0 Model dispatch (FIRST STEP — execute before anything else
 MR_HEADING = "## Model requirement"
 POLLUTION_HEADING = "## §0' Pollution dispatch (execute after §0 / §0c if present — before skill body)"
 
-# 14 cheap-tier skills — must carry §0.
+# 15 cheap-tier skills — must carry §0.
 CHEAP_TIER_SKILLS = [
     "gate",
     "end_of_day",
@@ -63,6 +63,7 @@ CHEAP_TIER_SKILLS = [
     "sleep",
     "triage",
     "next_steps",
+    "checkpoint",
 ]
 
 # 9 Opus-tier skills — must NOT carry §0.

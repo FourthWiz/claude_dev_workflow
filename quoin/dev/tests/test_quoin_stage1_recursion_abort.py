@@ -59,6 +59,9 @@ CHEAP_TIER_SKILLS = [
     "expand",
     "revise-fast",
     "triage",
+    "sleep",
+    "next_steps",
+    "checkpoint",
 ]
 
 
@@ -210,14 +213,14 @@ def test_synthetic_abort_branch_simulation():
 
 
 # -----------------------------------------------------------------------------
-# (g) §0 block is present in all 12 cheap-tier SKILL.md files. Marked
+# (g) §0 block is present in all 15 cheap-tier SKILL.md files. Marked
 # `pytest.mark.smoke` to flag the intentional redundancy with T-04 case (a)
 # per MAJ-7 — this test is the silent-deletion regression catcher even if
 # T-04 is somehow stripped down or skipped in a future maintenance pass.
 # -----------------------------------------------------------------------------
 @pytest.mark.smoke
 @pytest.mark.parametrize("skill", CHEAP_TIER_SKILLS)
-def test_block_present_in_all_12_skills(skill):
+def test_block_present_in_all_15_skills(skill):
     slice_text = extract_preamble_block(skill_md_path(skill))
     assert slice_text, (
         f"{skill}/SKILL.md has empty §0 slice — the §0 block was deleted "
