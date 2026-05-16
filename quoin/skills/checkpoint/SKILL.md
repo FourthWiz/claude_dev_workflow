@@ -116,32 +116,33 @@ Detect mode: if the user's invocation does NOT include `--restore`, run save mod
 
 **Arg parsing (first in save mode):** Scan the user's prompt for these flags:
 - `--mode restore` | `--mode load-as-reference` | `--mode mid-agent` → sets SELECTED_MODE
-- `--after-compact` → sets POST_COMPACT=true
+- `--after-compact` → sets AFTER_COMPACT_FLAG_PRESENT=true (deprecated — see Step 0.5)
 - If no `--mode` flag: SELECTED_MODE will be determined by auto-detection in Step 1.5
 
-### Step 0.5: Post-compact flag and deferred-checkpoint marker cleanup
+### Step 0.5: Post-compact flag (deprecated) and stale-marker cleanup
 
-Detect flag: if the user's invocation includes `--after-compact`, set POST_COMPACT=true.
+Detect flag: if the user's invocation includes `--after-compact`, set AFTER_COMPACT_FLAG_PRESENT=true.
 
-If POST_COMPACT is true:
-  - Trash-move the deferred-checkpoint marker for the current session_id (if it exists):
+If AFTER_COMPACT_FLAG_PRESENT is true:
+  - Emit one-line INFO: `[checkpoint] --after-compact flag is deprecated as of this release; it now has no effect — compact-already-ran detection is automatic via the compact-happened sentinel. Proceeding to normal save.`
+  - Trash-move any stale `checkpoint-pending-compact-${session_id}.txt` marker for cleanup (if it exists):
     ```sh
-    _cwd=$(cwd from system context or stdin .cwd)
+    _cwd=$(from stdin JSON .cwd field)
     _sid=$(current session UUID via Step 1.1 acquisition procedure)
-    _marker="${_cwd}/.workflow_artifacts/memory/checkpoint-pending-compact-${_sid}.txt"
-    [ -f "$_marker" ] && . __QUOIN_HOME__/hooks/_lib.sh && trash_move "$_marker" "${_cwd}/.workflow_artifacts/memory" 2>/dev/null || true
+    _stale="${_cwd}/.workflow_artifacts/memory/checkpoint-pending-compact-${_sid}.txt"
+    [ -f "$_stale" ] && . __QUOIN_HOME__/hooks/_lib.sh && trash_move "$_stale" "${_cwd}/.workflow_artifacts/memory" 2>/dev/null || true
     ```
-  - Emit one-line INFO: "[checkpoint] --after-compact flag noted; deferred-compact marker consumed; proceeding to save."
-  - At Step 5 (Report to user): append "Mode: post-compact save (--after-compact flag was explicitly set)."
-  - Proceed to Step 1.5 (which will skip the compact-first check because the marker was just consumed).
+  - Do NOT stop or defer. Continue to Step 1.4.
+  - Because AFTER_COMPACT_FLAG_PRESENT=true, the Step 1.4 explicit-flag guard fires and skips
+    auto-detection — the save always runs.
+  - At Step 5 (Report to user): append `Mode: --after-compact flag (deprecated; proceeded to normal save).`
 
-If POST_COMPACT is false (flag absent):
-  - Proceed to Step 1.5.
+If AFTER_COMPACT_FLAG_PRESENT is false (flag absent):
+  - Proceed to Step 1.4.
 
 Note: The exemption for /checkpoint from BLOCK_BPS context blocking is at
-userpromptsubmit.sh lines 71-82. The --after-compact flag is provided as an explicit
-intent signal for users who want to document their workflow and to enable the
-deferred-compact marker cleanup path.
+userpromptsubmit.sh lines 71-82. The --after-compact flag is retained for backward-compat
+only; compact-already-ran detection is now automatic via the dual-sentinel check in Step 1.4.
 
 ### Step 1.4: Compact-already-ran skip check
 
