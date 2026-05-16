@@ -143,6 +143,43 @@ userpromptsubmit.sh lines 71-82. The --after-compact flag is provided as an expl
 intent signal for users who want to document their workflow and to enable the
 deferred-compact marker cleanup path.
 
+### Step 1.4: Compact-already-ran skip check
+
+(Conditional: SKIP this step entirely if SELECTED_MODE was explicitly passed via `--mode` OR if AFTER_COMPACT_FLAG_PRESENT=true. Proceed to Step 1.5.)
+
+This step detects whether auto-compact already fired in this session AND wrote a precompact checkpoint. If so, the user's `/checkpoint` is redundant — the precompact hook already saved state.
+
+**Session-id acquisition:** same procedure as Step 1.1.
+
+```sh
+_cwd=$(from stdin JSON .cwd field, same as Step 6 trash-move; NOT $(pwd))
+_sid=$(current session UUID via Step 1.1 acquisition procedure)
+```
+
+If `_sid` is unavailable:
+  - Emit WARNING: `[checkpoint] WARNING: session UUID unavailable for compact-happened check; skipping skip-path`
+  - Proceed to Step 1.5.
+
+```sh
+_sentinel="${_cwd}/.workflow_artifacts/memory/compact-happened-${_sid}.txt"
+_pending="${_cwd}/.workflow_artifacts/memory/pending-restore-${_sid}.txt"
+```
+
+**Dual-sentinel check:** BOTH `_sentinel` AND `_pending` must exist for the skip to fire.
+- `compact-happened-*` alone (manual `/compact`) does NOT skip — user wants a real save; fall through to Step 1.5.
+- `pending-restore-*` alone (no compact this session) does NOT skip — fall through to Step 1.5.
+
+If `[ -f "$_sentinel" ] && [ -f "$_pending" ]`:
+  - Read the checkpoint path from `_pending`:
+    `_cp_path=$(head -1 "$_pending" 2>/dev/null)`
+  - Inform user (verbatim):
+    `[checkpoint] Auto-compact already ran in this session; precompact.sh wrote a checkpoint automatically. No additional /checkpoint needed. Auto-written checkpoint: ${_cp_path}`
+  - Append cost-ledger row: `<uuid> | <date> | checkpoint | haiku | task | "skip (compact-already-ran)" | 0`
+  - Release pidfile: `pidfile_release checkpoint`
+  - STOP (do NOT proceed to Steps 1–6).
+
+Otherwise (sentinel absent, or only `compact-happened-*` present): proceed to Step 1.5.
+
 ### Step 1.5: Orchestrate mode (auto-detect if --mode not explicitly given)
 
 This step determines which sentinel to write (restore, load-as-reference, or mid-agent).
