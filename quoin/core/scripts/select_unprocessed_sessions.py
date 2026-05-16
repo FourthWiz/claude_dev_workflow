@@ -230,6 +230,166 @@ def find_orphans(
 
 
 # ---------------------------------------------------------------------------
+# proc:D-06 — same-day daily-cache merge
+# ---------------------------------------------------------------------------
+
+# Closed section order for daily-cache files (per plan D-02 + SKILL.md template).
+_CLOSED_SECTION_ORDER = [
+    "For human",
+    "Summary",
+    "Sessions processed",
+    "Completed today",
+    "Unfinished — carry forward",
+    "Decisions log",
+    "Git activity summary",
+    "Cost summary",
+    "Tomorrow's priorities",
+]
+
+
+def _parse_h2_sections(content: str) -> tuple[str, dict]:
+    """Split content into (preamble, {section_name: body_text}) by H2 headings."""
+    h2_re = re.compile(r"^(## .+)$", re.MULTILINE)
+    matches = list(h2_re.finditer(content))
+    if not matches:
+        return content, {}
+    preamble = content[: matches[0].start()]
+    sections: dict[str, str] = {}
+    for i, m in enumerate(matches):
+        name = m.group(1)[3:]  # strip '## '
+        body_start = m.end()
+        body_end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
+        sections[name] = content[body_start:body_end]
+    return preamble, sections
+
+
+def _render_h2_sections(preamble: str, sections: dict) -> str:
+    """Compose content from preamble + sections in closed order (unknown sections appended last)."""
+    parts = [preamble]
+    seen: set[str] = set()
+    for name in _CLOSED_SECTION_ORDER:
+        if name in sections:
+            parts.append(f"## {name}{sections[name]}")
+            seen.add(name)
+    for name in sorted(sections):  # stable order for unknown sections
+        if name not in seen:
+            parts.append(f"## {name}{sections[name]}")
+    return "".join(parts)
+
+
+def _parse_task_blocks(body: str) -> dict:
+    """Extract {task_name: block_text} from a ## Completed today body.
+
+    Task boundaries are `**Task: <name>**` lines (the live daily-cache convention).
+    """
+    task_re = re.compile(r"^\*\*Task: (.+?)\*\*", re.MULTILINE)
+    matches = list(task_re.finditer(body))
+    if not matches:
+        return {}
+    blocks: dict[str, str] = {}
+    for i, m in enumerate(matches):
+        name = m.group(1)
+        start = m.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(body)
+        blocks[name] = body[start:end]
+    return blocks
+
+
+def merge_daily(
+    existing_content: str,
+    new_tasks: dict,
+    new_session_rows: list,
+    new_decisions: str = "",
+    new_sections: dict | None = None,
+) -> str:
+    """Merge new session data into an existing daily-cache file (proc:D-06).
+
+    Implements the section-by-section merge algorithm from plan D-06:
+    - ## Completed today  : task-name set-union, latest-wins (callers supply task blocks)
+    - ## Sessions processed: replace entire table
+    - ## Decisions log    : append-only, line-level dedup for idempotency
+    - Regenerated sections: replace if key present in new_sections, else keep existing
+
+    Args:
+        existing_content : current text of daily/<today>.md
+        new_tasks        : {task_name: block_text} — new or updated Completed today entries
+        new_session_rows : list of dicts (date/task/phase/status/notes) for Sessions processed
+        new_decisions    : text to append to Decisions log; line-level dedup prevents re-append
+        new_sections     : optional overrides for regenerated sections; recognised keys:
+                           "Summary", "Cost summary", "Git activity summary",
+                           "Tomorrow's priorities", "Unfinished — carry forward"
+
+    Returns:
+        merged content string (caller is responsible for atomic write)
+    """
+    if new_sections is None:
+        new_sections = {}
+
+    preamble, sections = _parse_h2_sections(existing_content)
+
+    # Step 3 — ## Completed today: task-name set-union, latest-wins
+    existing_tasks = _parse_task_blocks(sections.get("Completed today", ""))
+    for task_name, block in new_tasks.items():
+        existing_tasks[task_name] = block  # latest-wins: overwrite on same key
+    if existing_tasks:
+        rendered_tasks = "\n\n" + "\n\n".join(
+            block.rstrip("\n") for _, block in sorted(existing_tasks.items())
+        ) + "\n"
+    else:
+        rendered_tasks = sections.get("Completed today", "\n")
+    sections["Completed today"] = rendered_tasks
+
+    # Step 4 — ## Sessions processed: replace entire table
+    if new_session_rows:
+        header = (
+            "\n\n| Date | Task | Phase | Status | Notes |\n"
+            "|------|------|-------|--------|-------|\n"
+        )
+        row_lines = "".join(
+            "| {date} | {task} | {phase} | {status} | {notes} |\n".format(
+                date=r.get("date", ""),
+                task=r.get("task", ""),
+                phase=r.get("phase", ""),
+                status=r.get("status", ""),
+                notes=r.get("notes", "—"),
+            )
+            for r in new_session_rows
+        )
+        sections["Sessions processed"] = header + row_lines
+    elif "Sessions processed" not in sections:
+        sections["Sessions processed"] = "\n\n_No sessions processed._\n"
+
+    # Step 5 — ## Decisions log: append-only, line-level dedup for idempotency
+    existing_decisions = sections.get("Decisions log", "\n")
+    if new_decisions.strip():
+        existing_lines: set[str] = set(existing_decisions.splitlines())
+        novel = [
+            line
+            for line in new_decisions.splitlines()
+            if line.strip() and line not in existing_lines
+        ]
+        if novel:
+            sections["Decisions log"] = (
+                existing_decisions.rstrip("\n") + "\n" + "\n".join(novel) + "\n"
+            )
+    else:
+        sections["Decisions log"] = existing_decisions
+
+    # Steps 6–10 — regenerated sections: replace if caller supplied override
+    for name in (
+        "Cost summary",
+        "Git activity summary",
+        "Summary",
+        "Tomorrow's priorities",
+        "Unfinished — carry forward",
+    ):
+        if name in new_sections:
+            sections[name] = new_sections[name]
+
+    return _render_h2_sections(preamble, sections)
+
+
+# ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
