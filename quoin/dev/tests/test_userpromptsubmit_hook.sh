@@ -410,6 +410,7 @@ else
 fi
 
 # ─── T-06d: /checkpoint --after-compact → exempt (falls through to *) arm) ───
+# --after-compact remains exempt (deprecated flag, no logic change in userpromptsubmit.sh)
 # Verify that /checkpoint --after-compact at BLOCK_BPS range does NOT produce block JSON.
 # It should be exempt (the *) arm in the case statement covers all /checkpoint variants
 # except --purge).
