@@ -95,7 +95,24 @@ Read these in parallel:
 
 1. **Daily caches** — `.workflow_artifacts/memory/daily/<date>.md` for each day in the range. These are the primary source — they contain completed work, unfinished carry-forwards, decisions, and git summaries.
 
-2. **Session files** — `.workflow_artifacts/memory/sessions/<date>-*.md` for dates in the range. These have finer-grained detail on individual tasks.
+2. **Session files** — use the shared helper `quoin/core/scripts/select_unprocessed_sessions.py`
+   with `--lower-bound-source weekly` to enumerate session files in scope:
+   ```
+   python3 quoin/core/scripts/select_unprocessed_sessions.py \
+     --window <monday>..<saturday> \
+     --lower-bound-source weekly
+   ```
+   The helper's weekly-mode `lower_bound` is computed as `(most_recent_prior_weekly_file_date + 7 days)`,
+   or `(today - 7 days)` if no prior weekly file exists. The selection rule is identical to
+   `/end_of_day`: a session file is in scope iff `end_of_day_due: yes` (legacy files without
+   the field treated as `yes`) AND file_date is within the window. These have finer-grained
+   detail on individual tasks.
+
+   Additionally: session files in the window whose `end_of_day_due: no` flag AND whose slug is
+   absent from every daily body covering that week are orphaned sessions. Surface these in the
+   weekly review under a new "Orphaned sessions detected" subsection (do NOT include in
+   completed-tasks rollup — the user must run `/end_of_day --recover-orphans` separately to
+   recover them).
 
 3. **Git history** — for each repo in the project folder:
    ```bash

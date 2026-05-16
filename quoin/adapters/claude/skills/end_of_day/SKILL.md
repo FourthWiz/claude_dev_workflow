@@ -114,8 +114,8 @@ work was never captured.
 1. Scan all session files under `.workflow_artifacts/memory/sessions/`. For each with
    `end_of_day_due: no`, extract the slug (the portion of the filename AFTER the date prefix
    and BEFORE `.md`; e.g. for `2026-05-13-foo-bar.md` the slug is `foo-bar`).
-2. Read every `daily/<date>.md` file (excluding `insights-*.md`). Build the union of all body
-   text across these files.
+2. Read every daily file matching `daily/<YYYY-MM-DD>.md` (excluding `insights-*.md`). Build
+   the union of all body text across these daily files.
 3. A session is an **orphan** iff its slug is absent from the union body text, using a
    **word-boundary-aware** regex: `r"(?<![\w-])" + re.escape(slug) + r"(?![\w-])"`. Hyphens
    count as part of the slug token — so slug `json-discovery-map` does NOT match inside
