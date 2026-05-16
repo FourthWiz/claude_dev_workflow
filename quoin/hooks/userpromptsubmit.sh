@@ -42,6 +42,8 @@ STDIN=$(cat)
             if [ -n "$_ups_sid" ]; then
                 _ups_postcompact="${_ups_mem}/postcompact-reset-${_ups_sid}.txt"
                 if [ -f "$_ups_postcompact" ]; then
+                    # Trash-moves: postcompact-reset-${_ups_sid}.txt and checkpoint-defer-${_ups_sid}.txt.
+                    # Preserved (intentionally NOT moved here): compact-happened-${_ups_sid}.txt (read by /checkpoint Step 1.4).
                     trash_move "$_ups_postcompact" "$_ups_mem" 2>/dev/null || true
                     # Also expire defer marker on post-compact (meaningful work boundary)
                     _ups_defer="${_ups_mem}/checkpoint-defer-${_ups_sid}.txt"

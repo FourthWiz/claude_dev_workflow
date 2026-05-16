@@ -512,18 +512,18 @@ else
   fail "(T-06c-1) --after-compact flag NOT found in SKILL.md"
 fi
 
-# (T-06c-2) SKILL.md has POST_COMPACT=true language (or equivalent)
-if grep -q 'POST_COMPACT\|POST_COMPACT=true\|post.compact' "$CHECKPOINT_SKILL" 2>/dev/null; then
-  ok "(T-06c-2) POST_COMPACT variable or post-compact concept present in SKILL.md"
+# (T-06c-2) SKILL.md has AFTER_COMPACT_FLAG_PRESENT variable (replaces POST_COMPACT)
+if grep -q 'AFTER_COMPACT_FLAG_PRESENT' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06c-2) AFTER_COMPACT_FLAG_PRESENT variable present in SKILL.md"
 else
-  fail "(T-06c-2) POST_COMPACT concept NOT found in SKILL.md"
+  fail "(T-06c-2) AFTER_COMPACT_FLAG_PRESENT NOT found in SKILL.md"
 fi
 
-# (T-06c-3) SKILL.md documents the INFO line emitted on --after-compact
-if grep -q '\-\-after-compact flag noted' "$CHECKPOINT_SKILL" 2>/dev/null; then
-  ok "(T-06c-3) INFO line '[checkpoint] --after-compact flag noted' documented in SKILL.md"
+# (T-06c-3) SKILL.md documents the INFO line emitted on --after-compact (deprecation message)
+if grep -q 'after-compact flag is deprecated' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06c-3) INFO line '--after-compact flag is deprecated' documented in SKILL.md"
 else
-  fail "(T-06c-3) --after-compact INFO line NOT found in SKILL.md"
+  fail "(T-06c-3) --after-compact deprecation INFO line NOT found in SKILL.md"
 fi
 
 # (T-06c-4) Step 0.5 is documented before Step 1 (post-compact flag injection point)
@@ -867,6 +867,63 @@ else
 fi
 
 rm -f "$TRANSCRIPT_9000" "$TRANSCRIPT_8999" 2>/dev/null || true
+
+# ─── T-06g: Step 1.4 compact-already-ran skip path documented in SKILL.md ────
+
+echo "T-06g: Step 1.4 skip path present in SKILL.md"
+if grep -q 'Step 1.4' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06g-1) Step 1.4 heading present in SKILL.md"
+else
+  fail "(T-06g-1) Step 1.4 heading not found in SKILL.md"
+fi
+
+if grep -q 'compact-happened-' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06g-2) compact-happened sentinel referenced in SKILL.md"
+else
+  fail "(T-06g-2) compact-happened sentinel not found in SKILL.md"
+fi
+
+if grep -q 'AFTER_COMPACT_FLAG_PRESENT' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06g-3) AFTER_COMPACT_FLAG_PRESENT explicit-flag guard present in SKILL.md"
+else
+  fail "(T-06g-3) AFTER_COMPACT_FLAG_PRESENT not found in SKILL.md"
+fi
+
+# ─── T-06h: High-util branch inverted — old STOP language absent, two-option notice present ────
+
+echo "T-06h: Step 1.5.A inverted"
+if grep -qF 'STOP (do not proceed to Steps' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  fail "(T-06h-1) Old STOP language still present in SKILL.md"
+else
+  ok "(T-06h-1) Old STOP language absent from SKILL.md"
+fi
+
+if grep -q 'fresh session' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06h-2) Two-option notice (fresh session) present in SKILL.md"
+else
+  fail "(T-06h-2) Two-option notice (fresh session) NOT found in SKILL.md"
+fi
+
+if grep -q 'Run /compact in this session' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06h-3) Two-option notice (compact option) present in SKILL.md"
+else
+  fail "(T-06h-3) Two-option notice (compact option) NOT found in SKILL.md"
+fi
+
+# ─── T-06i: --after-compact deprecation documented ────
+
+echo "T-06i: --after-compact deprecation"
+if grep -q 'AFTER_COMPACT_FLAG_PRESENT' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06i-1) AFTER_COMPACT_FLAG_PRESENT present in SKILL.md"
+else
+  fail "(T-06i-1) AFTER_COMPACT_FLAG_PRESENT not found in SKILL.md"
+fi
+
+if grep -q 'after-compact flag is deprecated' "$CHECKPOINT_SKILL" 2>/dev/null; then
+  ok "(T-06i-2) Deprecation INFO string 'after-compact flag is deprecated' present in SKILL.md"
+else
+  fail "(T-06i-2) Deprecation INFO string not found in SKILL.md"
+fi
 
 # ─── Summary ──────────────────────────────────────────────────────────────────
 

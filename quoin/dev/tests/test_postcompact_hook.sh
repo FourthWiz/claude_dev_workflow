@@ -87,6 +87,29 @@ if [ -f "$SENTINEL" ]; then
   fi
 fi
 
+# (b2) compact-happened sentinel present
+COMPACT_HAPPENED="${MEMORY_DIR}/compact-happened-${SID}.txt"
+if [ -f "${COMPACT_HAPPENED}" ]; then
+  ok "(b2) compact-happened sentinel written at correct path"
+else
+  fail "(b2) compact-happened sentinel NOT written (expected: ${COMPACT_HAPPENED})"
+fi
+
+# (b3) compact-happened sentinel has required fields
+if [ -f "${COMPACT_HAPPENED}" ]; then
+  if grep -q '^compacted_at=' "${COMPACT_HAPPENED}"; then
+    ok "(b3) compact-happened sentinel has compacted_at field"
+  else
+    fail "(b3) compact-happened sentinel missing compacted_at field"
+  fi
+
+  if grep -q '^session_id=' "${COMPACT_HAPPENED}"; then
+    ok "(b3) compact-happened sentinel has session_id field"
+  else
+    fail "(b3) compact-happened sentinel missing session_id field"
+  fi
+fi
+
 # ─── (c) Hook exits 0 and produces no stdout ─────────────────────────────────
 
 SID_C="test-session-pc-c"

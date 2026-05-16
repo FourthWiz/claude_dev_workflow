@@ -116,32 +116,70 @@ Detect mode: if the user's invocation does NOT include `--restore`, run save mod
 
 **Arg parsing (first in save mode):** Scan the user's prompt for these flags:
 - `--mode restore` | `--mode load-as-reference` | `--mode mid-agent` → sets SELECTED_MODE
-- `--after-compact` → sets POST_COMPACT=true
+- `--after-compact` → sets AFTER_COMPACT_FLAG_PRESENT=true (deprecated — see Step 0.5)
 - If no `--mode` flag: SELECTED_MODE will be determined by auto-detection in Step 1.5
 
-### Step 0.5: Post-compact flag and deferred-checkpoint marker cleanup
+### Step 0.5: Post-compact flag (deprecated) and stale-marker cleanup
 
-Detect flag: if the user's invocation includes `--after-compact`, set POST_COMPACT=true.
+Detect flag: if the user's invocation includes `--after-compact`, set AFTER_COMPACT_FLAG_PRESENT=true.
 
-If POST_COMPACT is true:
-  - Trash-move the deferred-checkpoint marker for the current session_id (if it exists):
+If AFTER_COMPACT_FLAG_PRESENT is true:
+  - Emit one-line INFO: `[checkpoint] --after-compact flag is deprecated as of this release; it now has no effect — compact-already-ran detection is automatic via the compact-happened sentinel. Proceeding to normal save.`
+  - Trash-move any stale `checkpoint-pending-compact-${session_id}.txt` marker for cleanup (if it exists):
     ```sh
-    _cwd=$(cwd from system context or stdin .cwd)
+    _cwd=$(from stdin JSON .cwd field)
     _sid=$(current session UUID via Step 1.1 acquisition procedure)
-    _marker="${_cwd}/.workflow_artifacts/memory/checkpoint-pending-compact-${_sid}.txt"
-    [ -f "$_marker" ] && . __QUOIN_HOME__/hooks/_lib.sh && trash_move "$_marker" "${_cwd}/.workflow_artifacts/memory" 2>/dev/null || true
+    _stale="${_cwd}/.workflow_artifacts/memory/checkpoint-pending-compact-${_sid}.txt"
+    [ -f "$_stale" ] && . __QUOIN_HOME__/hooks/_lib.sh && trash_move "$_stale" "${_cwd}/.workflow_artifacts/memory" 2>/dev/null || true
     ```
-  - Emit one-line INFO: "[checkpoint] --after-compact flag noted; deferred-compact marker consumed; proceeding to save."
-  - At Step 5 (Report to user): append "Mode: post-compact save (--after-compact flag was explicitly set)."
-  - Proceed to Step 1.5 (which will skip the compact-first check because the marker was just consumed).
+  - Do NOT stop or defer. Continue to Step 1.4.
+  - Because AFTER_COMPACT_FLAG_PRESENT=true, the Step 1.4 explicit-flag guard fires and skips
+    auto-detection — the save always runs.
+  - At Step 5 (Report to user): append `Mode: --after-compact flag (deprecated; proceeded to normal save).`
 
-If POST_COMPACT is false (flag absent):
-  - Proceed to Step 1.5.
+If AFTER_COMPACT_FLAG_PRESENT is false (flag absent):
+  - Proceed to Step 1.4.
 
 Note: The exemption for /checkpoint from BLOCK_BPS context blocking is at
-userpromptsubmit.sh lines 71-82. The --after-compact flag is provided as an explicit
-intent signal for users who want to document their workflow and to enable the
-deferred-compact marker cleanup path.
+userpromptsubmit.sh lines 71-82. The --after-compact flag is retained for backward-compat
+only; compact-already-ran detection is now automatic via the dual-sentinel check in Step 1.4.
+
+### Step 1.4: Compact-already-ran skip check
+
+(Conditional: SKIP this step entirely if SELECTED_MODE was explicitly passed via `--mode` OR if AFTER_COMPACT_FLAG_PRESENT=true. Proceed to Step 1.5.)
+
+This step detects whether auto-compact already fired in this session AND wrote a precompact checkpoint. If so, the user's `/checkpoint` is redundant — the precompact hook already saved state.
+
+**Session-id acquisition:** same procedure as Step 1.1.
+
+```sh
+_cwd=$(from stdin JSON .cwd field, same as Step 6 trash-move; NOT $(pwd))
+_sid=$(current session UUID via Step 1.1 acquisition procedure)
+```
+
+If `_sid` is unavailable:
+  - Emit WARNING: `[checkpoint] WARNING: session UUID unavailable for compact-happened check; skipping skip-path`
+  - Proceed to Step 1.5.
+
+```sh
+_sentinel="${_cwd}/.workflow_artifacts/memory/compact-happened-${_sid}.txt"
+_pending="${_cwd}/.workflow_artifacts/memory/pending-restore-${_sid}.txt"
+```
+
+**Dual-sentinel check:** BOTH `_sentinel` AND `_pending` must exist for the skip to fire.
+- `compact-happened-*` alone (manual `/compact`) does NOT skip — user wants a real save; fall through to Step 1.5.
+- `pending-restore-*` alone (no compact this session) does NOT skip — fall through to Step 1.5.
+
+If `[ -f "$_sentinel" ] && [ -f "$_pending" ]`:
+  - Read the checkpoint path from `_pending`:
+    `_cp_path=$(head -1 "$_pending" 2>/dev/null)`
+  - Inform user (verbatim):
+    `[checkpoint] Auto-compact already ran in this session; precompact.sh wrote a checkpoint automatically. No additional /checkpoint needed. Auto-written checkpoint: ${_cp_path}`
+  - Append cost-ledger row: `<uuid> | <date> | checkpoint | haiku | task | "skip (compact-already-ran)" | 0`
+  - Release pidfile: `pidfile_release checkpoint`
+  - STOP (do NOT proceed to Steps 1–6).
+
+Otherwise (sentinel absent, or only `compact-happened-*` present): proceed to Step 1.5.
 
 ### Step 1.5: Orchestrate mode (auto-detect if --mode not explicitly given)
 
@@ -150,7 +188,7 @@ If `--mode` was explicitly passed, skip auto-detection and go to the dispatch at
 
 **Auto-detection sequence (only when SELECTED_MODE is unset):**
 
-**A. Compact-first check:** Read the current utilization. Invoke via Bash tool:
+**A. High-util check (inverted):** Read the current utilization. Invoke via Bash tool:
 ```sh
 . __QUOIN_HOME__/hooks/_lib.sh && read_constants && compute_utilization TRANSCRIPT_PATH
 ```
@@ -162,19 +200,16 @@ This constant is defined in `_lib.sh:read_constants()` as:
   `COMPACT_FIRST_BPS=${QUOIN_COMPACT_FIRST_BPS:-9000}`
 
 If `util_bps >= COMPACT_FIRST_BPS`:
-  - Write a deferred-checkpoint marker:
-    `.workflow_artifacts/memory/checkpoint-pending-compact-${session_id}.txt`
-    Content: one line — `timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)`.
-  - Ask the user (AskUserQuestion tool or inline prompt):
-    "Context is at PCT_VALUE% (COMPACT_FIRST_BPS=90.00% threshold). Please run
-    /compact to compress context, then re-invoke /checkpoint --after-compact."
-  - STOP (do not proceed to Steps 1–5; the save will complete on next invocation).
+  - Set `_HIGH_UTIL_NOTICE=true`.
+  - Compute `PCT_VALUE` from `util_bps` (e.g., "92.13" for 9213 basis points):
+    `pct_int=$((util_bps / 100)); pct_dec=$(printf '%02d' $((util_bps % 100))); PCT_VALUE="${pct_int}.${pct_dec}"`
+  - Continue to sub-step B. (Do NOT write a deferred-checkpoint marker. The save runs immediately
+    in Steps 1–6; the high-util notice is surfaced in Step 5 only.)
 
 If `util_bps < COMPACT_FIRST_BPS` OR if the compact-first check fails (e.g., transcript
-path unavailable): continue to sub-step B.
-
-Note: if POST_COMPACT was true (--after-compact flag set), the marker was already
-consumed in Step 0.5 and this utilization check is skipped entirely (marker absent = check not needed).
+path unavailable):
+  - Set `_HIGH_UTIL_NOTICE=false`.
+  - Continue to sub-step B.
 
 **B. Mid-agent check:** Detect whether other skills are currently active (pidfiles present).
 Invoke via Bash tool:
@@ -404,8 +439,12 @@ the mode-specific report text). Always include:
 - Sentinel written: `<sentinel-path>`
 - Next step instruction (mode-specific — see Steps 4a, 4b, 4c above)
 
-If `--after-compact` was set (POST_COMPACT=true), append:
-`Mode: post-compact save (--after-compact flag was explicitly set; deferred-compact marker consumed).`
+If `_HIGH_UTIL_NOTICE=true`, append after the normal confirmation:
+```
+Context is at ${PCT_VALUE}% (>= COMPACT_FIRST_BPS=90.00%). Checkpoint saved. To free context, choose one:
+  1. Start a fresh session (run /checkpoint --restore there).
+  2. Run /compact in this session (the auto-written precompact checkpoint will subsume this save; you do not need to re-run /checkpoint after).
+```
 
 ### Step 6: Release pidfile and invalidate defer marker
 

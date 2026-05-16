@@ -190,6 +190,46 @@ else
 fi
 rm -rf "$T7_DIR"
 
+# ── Test 8: sessionstart.sh sweeps stale compact-happened and checkpoint-pending-compact sentinels ──
+echo ""
+echo "Test 8: stale compact-happened and checkpoint-pending-compact swept by sessionstart"
+T8_DIR=$(mktemp -d)
+mkdir -p "$T8_DIR/.workflow_artifacts/memory/sessions"
+STALE_SID="test-stale-sid-$$"
+T8_MEMORY_DIR="$T8_DIR/.workflow_artifacts/memory"
+STALE_COMPACT="${T8_MEMORY_DIR}/compact-happened-${STALE_SID}.txt"
+STALE_PENDING="${T8_MEMORY_DIR}/checkpoint-pending-compact-${STALE_SID}.txt"
+
+# Write stale sentinels
+printf 'compacted_at=2000-01-01T00:00:00Z\nsession_id=%s\n' "${STALE_SID}" > "${STALE_COMPACT}"
+printf 'deferred at 2000-01-01\n' > "${STALE_PENDING}"
+
+# Set mtime to 10 days ago (well beyond the 7-day default STALE_DAYS threshold)
+if touch -t "$(date -v-10d +%Y%m%d%H%M 2>/dev/null || date -d '10 days ago' +%Y%m%d%H%M 2>/dev/null || echo 202001010000)" \
+    "${STALE_COMPACT}" "${STALE_PENDING}" 2>/dev/null; then
+  # Run sessionstart.sh with our temp dir as cwd
+  STDIN_JSON8=$(printf '{"cwd": "%s", "session_id": "fresh-test-session-$$", "source": "startup"}' "$T8_DIR")
+  printf '%s' "$STDIN_JSON8" | sh "$HOOKS_DIR/sessionstart.sh" > /dev/null 2>/dev/null || true
+
+  # After sweep: stale compact-happened sentinel should be gone from memory/ root
+  if [ ! -f "${STALE_COMPACT}" ]; then
+    pass "Test 8a — compact-happened stale sentinel swept by sessionstart"
+  else
+    fail "Test 8a — compact-happened stale sentinel still present after sessionstart sweep"
+  fi
+
+  # After sweep: stale checkpoint-pending-compact sentinel should be gone from memory/ root
+  if [ ! -f "${STALE_PENDING}" ]; then
+    pass "Test 8b — checkpoint-pending-compact stale sentinel swept by sessionstart"
+  else
+    fail "Test 8b — checkpoint-pending-compact stale sentinel still present after sessionstart sweep"
+  fi
+else
+  echo "SKIP: Test 8 — touch -t not available on this platform; stale sentinel sweep test cannot run"
+  PASS=$((PASS+2))
+fi
+rm -rf "$T8_DIR"
+
 # ── Final summary ──────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
