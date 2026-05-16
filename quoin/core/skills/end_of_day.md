@@ -20,7 +20,11 @@ never invokes another workflow phase.
 
 ## Inputs
 
-- All of today's session-state files under `.workflow_artifacts/memory/sessions/<today>-*.md`.
+- All session-state files under `.workflow_artifacts/memory/sessions/` whose date-prefix falls
+  within the EOD processing window (lower_bound..today, inclusive) OR whose `end_of_day_due`
+  field is `yes`. Lower bound is discovered by finding the most recent prior daily-cache file
+  and adding one day; if none exists, lower_bound = today. Legacy files lacking the field are
+  treated as `yes`.
 - Optional today's insights scratchpad at `.workflow_artifacts/memory/daily/insights-<today>.md`.
 - Existing `.workflow_artifacts/memory/lessons-learned.md` (advisory; created if absent).
 - Each active task's `.workflow_artifacts/<task-name>/cost-ledger.md` (advisory, for
@@ -53,6 +57,22 @@ never invokes another workflow phase.
 - Error-tolerant: every input lookup MUST tolerate missing or unreadable files as "no
   signal" and continue. A missing insights file or missing cost-ledger file is a no-op,
   not an error.
+- Lower_bound discovery: the EOD processing window starts at the day after the most recent
+  prior daily-cache file under `daily/<YYYY-MM-DD>.md` (excluding `insights-*.md`). If no
+  prior daily exists, lower_bound = today. If the most recent daily IS today, lower_bound =
+  today (same-day re-run triggers merge mode per the Behavior contract below).
+- Hybrid session selection: a session file is in scope iff its date-prefix is within
+  [lower_bound, today] inclusive OR its `end_of_day_due` flag is still `yes` (catches
+  yes-flagged files from dates before lower_bound). Legacy files lacking the flag line are
+  treated as `yes`.
+- Same-day re-run: if `daily/<today>.md` already exists, MERGE per proc:D-06 (section-by-
+  section algorithm) rather than overwrite. Never replace with a smaller set. If the existing
+  file is unreadable (corruption), refuse with a clear error.
+- Orphan recovery: the `--recover-orphans` flag triggers a scan for sessions where
+  `end_of_day_due: no` AND the task-name slug is absent from every daily file body (proc:T-19
+  word-boundary-aware check). Two prompt groups: RECENT (within last 7 days) and HISTORICAL
+  (older). User confirms each group separately. Confirmed orphans are treated as `yes` for
+  this run only; the flag is permanently flipped to `no` after the daily-cache write succeeds.
 - Crash safety: the `end_of_day_due: yes` → `no` flip happens ONLY after the daily-cache
   write succeeds. A crashed run MUST NOT mark sessions as processed.
 - Resume-cookie discipline: writer MUST refuse to include any field outside the allowlist
@@ -90,9 +110,11 @@ never invokes another workflow phase.
 ## Notes
 
 - The daily-cache section set is closed: `## For human`, `## Summary`,
-  `## Completed today`, `## Unfinished — carry forward`, `## Decisions log`,
-  `## Git activity summary`, `## Cost summary`, `## Tomorrow's priorities`. Adapters
-  MUST NOT silently introduce new top-level sections into the daily cache.
+  `## Sessions processed` (TABLE — the canonical "this session is covered" anchor used by
+  proc:T-19 orphan detection), `## Completed today`, `## Unfinished — carry forward`,
+  `## Decisions log`, `## Git activity summary`, `## Cost summary`,
+  `## Tomorrow's priorities`. Adapters MUST NOT silently introduce new top-level sections
+  into the daily cache.
 - The resume-cookie expiry default is 24 hours from the write time.
 - Adapters MAY decompose Step 3 into multiple internal sub-steps (e.g., 3a/3b/3c/3d)
   as the current Claude adapter does; the contract here is the closed list of side-effects,

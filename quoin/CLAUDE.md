@@ -123,7 +123,7 @@ Session lifecycle:
 - `/end_of_day` — saves session state and consolidates unfinished work into a daily cache. Run when wrapping up.
 - `/weekly_review` — aggregates the week's progress into a structured review. Run on Friday (or whenever you want a week-level summary). Saves to `.workflow_artifacts/memory/weekly/`.
 
-Multiple sessions can run in a day (parallel tasks). Each session writes its own state to `.workflow_artifacts/memory/sessions/`. `/end_of_day` rolls unfinished sessions into `.workflow_artifacts/memory/daily/<date>.md`.
+Multiple sessions can run in a day (parallel tasks). Each session writes its own state to `.workflow_artifacts/memory/sessions/`. `/end_of_day` reads all unprocessed session files within the date window from the last daily-cache up to today (not only today's files) and rolls them into `.workflow_artifacts/memory/daily/<date>.md`.
 
 ## Session independence
 
@@ -244,7 +244,7 @@ The session-state template includes a `## Cost` section:
 - fallback_fires: 0
 ```
 
-`end_of_day_due: yes` defaults at every write; `/end_of_day` Step 3d flips to `no` per processed session; `sessionstart.sh` + `/start_of_day` use it as the second signal for the missing-EOD banner (36 h window). `fallback_fires` counts Class B writer Step 5 English-fallback invocations + Step 2 Haiku-dispatch retries; atomic-rename increment; never decremented; under-counts under parallel subagents (acceptable per D-03-rev2). Full semantics: `__QUOIN_HOME__/memory/lifecycle-guide.md`.
+`end_of_day_due: yes` defaults at every write; `/end_of_day` Step 3d flips to `no` for each session in the processed window (all sessions selected by the hybrid date-window + flag rule, not only today's); `sessionstart.sh` + `/start_of_day` use it as the second signal for the missing-EOD banner (36 h window). `fallback_fires` counts Class B writer Step 5 English-fallback invocations + Step 2 Haiku-dispatch retries; atomic-rename increment; never decremented; under-counts under parallel subagents (acceptable per D-03-rev2). Full semantics: `__QUOIN_HOME__/memory/lifecycle-guide.md`.
 
 The cost ledger (`.workflow_artifacts/<task-name>/cost-ledger.md`) is the source of truth for per-session costs.
 
