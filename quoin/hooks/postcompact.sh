@@ -37,4 +37,8 @@ printf 'compacted_at=%s\nsession_id=%s\ntranscript_path=%s\ntranscript_bytes_aft
     "$compacted_at" "$session_id" "$transcript_path" "$transcript_bytes_after" \
     > "$SENTINEL" 2>/dev/null || true
 
+COMPACT_HAPPENED_SENTINEL="${MEMORY_DIR}/compact-happened-${session_id}.txt"
+printf 'compacted_at=%s\nsession_id=%s\n' "$compacted_at" "$session_id" \
+    > "$COMPACT_HAPPENED_SENTINEL" 2>/dev/null || true
+
 exit 0
