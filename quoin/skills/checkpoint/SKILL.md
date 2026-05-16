@@ -187,7 +187,7 @@ If `--mode` was explicitly passed, skip auto-detection and go to the dispatch at
 
 **Auto-detection sequence (only when SELECTED_MODE is unset):**
 
-**A. Compact-first check:** Read the current utilization. Invoke via Bash tool:
+**A. High-util check (inverted):** Read the current utilization. Invoke via Bash tool:
 ```sh
 . __QUOIN_HOME__/hooks/_lib.sh && read_constants && compute_utilization TRANSCRIPT_PATH
 ```
@@ -199,19 +199,16 @@ This constant is defined in `_lib.sh:read_constants()` as:
   `COMPACT_FIRST_BPS=${QUOIN_COMPACT_FIRST_BPS:-9000}`
 
 If `util_bps >= COMPACT_FIRST_BPS`:
-  - Write a deferred-checkpoint marker:
-    `.workflow_artifacts/memory/checkpoint-pending-compact-${session_id}.txt`
-    Content: one line — `timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)`.
-  - Ask the user (AskUserQuestion tool or inline prompt):
-    "Context is at PCT_VALUE% (COMPACT_FIRST_BPS=90.00% threshold). Please run
-    /compact to compress context, then re-invoke /checkpoint --after-compact."
-  - STOP (do not proceed to Steps 1–5; the save will complete on next invocation).
+  - Set `_HIGH_UTIL_NOTICE=true`.
+  - Compute `PCT_VALUE` from `util_bps` (e.g., "92.13" for 9213 basis points):
+    `pct_int=$((util_bps / 100)); pct_dec=$(printf '%02d' $((util_bps % 100))); PCT_VALUE="${pct_int}.${pct_dec}"`
+  - Continue to sub-step B. (Do NOT write a deferred-checkpoint marker. The save runs immediately
+    in Steps 1–6; the high-util notice is surfaced in Step 5 only.)
 
 If `util_bps < COMPACT_FIRST_BPS` OR if the compact-first check fails (e.g., transcript
-path unavailable): continue to sub-step B.
-
-Note: if POST_COMPACT was true (--after-compact flag set), the marker was already
-consumed in Step 0.5 and this utilization check is skipped entirely (marker absent = check not needed).
+path unavailable):
+  - Set `_HIGH_UTIL_NOTICE=false`.
+  - Continue to sub-step B.
 
 **B. Mid-agent check:** Detect whether other skills are currently active (pidfiles present).
 Invoke via Bash tool:
@@ -441,8 +438,12 @@ the mode-specific report text). Always include:
 - Sentinel written: `<sentinel-path>`
 - Next step instruction (mode-specific — see Steps 4a, 4b, 4c above)
 
-If `--after-compact` was set (POST_COMPACT=true), append:
-`Mode: post-compact save (--after-compact flag was explicitly set; deferred-compact marker consumed).`
+If `_HIGH_UTIL_NOTICE=true`, append after the normal confirmation:
+```
+Context is at ${PCT_VALUE}% (>= COMPACT_FIRST_BPS=90.00%). Checkpoint saved. To free context, choose one:
+  1. Start a fresh session (run /checkpoint --restore there).
+  2. Run /compact in this session (the auto-written precompact checkpoint will subsume this save; you do not need to re-run /checkpoint after).
+```
 
 ### Step 6: Release pidfile and invalidate defer marker
 
