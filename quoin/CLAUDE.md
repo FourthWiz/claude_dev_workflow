@@ -362,7 +362,7 @@ All hooks fail-OPEN (exit 0 on any error). jq is a soft-required dependency. Tun
 ### Lifecycle skills (checkpoint / end_of_day / sleep)
 
 Three skills handle session lifecycle at different granularities (v3 lifecycle separation):
-- `/checkpoint` — general-purpose state-save (mid-session, between tasks, between sessions). Three save modes: `--mode restore` (default), `--mode load-as-reference`, `--mode mid-agent`. Auto-detects compact-first flow at `COMPACT_FIRST_BPS` (default 90.00%); auto-detects mid-agent mode if other skills are active via pidfiles. Paths-not-content rule (D-04). `/checkpoint --restore` re-hydrates in fresh session.
+- `/checkpoint` — general-purpose state-save (mid-session, between tasks, between sessions). Three save modes: `--mode restore` (default), `--mode load-as-reference`, `--mode mid-agent`. Auto-detects compact-already-ran (auto-compact+pending-restore skip path) and high-util state (save immediately + surface fresh-session-or-compact options); see lifecycle-guide.md for full rules. Paths-not-content rule (D-04). `/checkpoint --restore` re-hydrates in fresh session.
 - `/end_of_day` — rolls up daily session state into `.workflow_artifacts/memory/daily/<date>.md`. Touches `lessons-learned.md` if insights promoted. Auto-invokes `/sleep`.
 - `/sleep` — Haiku-tier. Scans daily insights + session files (30-day window). Three-bucket decisions: Promote → `lessons-learned.md`; Soft-Forget → `forgotten/<date>.md`; Middle-Band → deferred. Subcommands: `--restore <pattern>`, `--purge --older-than 90d`, `--escalate`, `--dry-run`. Writes ONLY to `lessons-learned.md` + `forgotten/`; never touches `~/.claude/projects/<hash>/memory/`.
 
