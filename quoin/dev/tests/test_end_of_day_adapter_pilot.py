@@ -246,6 +246,20 @@ def test_phase_15_skills_still_covered():
         )
 
 
+def test_adapter_step_3_does_not_use_today_glob():
+    """Regression test: Step 3 must NOT use the <today>-*.md glob for session selection.
+
+    The old glob silently skipped all sessions from prior days even when their
+    end_of_day_due flag was yes. The fix replaces it with the hybrid date-window rule.
+    """
+    text = _adapter_skill("end_of_day").read_text(encoding="utf-8")
+    # The literal glob that caused the bug:
+    assert "sessions/<today>-*.md" not in text, (
+        "end_of_day SKILL.md Step 3 must NOT use the today-only glob "
+        "'sessions/<today>-*.md'. Replace with the hybrid date-window + flag rule."
+    )
+
+
 def test_install_fresh_clone_lists_end_of_day_in_migrated_skills():
     """Guard that test_install_fresh_clone.py includes end_of_day in MIGRATED_SKILLS (T-07 edit)."""
     target = PKG_DIR / "dev" / "tests" / "test_install_fresh_clone.py"

@@ -133,7 +133,7 @@ perms = settings.setdefault("permissions", {})
 allow = perms.setdefault("allow", [])
 deny = perms.setdefault("deny", [])
 
-for p in ["Read", "Glob", "Grep", "Bash(*)", "WebFetch", "WebSearch",
+for p in ["Read", "Glob", "Grep", "Edit", "Write", "Bash(*)", "WebFetch", "WebSearch",
           "Bash(rm:*.tmp)", "Bash(rm:*.body.tmp)"]:
     if p not in allow: allow.append(p)
 
@@ -147,6 +147,7 @@ for p in [
 ]:
     if p not in deny: deny.append(p)
 
+# json.dump never emits trailing commas; if a human later hand-edits this file, run python3 -m json.tool to validate.
 json.dump(settings, open(path, "w"), indent=2)
 ```
 

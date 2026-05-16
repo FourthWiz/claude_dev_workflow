@@ -102,6 +102,40 @@ Multiple sessions can run in a day (parallel tasks, or revisiting a task). Each 
 
 ## Process
 
+### Step 0: Check for `--recover-orphans` flag
+
+If the user invoked `/end_of_day --recover-orphans`, run the orphan-detection procedure BEFORE
+the normal session-selection (Step 3). The procedure identifies session files that were marked
+`end_of_day_due: no` (either by a previous EOD run or manually) but whose task-name slug has
+NEVER appeared in any daily-cache file body — these sessions were silently skipped and their
+work was never captured.
+
+**Orphan detection procedure (proc:T-19):**
+1. Scan all session files under `.workflow_artifacts/memory/sessions/`. For each with
+   `end_of_day_due: no`, extract the slug (the portion of the filename AFTER the date prefix
+   and BEFORE `.md`; e.g. for `2026-05-13-foo-bar.md` the slug is `foo-bar`).
+2. Read every daily file matching `daily/<YYYY-MM-DD>.md` (excluding `insights-*.md`). Build
+   the union of all body text across these daily files.
+3. A session is an **orphan** iff its slug is absent from the union body text, using a
+   **word-boundary-aware** regex: `r"(?<![\w-])" + re.escape(slug) + r"(?![\w-])"`. Hyphens
+   count as part of the slug token — so slug `json-discovery-map` does NOT match inside
+   `json-discovery-map-review`. This prevents false-positive "covered" verdicts caused by
+   prefix collisions.
+4. Partition orphans by file date: **RECENT** (file_date >= today - 7 days) and **HISTORICAL**
+   (older). The shared helper `quoin/core/scripts/select_unprocessed_sessions.py`'s
+   `find_orphans()` implements this procedure exactly.
+5. If no orphans → print "No orphaned sessions detected." then proceed with normal EOD (Step 1).
+6. If RECENT orphans → print a numbered list (file_date + slug for each), then prompt:
+   `Include in today's rollup? [y/N]` (default No; empty/n/N = No).
+7. If HISTORICAL orphans → after the RECENT prompt completes, print a second prompt:
+   `<K> older orphaned sessions detected (pre-7-day window). Include in today's rollup? [y/N]`
+   (default No).
+8. For each confirmed group: treat those sessions as `end_of_day_due: yes` for THIS run only.
+   Do NOT permanently flip the flag until AFTER the daily-cache write succeeds (crash safety).
+   After the daily-cache write, Step 3d flips them to `no` per normal flow.
+9. Per-session granularity is NOT supported in this revision — group-level confirmation only.
+   Per-session selection is a follow-up item tracked in next-steps.md.
+
 ### Step 1: Save current session state (skip if no active task)
 
 # V-05 reminder: T-NN/D-NN/R-NN/F-NN/Q-NN/S-NN are FILE-LOCAL.
@@ -158,7 +192,39 @@ The goal is to capture the *logic* of recent changes — not just file lists but
 
 ### Step 3: Produce the daily cache
 
-Read all session files for today from `.workflow_artifacts/memory/sessions/<today>-*.md`. For each:
+**Session selection — hybrid date-window + flag rule:**
+
+First, discover the processing window lower bound (proc:T-03):
+1. Scan `daily/<YYYY-MM-DD>.md` files (excluding `insights-*.md`). Find the most recent one by
+   date. Call its date `last_daily_date`.
+2. If no prior daily exists → `lower_bound = today`.
+3. If `last_daily_date >= today` → `lower_bound = today` (same-day re-run — merge mode; see
+   proc:D-06 below).
+4. Otherwise → `lower_bound = last_daily_date + 1 day`.
+
+Example: if last daily is 2026-05-13 and today is 2026-05-16, scan dates 2026-05-14,
+2026-05-15, 2026-05-16 (lower_bound = 2026-05-14).
+
+Then enumerate session files. A session file at `.workflow_artifacts/memory/sessions/<FILE>` is
+"unprocessed and in scope" iff ALL of:
+  (a) basename matches `^\d{4}-\d{2}-\d{2}-.+\.md$`
+  (b) `## Cost` block contains `end_of_day_due: yes` (missing field treated as `yes` per D-02)
+  (c) file's date prefix is within `[lower_bound, today]` inclusive OR date is before
+      `lower_bound` but flag is still `yes`
+
+Legacy session files lacking the `end_of_day_due` line are treated as `yes` (D-02).
+Future-dated files (date > today) are excluded.
+
+The shared helper `quoin/core/scripts/select_unprocessed_sessions.py`'s
+`select_unprocessed_sessions()` implements this procedure exactly and can be invoked as a
+cross-check: `python3 quoin/core/scripts/select_unprocessed_sessions.py --window LOWER..today --lower-bound-source daily`
+
+**Same-day re-run:** If `daily/<today>.md` already exists when Step 3 begins, MERGE per
+proc:D-06 (section-by-section algorithm) rather than overwrite. If unable to merge (proc:D-06
+step 12 detects unrecoverable corruption), refuse with:
+`daily/<today>.md is malformed; rename to <date>.md.bak and re-run`.
+
+For each in-scope session file:
 - If status is `completed` → note it as done, no action needed
 - If status is `in_progress` or `blocked` → include in the daily cache
 
@@ -172,7 +238,14 @@ Write the daily cache to `.workflow_artifacts/memory/daily/<date>.md`:
 <5-8 line plain-English summary: what was the day's focus; which tasks made progress; what is the biggest open blocker; what to do tomorrow. Written directly by the Haiku writer in the same generation as the body — NOT via a summary script>
 
 ## Summary
-<1-2 sentences: what was the day's focus, what got done, what's left>
+<1-2 sentences: what was the day's focus, what got done, what's left. Include inline: "Sessions processed from <lower_bound> to <today> (<K> days, <N> session files).">
+
+## Sessions processed
+
+| Date | Task | Phase | Status | Notes |
+|------|------|-------|--------|-------|
+| YYYY-MM-DD | task-name | implement | completed | — |
+| YYYY-MM-DD | task-name | plan | in_progress | resumed tomorrow |
 
 ## Completed today
 - **<task-name>**: <what was finished>
@@ -211,13 +284,14 @@ Write the daily cache to `.workflow_artifacts/memory/daily/<date>.md`:
 <Based on what's unfinished, suggest what to tackle first>
 ```
 
-To populate the **Cost summary** section: for each active task today, check if `.workflow_artifacts/<task-name>/cost-ledger.md` exists. If it does, count the data lines (non-header, non-blank) where the date column matches today's date, and list the unique phase values. Do NOT run `npx ccusage` — Haiku does not orchestrate cost lookups. Just report counts and phases. Dollar amounts are computed by `/end_of_task`.
+To populate the **Cost summary** section: for each active task, check if `.workflow_artifacts/<task-name>/cost-ledger.md` exists. If it does, count the data lines (non-header, non-blank) where the date column falls within the processed date window (lower_bound..today, inclusive), and list the unique phase values. Do NOT run `npx ccusage` — Haiku does not orchestrate cost lookups. Just report counts and phases. Dollar amounts are computed by `/end_of_task`.
 
-Also scan today's session-state files at `.workflow_artifacts/memory/sessions/<today>-*.md` for each active task. For each file, read the `## Cost` block and extract the `fallback_fires:` field via regex `^- fallback_fires:\s*(\d+)\s*$`. Sum per task. For each task with today's fallback total > 0, append the suffix `; <K> fallback fires today` to that task's Cost summary line. Add a `## Day total` line at the bottom of the Cost summary block when the day's fallback sum > 0: `Day total fallback fires: <K>`. After the Day total line, add: "A non-zero fallback count indicates one or more Class B writers fell back to v2-style write (no `## For human` summary, no validator gate). Investigate which skill emitted `[format-kit-skipped]` and triage before next session." Sessions lacking the `fallback_fires` line (pre-Stage-4) are treated as 0 — no warning emitted.
+Also scan all session-state files in the processed window — same selection rule as Step 3 (the set of files selected by the hybrid date-window + flag rule). For each file, read the `## Cost` block and extract the `fallback_fires:` field via regex `^- fallback_fires:\s*(\d+)\s*$`. Sum per task across the processed window. For each task with window fallback total > 0, append the suffix `; <K> fallback fires in window` to that task's Cost summary line. When the window spans more than one day, use `Window total fallback fires: <K>` at the bottom of the Cost summary block; for a single-day window, use `Day total fallback fires: <K>` (backward-compat). After the total line, add: "A non-zero fallback count indicates one or more Class B writers fell back to v2-style write (no `## For human` summary, no validator gate). Investigate which skill emitted `[format-kit-skipped]` and triage before next session." Sessions lacking the `fallback_fires` line (pre-Stage-4) are treated as 0 — no warning emitted.
 
 ### Step 3b: Review and promote daily insights
 
-Check if `.workflow_artifacts/memory/daily/insights-<today>.md` exists. If it does:
+Check for insights files `daily/insights-<DATE>.md` for every DATE in the processed window
+(lower_bound..today, inclusive). Read and combine all that exist. If none exist, skip this step.
 
 **Pass 1 — Filter:**
 - Skip entries tagged `Promote?: no`
@@ -262,7 +336,7 @@ Wait for the user's response, then append confirmed entries to `.workflow_artifa
 **Applies to:** <relevant skills>
 ```
 
-If the insights file doesn't exist or has no promotable entries, skip this step silently.
+When presenting the promotion confirmation, group entries by source-date: `[yes/2026-05-14] <summary>`. If no insights files exist for the processed window or none have promotable entries, skip this step silently.
 
 ### Step 3c: Prune lessons-learned if oversized
 
@@ -291,7 +365,9 @@ Check `.workflow_artifacts/memory/lessons-learned.md`. Count the number of lesso
 **After** the daily-cache write (Step 3) succeeds, do two things:
 
 **1. Flip `end_of_day_due: no`** in each session-state file that was rolled into the daily cache:
-- For each session file processed in Step 3 (those read from `.workflow_artifacts/memory/sessions/<today>-*.md`), edit the file in place to set `end_of_day_due: no`.
+- For each session file the Step 3 hybrid selection rule produced (NOT only today's files — all
+  files in the processed window that had `end_of_day_due: yes`, plus any orphan-recovery files
+  confirmed in Step 0), edit the file in place to set `end_of_day_due: no`.
 - Use an atomic write: open the file, replace the `end_of_day_due: yes` line with `end_of_day_due: no`, write to `<path>.tmp`, then `os.rename(tmp, path)`.
 - Flip ONLY after the daily-cache write succeeded — a crashed `/end_of_day` must NOT mark sessions as processed.
 - This is one of two signals `/start_of_day` reads to detect a missing-EOD condition (the other is the existing insights-file check).

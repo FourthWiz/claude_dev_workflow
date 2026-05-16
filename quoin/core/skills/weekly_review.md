@@ -22,8 +22,12 @@ edits source files, never invokes another workflow phase.
 
 - Daily-cache files for each date in the week range:
   `.workflow_artifacts/memory/daily/<date>.md`.
-- Session-state files for dates in the range:
-  `.workflow_artifacts/memory/sessions/<date>-*.md`.
+- Session-state files: enumerated via `select_unprocessed_sessions` helper
+  (`quoin/core/scripts/select_unprocessed_sessions.py --lower-bound-source weekly`)
+  using the hybrid flag + date-window rule identical to `/end_of_day`. The weekly-mode
+  `lower_bound` is `(most_recent_prior_weekly_file_date + 7 days)`, or `(today - 7 days)`
+  if no prior weekly file exists. Legacy session files lacking `end_of_day_due` are
+  treated as `yes`.
 - Rolling git-log: `.workflow_artifacts/memory/git-log.md`.
 - Lessons-learned file (advisory): `.workflow_artifacts/memory/lessons-learned.md`.
 - Per-task cost-ledger row counts: each active task's
@@ -48,6 +52,11 @@ edits source files, never invokes another workflow phase.
 
 - Read once: today's daily caches, session files, and git-log are read once per
   invocation; never re-evaluated during the same run.
+- Orphan detection: session files in the week range whose `end_of_day_due: no` flag AND
+  whose slug is absent from every daily body covering that week are surfaced in a
+  "Orphaned sessions detected" subsection of the weekly review. These are NOT included
+  in the completed-tasks rollup. The user must run `/end_of_day --recover-orphans`
+  separately to recover them.
 - Error-tolerant: every input lookup MUST tolerate missing or unreadable files as "no
   signal" and continue. A missing daily cache for a date is a no-op, not an error;
   the skill MUST handle sparse weeks gracefully.
