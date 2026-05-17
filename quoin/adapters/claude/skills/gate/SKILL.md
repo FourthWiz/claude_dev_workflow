@@ -252,9 +252,7 @@ If v3-format: capture the lines from the line after `## For human` until the nex
 **Action required:** Type `/implement` (or the next skill) to proceed, or tell me what to fix first.
 ```
 
-### Step 4: STOP and wait
-
-**Step 4a: Benchmark auto-approve check (runs BEFORE the STOP)**
+### Step 3.5: Benchmark auto-approve check (runs BEFORE Step 4 STOP)
 
 Before blocking on user input, check whether BOTH of the following environment
 variables are set in the current process environment:
@@ -284,7 +282,9 @@ behaves normally — it blocks and waits for human input. The `QUOIN_BENCHMARK_R
 variable is set by the benchmark orchestrator (`run_benchmark.py`) and is not
 normally present in interactive user sessions.
 
-**If only ONE or NEITHER variable is set:** proceed normally to the STOP below.
+**If only ONE or NEITHER variable is set:** proceed normally to Step 4 below.
+
+### Step 4: STOP and wait
 
 Do NOT proceed. Do NOT invoke the next skill. Do NOT suggest "I'll go ahead and start implementing."
 

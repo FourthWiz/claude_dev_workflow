@@ -538,3 +538,74 @@ class TestGateAutoApprove:
         for field in required_auto_approve_audit_fields:
             assert field in audit_fields, f"Missing required auto-approve audit field: {field}"
         assert audit_fields["auto_approved"] is True
+
+
+# ---------------------------------------------------------------------------
+# T-19: Static-assertion test — gate/SKILL.md text contracts
+# ---------------------------------------------------------------------------
+
+
+class TestGateSkillText:
+    """
+    Static-assertion tests that verify gate/SKILL.md actually contains the
+    T-19 auto-approve plumbing (not just a Python mirror of the logic).
+
+    These tests read the SKILL.md file on disk and assert that the required
+    env-var names, audit fields, and logical AND context are all present.
+    They complement TestGateAutoApprove (which tests decision logic) by
+    verifying the actual gate skill text, in the spirit of test_gate_audit_persistence.py.
+    """
+
+    @staticmethod
+    def _load_gate_skill() -> str:
+        import pathlib
+        project_root = pathlib.Path(__file__).resolve().parent.parent.parent.parent
+        gate_skill = project_root / "quoin" / "adapters" / "claude" / "skills" / "gate" / "SKILL.md"
+        return gate_skill.read_text()
+
+    def test_gate_auto_approve_text_invariants(self):
+        """
+        SKILL.md must contain the T-19 auto-approve plumbing:
+        1. QUOIN_GATE_AUTO_APPROVE appears at least twice (definition + use)
+        2. QUOIN_BENCHMARK_RUN appears at least once
+        3. auto_approved: true appears in the audit-fields block
+        4. Both env vars appear within 10 lines of each other (AND context)
+        """
+        text = self._load_gate_skill()
+
+        # 1. QUOIN_GATE_AUTO_APPROVE appears at least twice
+        count_auto_approve = text.count("QUOIN_GATE_AUTO_APPROVE")
+        assert count_auto_approve >= 2, (
+            f"gate/SKILL.md: expected QUOIN_GATE_AUTO_APPROVE to appear at least twice "
+            f"(definition + use), found {count_auto_approve} occurrence(s)"
+        )
+
+        # 2. QUOIN_BENCHMARK_RUN appears at least once
+        assert "QUOIN_BENCHMARK_RUN" in text, (
+            "gate/SKILL.md: QUOIN_BENCHMARK_RUN env-var name not found — "
+            "T-19 dual-guard requirement is missing from SKILL.md"
+        )
+
+        # 3. auto_approved: true appears in the audit-fields block
+        assert "auto_approved: true" in text, (
+            "gate/SKILL.md: 'auto_approved: true' audit field not found — "
+            "the gate skill must write this field when auto-approving for benchmark runs"
+        )
+
+        # 4. Both env vars appear within 10 lines of each other (AND context)
+        lines = text.splitlines()
+        auto_approve_lines = [i for i, ln in enumerate(lines) if "QUOIN_GATE_AUTO_APPROVE" in ln]
+        benchmark_run_lines = [i for i, ln in enumerate(lines) if "QUOIN_BENCHMARK_RUN" in ln]
+        assert auto_approve_lines, "QUOIN_GATE_AUTO_APPROVE not found in any line"
+        assert benchmark_run_lines, "QUOIN_BENCHMARK_RUN not found in any line"
+        # At least one pair of lines must be within 10 lines of each other
+        found_close_pair = any(
+            abs(a - b) <= 10
+            for a in auto_approve_lines
+            for b in benchmark_run_lines
+        )
+        assert found_close_pair, (
+            "gate/SKILL.md: QUOIN_GATE_AUTO_APPROVE and QUOIN_BENCHMARK_RUN do not appear "
+            "within 10 lines of each other in any passage — the dual-guard AND context "
+            "may be missing or split across the file"
+        )
