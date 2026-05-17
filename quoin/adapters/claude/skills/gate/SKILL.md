@@ -254,6 +254,38 @@ If v3-format: capture the lines from the line after `## For human` until the nex
 
 ### Step 4: STOP and wait
 
+**Step 4a: Benchmark auto-approve check (runs BEFORE the STOP)**
+
+Before blocking on user input, check whether BOTH of the following environment
+variables are set in the current process environment:
+
+  - `QUOIN_GATE_AUTO_APPROVE=1`
+  - `QUOIN_BENCHMARK_RUN` (any non-empty value)
+
+Detection: read `os.environ` (or shell-equivalent) for both keys.
+
+**If and only if BOTH are set:**
+
+1. Do NOT block on user input. Do NOT call AskUserQuestion.
+2. Emit a one-line notice to stdout (for run-manifest traceability):
+   `[quoin-gate: auto-approved] QUOIN_GATE_AUTO_APPROVE=1 QUOIN_BENCHMARK_RUN=<value> — skipping human gate for benchmark run`
+3. Treat this as an implicit user approval and proceed DIRECTLY to Step 5.
+4. In Step 5, write the audit log with the following extra fields:
+   - `auto_approved: true`
+   - `env: QUOIN_GATE_AUTO_APPROVE=1 QUOIN_BENCHMARK_RUN=<run_id_value>`
+   - `gate_encountered_at: <ISO timestamp>`
+   - `benchmark_run_id: <QUOIN_BENCHMARK_RUN value>`
+
+**Security rationale (dual-guard requirement):**
+The dual env-var guard prevents accidental auto-approval in production user
+sessions where only one variable might be set by accident. If only
+`QUOIN_GATE_AUTO_APPROVE=1` is set (without `QUOIN_BENCHMARK_RUN`), the gate
+behaves normally — it blocks and waits for human input. The `QUOIN_BENCHMARK_RUN`
+variable is set by the benchmark orchestrator (`run_benchmark.py`) and is not
+normally present in interactive user sessions.
+
+**If only ONE or NEITHER variable is set:** proceed normally to the STOP below.
+
 Do NOT proceed. Do NOT invoke the next skill. Do NOT suggest "I'll go ahead and start implementing."
 
 The user must explicitly invoke the next phase. This is non-negotiable.

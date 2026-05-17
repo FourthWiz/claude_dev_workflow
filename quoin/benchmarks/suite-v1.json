@@ -1,0 +1,1089 @@
+{
+  "schema_version": 2,
+  "description": "Quoin benchmark v1 task suite — 100 EvalPlus HumanEval+ tasks + 20 SWE-bench Lite instances. Generated deterministically via pick_subset.py --seed 1729. Do not edit manually; regenerate from pick_subset.py.",
+  "generated_by": "quoin/benchmarks/scripts/pick_subset.py",
+  "seed": 1729,
+  "provenance_file": "quoin/benchmarks/suite-v1-provenance.md",
+  "tasks": [
+    {
+      "id": "humaneval_plus_000",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/0",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "has_close_elements: check if any two numbers closer than threshold"
+    },
+    {
+      "id": "humaneval_plus_001",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/1",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "separate_paren_groups: separate groups of nested parentheses"
+    },
+    {
+      "id": "humaneval_plus_002",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/2",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "truncate_number: get decimal part of float"
+    },
+    {
+      "id": "humaneval_plus_003",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/3",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "below_zero: check if balance goes below zero"
+    },
+    {
+      "id": "humaneval_plus_004",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/4",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "mean_absolute_deviation: calculate MAD"
+    },
+    {
+      "id": "humaneval_plus_005",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/5",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "intersperse: insert separator between list elements"
+    },
+    {
+      "id": "humaneval_plus_006",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/6",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "parse_nested_parens: parse nested paren string into depth list"
+    },
+    {
+      "id": "humaneval_plus_007",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/7",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "filter_by_substring: filter string list by substring"
+    },
+    {
+      "id": "humaneval_plus_008",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/8",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "sum_product: return tuple of sum and product"
+    },
+    {
+      "id": "humaneval_plus_009",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/9",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "rolling_max: running maximum of list"
+    },
+    {
+      "id": "humaneval_plus_010",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/10",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "make_palindrome: find shortest palindrome"
+    },
+    {
+      "id": "humaneval_plus_011",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/11",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "string_xor: bitwise XOR of binary strings"
+    },
+    {
+      "id": "humaneval_plus_012",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/12",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "longest: find longest string in list"
+    },
+    {
+      "id": "humaneval_plus_013",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/13",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "greatest_common_divisor: compute GCD"
+    },
+    {
+      "id": "humaneval_plus_014",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/14",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "all_prefixes: list all prefixes of string"
+    },
+    {
+      "id": "humaneval_plus_015",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/15",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "string_sequence: space-delimited sequence 0..n"
+    },
+    {
+      "id": "humaneval_plus_016",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/16",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "count_distinct_characters: count unique chars in string"
+    },
+    {
+      "id": "humaneval_plus_017",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/17",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "parse_music: parse pipe-encoded music sheet"
+    },
+    {
+      "id": "humaneval_plus_018",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/18",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "how_many_times: count substring occurrences"
+    },
+    {
+      "id": "humaneval_plus_019",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/19",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "sort_numbers: sort number words"
+    },
+    {
+      "id": "humaneval_plus_020",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/20",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "find_closest_elements: find closest pair in sorted list"
+    },
+    {
+      "id": "humaneval_plus_021",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/21",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "rescale_to_unit: rescale list to [0,1]"
+    },
+    {
+      "id": "humaneval_plus_022",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/22",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "filter_integers: keep only integers from list"
+    },
+    {
+      "id": "humaneval_plus_023",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/23",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "strlen: string length"
+    },
+    {
+      "id": "humaneval_plus_024",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/24",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "largest_divisor: largest divisor of n"
+    },
+    {
+      "id": "humaneval_plus_025",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/25",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "factorize: prime factorization"
+    },
+    {
+      "id": "humaneval_plus_026",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/26",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "remove_duplicates: remove duplicates from list"
+    },
+    {
+      "id": "humaneval_plus_027",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/27",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "flip_case: flip case of string"
+    },
+    {
+      "id": "humaneval_plus_028",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/28",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "concatenate: concatenate list of strings"
+    },
+    {
+      "id": "humaneval_plus_029",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/29",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "filter_by_prefix: filter strings by prefix"
+    },
+    {
+      "id": "humaneval_plus_030",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/30",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "get_positive: return positive numbers from list"
+    },
+    {
+      "id": "humaneval_plus_031",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/31",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "is_prime: primality test"
+    },
+    {
+      "id": "humaneval_plus_032",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/32",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 8,
+      "description": "find_zero: find zero of polynomial"
+    },
+    {
+      "id": "humaneval_plus_033",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/33",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "sort_third: sort every third element"
+    },
+    {
+      "id": "humaneval_plus_034",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/34",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "unique: return sorted unique elements"
+    },
+    {
+      "id": "humaneval_plus_035",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/35",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "max_element: find max of list"
+    },
+    {
+      "id": "humaneval_plus_036",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/36",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "fizz_buzz: count 7s in fizzbuzz-filtered range"
+    },
+    {
+      "id": "humaneval_plus_037",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/37",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "sort_even: sort even-indexed elements"
+    },
+    {
+      "id": "humaneval_plus_038",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/38",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "encode_cyclic: Caesar cipher encode/decode"
+    },
+    {
+      "id": "humaneval_plus_039",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/39",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "prime_fib: nth Fibonacci prime"
+    },
+    {
+      "id": "humaneval_plus_040",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/40",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "triples_sum_to_zero: any 3 elements sum to zero"
+    },
+    {
+      "id": "humaneval_plus_041",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/41",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "car_race_collision: count collisions"
+    },
+    {
+      "id": "humaneval_plus_042",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/42",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "incr_list: increment list elements by 1"
+    },
+    {
+      "id": "humaneval_plus_043",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/43",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "pairs_sum_to_zero: any pair sums to zero"
+    },
+    {
+      "id": "humaneval_plus_044",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/44",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "change_base: convert to base"
+    },
+    {
+      "id": "humaneval_plus_045",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/45",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "triangle_area: compute triangle area"
+    },
+    {
+      "id": "humaneval_plus_046",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/46",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "fib4: 4-way Fibonacci variant"
+    },
+    {
+      "id": "humaneval_plus_047",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/47",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "median: list median"
+    },
+    {
+      "id": "humaneval_plus_048",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/48",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "is_palindrome: check palindrome"
+    },
+    {
+      "id": "humaneval_plus_049",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/49",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "modp: 2^n mod p"
+    },
+    {
+      "id": "humaneval_plus_050",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/50",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "encode_shift: shift cipher encode/decode"
+    },
+    {
+      "id": "humaneval_plus_051",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/51",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "remove_vowels: remove vowels from string"
+    },
+    {
+      "id": "humaneval_plus_052",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/52",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "below_threshold: check all below threshold"
+    },
+    {
+      "id": "humaneval_plus_053",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/53",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "add: sum two integers"
+    },
+    {
+      "id": "humaneval_plus_054",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/54",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "same_chars: check if strings have same chars"
+    },
+    {
+      "id": "humaneval_plus_055",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/55",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "fib: nth Fibonacci number"
+    },
+    {
+      "id": "humaneval_plus_056",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/56",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "correct_bracketing: check bracket balance"
+    },
+    {
+      "id": "humaneval_plus_057",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/57",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "monotonic: check if list is monotonic"
+    },
+    {
+      "id": "humaneval_plus_058",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/58",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "common: sorted common elements"
+    },
+    {
+      "id": "humaneval_plus_059",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/59",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "largest_prime_factor: largest prime factor"
+    },
+    {
+      "id": "humaneval_plus_060",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/60",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "sum_to_n: sum 1..n"
+    },
+    {
+      "id": "humaneval_plus_061",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/61",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "correct_bracketing2: check angle bracket balance"
+    },
+    {
+      "id": "humaneval_plus_062",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/62",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "derivative: polynomial derivative"
+    },
+    {
+      "id": "humaneval_plus_063",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/63",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "fibfib: tribonacci sequence"
+    },
+    {
+      "id": "humaneval_plus_064",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/64",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "vowels_count: count vowels including 'y' at end"
+    },
+    {
+      "id": "humaneval_plus_065",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/65",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "circular_shift: circular shift of integer digits"
+    },
+    {
+      "id": "humaneval_plus_066",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/66",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "digitSum: sum of ASCII values of uppercase letters"
+    },
+    {
+      "id": "humaneval_plus_067",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/67",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "fruit_distribution: distribute oranges"
+    },
+    {
+      "id": "humaneval_plus_068",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/68",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "pluck: pluck smallest even node"
+    },
+    {
+      "id": "humaneval_plus_069",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/69",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "search: return number appearing more than n/2 times"
+    },
+    {
+      "id": "humaneval_plus_070",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/70",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "strange_sort_list: strange sort alternating min/max"
+    },
+    {
+      "id": "humaneval_plus_071",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/71",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "triangle_area2: triangle area from sides (Heron)"
+    },
+    {
+      "id": "humaneval_plus_072",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/72",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "will_it_fly: check if list is palindrome and sum <= w"
+    },
+    {
+      "id": "humaneval_plus_073",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/73",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "smallest_change: minimum changes to make palindrome"
+    },
+    {
+      "id": "humaneval_plus_074",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/74",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "total_match: list with fewer total chars"
+    },
+    {
+      "id": "humaneval_plus_075",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/75",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "is_multiply_prime: product of 3 primes"
+    },
+    {
+      "id": "humaneval_plus_076",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/76",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "is_simple_power: check x = n^int"
+    },
+    {
+      "id": "humaneval_plus_077",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/77",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "iscube: check if n is a perfect cube"
+    },
+    {
+      "id": "humaneval_plus_078",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/78",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "hex_key: count primes in hex string"
+    },
+    {
+      "id": "humaneval_plus_079",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/79",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "decimal_to_binary: convert decimal to binary string"
+    },
+    {
+      "id": "humaneval_plus_080",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/80",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "is_happy: check 3-consecutive-distinct char"
+    },
+    {
+      "id": "humaneval_plus_081",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/81",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "numerical_letter_grade: convert GPA to grades"
+    },
+    {
+      "id": "humaneval_plus_082",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/82",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "prime_length: check if string length is prime"
+    },
+    {
+      "id": "humaneval_plus_083",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/83",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "starts_one_ends: count n-digit numbers starting/ending with 1"
+    },
+    {
+      "id": "humaneval_plus_084",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/84",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "solve: sum of digit values in binary"
+    },
+    {
+      "id": "humaneval_plus_085",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/85",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "add_elements: sum elements with at most 2 digits"
+    },
+    {
+      "id": "humaneval_plus_086",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/86",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "anti_shuffle: sort chars in each word"
+    },
+    {
+      "id": "humaneval_plus_087",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/87",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "get_row: find occurrences of value in matrix"
+    },
+    {
+      "id": "humaneval_plus_088",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/88",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "sort_array: sort array by binary ones-count"
+    },
+    {
+      "id": "humaneval_plus_089",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/89",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "encrypt: encrypt string by rotating alphabet"
+    },
+    {
+      "id": "humaneval_plus_090",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/90",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "next_smallest: second smallest element"
+    },
+    {
+      "id": "humaneval_plus_091",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/91",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 8,
+      "description": "is_bored: count bored sentences starting with 'I'"
+    },
+    {
+      "id": "humaneval_plus_092",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/92",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "any_int: check integer addition relation"
+    },
+    {
+      "id": "humaneval_plus_093",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/93",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 8,
+      "description": "encode: encode string with odd character substitution"
+    },
+    {
+      "id": "humaneval_plus_094",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/94",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "skjkasdkd: find largest prime and digit-sum"
+    },
+    {
+      "id": "humaneval_plus_095",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/95",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "check_dict_case: check dict has all-lower or all-upper keys"
+    },
+    {
+      "id": "humaneval_plus_096",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/96",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "count_up_to: primes less than n"
+    },
+    {
+      "id": "humaneval_plus_097",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/97",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "multiply: product of last digits"
+    },
+    {
+      "id": "humaneval_plus_098",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/98",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "count_upper: count uppercase vowels at even indices"
+    },
+    {
+      "id": "humaneval_plus_099",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/99",
+      "difficulty_band": "medium",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 5,
+      "description": "closest_integer: round to closest integer with banker's rounding"
+    },
+    {
+      "id": "swebench_lite_000",
+      "source": "swebench_lite",
+      "source_id": "astropy__astropy-12907",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 15,
+      "description": "Modeling: compound models with fix_inputs fail evaluation"
+    },
+    {
+      "id": "swebench_lite_001",
+      "source": "swebench_lite",
+      "source_id": "django__django-11099",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 20,
+      "description": "usable_databases raises ImproperlyConfigured instead of DatabaseError"
+    },
+    {
+      "id": "swebench_lite_002",
+      "source": "swebench_lite",
+      "source_id": "django__django-11133",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 15,
+      "description": "HttpResponse doesn't handle memoryview"
+    },
+    {
+      "id": "swebench_lite_003",
+      "source": "swebench_lite",
+      "source_id": "django__django-11422",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 20,
+      "description": "Autoreloader with StatReloader doesn't track changes in manage.py"
+    },
+    {
+      "id": "swebench_lite_004",
+      "source": "swebench_lite",
+      "source_id": "django__django-11564",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 20,
+      "description": "Add --skip-checks option to management commands"
+    },
+    {
+      "id": "swebench_lite_005",
+      "source": "swebench_lite",
+      "source_id": "django__django-11742",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 20,
+      "description": "Autoreloader should pass -Wall when reloading the main module"
+    },
+    {
+      "id": "swebench_lite_006",
+      "source": "swebench_lite",
+      "source_id": "django__django-11815",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 25,
+      "description": "Add FilteredRelation with SELECT and subquery support"
+    },
+    {
+      "id": "swebench_lite_007",
+      "source": "swebench_lite",
+      "source_id": "django__django-11999",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 15,
+      "description": "Cannot override get_FOO_display() in Django 2.2+"
+    },
+    {
+      "id": "swebench_lite_008",
+      "source": "swebench_lite",
+      "source_id": "django__django-12286",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 20,
+      "description": "Translation strings in contrib.admin.views.main are not lazy"
+    },
+    {
+      "id": "swebench_lite_009",
+      "source": "swebench_lite",
+      "source_id": "django__django-12453",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 20,
+      "description": "FileField should not re-upload file if same name"
+    },
+    {
+      "id": "swebench_lite_010",
+      "source": "swebench_lite",
+      "source_id": "matplotlib__matplotlib-18869",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 20,
+      "description": "Legend not displayed correctly with certain rcParams"
+    },
+    {
+      "id": "swebench_lite_011",
+      "source": "swebench_lite",
+      "source_id": "matplotlib__matplotlib-23299",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 20,
+      "description": "get_backend() clears figures created under rc_context"
+    },
+    {
+      "id": "swebench_lite_012",
+      "source": "swebench_lite",
+      "source_id": "psf__requests-2317",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 15,
+      "description": "Requests should raise an error when it encounters an invalid url"
+    },
+    {
+      "id": "swebench_lite_013",
+      "source": "swebench_lite",
+      "source_id": "psf__requests-3362",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 15,
+      "description": "Proxy-Authorization header persisted after redirect"
+    },
+    {
+      "id": "swebench_lite_014",
+      "source": "swebench_lite",
+      "source_id": "pylint-dev__pylint-5859",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 20,
+      "description": "\"--recursive=y\" fails to recurse into subdirectories"
+    },
+    {
+      "id": "swebench_lite_015",
+      "source": "swebench_lite",
+      "source_id": "pydata__xarray-4094",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 20,
+      "description": "Inconsistent behavior of concat along non-first level of MultiIndex"
+    },
+    {
+      "id": "swebench_lite_016",
+      "source": "swebench_lite",
+      "source_id": "scikit-learn__scikit-learn-10508",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 20,
+      "description": "LassoLars and LassoLarsIC fail with fit_intercept=False"
+    },
+    {
+      "id": "swebench_lite_017",
+      "source": "swebench_lite",
+      "source_id": "scikit-learn__scikit-learn-13142",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 20,
+      "description": "GaussianMixture predict and fit_predict disagreement"
+    },
+    {
+      "id": "swebench_lite_018",
+      "source": "swebench_lite",
+      "source_id": "sphinx-doc__sphinx-8627",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 20,
+      "description": "autodoc: TypeError when generating docs for singledispatch"
+    },
+    {
+      "id": "swebench_lite_019",
+      "source": "swebench_lite",
+      "source_id": "sympy__sympy-14396",
+      "difficulty_band": "hard",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 25,
+      "description": "Inconsistent behavior of Piecewise with integrate"
+    }
+  ]
+}

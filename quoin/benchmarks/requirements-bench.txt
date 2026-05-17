@@ -1,0 +1,24 @@
+# Requirements for the quoin benchmark harness
+# Pin exact versions at benchmark time by running:
+#   pip freeze | grep -E "evalplus|swebench|statsmodels" >> requirements-bench.txt
+# then replace the version specifiers below with the pinned versions.
+#
+# These versions must be the same for all benchmark runs in a single study
+# (invariant 10: library versions pinned).
+#
+# UPDATE AT BENCHMARK TIME: pin exact versions from pip freeze output.
+
+# EvalPlus: HumanEval+ and MBPP+ evaluation framework
+# Source: https://github.com/evalplus/evalplus
+evalplus>=0.3.0  # Pin exact version at benchmark time
+
+# SWE-bench: Software Engineering benchmark
+# Source: https://github.com/SWE-bench/SWE-bench
+swebench>=3.0.0  # Pin exact version at benchmark time
+
+# statsmodels: Wilson CIs and McNemar test (invariant statistics)
+# Used in harness/aggregate.py
+statsmodels>=0.14.0  # Pin exact version at benchmark time
+
+# PyYAML: YAML parsing for run-manifest.yaml
+pyyaml>=6.0  # Pin exact version at benchmark time
