@@ -102,3 +102,51 @@ Notes:
 - `.workflow_artifacts/` — all workflow artifacts: memory, task plans, session state (gitignored)
 - `.workflow_artifacts/cache/` — auto-maintained code summary cache (knowledge cache)
 - `~/.claude/skills/` — all workflow skill definitions (user-level)
+
+## Running benchmarks
+
+The quantitative benchmark harness (`quoin/benchmarks/`) measures pass-rate-per-dollar for quoin-assisted vs. plain agent workflows on HumanEval+ tasks. Full design: `quoin/benchmarks/methodology.md`.
+
+**Prerequisites:** Claude Code CLI authenticated, `evalplus` installed, Docker available for judge.
+
+**Step 1 — dry-run (always first, estimates cost without running agents):**
+
+```bash
+python3 quoin/benchmarks/scripts/run_benchmark.py \
+    --suite quoin/benchmarks/suite-smoke.json \
+    --cells simple-claude,quoin-claude \
+    --run-id v0-smoke \
+    --dry-run
+```
+
+**Step 2 — smoke run (3 tasks, one cell, confirms harness works end-to-end):**
+
+```bash
+python3 quoin/benchmarks/scripts/run_benchmark.py \
+    --suite quoin/benchmarks/suite-smoke.json \
+    --cells simple-claude \
+    --run-id v0-smoke \
+    --max-parallel 1
+```
+
+**Step 3 — full v1 run (requires explicit budget approval from dry-run output):**
+
+```bash
+python3 quoin/benchmarks/scripts/run_benchmark.py \
+    --suite quoin/benchmarks/suite-v1.json \
+    --cells simple-claude,quoin-claude \
+    --run-id v1 \
+    --max-parallel 2 \
+    --resume
+```
+
+Use `--resume` to continue an interrupted run without re-running completed tasks.
+
+**Check results:**
+
+```bash
+python3 quoin/benchmarks/scripts/check_invariants.py --run-id v1
+cat .workflow_artifacts/quoin-benchmarks/runs/v1/summary.md
+```
+
+Results land in `.workflow_artifacts/quoin-benchmarks/runs/<run-id>/`. Each cell × task directory contains `judge.json`, `metrics.json`, `cost.json`, and the full agent transcript.

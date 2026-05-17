@@ -82,3 +82,104 @@ python3 quoin/benchmarks/scripts/validate_benchmarks.py --project-root .
 
 This check validates the manifest, scenario files, templates, comparison modes,
 and metric coverage. It does not execute benchmark tasks or infer results.
+
+## Quantitative Benchmark Harness (v1)
+
+The `harness/` directory and `scripts/run_benchmark.py` implement an automated,
+quantitative benchmark for measuring quoin's effect on coding-agent pass-rate-per-dollar
+against external benchmarks (EvalPlus HumanEval+ and SWE-bench Lite).
+
+See `methodology.md` for the full benchmark design.
+
+### Running a v1 Benchmark
+
+**Prerequisites:**
+- Claude Code CLI installed and authenticated (`claude --version`)
+- Codex CLI installed if running Codex cells (`codex --version`)
+- evalplus and swebench installed (`pip install evalplus swebench`)
+- Docker available for judge evaluation (SWE-bench Lite)
+- statsmodels installed for CI computation (`pip install statsmodels`)
+
+**Step 1: Dry-run to estimate costs (required before any real run)**
+
+```bash
+python3 quoin/benchmarks/scripts/run_benchmark.py \
+    --suite quoin/benchmarks/suite-v1.json \
+    --cells simple-claude,quoin-claude \
+    --run-id v1 \
+    --dry-run
+```
+
+The dry-run prints the planned task × cell matrix and cost estimates without
+invoking any agent.
+
+**Step 2: Smoke run (3 tasks, simple-claude only)**
+
+```bash
+python3 quoin/benchmarks/scripts/run_benchmark.py \
+    --suite quoin/benchmarks/suite-v1.json \
+    --cells simple-claude \
+    --run-id v0-smoke \
+    --max-parallel 1
+```
+
+Requires explicit user budget approval (T-14) before proceeding to larger runs.
+
+**Step 3: Calibration run (T-15)**
+
+After budget approval from T-14:
+```bash
+python3 quoin/benchmarks/scripts/run_benchmark.py \
+    --suite quoin/benchmarks/suite-v1.json \
+    --cells simple-claude,quoin-claude \
+    --run-id v05-calibration \
+    --max-parallel 2
+```
+
+**Step 4: Full v1 run (T-17, requires T-16 budget gate approval)**
+
+```bash
+python3 quoin/benchmarks/scripts/run_benchmark.py \
+    --suite quoin/benchmarks/suite-v1.json \
+    --cells simple-claude,quoin-claude,simple-codex,quoin-codex \
+    --run-id v1 \
+    --max-parallel 4 \
+    --resume
+```
+
+Use `--resume` to continue an interrupted run without re-running completed tasks.
+
+**Step 5: Check invariants and view results**
+
+```bash
+python3 quoin/benchmarks/scripts/check_invariants.py --run-id v1
+cat .workflow_artifacts/quoin-benchmarks/runs/v1/summary.md
+```
+
+### Output Files
+
+Each completed run produces:
+```
+.workflow_artifacts/quoin-benchmarks/runs/<run-id>/
+    run-manifest.yaml              — pinned config + git SHA
+    summary.json                   — machine-readable aggregated metrics
+    summary.md                     — human-readable Markdown report
+    invariants-report.md           — fair-comparison invariant check results
+    <cell>/<task-id>/
+        prompt.txt                 — prompt sent to agent
+        transcript.jsonl           — full agent session transcript
+        diff.patch                 — git diff of worktree after agent run
+        judge.json                 — verdict (pass/fail/error/timeout)
+        metrics.json               — timing and token metrics
+        cost.json                  — cost data (or not_available for Codex)
+```
+
+### Benchmark Auto-Approve (QUOIN_GATE_AUTO_APPROVE)
+
+For unattended benchmark runs, the `quoin-claude` cell sets both:
+- `QUOIN_GATE_AUTO_APPROVE=1`
+- `QUOIN_BENCHMARK_RUN=<run-id>`
+
+When BOTH are set, `/gate` auto-approves without human input and records
+`auto_approved: true` in the gate audit log. This requires the gate plumbing
+implemented in T-19. See `methodology.md` for the auto-mode caveats.

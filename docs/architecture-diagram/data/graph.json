@@ -1,0 +1,189 @@
+{
+  "meta": {
+    "generated": "high-level-logical-view",
+    "version": "2.0",
+    "note": "Logical group view — each node represents a cluster of related components, not individual files"
+  },
+  "nodes": [
+    {
+      "id": "g-orchestrators",
+      "label": "Orchestrators",
+      "type": "group",
+      "layer": "claude-adapter",
+      "summary": "/run · /thorough_plan · /triage — Route user intent to the right workflow phase.",
+      "details_md": "## Orchestrators\n\nThe three skills that route and sequence the entire workflow:\n\n- **/run** — end-to-end chain: discover → architect → plan → implement → review → end_of_task. Pauses at each gate.\n- **/thorough_plan** — triages task by size (Small/Medium/Large) and runs the plan→critic→revise convergence loop.\n- **/triage** — lightweight router that reads a prompt and proposes the right skill.\n\nAll three are Opus-tier, Claude-adapter only."
+    },
+    {
+      "id": "g-planning",
+      "label": "Planning Skills",
+      "type": "group",
+      "layer": "portable-core",
+      "summary": "/discover · /architect · /plan · /critic · /revise · /revise-fast — Produce and converge on an implementation plan.",
+      "details_md": "## Planning Skills\n\nProduces plans through a convergence loop:\n\n1. **/discover** — scans all repos, produces inventory + dependency map\n2. **/architect** — deep analysis, produces `architecture.md` with stage decomposition (internal critic loop max 2–4 rounds)\n3. **/plan** — detailed implementation-ready plan (always Opus)\n4. **/critic** — finds gaps, risks, integration issues (always Opus)\n5. **/revise** — addresses critic feedback (Opus in strict mode)\n6. **/revise-fast** — cost-efficient Sonnet revision for medium tasks\n\n**Outputs:** `architecture.md`, `current-plan.md`, `critic-response-N.md`"
+    },
+    {
+      "id": "g-execution",
+      "label": "Execution Skills",
+      "type": "group",
+      "layer": "portable-core",
+      "summary": "/implement · /gate · /review · /rollback · /end_of_task — Write code, verify quality, ship.",
+      "details_md": "## Execution Skills\n\nTurn the plan into shipped code:\n\n- **/implement** — executes tasks from the plan, writing code and tests (Sonnet)\n- **/gate** — automated quality checkpoint; requires explicit human approval before proceeding\n- **/review** — deep code review, verifies implementation matches plan (Opus)\n- **/rollback** — safely undoes implementation phases\n- **/end_of_task** — commits, pushes branch, logs lessons, marks task complete\n\n**Outputs:** code changes, `review-N.md`, `gate-*.md`"
+    },
+    {
+      "id": "g-lifecycle",
+      "label": "Session Lifecycle",
+      "type": "group",
+      "layer": "portable-core",
+      "summary": "/start_of_day · /end_of_day · /checkpoint · /sleep — Save and restore session state across work sessions.",
+      "details_md": "## Session Lifecycle Skills\n\nManages state between sessions so work can be resumed:\n\n- **/start_of_day** — restores context from daily cache, checks git state\n- **/end_of_day** — consolidates all sessions into daily cache, invokes /sleep\n- **/checkpoint** — general-purpose state save (mid-session, between sessions, before heavy work); writes pending-restore sentinel\n- **/sleep** — scans daily insights, promotes to `lessons-learned.md` or soft-forgets\n\n**Artifacts:** `sessions/`, `daily/`, `checkpoints/`, `lessons-learned.md`"
+    },
+    {
+      "id": "g-utilities",
+      "label": "Utilities",
+      "type": "group",
+      "layer": "portable-core",
+      "summary": "/init_workflow · /capture_insight · /cost_snapshot · /expand · /next_steps — Supporting tools.",
+      "details_md": "## Utility Skills\n\nSupporting tools for day-to-day use:\n\n- **/init_workflow** — bootstraps the workflow structure in a new project (run once)\n- **/capture_insight** — logs an observation to the daily insights scratchpad without interrupting work\n- **/cost_snapshot** — reports today's cost, project lifetime cost, per-task breakdown\n- **/expand** — decompresses terse (Tier 3) workflow artifacts back to English\n- **/next_steps** — append-only queue for future work items"
+    },
+    {
+      "id": "g-hooks",
+      "label": "Hook System",
+      "type": "hook",
+      "layer": "claude-adapter",
+      "summary": "UserPromptSubmit · SessionStart · SessionEnd · PreCompact · PostCompact · _lib.sh — Event-driven automation deployed to ~/.claude/hooks/.",
+      "details_md": "## Hook System\n\nBash scripts that fire on Claude Code lifecycle events:\n\n- **userpromptsubmit.sh** — context-utilization advisory/block; writes §0' pollution score\n- **sessionstart.sh** — surfaces pending-restore banner; checks end_of_day_due flag\n- **sessionend.sh** — signals end-of-day reminder (non-blocking banner)\n- **precompact.sh** — intercepts auto-compact; saves precompact checkpoint\n- **postcompact.sh** — writes compact-happened sentinel\n- **_lib.sh** — shared helpers: read_constants, compute_utilization, trash_move, pidfile ops\n\nAll hooks **fail-OPEN** (exit 0 on any error). Tunable via `QUOIN_*` env vars."
+    },
+    {
+      "id": "g-dispatch",
+      "label": "Model Dispatch",
+      "type": "dispatch-mechanism",
+      "layer": "claude-adapter",
+      "summary": "§0 Cost Guard · §0' Pollution Guard · Spawn Preamble — Keep expensive models from running cheap-tier work.",
+      "details_md": "## Model Dispatch\n\nTwo automatic dispatch layers enforce cost discipline:\n\n**§0 — Cost guardrail (15 cheap-tier skills):** If a Haiku/Sonnet skill is invoked from an Opus session, it self-dispatches to its declared model via Agent tool. Uses `[no-redispatch]` sentinel to prevent recursion.\n\n**§0' — Pollution guard (7 Opus-tier skills):** If `pollution_score ≥ 5000` (context is too large), spawns a fresh Agent subagent. Score = `transcript_kb + (agent_returns × 5) + (reads × 1) + (bash_calls × 1)`.\n\n**Spawn Preamble:** 7 spawn-target skills read `preamble.md` first to pre-warm the prompt cache for `format-kit.md §3` + `glossary.md`.\n\nAll dispatch: fail-OPEN on Agent unavailable."
+    },
+    {
+      "id": "g-memory",
+      "label": "Memory Files",
+      "type": "memory",
+      "layer": "cross-cutting",
+      "summary": "~/.claude/memory/ — Tier 1 reference files loaded at skill bootstrap: format-kit, glossary, lifecycle-guide, dispatch-guide, cost-ledger-format, sleep-signals, …",
+      "details_md": "## Memory Files\n\nTier 1 hand-edited reference files, deployed to `~/.claude/memory/` by `install.sh`:\n\n| File | Purpose |\n|---|---|\n| `format-kit.md` | Artifact format primitives and allowed sections |\n| `glossary.md` | Abbreviation whitelist + status glyphs |\n| `lifecycle-guide.md` | Checkpoint/sleep/end_of_day lifecycle rules |\n| `dispatch-guide.md` | §0/§0' dispatch contract details |\n| `cost-ledger-format.md` | 7-column ledger row format |\n| `hooks-table.md` | Hook event/matcher table with tunable constants |\n| `sleep-signals.yaml` | Importance scoring weights for /sleep |\n| `terse-rubric.md`, `format-kit-pitfalls.md`, etc. | Writing guidance for skills |\n\n**All are Tier 1:** always human-readable English, never compressed."
+    },
+    {
+      "id": "g-artifacts",
+      "label": "Workflow Artifacts",
+      "type": "artifact",
+      "layer": "cross-cutting",
+      "summary": ".workflow_artifacts/ — File-based shared memory between sessions: plans, reviews, session state, cost ledger, checkpoints, daily cache.",
+      "details_md": "## Workflow Artifacts\n\nFile-based shared memory between sessions, stored under `.workflow_artifacts/`:\n\n```\n.workflow_artifacts/\n  <task-name>/\n    architecture.md         ← Tier 1 contract doc\n    current-plan.md         ← Tier 2/3 plan\n    critic-response-N.md    ← critic rounds\n    review-N.md             ← review results\n    gate-*.md               ← gate audit logs\n    cost-ledger.md          ← per-task cost log\n    stage-N/                ← multi-stage tasks\n  memory/\n    sessions/               ← per-session state files\n    daily/                  ← daily cache + insights\n    checkpoints/            ← checkpoint save files\n    lessons-learned.md      ← institutional memory\n  cache/                    ← advisory knowledge cache\n  finalized/                ← completed tasks\n```\n\n**Skills are session-independent:** file artifacts are the only shared memory."
+    },
+    {
+      "id": "g-scripts",
+      "label": "Core Scripts",
+      "type": "script",
+      "layer": "portable-core",
+      "summary": "path_resolve · validate_artifact · cost_event · generate_discovery_map · select_unprocessed_sessions — Portable Python utilities deployed to ~/.claude/scripts/.",
+      "details_md": "## Core Scripts\n\nPortable Python utilities (runtime-neutral), canonical in `quoin/core/scripts/`, deployed via wrapper in `quoin/scripts/`:\n\n- **path_resolve.py** — maps `stage N of <task>` to `.workflow_artifacts/<task>/stage-N/`\n- **validate_artifact.py** — structural validator for plan/review/architecture artifacts\n- **cost_event.py** — cost-ledger row schema and parser\n- **generate_discovery_map.py** — stdlib-only discovery map generator\n- **select_unprocessed_sessions.py** — shared session-selection helper for end_of_day + weekly_review\n- **validate_adapter_drift.py** — checks base vs adapter skill divergence\n- **build_preambles.py** (Claude adapter) — generates §0 preamble sections in SKILL.md files\n- **cost_from_jsonl.py** (Claude adapter) — parses Claude Code JSONL for cost tracking"
+    },
+    {
+      "id": "g-installer",
+      "label": "Installer",
+      "type": "adapter",
+      "layer": "claude-adapter",
+      "summary": "install.sh · installer.py — Deploys skills, memory, scripts, hooks to ~/.claude/. Run once per machine; re-run after every pull.",
+      "details_md": "## Installer\n\n`bash quoin/install.sh` deploys the entire Claude adapter to `~/.claude/`:\n\n- **Skills** — all 21 SKILL.md files to `~/.claude/skills/` (overlay rule: claude adapter overrides base)\n- **Memory files** — all Tier 1 reference files to `~/.claude/memory/`\n- **Scripts** — Python utilities to `~/.claude/scripts/`\n- **Hooks** — 6 bash scripts to `~/.claude/hooks/`; registers 6 stanzas in `settings.json`\n- **Preambles** — runs `build_preambles.py` to inject §0 dispatch blocks into skill files\n\n`installer.py` handles the overlay logic and PLACEHOLDER token substitution for `~/.claude/` paths.\n\n**Re-run after every `git pull`** — deployed copies at `~/.claude/` are not auto-updated."
+    }
+  ],
+  "edges": [
+    {
+      "from": "g-orchestrators",
+      "to": "g-planning",
+      "kind": "spawns"
+    },
+    {
+      "from": "g-orchestrators",
+      "to": "g-execution",
+      "kind": "spawns"
+    },
+    {
+      "from": "g-planning",
+      "to": "g-artifacts",
+      "kind": "writes"
+    },
+    {
+      "from": "g-execution",
+      "to": "g-artifacts",
+      "kind": "writes"
+    },
+    {
+      "from": "g-planning",
+      "to": "g-memory",
+      "kind": "reads"
+    },
+    {
+      "from": "g-execution",
+      "to": "g-memory",
+      "kind": "reads"
+    },
+    {
+      "from": "g-planning",
+      "to": "g-scripts",
+      "kind": "invokes"
+    },
+    {
+      "from": "g-lifecycle",
+      "to": "g-artifacts",
+      "kind": "reads"
+    },
+    {
+      "from": "g-lifecycle",
+      "to": "g-memory",
+      "kind": "reads"
+    },
+    {
+      "from": "g-hooks",
+      "to": "g-lifecycle",
+      "kind": "triggers"
+    },
+    {
+      "from": "g-hooks",
+      "to": "g-dispatch",
+      "kind": "triggers"
+    },
+    {
+      "from": "g-dispatch",
+      "to": "g-planning",
+      "kind": "dispatches-via"
+    },
+    {
+      "from": "g-dispatch",
+      "to": "g-execution",
+      "kind": "dispatches-via"
+    },
+    {
+      "from": "g-dispatch",
+      "to": "g-orchestrators",
+      "kind": "dispatches-via"
+    },
+    {
+      "from": "g-installer",
+      "to": "g-hooks",
+      "kind": "deploys-to"
+    },
+    {
+      "from": "g-installer",
+      "to": "g-memory",
+      "kind": "deploys-to"
+    },
+    {
+      "from": "g-installer",
+      "to": "g-scripts",
+      "kind": "deploys-to"
+    },
+    {
+      "from": "g-utilities",
+      "to": "g-artifacts",
+      "kind": "reads"
+    }
+  ]
+}

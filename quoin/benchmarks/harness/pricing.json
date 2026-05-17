@@ -1,0 +1,27 @@
+{
+  "_comment": "Per-model per-1M-token pricing for quoin benchmark harness. Claude-only. Codex models NOT included (no public per-token pricing; would constitute token inference per quoin/adapters/codex/cost.md). Update at benchmark time by verifying against current Anthropic pricing page.",
+  "_sources": [
+    "https://www.anthropic.com/pricing (verified at implementation time)",
+    "https://docs.anthropic.com/en/docs/about-claude/models (model IDs)"
+  ],
+  "_last_verified": "2026-05-17",
+  "_note": "Dated snapshot model IDs must match the PINNED_MODEL constant in cells/simple_claude.py. Verify and update both at benchmark time.",
+  "models": {
+    "claude-opus-4-7-20261001": {
+      "_note": "UPDATE at benchmark time — verify exact dated snapshot ID from Claude API response 'model' field",
+      "input_per_1m_usd": 15.0,
+      "output_per_1m_usd": 75.0,
+      "cache_write_per_1m_usd": 18.75,
+      "cache_read_per_1m_usd": 1.50,
+      "_source": "https://www.anthropic.com/pricing — Claude Opus 4.7 tier at implementation time"
+    },
+    "claude-sonnet-4-6-20261001": {
+      "_note": "UPDATE at benchmark time — verify exact dated snapshot ID",
+      "input_per_1m_usd": 3.0,
+      "output_per_1m_usd": 15.0,
+      "cache_write_per_1m_usd": 3.75,
+      "cache_read_per_1m_usd": 0.30,
+      "_source": "https://www.anthropic.com/pricing — Claude Sonnet 4.6 tier at implementation time"
+    }
+  }
+}

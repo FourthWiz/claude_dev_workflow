@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "description": "Quoin benchmark v1 task suite \u2014 100 EvalPlus HumanEval+ tasks + 20 SWE-bench Lite instances. Generated deterministically via pick_subset.py --seed 1729. Do not edit manually; regenerate from pick_subset.py.",
+  "generated_by": "quoin/benchmarks/scripts/pick_subset.py",
+  "seed": 1729,
+  "provenance_file": "quoin/benchmarks/suite-v1-provenance.md",
+  "tasks": [
+    {
+      "id": "humaneval_plus_000",
+      "source": "evalplus_humaneval_plus",
+      "source_id": "HumanEval/0",
+      "difficulty_band": "easy",
+      "deterministic_seed": 1729,
+      "expected_minutes_p50": 3,
+      "description": "has_close_elements: check if any two numbers closer than threshold"
+    }
+  ]
+}

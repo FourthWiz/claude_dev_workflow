@@ -58,7 +58,8 @@ The skill also updates the session-state file under
 ## Behavior contract
 
 - The workflow MUST NOT auto-advance through this skill. Every phase
-  transition requires explicit user approval.
+  transition requires explicit user approval, UNLESS the benchmark
+  auto-approve guard fires (see below).
 - Automated checks MUST run before presenting the summary.
 - The audit log MUST be written after user approval and MUST NOT be
   written if the user rejects the gate.
@@ -70,6 +71,43 @@ The skill also updates the session-state file under
 - When automated checks fail, the skill MUST present failures clearly with
   suggested remediation, then wait for the user to fix them or acknowledge
   them before re-running.
+
+## Benchmark auto-approve guard
+
+When the benchmark harness runs a full automated suite, requiring human input
+at each gate would block unattended execution. The auto-approve guard allows
+the harness to bypass the human STOP step when a dual env-var pair is set.
+
+**Contract:**
+
+Before blocking on user input (after presenting the gate summary), check
+whether BOTH of the following environment variables are present in the current
+process environment:
+
+  1. `QUOIN_GATE_AUTO_APPROVE=1` (exact value)
+  2. `QUOIN_BENCHMARK_RUN` set to any non-empty value
+
+**If and only if BOTH are set:**
+- Skip the human STOP step entirely. Do NOT call AskUserQuestion.
+- Emit a one-line notice: `[quoin-gate: auto-approved] QUOIN_GATE_AUTO_APPROVE=1 QUOIN_BENCHMARK_RUN=<value>`
+- Treat this as an implicit user approval and proceed to writing the audit log.
+- The audit log MUST include the following extra fields:
+  - `auto_approved: true`
+  - `env: QUOIN_GATE_AUTO_APPROVE=1 QUOIN_BENCHMARK_RUN=<run_id>`
+  - `gate_encountered_at: <ISO timestamp>`
+  - `benchmark_run_id: <QUOIN_BENCHMARK_RUN value>`
+
+**If only ONE or NEITHER variable is set:** the gate behaves normally (blocking).
+
+**Security rationale for the dual guard:**
+The `QUOIN_BENCHMARK_RUN` variable is set by the benchmark orchestrator
+(`run_benchmark.py`) and is not normally present in interactive user sessions.
+The `QUOIN_GATE_AUTO_APPROVE` variable is set by the cell adapter for quoin
+cells. Requiring BOTH prevents either variable alone from accidentally
+bypassing human review in production sessions.
+
+This contract MUST be implemented identically in every runtime adapter that
+provides a gate skill.
 
 ## Gate levels
 

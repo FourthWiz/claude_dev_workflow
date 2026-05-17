@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quoin — Architecture Diagram</title>
+  <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+
+<!-- Help overlay -->
+<div id="help-overlay" hidden>
+  <div class="help-backdrop" id="help-backdrop"></div>
+  <div class="help-card">
+    <h2>Keyboard shortcuts</h2>
+    <ul>
+      <li><kbd>h</kbd> / <kbd>?</kbd> — toggle this help overlay</li>
+      <li><kbd>Esc</kbd> — clear filters, close detail panel &amp; help</li>
+    </ul>
+    <h2>Filters</h2>
+    <p>Use the left sidebar to filter by <strong>layer</strong> (lane) or by <strong>artifact tier</strong>. The search box highlights matching nodes.</p>
+    <h2>Layout</h2>
+    <p>Toggle between <strong>cose</strong> (force-directed) and <strong>dagre</strong> (hierarchical) layouts using the button in the sidebar.</p>
+    <h2>Navigation</h2>
+    <p>Click a node to open the detail panel. Hover a node to highlight its 1-hop neighborhood. Scroll to zoom; drag to pan.</p>
+    <button class="help-close" id="help-close">Close</button>
+  </div>
+</div>
+
+<div class="app-shell">
+
+  <!-- LEFT SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-inner">
+
+      <div class="sidebar-section">
+        <h3 class="sidebar-heading">Search</h3>
+        <input
+          type="text"
+          id="search-input"
+          class="search-input"
+          placeholder="Filter nodes…"
+          autocomplete="off"
+          spellcheck="false"
+        >
+      </div>
+
+      <div class="sidebar-section">
+        <h3 class="sidebar-heading">Layer</h3>
+        <label class="filter-label">
+          <input type="checkbox" class="lane-filter" value="portable-core" checked>
+          <span class="filter-dot" style="background:#5B7C9D"></span>
+          Portable Core
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" class="lane-filter" value="claude-adapter" checked>
+          <span class="filter-dot" style="background:#D97757"></span>
+          Claude Adapter
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" class="lane-filter" value="codex-adapter" checked>
+          <span class="filter-dot" style="background:#7AA9C7"></span>
+          Codex Adapter
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" class="lane-filter" value="cross-cutting" checked>
+          <span class="filter-dot" style="background:#9C8AAB"></span>
+          Cross-cutting
+        </label>
+      </div>
+
+      <div class="sidebar-section">
+        <h3 class="sidebar-heading">Artifact Tier</h3>
+        <label class="filter-label">
+          <input type="checkbox" class="tier-filter" value="1" checked>
+          <span class="filter-dot" style="background:#A8956F"></span>
+          Tier 1
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" class="tier-filter" value="2" checked>
+          <span class="filter-dot" style="background:#9C8AAB"></span>
+          Tier 2
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" class="tier-filter" value="3" checked>
+          <span class="filter-dot" style="background:#6B7280"></span>
+          Tier 3
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" class="tier-filter" value="non-tier" checked>
+          <span class="filter-dot" style="background:#888"></span>
+          Non-tier
+        </label>
+      </div>
+
+      <div class="sidebar-section">
+        <h3 class="sidebar-heading">Legend — Edges</h3>
+        <div class="legend-list">
+          <div class="legend-item"><span class="legend-line" style="background:#D97757"></span>deploys-to</div>
+          <div class="legend-item"><span class="legend-line" style="background:#7C5B8C"></span>dispatches-via</div>
+          <div class="legend-item"><span class="legend-line" style="background:#9CA3AF"></span>reads</div>
+          <div class="legend-item"><span class="legend-line" style="background:#4B5563"></span>writes</div>
+          <div class="legend-item"><span class="legend-line" style="background:#B85C7A"></span>triggers</div>
+          <div class="legend-item"><span class="legend-line" style="background:#C8B89E"></span>references</div>
+          <div class="legend-item"><span class="legend-line" style="background:#5B7C9D"></span>spawns</div>
+          <div class="legend-item"><span class="legend-line" style="background:#6B7280"></span>invokes</div>
+          <div class="legend-item"><span class="legend-line" style="background:#E8E6E1"></span>grouped-in</div>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <h3 class="sidebar-heading">Layout</h3>
+        <button id="layout-toggle" class="layout-btn">
+          Switch to Dagre
+        </button>
+      </div>
+
+      <div class="sidebar-section sidebar-help-hint">
+        <span>Press <kbd>h</kbd> or <kbd>?</kbd> for help</span>
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- GRAPH CANVAS -->
+  <main class="graph-main">
+    <div id="cy"></div>
+    <!-- Mobile hamburger -->
+    <button class="hamburger" id="hamburger" aria-label="Toggle sidebar">&#9776;</button>
+  </main>
+
+  <!-- RIGHT DETAIL PANEL -->
+  <aside class="detail-panel" id="detail-panel" hidden>
+    <div class="detail-inner">
+      <div class="detail-header">
+        <h2 id="detail-title" class="detail-title"></h2>
+        <button class="detail-close" id="detail-close" aria-label="Close">&#10005;</button>
+      </div>
+      <div id="detail-meta" class="detail-meta"></div>
+      <div id="detail-content" class="detail-content"></div>
+    </div>
+  </aside>
+
+</div>
+
+<!-- Vendor scripts -->
+<script src="assets/vendor/cytoscape.min.js"></script>
+<script src="assets/vendor/dagre.min.js"></script>
+<script src="assets/vendor/cytoscape-dagre.js"></script>
+<!-- Data shim -->
+<script src="data/graph.json.js"></script>
+<!-- App -->
+<script src="assets/app.js"></script>
+
+</body>
+</html>
