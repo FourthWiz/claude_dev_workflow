@@ -51,6 +51,10 @@ packages = ["src/quoin"]
 "quoin/memory/format-kit-pitfalls.md" = "src/quoin/data/memory/format-kit-pitfalls.md"
 "quoin/memory/sleep-signals.yaml" = "src/quoin/data/memory/sleep-signals.yaml"
 "quoin/memory/cache-guide.md" = "src/quoin/data/memory/cache-guide.md"
+"quoin/memory/hooks-table.md" = "src/quoin/data/memory/hooks-table.md"
+"quoin/memory/cost-ledger-format.md" = "src/quoin/data/memory/cost-ledger-format.md"
+"quoin/memory/dispatch-guide.md" = "src/quoin/data/memory/dispatch-guide.md"
+"quoin/memory/lifecycle-guide.md" = "src/quoin/data/memory/lifecycle-guide.md"
 
 [tool.hatch.build.targets.sdist]
 include = [
