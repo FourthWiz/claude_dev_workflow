@@ -200,6 +200,7 @@ def invoke(
         "claude",
         "--print",
         "--output-format", "stream-json",
+        "--verbose",
         "--permission-mode", "acceptEdits",
         "--model", model,
         prompt,

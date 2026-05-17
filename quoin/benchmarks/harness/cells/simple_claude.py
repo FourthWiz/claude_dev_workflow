@@ -37,7 +37,7 @@ from ..cost import estimate_cost, load_pricing
 # or inspecting the 'model' field of a claude --print --output-format json
 # response. This MUST be a dated snapshot ID, not an alias.
 # ---------------------------------------------------------------------------
-PINNED_MODEL: str = "claude-opus-4-7-20261001"  # UPDATE AT BENCHMARK TIME
+PINNED_MODEL: str = "claude-opus-4-7"  # use alias; pin to dated snapshot before publishing results
 
 # Overridable via environment for testing
 _MODEL_ENV_VAR = "QUOIN_BENCH_CLAUDE_MODEL"
@@ -122,6 +122,7 @@ def invoke(
         "claude",
         "--print",
         "--output-format", "stream-json",
+        "--verbose",
         "--permission-mode", "acceptEdits",
         "--model", model,
         prompt,

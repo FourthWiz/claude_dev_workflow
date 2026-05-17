@@ -27,6 +27,22 @@ See README.md for the "Running a v1 benchmark" section.
 
 from __future__ import annotations
 
+# Path bootstrap: mirrors conftest.py so the script works when invoked directly
+# (without pytest adding src/ and . to sys.path). Must run before any quoin imports.
+import sys as _sys
+from pathlib import Path as _Path
+_repo_root = _Path(__file__).resolve().parent.parent.parent.parent  # .../quoin/
+for _p in (str(_repo_root / "src"), str(_repo_root)):
+    if _p not in _sys.path:
+        _sys.path.insert(0, _p)
+try:
+    import quoin as _q
+    _inner = str(_repo_root / "quoin")
+    if _inner not in _q.__path__:
+        _q.__path__.append(_inner)
+except Exception:
+    pass
+
 import argparse
 import concurrent.futures
 import datetime

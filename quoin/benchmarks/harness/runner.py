@@ -20,6 +20,7 @@ respecting --resume (skips tasks whose result dir is already well-formed).
 from __future__ import annotations
 
 import json
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -99,14 +100,19 @@ def run_one_task(
     budget = config.budget
 
     worktree_path: Optional[Path] = None
+    _tmpdir_obj = None  # holds the TemporaryDirectory for HumanEval+ tasks
     try:
-        # Create isolated worktree for the task
+        # Create isolated worktree for the task.
+        # SWE-bench tasks: git worktree of fixture_repo.
+        # HumanEval+ (no fixture_repo): fresh temp directory so the agent
+        # writes solution.py there instead of the repo root.
         if fixture_repo and fixture_repo.exists():
             worktree_path = create_task_worktree(
                 fixture_repo, run_id, cell, task_id
             )
         else:
-            worktree_path = None
+            _tmpdir_obj = tempfile.TemporaryDirectory(prefix=f"qbench_{task_id}_")
+            worktree_path = Path(_tmpdir_obj.name)
 
         # Invoke the cell adapter
         start = time.monotonic()
@@ -162,7 +168,9 @@ def run_one_task(
             evidence_path=str(exc),
         )
     finally:
-        if worktree_path:
+        if _tmpdir_obj is not None:
+            _tmpdir_obj.cleanup()
+        elif worktree_path:
             cleanup_task_worktree(worktree_path)
 
     # Write all six output files

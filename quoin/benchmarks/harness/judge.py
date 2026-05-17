@@ -120,59 +120,69 @@ def judge_humaneval_plus(
             judge_runtime_seconds=time.monotonic() - start,
         )
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = Path(tmpdir)
-        # Write solution to evalplus-expected format:
-        # A dict mapping problem_id -> [solution_code]
-        solutions = {source_id: [solution_path.read_text(encoding="utf-8")]}
-        solutions_file = tmp_path / "solutions.json"
-        solutions_file.write_text(json.dumps(solutions), encoding="utf-8")
+    # Use evalplus as a library to evaluate a single problem.
+    # The CLI requires samples for ALL problems; the library lets us target one.
+    try:
+        from evalplus.data import get_human_eval_plus
+    except ImportError:
+        return JudgeResult(
+            task_id=task_id,
+            source_benchmark="evalplus_humaneval_plus",
+            verdict="error",
+            evidence_path="evalplus not installed; run: pip install evalplus",
+            judge_runtime_seconds=time.monotonic() - start,
+        )
 
-        cmd = [
-            "python3", "-m", "evalplus.evaluate",
-            "--dataset", "humaneval",
-            "--samples", str(solutions_file),
-        ]
-        if evidence_dir:
-            evidence_dir.mkdir(parents=True, exist_ok=True)
-            cmd += ["--base-only"]  # Skip plus tests for speed in harness
-
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            elapsed = time.monotonic() - start
-
-            # Parse evalplus output: look for pass/fail in stdout
-            verdict = _parse_evalplus_output(result.stdout, source_id)
-            evidence_str = str(evidence_dir) if evidence_dir else None
-
-            return JudgeResult(
-                task_id=task_id,
-                source_benchmark="evalplus_humaneval_plus",
-                verdict=verdict,
-                evidence_path=evidence_str,
-                judge_runtime_seconds=elapsed,
-            )
-        except subprocess.TimeoutExpired:
-            return JudgeResult(
-                task_id=task_id,
-                source_benchmark="evalplus_humaneval_plus",
-                verdict="timeout",
-                evidence_path=None,
-                judge_runtime_seconds=120.0,
-            )
-        except Exception as exc:
+    try:
+        problems = get_human_eval_plus()
+        problem = problems.get(source_id)
+        if problem is None:
             return JudgeResult(
                 task_id=task_id,
                 source_benchmark="evalplus_humaneval_plus",
                 verdict="error",
-                evidence_path=str(exc),
+                evidence_path=f"problem {source_id} not found in evalplus dataset",
                 judge_runtime_seconds=time.monotonic() - start,
             )
+
+        solution_code = solution_path.read_text(encoding="utf-8")
+
+        # Build the executable: problem prompt + agent solution + test code.
+        # evalplus test functions are named `check` and call the solution.
+        test_program = (
+            problem["prompt"]
+            + "\n"
+            + solution_code
+            + "\n"
+            + problem["test"]
+            + "\n"
+            + f"check({problem['entry_point']})\n"
+        )
+
+        exec_globals: dict = {}
+        try:
+            exec(compile(test_program, "<evalplus_judge>", "exec"), exec_globals)
+            verdict = "pass"
+        except Exception:
+            verdict = "fail"
+
+        elapsed = time.monotonic() - start
+        return JudgeResult(
+            task_id=task_id,
+            source_benchmark="evalplus_humaneval_plus",
+            verdict=verdict,
+            evidence_path=None,
+            judge_runtime_seconds=elapsed,
+        )
+
+    except Exception as exc:
+        return JudgeResult(
+            task_id=task_id,
+            source_benchmark="evalplus_humaneval_plus",
+            verdict="error",
+            evidence_path=str(exc),
+            judge_runtime_seconds=time.monotonic() - start,
+        )
 
 
 def _parse_evalplus_output(stdout: str, source_id: str) -> str:
