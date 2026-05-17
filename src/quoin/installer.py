@@ -72,6 +72,27 @@ DEPLOYED_SCRIPTS = (
 OBSOLETE_SCRIPTS = ("summarize_for_human.py", "with_env.sh", "audit_corpus_coverage.py")
 OBSOLETE_TESTS = ("test_summarize_for_human.py", "test_with_env_sh.py")
 
+# Canonical skillOverrides tier list written to settings.json on install.
+# "on" = full description in every session; "name-only" = invocable via /name, no auto-suggest description.
+# Only keys in this dict are touched; user-added keys for other skills are preserved.
+SKILL_OVERRIDES: dict[str, str] = {
+    # Core workflow skills — always show full description
+    "thorough_plan": "on",
+    "plan": "on",
+    "critic": "on",
+    "review": "on",
+    "implement": "on",
+    "gate": "on",
+    "triage": "on",
+    "checkpoint": "on",
+    # Lifecycle / one-shot skills — invocable by name, no description in auto-suggest
+    "init_workflow": "name-only",
+    "init": "name-only",          # non-quoin skill; skillOverrides applies by name regardless
+    "keybindings-help": "name-only",  # non-quoin skill; same
+    "start_of_day": "name-only",
+    "end_of_day": "name-only",
+}
+
 _MARKER_START = "# === DEV WORKFLOW START ==="
 _MARKER_END = "# === DEV WORKFLOW END ==="
 DEPRECATED_SKILL_MARKERS = ("DEPRECATED LOCATION", "deprecated stub")
@@ -275,6 +296,24 @@ def deploy_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
         print(f"Copied {fname} to {dest_root}/scripts/")
 
 
+def _merge_skill_overrides(settings: dict) -> int:
+    """Merge SKILL_OVERRIDES into settings['skillOverrides'].
+
+    Only touches keys in SKILL_OVERRIDES. User-added keys for skills not in
+    our canonical list are preserved untouched. Canonical keys are always
+    set to the canonical value (user changes to canonical keys are reset on reinstall).
+
+    Returns count of keys added or changed.
+    """
+    overrides = settings.setdefault("skillOverrides", {})
+    changed = 0
+    for skill, tier in SKILL_OVERRIDES.items():
+        if overrides.get(skill) != tier:
+            overrides[skill] = tier
+            changed += 1
+    return changed
+
+
 def deploy_hooks(
     source_dir: pathlib.Path,
     dest_root: pathlib.Path,
@@ -373,6 +412,9 @@ def deploy_hooks(
             deny_list.append(rule)
             added += 1
 
+    # Merge skillOverrides (idempotent — only canonical keys, user keys preserved).
+    _merge_skill_overrides(settings)
+
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
@@ -380,6 +422,7 @@ def deploy_hooks(
     print(f"Merged 6 hook stanzas into {settings_path}")
     if added:
         print(f"Added {added} rm -rf/rm -fr deny rule(s) to {settings_path}")
+    print(f"Set {len(SKILL_OVERRIDES)} skill overrides in {settings_path}")
     if is_project_mode:
         print(
             f"Hooks registered in {settings_path} (project-scoped). "
