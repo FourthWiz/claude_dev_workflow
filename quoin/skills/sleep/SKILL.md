@@ -283,7 +283,18 @@ After successful restore: remove the entry block from its `forgotten/<date>.md` 
 
 ## --purge --older-than 90d
 
-List all `forgotten/<date>.md` files whose date portion is more than 90 days before today. For each file:
+**Usage forms (mutually exclusive scope flags):**
+- `/sleep --purge --older-than Nd` (no scope flag) → targets `forgotten/<date>.md` files ONLY (backward-compat default).
+- `/sleep --purge --sentinels --older-than Nd` → targets the 8 sentinel families under `.workflow_artifacts/memory/` ONLY (new).
+- `/sleep --purge --all --older-than Nd` → convenience: runs `forgotten/` purge first, then sentinel purge.
+
+Scope flags are mutually exclusive — `--sentinels` and `--all` cannot be combined. Users who want both targets must opt in via `--all`.
+
+Never auto-run `--purge`. Always require explicit `--older-than <Nd>` argument.
+
+### forgotten/ purge (default — no scope flag)
+
+List all `forgotten/<date>.md` files whose date portion is more than `N` days before today. For each file:
 ```
 Permanently delete forgotten/<date>.md? (<N> entries, <M KB>)
 This is a true delete — not recoverable.
@@ -292,7 +303,47 @@ This is a true delete — not recoverable.
 
 On `y`: delete the file. On `n`: skip.
 
-Never auto-run `--purge`. Always require explicit `--older-than <Nd>` argument. Emit warning at start: "This permanently deletes archive files. Entries cannot be restored after purge."
+Emit warning at start: "This permanently deletes archive files. Entries cannot be restored after purge."
+
+### Sentinel purge (--sentinels or --all scope)
+
+**Sentinel families covered (hardcoded allow-list — 8 families):**
+1. `pending-restore-*.txt`
+2. `pending-prompt-*.txt`
+3. `compact-happened-*.txt`
+4. `mid-agent-handoff-*.txt`
+5. `pending-resume-ref-*.txt`
+6. `checkpoint-defer-*.txt`
+7. `postcompact-reset-*.txt`
+8. `checkpoint-pending-compact-*.txt`
+
+All 8 families live under `.workflow_artifacts/memory/` (the sentinel directory). The family list is a hardcoded allow-list — no user-supplied pattern argument. This is the primary safety mechanism: only files matching one of the 8 named glob patterns are ever considered for deletion.
+
+**Procedure:**
+
+Emit warning at start: "This permanently deletes sentinel files. After purge, restore requires re-saving via /checkpoint."
+
+For each family in the allow-list, find files matching the glob under `.workflow_artifacts/memory/` with `mtime > N days`:
+```
+find .workflow_artifacts/memory -maxdepth 1 -name '<family-glob>' -mtime +N -print0
+```
+
+Collect all candidates. If no candidates found: emit "No sentinels older than Nd found." and return.
+
+For each candidate file, prompt:
+```
+Permanently delete <path>? (<size>)
+This deletes only the sentinel pointer; the underlying checkpoint file (if any) is NOT touched.
+[y / n]
+```
+
+On `y`: `rm -f <path>`; emit "deleted <path>". On `n`: emit "skipped <path>".
+
+At end: emit "Done. <deleted_count> deleted, <skipped_count> skipped."
+
+**Note:** `--purge --sentinels` performs `rm` on stale sentinel files under `memory/` — this is a delete, not a write, and is governed by the per-file `[y / n]` prompt and the threshold flag, not the Write-target restriction.
+
+**When `--all` is specified:** run the `forgotten/` purge procedure first (existing behavior), then run the sentinel purge procedure above. Each has its own per-file prompts.
 
 ## --escalate flag
 

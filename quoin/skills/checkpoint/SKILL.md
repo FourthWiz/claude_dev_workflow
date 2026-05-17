@@ -499,9 +499,43 @@ if exists pending-restore-${current_session_id}.txt:
 
 **Full enumeration path** (fires only when fast path finds nothing):
 
+Initialize at picker entry (BEFORE all 6 picker paths below — defeats shell-variable carry-over from any prior iteration):
+```
+consumed_sentinel_path=""
+```
+
 1. Build a candidate list from two sources, de-duplicated by checkpoint-file path:
-   - **All sentinels:** `.workflow_artifacts/memory/pending-restore-*.txt` — each contains a checkpoint path on line 1.
+   - **All sentinels (B1 — mtime-filtered):** Use `find` with the `QUOIN_RESTORE_SENTINEL_WINDOW` env knob (default **7** days — narrows the long tail of orphaned sentinels; asymmetric with checkpoint-enum's 30d is INTENTIONAL: sentinels are transient pointers, not durable artifacts):
+     ```sh
+     _window="${QUOIN_RESTORE_SENTINEL_WINDOW:-7}"
+     _sentinel_dir=".workflow_artifacts/memory"
+     _total=$(find "$_sentinel_dir" -maxdepth 1 -name 'pending-restore-*.txt' | wc -l | tr -d ' ')
+     find "$_sentinel_dir" -maxdepth 1 -name 'pending-restore-*.txt' \
+       -mtime -"${_window}" -print0 \
+       | while IFS= read -r -d '' f; do
+           # each $f is a valid within-window sentinel; add to candidate list
+           echo "$f"
+         done
+     _stale_count=$(( _total - candidate_sentinel_count ))
+     if [ "$_stale_count" -gt 0 ]; then
+       echo "[checkpoint] ${_stale_count} stale pending-restore-*.txt sentinels older than ${_window}d skipped"
+     fi
+     ```
+     Each within-window sentinel contains a checkpoint path on line 1. Set `consumed_sentinel_path` to the absolute path of the chosen sentinel when the picker selects a sentinel-backed entry (see 6-path contract below).
    - **All checkpoints (30-day window):** use `find .../checkpoints/ -maxdepth 1 -name '*.md' ! -name '*.tmp' -mtime -30 -print0 | while IFS= read -r -d '' cp; do ...` (null-delimited, space-safe for Google Drive paths with spaces). Skip any file whose byte-size < 100 bytes: `[ $(wc -c < "$cp") -ge 100 ] || continue`. This guards against 0-byte corrupt entries.
+
+   **`consumed_sentinel_path` 6-path contract** (implementer reference — ALWAYS initialize to `""` at picker entry):
+
+   | # | Picker path | `consumed_sentinel_path` value |
+   |---|-------------|-------------------------------|
+   | 1 | Fast-path (current-session sentinel return) | `""` (empty) — current-session cleanup at Step 5 covers it |
+   | 2 | Zero-candidates fall-through | `""` (empty) — no candidate, Step 5 unchanged |
+   | 3 | Auto-pick (exactly-1 candidate), source=sentinel | absolute path of the chosen sentinel file |
+   | 3a | Auto-pick (exactly-1 candidate), source=disk-only | `""` (empty) — no sentinel consumed |
+   | 4 | Numbered picker, picked entry source=sentinel | absolute path of the chosen sentinel file |
+   | 4a | Numbered picker, picked entry source=disk-only | `""` (empty) — no sentinel consumed |
+   | 5 | B3 session-state fallback synthesis | `""` (empty) — no sentinel consumed |
+   | 6 | Step-2 corrupt-file branch (read fails) | `""` (empty) — graceful surface (prints raw contents + "Manual recovery" prompt); Step 5 may still fire for current-session cleanup, which is safe because empty `consumed_sentinel_path` triggers only the existing cleanup path |
 
 2. Annotate each candidate: task name (from `## Active task`), branch (from `## Branch`), date (from filename prefix), source (`sentinel` or `disk-only`). Awk extraction: `awk '/^## Active task[[:space:]]*$/{getline; gsub(/\r$/,""); print; exit}'` — strips trailing CR and handles value-on-next-line form. If `## Active task` cannot be extracted (parse failure), drop the candidate silently.
 
@@ -510,8 +544,17 @@ if exists pending-restore-${current_session_id}.txt:
 4. Backward-compat reader: tolerate missing `## Session ID` (older voluntary checkpoints). When absent, display `(legacy)` in the picker source column.
 
 5. Auto-pick rules:
+
+   After applying the B1 mtime filter, check the B3 session-state fallback trigger (two-clause OR):
+   - **Clause A:** `candidate_count == 0` (zero candidates after B1 filter AND checkpoint enum).
+   - **Clause B:** `candidate_count > 0` AND `max(sentinel candidate mtimes) < max(sessions/*.md mtime within ${QUOIN_SESSION_FALLBACK_WINDOW:-7}d)`.
+     Clause B is the same-day-symptom mitigation: when all surviving sentinels are older than the user's freshest session-state file, that session-state file is a more relevant resume anchor.
+
+   **B3 trigger fires if EITHER clause holds** — see "B3 session-state fallback" below. If the trigger does NOT fire (candidate_count > 0 AND sessions are not fresher than sentinels), proceed with the normal picker below.
+
+   **Normal picker (when B3 does not fire):**
    - **Zero candidates:** fall through to Step 3 (graceful error message: no checkpoints found).
-   - **Exactly 1 candidate:** auto-pick with session-id mismatch warning.
+   - **Exactly 1 candidate:** auto-pick with session-id mismatch warning. Set `consumed_sentinel_path` to the sentinel path if source=sentinel; else leave `""`.
    - **Two or more:** present the numbered picker:
      ```
      Multiple recent checkpoints found. Which session do you want to restore?
@@ -521,9 +564,87 @@ if exists pending-restore-${current_session_id}.txt:
      Enter number, or 'skip' to proceed to direct checkpoint lookup:
      ```
      `*` marks sentinel-backed entries. Cap at 10 items (mtime descending). If more: `... and <N> older. Use --defer to skip.`
-     - On a valid number: use that entry's checkpoint file.
+     - On a valid number: use that entry's checkpoint file. Set `consumed_sentinel_path` to the sentinel path if the chosen entry's source=sentinel; else leave `""`.
      - On `skip`: fall through to Step 3.
      - On invalid input: re-prompt once; on second invalid input, fall through to Step 3.
+
+   **B3 session-state fallback (fires when trigger is true — BEFORE Step 3 graceful-error path):**
+
+   Enumerate recent session-state files:
+   ```sh
+   _fb_window="${QUOIN_SESSION_FALLBACK_WINDOW:-7}"
+   _sessions_dir=".workflow_artifacts/memory/sessions"
+   ```
+   Use portable mtime (Python first, then `stat` fallbacks — mirrors `sessionstart.sh:39-41`):
+   ```sh
+   _get_mtime() {
+     python3 -c "import os; print(int(os.path.getmtime('$1')))" 2>/dev/null \
+       || stat -f '%m' "$1" 2>/dev/null \
+       || stat -c '%Y' "$1" 2>/dev/null \
+       || echo 0
+   }
+   ```
+   ```sh
+   _most_recent=$(find "$_sessions_dir" -maxdepth 1 -name '*.md' \
+     -mtime -"${_fb_window}" -print0 \
+     | xargs -0 ls -t 2>/dev/null | head -1)
+   ```
+   If no session-state file found: fall through to existing Step 3 graceful "no checkpoints found" path.
+
+   Extract fields (REVISED: derive `active_task` from FILENAME — `## Active task` heading exists in only 2/46 session files; filename extraction mirrors `checkpoint/SKILL.md:249`):
+   ```sh
+   _basename=$(basename "$_most_recent")
+   active_task="${_basename#????-??-??-}"   # strip YYYY-MM-DD- date prefix
+   active_task="${active_task%.md}"          # strip .md suffix
+   # Optional cross-check: parse YAML frontmatter `task:` field if present; assert equality.
+   ```
+   ```sh
+   current_stage=$(awk '/^## Current stage[[:space:]]*$/{found=1; next} found && /^[^#]/ && /[^[:space:]]/{print; exit} found && /^##/{exit}' "$_most_recent")
+   [ -z "$current_stage" ] && current_stage="(stage unknown)"
+   unfinished=$(awk '/^## Unfinished work[[:space:]]*$/{found=1; next} found && /^[^#]/{print} found && /^##/{exit}' "$_most_recent")
+   # Optional: open_questions (11/46 hit rate — omit from prompt if absent)
+   open_questions=$(awk '/^## Open questions[[:space:]]*$/{found=1; next} found && /^[^#]/{print} found && /^##/{exit}' "$_most_recent")
+   _mtime_display=$(_get_mtime "$_most_recent")
+   ```
+
+   Surface to user:
+   ```
+   No recent checkpoint files found, but a recent session-state file exists:
+     `YYYY-MM-DD-TASKNAME.md`  (mtime: DATE TIME)
+     Active task: ${active_task}
+     Current stage: ${current_stage}
+   Synthesize a minimal restore from session-state only? [y / n]
+   ```
+
+   On `y`:
+   - Extract INTENT (strip list glyphs and status glyphs from first non-empty line of `## Unfinished work`):
+     ```sh
+     # Strip pattern (in order):
+     #   1. leading whitespace
+     #   2. one of: "- ", "* ", "<digit>+. ", "<digit>+) "
+     #   3. one of the four status glyphs (✓ ✗ ⏳ 🚫) followed by optional whitespace
+     #   4. trailing whitespace
+     # Example: "- 1. ⏳ T-04 wire up X" → "T-04 wire up X"
+     _raw_intent=$(echo "$unfinished" | grep -v '^[[:space:]]*$' | head -1)
+     INTENT=$(echo "$_raw_intent" \
+       | sed 's/^[[:space:]]*//' \
+       | sed 's/^[-*][[:space:]]*//' \
+       | sed 's/^[0-9][0-9]*[.)][[:space:]]*//' \
+       | sed 's/^[✓✗⏳🚫][[:space:]]*//' \
+       | sed 's/[[:space:]]*$//')
+     ```
+   - Synthesize structured prompt as Step 2 input (replaces checkpoint file fields):
+     - `TASK = active_task`
+     - `BRANCH = "(unknown — session-state has no branch field)"`
+     - `INTENT = INTENT` (stripped as above)
+     - `IN_FLIGHT_ARTIFACTS = []` (skip Step 3 re-fire — no `## In-flight artifacts` in session-state files; surface "no in-flight artifacts to re-fire (session-state synthesis)")
+   - Set `consumed_sentinel_path = ""` (no sentinel was consumed — path 5 in the 6-path contract).
+   - Proceed to Step 2 with the synthesized fields.
+   - Proceed to Step 5 (no sentinel cleanup for the synthesized path; current-session cleanup still runs if a sentinel exists).
+
+   On `n`: fall through to existing Step 3 graceful "no checkpoints found" path.
+
+   **Note:** The session-state fallback fires BEFORE the Step 3 graceful-error path. Step 3 is only reached when both the normal picker and the B3 fallback are exhausted or declined.
 
 ### Step 2: Surface checkpoint state to user
 
@@ -605,10 +726,31 @@ Then apply the same multi-entry format detection as CASE B:
 Trash-move consumed sentinels to `.workflow_artifacts/memory/trash/<YYYY-MM-DD>/` (recoverable):
 - `pending-prompt-${session_id}.txt` — if it was CASE B and user chose `y` or `n`.
 - `pending-restore-${session_id}.txt` — always on successful restore (CASE A or B).
+- `consumed_sentinel_path` — if non-empty AND different from the current-session sentinel (B2 fix: cleans the actually-consumed orphan sentinel from a prior session).
 
 Use the `trash_move` helper from `__QUOIN_HOME__/hooks/_lib.sh` (fail-OPEN — if the move fails, warn and leave in place):
 ```bash
 . __QUOIN_HOME__/hooks/_lib.sh && trash_move "<sentinel-path>" "$(pwd)/.workflow_artifacts/memory"
+```
+
+**Cleanup logic (B2 — two-call pattern):**
+```sh
+_base=".workflow_artifacts/memory"
+
+# 1. Existing current-session cleanup (unchanged):
+if [ -f "${_base}/pending-restore-${current_session_id}.txt" ]; then
+  trash_move "${_base}/pending-restore-${current_session_id}.txt" "$_base"
+fi
+
+# 2. New: clean the actually-consumed orphan sentinel (B2):
+#    consumed_sentinel_path is set by the picker (6-path contract in Step 1).
+#    The dedup guard prevents double-trash when picker picked the current-session sentinel.
+if [ -n "$consumed_sentinel_path" ] && \
+   [ "$consumed_sentinel_path" != "${_base}/pending-restore-${current_session_id}.txt" ]; then
+  if [ -f "$consumed_sentinel_path" ]; then
+    trash_move "$consumed_sentinel_path" "$_base"
+  fi
+fi
 ```
 
 Stale CASE C pending-prompt files left alone unless user chose `delete` (see CASE C below).

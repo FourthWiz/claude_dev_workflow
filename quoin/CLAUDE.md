@@ -385,4 +385,4 @@ The workflow uses several distinct memory layers, each with a different lifecycl
 | `weekly/<iso-week>.md` | rendered weekly review | `/weekly_review` |
 | `forgotten/<date>.md` | soft-forget archive | `/sleep` |
 
-**Hard boundary:** `/sleep` writes ONLY to `lessons-learned.md` and `forgotten/<date>.md`. Enforced by `test_sleep_write_boundary.py`. `trash/` (sentinel trash-moves from `trash_move()` in `_lib.sh`) is currently outside `/sleep --purge` scope (gap R-7). Directory tree + `forgotten/<date>.md` entry-format + `> Source:` restore anchor: `__QUOIN_HOME__/memory/lifecycle-guide.md`.
+**Hard boundary:** `/sleep` writes ONLY to `lessons-learned.md` and `forgotten/<date>.md`. Enforced by `test_sleep_write_boundary.py`. `trash/` directory is outside `/sleep --purge` scope (gap-seven narrowed: 8 live `*.txt` sentinel families under `memory/` are now covered via `/sleep --purge --sentinels`; `trash/<date>/` remains the residual gap). Directory tree + `forgotten/<date>.md` entry-format + `> Source:` restore anchor: `__QUOIN_HOME__/memory/lifecycle-guide.md`.
