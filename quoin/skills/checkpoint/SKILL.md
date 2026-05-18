@@ -275,7 +275,11 @@ Read the following sources (best-effort; skip gracefully if any file is absent):
 
 (Conditional: SKIP this step if SELECTED_MODE is "mid-agent". In mid-agent mode, no full checkpoint file is written — only the minimal sentinel in Step 4c.)
 
-Write to: `.workflow_artifacts/memory/checkpoints/<YYYY-MM-DD>-<task-name>.md`
+Write to: `.workflow_artifacts/memory/checkpoints/<YYYY-MM-DD>T<HHMM>-<task-name>.md`
+
+Where `<YYYY-MM-DD>` is `$(date -u +%Y-%m-%d)` and `<HHMM>` is `$(date -u +%H%M)` (UTC wall-clock, e.g. `1423` for 14:23 UTC). Both timestamps must come from the same `date -u` invocation epoch to prevent date/time rollover skew at midnight UTC — use `_now=$(date -u +%Y-%m-%dT%H%M); _fname="${_now}-${task_name}.md"`.
+
+Filename-collision note: two voluntary saves within the same UTC minute would overwrite. Accepted as theoretical given checkpoint save frequency (manual, infrequent) — do not engineer around this.
 
 Create the `checkpoints/` directory if absent (best-effort; fail-OPEN on mkdir failure).
 
@@ -296,6 +300,10 @@ checkpoint save (voluntary)
 
 ## Session ID
 <session UUID from Step 1.1, or "unknown" if unavailable>
+
+## Session link
+- Resume: claude --resume <session_uuid>
+- JSONL: ~/.claude/projects/<project-hash>/<session_uuid>.jsonl
 
 ## Last user intent
 <one-sentence restatement of what the user was working on>
@@ -320,6 +328,11 @@ checkpoint save (voluntary)
 ## Restore hint
 Run /checkpoint --restore in a fresh session to resume task '<task-name>' from branch '<branch>'.
 ```
+
+**`## Session link` field derivation:**
+- `<session_uuid>` is the same value written to `## Session ID` (from Step 1.1 acquisition procedure).
+- `<project-hash>` is the project's absolute path with `/` replaced by `-` (matches the cost-ledger JSONL-lookup convention used elsewhere in this skill). Compute: `_project_hash=$(printf '%s' "$_cwd" | tr '/' '-')` where `_cwd` is from stdin JSON `.cwd`.
+- If `<session_uuid>` is `unknown` (UUID could not be acquired), write the section with both lines literally as `- Resume: (session UUID unavailable)` and `- JSONL: (session UUID unavailable)` rather than omitting the section — keeps parser shape stable.
 
 **Paths-not-content rule (D-04):** NEVER carry the actual file contents into the checkpoint. Only paths. Restore re-fires the Read tool on disk artifacts in the new session.
 
@@ -537,9 +550,16 @@ consumed_sentinel_path=""
    | 5 | B3 session-state fallback synthesis | `""` (empty) — no sentinel consumed |
    | 6 | Step-2 corrupt-file branch (read fails) | `""` (empty) — graceful surface (prints raw contents + "Manual recovery" prompt); Step 5 may still fire for current-session cleanup, which is safe because empty `consumed_sentinel_path` triggers only the existing cleanup path |
 
-2. Annotate each candidate: task name (from `## Active task`), branch (from `## Branch`), date (from filename prefix), source (`sentinel` or `disk-only`). Awk extraction: `awk '/^## Active task[[:space:]]*$/{getline; gsub(/\r$/,""); print; exit}'` — strips trailing CR and handles value-on-next-line form. If `## Active task` cannot be extracted (parse failure), drop the candidate silently.
+2. Annotate each candidate: task name (from `## Active task`), branch (from `## Branch`), saved-time (from filename prefix — see below), source (`sentinel` or `disk-only`). Awk extraction: `awk '/^## Active task[[:space:]]*$/{getline; gsub(/\r$/,""); print; exit}'` — strips trailing CR and handles value-on-next-line form. If `## Active task` cannot be extracted (parse failure), drop the candidate silently.
 
-3. De-duplication: prefer the non-`-precompact` file over the `-precompact` file when one filename equals the other minus `-precompact.md` AND their mtimes are within `${QUOIN_PICKER_DEDUP_WINDOW:-7d}` (7 days) of each other. Pairs older than 7 days apart are treated as independent entries.
+   **Saved-time extraction (handles both filename shapes):**
+   - **Timestamped (new):** `<YYYY-MM-DD>T<HHMM>-<task-name>.md` → display as `YYYY-MM-DD HH:MM UTC` (insert colon between HH and MM).
+   - **Legacy non-timestamped:** `<YYYY-MM-DD>-<task-name>.md` (no `T<HHMM>` between date and task name) → display as `YYYY-MM-DD (legacy)`.
+   - **Precompact:** `<YYYY-MM-DD>-<task-name>-precompact.md` → display as `YYYY-MM-DD (precompact)`.
+
+   Detection regex (POSIX bash): a basename matches the new form iff it matches `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{4}-`. Otherwise treat as legacy. The `-precompact` suffix is orthogonal and detected separately on the basename before extension stripping.
+
+3. De-duplication: prefer the non-`-precompact` file over the `-precompact` file when one filename equals the other minus `-precompact.md` AND their mtimes are within `${QUOIN_PICKER_DEDUP_WINDOW:-7d}` (7 days) of each other. Pairs older than 7 days apart are treated as independent entries. **Note on timestamped voluntary saves:** with the `<YYYY-MM-DD>T<HHMM>-<task>.md` format introduced for voluntary saves, this filename-equality match will no longer fire against precompact files written the same date (precompact files retain the legacy `<YYYY-MM-DD>-<task>-precompact.md` shape). The dedup rule remains in force to handle older non-timestamped voluntary checkpoints still on disk (pre-migration files); it is effectively a no-op for new files.
 
 4. Backward-compat reader: tolerate missing `## Session ID` (older voluntary checkpoints). When absent, display `(legacy)` in the picker source column.
 
@@ -558,11 +578,12 @@ consumed_sentinel_path=""
    - **Two or more:** present the numbered picker:
      ```
      Multiple recent checkpoints found. Which session do you want to restore?
-       1. * Task: TASK_1  Branch: BRANCH_1  Date: DATE_1  (sentinel)
-       2.   Task: TASK_2  Branch: BRANCH_2  Date: DATE_2  (disk-only)
+       1. * Task: TASK_1  Branch: BRANCH_1  Saved: DATETIME_1  (sentinel)
+       2.   Task: TASK_2  Branch: BRANCH_2  Saved: DATETIME_2  (disk-only)
        ...
      Enter number, or 'skip' to proceed to direct checkpoint lookup:
      ```
+     Where `DATETIME_N` is the saved-time value derived per the filename-shape detection above (`YYYY-MM-DD HH:MM UTC`, `YYYY-MM-DD (legacy)`, or `YYYY-MM-DD (precompact)`).
      `*` marks sentinel-backed entries. Cap at 10 items (mtime descending). If more: `... and <N> older. Use --defer to skip.`
      - On a valid number: use that entry's checkpoint file. Set `consumed_sentinel_path` to the sentinel path if the chosen entry's source=sentinel; else leave `""`.
      - On `skip`: fall through to Step 3.
@@ -652,10 +673,13 @@ Read the checkpoint file. Parse its sections. Surface as a structured prompt:
 
 ```
 Resuming task: <TASK>. Branch: <BRANCH>. Last intent: <INTENT>.
+Session: claude --resume <SESSION_UUID>
 In-flight artifacts: <N paths>.
 Open questions: <N items>.
 Re-fire reads on artifacts now? [y / n]
 ```
+
+`<SESSION_UUID>` is read from the checkpoint file's `## Session ID` section. If absent (legacy checkpoint without `## Session ID`), display `Session: (not recorded in this checkpoint — legacy format)`. If `## Session link` recorded "unavailable" at save time, display `Session: (session UUID was unavailable at save time)`. Do NOT block the restore on either case — the line is informational.
 
 If the checkpoint file is corrupt or unreadable: surface a graceful error with raw file contents plus:
 `Manual recovery — please paste the checkpoint content above and I will reconstruct state.`
