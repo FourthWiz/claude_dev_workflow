@@ -50,19 +50,22 @@ quoin install --runtime claude
 quoin doctor --runtime claude
 ```
 
+When `--scope` is not specified, the installer **prompts interactively** to ask
+whether to install globally (`~/.claude/`) or project-level (`./.claude/`). In
+non-interactive environments (CI, pipes), it defaults to global without prompting.
+
 `quoin install` and bare `quoin` remain backward-compatible aliases for the
-Claude install path. They deploy to `~/.claude`.
+Claude install path.
 
 ### Claude install scope: user vs project
 
 The Claude adapter can be installed at two scopes:
 
-**User scope (default)** — installs to `~/.claude/`. Skills, hooks, and workflow
-rules are available globally in every Claude Code session on the machine.
+**User scope (global)** — installs to `~/.claude/`. Skills, hooks, and workflow
+rules are available in every Claude Code session on the machine.
 
 ```bash
-quoin install --runtime claude               # same as --scope user
-quoin install --runtime claude --scope user
+quoin install --runtime claude --scope user   # explicit global, no prompt
 ```
 
 **Project scope** — installs to `<project>/.claude/`. Skills and hooks activate
@@ -70,12 +73,11 @@ only when Claude Code is opened in that directory. Hooks register in
 `<project>/.claude/settings.json` instead of your personal settings file.
 
 ```bash
-# Install into the current directory's .claude/
-quoin install --runtime claude --scope project
-
-# Install into an explicit project root
-quoin install --runtime claude --scope project:/path/to/repo
+quoin install --runtime claude --scope project          # explicit project, no prompt
+quoin install --runtime claude --scope project:/path    # explicit project root
 ```
+
+Pass `--scope` explicitly to skip the interactive prompt (useful in scripts and CI).
 
 > **Note:** Claude Code resolves personal scope (`~/.claude/skills/`) before
 > project scope. If you have a user-scope install, it will shadow a project-scope
@@ -101,12 +103,14 @@ quoin codex init --project-root .
 quoin codex init --project-root . --check
 ```
 
-Legacy source install for Claude remains supported:
+Legacy source install for Claude remains supported (prompts for scope interactively):
 
 ```bash
 git clone https://github.com/FourthWiz/quoin
 cd quoin
-bash quoin/install.sh
+bash quoin/install.sh                        # prompts: global or project?
+bash quoin/install.sh --scope user           # global, no prompt
+bash quoin/install.sh --scope project        # project, no prompt
 ```
 
 GitHub redirects the old `FourthWiz/claude_dev_workflow` URL to this repository.

@@ -117,6 +117,34 @@ def _derive_allow_writes(source_dir: pathlib.Path, source_dir_explicit: bool) ->
     return True
 
 
+def _prompt_scope() -> str:
+    """Interactively ask the user for install scope when --scope is omitted.
+
+    Returns 'user' or 'project'. Falls back to 'user' silently in non-interactive
+    (no tty) environments so CI/pipe usage is unaffected.
+    """
+    if not sys.stdin.isatty():
+        print("quoin: non-interactive mode — defaulting to --scope user (global ~/.claude/)")
+        return "user"
+
+    print()
+    print("Where should quoin install?")
+    print("  g) Global  — ~/.claude/  (all Claude Code sessions on this machine)")
+    print("  p) Project — ./.claude/  (this project only)")
+    print()
+    while True:
+        try:
+            answer = input("Choose [g/p] (default: g): ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.", file=sys.stderr)
+            sys.exit(1)
+        if answer in ("", "g", "global", "user"):
+            return "user"
+        if answer in ("p", "project"):
+            return "project"
+        print("Please enter 'g' for global or 'p' for project.")
+
+
 def _resolve_dest_root(args: argparse.Namespace) -> pathlib.Path:
     """Resolve the dest_root for a Claude install based on --scope (proc:T-03).
 
@@ -167,6 +195,10 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
 
     source_dir_explicit = args.source_dir is not None
     source_dir = _resolve_source_dir(args.source_dir)
+
+    # Prompt for scope when not explicitly provided on the CLI
+    if getattr(args, "scope", None) is None:
+        args.scope = _prompt_scope()
 
     # Resolve dest_root via --scope flag
     dest_root = _resolve_dest_root(args)
@@ -587,15 +619,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     install_p.add_argument(
         "--scope",
-        default="user",
+        default=None,
         metavar="SCOPE",
         help=(
-            "Install under <project>/.claude/ instead of ~/.claude/. "
-            "Values: 'user' (default, installs to ~/.claude/), "
-            "'project' (installs to <CWD>/.claude/), "
-            "'project:/path/to/repo' (installs to /path/to/repo/.claude/). "
-            "All skills, scripts, hooks, and CLAUDE.md will be project-scoped. "
-            "Hooks register in <project>/.claude/settings.json only. "
+            "Install scope: 'user' (global, ~/.claude/) or 'project' (<CWD>/.claude/). "
+            "If omitted, the installer prompts interactively (non-interactive mode defaults to 'user'). "
+            "Values: 'user' installs to ~/.claude/, "
+            "'project' installs to <CWD>/.claude/, "
+            "'project:/path/to/repo' installs to /path/to/repo/.claude/. "
+            "All skills, scripts, hooks, and CLAUDE.md will be scoped accordingly. "
             "Note: for skills, Claude Code personal scope overrides project scope — "
             "a prior home install shadows project skills. "
             "Run 'quoin doctor --scope project' to detect conflicts."

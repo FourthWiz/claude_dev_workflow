@@ -91,6 +91,14 @@ SKILL_OVERRIDES: dict[str, str] = {
     "keybindings-help": "name-only",  # non-quoin skill; same
     "start_of_day": "name-only",
     "end_of_day": "name-only",
+    # Internal / rarely-typed-directly skills — name-only to stay within skill listing budget
+    "sleep": "name-only",
+    "expand": "name-only",
+    "cost_snapshot": "name-only",
+    "rollback": "name-only",
+    "run": "name-only",
+    "weekly_review": "name-only",
+    "next_steps": "name-only",
 }
 
 _MARKER_START = "# === DEV WORKFLOW START ==="

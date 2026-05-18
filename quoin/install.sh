@@ -51,7 +51,7 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
       echo "  --upgrade            Re-install via pip before deploying (alias: --use-pip)"
       echo "  --use-pip            Same as --upgrade"
       echo "  --force-merge        Keep first DEV WORKFLOW marker pair; remove extras"
-      echo "  --scope user         Install under ~/.claude/ (default)"
+      echo "  --scope user         Install globally under ~/.claude/"
       echo "  --scope project      Install under <CWD>/.claude/ instead of ~/.claude/."
       echo "                       All skills, scripts, hooks, and CLAUDE.md will be"
       echo "                       project-scoped. Hooks register in <project>/.claude/settings.json"
@@ -83,6 +83,28 @@ done
 if [[ -z "$PYTHON" ]]; then
   echo "quoin: No Python interpreter found (tried python3, python). Install Python 3.10+." >&2
   exit 1
+fi
+
+# ── Interactive scope prompt (when --scope not provided) ─────────────────────
+if [[ -z "$SCOPE_FLAG" ]]; then
+  if [[ -t 0 ]]; then
+    echo ""
+    echo "Where should quoin install?"
+    echo "  g) Global  — ~/.claude/  (all Claude Code sessions on this machine)"
+    echo "  p) Project — ./.claude/  (this project only)"
+    echo ""
+    while true; do
+      read -rp "Choose [g/p] (default: g): " _scope_answer
+      case "${_scope_answer:-g}" in
+        g|G|global|user)  SCOPE_FLAG="--scope user";    break ;;
+        p|P|project)      SCOPE_FLAG="--scope project"; break ;;
+        *) echo "Please enter 'g' for global or 'p' for project." ;;
+      esac
+    done
+  else
+    echo "quoin: non-interactive mode — defaulting to --scope user (global ~/.claude/)" >&2
+    SCOPE_FLAG="--scope user"
+  fi
 fi
 
 # Build forwarded args for `quoin install` (array preserves paths with spaces)

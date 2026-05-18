@@ -348,8 +348,8 @@ def test_scope_flag_present_in_install_help():
     assert "--scope" in result.stdout
 
 
-def test_scope_defaults_to_user(monkeypatch):
-    """argparse default for --scope is 'user'."""
+def test_scope_defaults_to_none_without_flag(monkeypatch):
+    """--scope defaults to None when not provided (interactive prompt handles it)."""
     from quoin.cli import main
 
     captured_args = {}
@@ -361,6 +361,22 @@ def test_scope_defaults_to_user(monkeypatch):
     import quoin.cli as cli_mod
     monkeypatch.setattr(cli_mod, "_cmd_claude_install", fake_cmd)
     main(["install", "--source-dir", str(QUOIN_SRC)])
+    assert captured_args.get("scope") is None
+
+
+def test_scope_user_explicit(monkeypatch):
+    """--scope user is parsed and forwarded correctly."""
+    from quoin.cli import main
+
+    captured_args = {}
+
+    def fake_cmd(args):
+        captured_args.update(vars(args))
+        return 0
+
+    import quoin.cli as cli_mod
+    monkeypatch.setattr(cli_mod, "_cmd_claude_install", fake_cmd)
+    main(["install", "--source-dir", str(QUOIN_SRC), "--scope", "user"])
     assert captured_args.get("scope") == "user"
 
 
