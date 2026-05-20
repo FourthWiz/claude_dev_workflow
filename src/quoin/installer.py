@@ -248,6 +248,9 @@ def deploy_skills(source_dir: pathlib.Path, dest_root: pathlib.Path) -> int:
         if not skill_dir.is_dir():
             continue
         skill_name = skill_dir.name
+        # Skip directories not in CANONICAL_SKILLS (e.g. Drive sync artifacts like "next_steps 2")
+        if skill_name not in CANONICAL_SKILLS:
+            continue
         dst_skill = dst_skills / skill_name
         dst_skill.mkdir(parents=True, exist_ok=True)
         # Prefer Claude adapter path when available (runtime-portability migration).
