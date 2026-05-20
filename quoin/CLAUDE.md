@@ -1,6 +1,6 @@
 # Development Workflow — Shared Rules
 
-This file defines the common rules and behaviors shared across all development workflow skills: `/init_workflow`, `/discover`, `/architect`, `/plan`, `/critic`, `/revise`, `/thorough_plan` (orchestrator), `/run` (end-to-end orchestrator), `/gate`, `/implement`, `/review`, `/rollback`, `/end_of_task`, `/end_of_day`, `/start_of_day`, `/weekly_review`, `/cost_snapshot`, `/capture_insight`, `/next-steps`, and `/triage`.
+This file defines the common rules and behaviors shared across all development workflow skills: `/init_workflow`, `/discover`, `/architect`, `/plan`, `/critic`, `/revise`, `/thorough_plan` (orchestrator), `/run` (end-to-end orchestrator), `/gate`, `/implement`, `/review`, `/rollback`, `/end_of_task`, `/end_of_day`, `/start_of_day`, `/weekly_review`, `/cost_snapshot`, `/capture_insight`, `/next-steps`, `/triage`, and `/continue_work`.
 
 Runtime portability note: shared workflow semantics are being extracted under `quoin/core/workflow/` (`rules.md`, `task-layout.md`, `session-state.md`, `cost-ledger.md`). This file remains the active Claude Code runtime rules file installed by `bash quoin/install.sh`; do not treat it as generated yet.
 
@@ -338,6 +338,7 @@ If adding a new file class: hand-edited or contract-approved → Tier 1; ephemer
 | /cost_snapshot | Haiku | Read-only cost reporting from ledger files and ccusage (lightweight) |
 | /triage | Haiku | Lightweight routing: reads prompt, inspects state, proposes a skill. |
 | /next-steps | Haiku | Lightweight queue management for future work items |
+| /continue_work | Sonnet | Revive context from a prior session: reads recent-sessions.md, presents session picker, extracts checkpoint summary and recent messages from JSONL. |
 
 ### Subagent preamble (Stage 2 of pipeline-efficiency-improvements)
 
@@ -345,7 +346,7 @@ The 7 spawn-target skills (critic, revise, revise-fast, plan, review, gate, arch
 
 ### §0 Model dispatch preamble
 
-The 15 cheap-tier skills (gate, end_of_day, start_of_day, triage, capture_insight, cost_snapshot, weekly_review, end_of_task, implement, rollback, expand, revise-fast, sleep, next_steps, checkpoint) carry a `## §0 Model dispatch` block as the first body H2 after the H1. When invoked from a session running on a model strictly more expensive than the declared tier, the skill self-dispatches via the Agent tool to its declared model and prefixes the child prompt with `[no-redispatch]` to prevent recursion. Counter form `[no-redispatch:N]` (N≥2) is an abort signal. The 9 Opus-tier skills do NOT carry the preamble.
+The 16 cheap-tier skills (gate, end_of_day, start_of_day, triage, capture_insight, cost_snapshot, weekly_review, end_of_task, implement, rollback, expand, revise-fast, sleep, next_steps, checkpoint, continue_work) carry a `## §0 Model dispatch` block as the first body H2 after the H1. When invoked from a session running on a model strictly more expensive than the declared tier, the skill self-dispatches via the Agent tool to its declared model and prefixes the child prompt with `[no-redispatch]` to prevent recursion. Counter form `[no-redispatch:N]` (N≥2) is an abort signal. The 9 Opus-tier skills do NOT carry the preamble.
 
 Fail-OPEN on Agent unavailable (one-line `[quoin-stage-1: subagent dispatch unavailable; ...]` warning); architecture I-01 = best-effort cost guardrail. Worktree-class errors → AskUserQuestion recovery prompt. Manual override: prefix slash invocation with `[no-redispatch]`. Drift detection: `quoin/dev/tests/test_quoin_stage1_preamble.py`, `quoin/dev/tests/test_quoin_stage1_recursion_abort.py`. Verbose details (worktree-error classification, sentinel forms, recovery options): `__QUOIN_HOME__/memory/dispatch-guide.md`.
 
@@ -355,7 +356,7 @@ The 7 Opus-tier non-orchestrator skills (architect, plan, critic, revise, review
 
 ### Hooks deployed by quoin
 
-`bash install.sh` deploys hook scripts to `__QUOIN_HOME__/hooks/` and registers six (event, matcher) stanzas in `__QUOIN_HOME__/settings.json`: UserPromptSubmit/`*`, PreCompact/`auto`, PostCompact/`auto`, SessionStart/`startup`, SessionStart/`resume`, SessionEnd/`*`. `userpromptsubmit.sh` enforces context-utilization advisory/block; `precompact.sh`/`postcompact.sh` manage compaction sentinels; `sessionstart.sh`/`sessionend.sh` handle S-4 banners.
+`bash install.sh` deploys hook scripts to `__QUOIN_HOME__/hooks/` and registers six (event, matcher) stanzas in `__QUOIN_HOME__/settings.json`: UserPromptSubmit/`*`, PreCompact/`auto`, PostCompact/`auto`, SessionStart/`startup`, SessionStart/`resume`, SessionEnd/`*`. `userpromptsubmit.sh` enforces context-utilization advisory/block AND idle-session detection (STEP 0.7 appends to `recent-sessions.md`; STEP 0.9 emits an advisory when the session has been idle for >1 hour); `precompact.sh`/`postcompact.sh` manage compaction sentinels (STEP 1b also appends to `recent-sessions.md` before compaction); `sessionstart.sh`/`sessionend.sh` handle S-4 banners. The `recent-sessions.md` data file (written by hooks and `/checkpoint`, read by `/continue_work`) lives at `<cwd>/.workflow_artifacts/memory/recent-sessions.md`.
 
 All hooks fail-OPEN (exit 0 on any error). jq is a soft-required dependency. Tunable constants (`QUOIN_BYTES_PER_TOKEN`, `QUOIN_EFFECTIVE_CONTEXT_LIMIT`, `QUOIN_STOP_BPS`, `QUOIN_BLOCK_BPS`, `QUOIN_COMPACT_FIRST_BPS`, etc.) use `${QUOIN_*:-default}` expansion with integer basis-points arithmetic. Full table + verbose details: `__QUOIN_HOME__/memory/hooks-table.md` and `quoin/docs/hooks-guide.md`.
 

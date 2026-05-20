@@ -32,6 +32,16 @@ fi
 session_id=$(printf '%s' "$STDIN" | jq -r '.session_id // empty' 2>/dev/null) || exit 0
 cwd=$(printf '%s' "$STDIN" | jq -r '.cwd // empty' 2>/dev/null) || exit 0
 [ -z "$cwd" ] && cwd="$PWD"
+
+# STEP 1b: Recent-session record (append before compaction wipes context)
+(
+    [ -z "$session_id" ] && exit 0
+    _pc_mem="${cwd}/.workflow_artifacts/memory"
+    mkdir -p "$_pc_mem" 2>/dev/null || exit 0
+    _pc_now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _pc_now=$(date +%Y-%m-%dT%H:%M:%SZ)
+    printf '%s | %s\n' "$_pc_now" "$session_id" >> "${_pc_mem}/recent-sessions.md" 2>/dev/null || true
+) 2>/dev/null || true
+
 transcript_path=$(printf '%s' "$STDIN" | jq -r '.transcript_path // empty' 2>/dev/null) || exit 0
 
 # Override: .allow-compact marker file in cwd

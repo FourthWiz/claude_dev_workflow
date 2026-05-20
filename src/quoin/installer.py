@@ -32,6 +32,7 @@ CANONICAL_SKILLS = (
     "architect",
     "capture_insight",
     "checkpoint",
+    "continue_work",
     "cost_snapshot",
     "critic",
     "discover",
@@ -99,6 +100,7 @@ SKILL_OVERRIDES: dict[str, str] = {
     "run": "name-only",
     "weekly_review": "name-only",
     "next_steps": "name-only",
+    "continue_work": "name-only",
 }
 
 _MARKER_START = "# === DEV WORKFLOW START ==="
