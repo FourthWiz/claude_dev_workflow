@@ -78,7 +78,7 @@ Otherwise (already at or below declared tier, OR prompt has [no-redispatch] sent
 
 ## Summary
 
-`/triage` is a lightweight routing skill. It reads a user's natural-language prompt, inspects the current workflow state on disk, scores each candidate skill against an embedded catalog, and presents a ranked proposal with rationale. After confirming the best-fit skill, `/triage` always tells the user which command to type — it **never invokes skills itself**. This applies to every skill, not just `/implement` and `/end_of_task`. The propose-only posture for all 18 routable skills is intentional and permanent: no `Skill` tool calls happen from `/triage` at any point.
+`/triage` is a lightweight routing skill. It reads a user's natural-language prompt, inspects the current workflow state on disk, scores each candidate skill against an embedded catalog, and presents a ranked proposal with rationale. After confirming the best-fit skill, `/triage` always tells the user which command to type — it **never invokes skills itself**. This applies to every skill, not just `/implement` and `/end_of_task`. The propose-only posture for all 19 routable skills is intentional and permanent: no `Skill` tool calls happen from `/triage` at any point.
 
 ---
 
@@ -132,7 +132,7 @@ Run the following checks. All are **best-effort and read-only** — if a command
 
 Apply the three-signal scoring algorithm:
 
-**Signal A — Explicit command.** If the scoring prompt contains a literal `/<skill-name>` token matching any of the 18 routable skills (case-insensitive), that skill gets score **3** and skip directly to Step 4 proposal. No further scoring needed.
+**Signal A — Explicit command.** If the scoring prompt contains a literal `/<skill-name>` token matching any of the 19 routable skills (case-insensitive), that skill gets score **3** and skip directly to Step 4 proposal. No further scoring needed.
 
 - Special rule: if `/revise-fast` is matched via Signal A, substitute `/revise` in the proposal with note: "`/revise-fast` is an internal variant; proposing `/revise` instead."
 - `/revise-fast` is **never** included in any ranked list or ambiguous candidate display.
@@ -166,12 +166,13 @@ For decline/negation replies, apply the one-question cap (Section 9).
 
 ## Section 6: Skill Catalog
 
-All 18 user-facing routable skills. `/revise-fast` is excluded (internal, not user-facing).
+All 19 user-facing routable skills. `/revise-fast` is excluded (internal, not user-facing).
 
 | Skill | Primary keywords | Trigger phrases | State signals that boost (+) | State signals that suppress (−) | Notes |
 |-------|-----------------|-----------------|------------------------------|---------------------------------|-------|
 | `/architect` | architect, system design, design, explore | "design the system", "architecture", "how should we build this", "explore the codebase", "technical exploration", "cross-repo" | `architecture.md` missing + task folder exists (+1) | Plan already exists (−1) | Large tasks; use before `/thorough_plan` |
 | `/capture_insight` | note, insight, remember, log, save, pattern, gotcha | "note this", "remember this", "log this", "save this as a lesson", "remember that", "note that", "I want to capture" | Active session in_progress (+1) | — | Low-impact, quick logging |
+| `/continue_work` | continue, resume, revive, prior session, last session, where was I | "resume prior session", "revive old session", "where was I", "switch to last session", "continue from last session" | `recent-sessions.md` exists (+1) | — | Sonnet tier; idle-session recovery skill |
 | `/cost_snapshot` | cost, spend, spent, budget, how much | "how much have I spent", "cost report", "show costs", "project cost", "what has this cost" | — | — | Read-only; safe at any time |
 | `/critic` | critic, critique, review the plan, find issues, gaps, risks | "critique this plan", "review the plan", "find issues with this plan", "what's wrong with this", "check the plan" | Plan found (+1), no critic-response yet (+1) | Recent commits exist + plan + no review (−2 — prefer `/review`) | Runs before `/implement` to catch plan gaps |
 | `/discover` | discover, scan, map, repos, inventory, dependencies, index | "scan my repos", "map the codebase", "what repos do I have", "index the project", "save the architecture" | `repos-inventory.md` missing/stale (+2), cache stale (+1) | — | Run once on setup or when repos change |
@@ -208,7 +209,7 @@ When keyword collisions produce a tie, use state signals to break it. These rule
 
 ## Section 8: Invocation Policy
 
-**All 18 routable skills are propose-only.** After the user confirms, `/triage` prints the command to type and stops. No `Skill` tool call is ever made.
+**All 19 routable skills are propose-only.** After the user confirms, `/triage` prints the command to type and stops. No `Skill` tool call is ever made.
 
 **Rationale:**
 - No Haiku skill in this workflow uses the `Skill` tool. Only Opus orchestrators (`/run`, `/thorough_plan`) invoke other skills via `Skill` tool dispatch. Running a `Skill` tool call from a Haiku model is unverified and potentially unsupported.
@@ -219,6 +220,7 @@ When keyword collisions produce a tie, use state signals to break it. These rule
 |-------|-------------|---------------------------|
 | `/architect` | Medium | Universal propose-only. User types `/architect`. |
 | `/capture_insight` | Low | Universal propose-only. |
+| `/continue_work` | Low | Universal propose-only; recovery skill. |
 | `/cost_snapshot` | Low | Universal propose-only; read-only. |
 | `/critic` | Medium | Universal propose-only. |
 | `/discover` | Medium | Universal propose-only. |

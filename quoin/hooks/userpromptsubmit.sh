@@ -54,6 +54,50 @@ STDIN=$(cat)
     fi
 ) 2>/dev/null || true
 
+# STEP 0.7: Recent-session tracking + idle flag
+(
+    _rs_sid=$(printf '%s' "$STDIN" | jq -r '.session_id // empty' 2>/dev/null) || true
+    _rs_cwd=$(printf '%s' "$STDIN" | jq -r '.cwd // empty' 2>/dev/null) || true
+    [ -z "$_rs_cwd" ] && _rs_cwd="$PWD"
+    [ -z "$_rs_sid" ] && exit 0
+
+    _rs_mem="${_rs_cwd}/.workflow_artifacts/memory"
+    mkdir -p "$_rs_mem" 2>/dev/null || exit 0
+    _rs_file="${_rs_mem}/recent-sessions.md"
+    _rs_now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _rs_now=$(date +%Y-%m-%dT%H:%M:%SZ)
+
+    # Idle check: look for previous entry for this session_id
+    _rs_idle=0
+    if [ -f "$_rs_file" ]; then
+        _rs_prev=$(grep " | ${_rs_sid}$" "$_rs_file" 2>/dev/null | tail -1)
+        if [ -n "$_rs_prev" ]; then
+            _rs_prev_ts=$(printf '%s' "$_rs_prev" | awk '{print $1}')
+            _rs_prev_epoch=$(python3 -c "
+import sys, datetime
+ts = sys.argv[1].replace('Z', '+00:00')
+try:
+    d = datetime.datetime.fromisoformat(ts)
+    print(int(d.timestamp()))
+except Exception:
+    sys.exit(1)
+" "$_rs_prev_ts" 2>/dev/null) || _rs_prev_epoch=0
+            _rs_now_epoch=$(python3 -c "import time; print(int(time.time()))" 2>/dev/null) || _rs_now_epoch=0
+            if [ -n "$_rs_prev_epoch" ] && [ "$_rs_prev_epoch" -gt 0 ] && [ "$_rs_now_epoch" -gt 0 ]; then
+                _rs_gap=$(( _rs_now_epoch - _rs_prev_epoch ))
+                [ "$_rs_gap" -gt 3600 ] && _rs_idle=1
+            fi
+        fi
+    fi
+
+    # Append current entry (unconditional)
+    printf '%s | %s\n' "$_rs_now" "$_rs_sid" >> "$_rs_file" 2>/dev/null || true
+
+    # Write idle flag file if idle gap detected
+    if [ "$_rs_idle" -eq 1 ]; then
+        printf '%s\n' "$_rs_now" > "${_rs_mem}/idle-advisory-pending-${_rs_sid}.txt" 2>/dev/null || true
+    fi
+) 2>/dev/null || true
+
 # STEP 0: Recovery-command exemption
 # Extract prompt field (POSIX-portable; avoid echo's non-portable behavior)
 prompt=$(printf '%s' "$STDIN" | jq -r '.prompt // empty' 2>/dev/null) || exit 0
@@ -86,6 +130,19 @@ case "$cmd" in
     esac
     ;;
 esac
+
+# STEP 0.9: Idle-session advisory (parent shell, after STEP 0 exemption check)
+_idle_cwd=$(printf '%s' "$STDIN" | jq -r '.cwd // empty' 2>/dev/null)
+[ -z "$_idle_cwd" ] && _idle_cwd="$PWD"
+_idle_sid=$(printf '%s' "$STDIN" | jq -r '.session_id // empty' 2>/dev/null)
+if [ -n "$_idle_sid" ]; then
+    _idle_flag="${_idle_cwd}/.workflow_artifacts/memory/idle-advisory-pending-${_idle_sid}.txt"
+    if [ -f "$_idle_flag" ]; then
+        rm -f "$_idle_flag" 2>/dev/null || true
+        printf '{"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": "[quoin-idle] This session has been idle for over 1 hour. Consider starting a fresh session to keep token usage low. Run /continue_work to resume context in a new session."}}\n'
+        exit 0
+    fi
+fi
 
 # STEP 1: Read transcript path
 transcript_path=$(printf '%s' "$STDIN" | jq -r '.transcript_path // empty' 2>/dev/null) || exit 0

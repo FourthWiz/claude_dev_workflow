@@ -271,6 +271,25 @@ Read the following sources (best-effort; skip gracefully if any file is absent):
    - Most recent `review-N.md` under `.workflow_artifacts/` (highest N)
    - Active session-state file path
 
+### Step 1.6: Append to recent-sessions.md
+
+(Conditional: SKIP this step if SELECTED_MODE is "mid-agent")
+
+Before writing the checkpoint file, append one record to
+`<cwd>/.workflow_artifacts/memory/recent-sessions.md` (fail-OPEN — skip on any error).
+Create the `memory/` directory if absent (the `checkpoints/` subdirectory is created in Step 2,
+not `memory/`; this step must create `memory/` itself on first use).
+Use the Bash tool:
+
+```sh
+_rs_now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+_rs_sid="<session_uuid from Step 1.1>"
+_rs_cwd="<cwd — use .cwd from stdin JSON, not $(pwd)>"
+mkdir -p "${_rs_cwd}/.workflow_artifacts/memory" 2>/dev/null || true
+printf '%s | %s\n' "$_rs_now" "$_rs_sid" \
+  >> "${_rs_cwd}/.workflow_artifacts/memory/recent-sessions.md" 2>/dev/null || true
+```
+
 ### Step 2: Write checkpoint file
 
 (Conditional: SKIP this step if SELECTED_MODE is "mid-agent". In mid-agent mode, no full checkpoint file is written — only the minimal sentinel in Step 4c.)
