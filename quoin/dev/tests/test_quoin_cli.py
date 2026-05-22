@@ -358,7 +358,7 @@ def _fake_source_dir(tmp: Path) -> Path:
     """Return tmp with stub hook scripts under tmp/hooks/."""
     hooks_dir = tmp / "hooks"
     hooks_dir.mkdir(parents=True)
-    for fname in ("userpromptsubmit.sh", "precompact.sh", "postcompact.sh", "sessionstart.sh", "sessionend.sh", "_lib.sh"):
+    for fname in ("userpromptsubmit.sh", "precompact.sh", "postcompact.sh", "sessionstart.sh", "sessionend.sh", "_lib.sh", "worktreecreate.sh"):
         (hooks_dir / fname).write_text("#!/bin/bash\n")
     return tmp
 

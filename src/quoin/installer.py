@@ -56,7 +56,7 @@ CANONICAL_SKILLS = (
     "weekly_review",
 )
 
-# T-05: canonical script list — all 9 scripts deployed to ~/.claude/scripts/
+# T-05: canonical script list — all 11 scripts deployed to ~/.claude/scripts/
 DEPLOYED_SCRIPTS = (
     "validate_artifact.py",
     "path_resolve.py",
@@ -67,6 +67,8 @@ DEPLOYED_SCRIPTS = (
     "pidfile_helpers.sh",
     "sleep_score.py",
     "analyze_cost_ledger.py",
+    "git_root_for_dispatch.py",
+    "dispatch_sidecar.py",
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -333,14 +335,14 @@ def deploy_hooks(
     *,
     is_project_mode: bool = False,
 ) -> None:
-    """Copy hook scripts and merge 6 stanzas into dest_root/settings.json.
+    """Copy hook scripts and merge 7 stanzas into dest_root/settings.json.
 
     In project mode, hooks are scoped to <project>/.claude/settings.json only.
     Home ~/.claude/settings.json is NOT modified.
 
     Mirrors install.sh install_hooks() function.
     """
-    hook_scripts = ("userpromptsubmit.sh", "precompact.sh", "postcompact.sh", "sessionstart.sh", "sessionend.sh", "_lib.sh")
+    hook_scripts = ("userpromptsubmit.sh", "precompact.sh", "postcompact.sh", "sessionstart.sh", "sessionend.sh", "_lib.sh", "worktreecreate.sh")
     src_hooks = source_dir / "hooks"
     dst_hooks = dest_root / "hooks"
     dst_hooks.mkdir(parents=True, exist_ok=True)
@@ -408,6 +410,7 @@ def deploy_hooks(
     _append_stanza("SessionStart",     "startup", f"{hooks_dir}/sessionstart.sh",     5)
     _append_stanza("SessionStart",     "resume",  f"{hooks_dir}/sessionstart.sh",     5)
     _append_stanza("SessionEnd",       "*",       f"{hooks_dir}/sessionend.sh",       5)
+    _append_stanza("WorktreeCreate",   "*",       f"{hooks_dir}/worktreecreate.sh",   10)
 
     # Merge rm -rf / rm -fr deny rules into permissions.deny (idempotent).
     # These prevent accidental recursive deletes while still allowing plain rm.
@@ -432,7 +435,7 @@ def deploy_hooks(
     with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
         f.write("\n")
-    print(f"Merged 6 hook stanzas into {settings_path}")
+    print(f"Merged 7 hook stanzas into {settings_path}")
     if added:
         print(f"Added {added} rm -rf/rm -fr deny rule(s) to {settings_path}")
     print(f"Set {len(SKILL_OVERRIDES)} skill overrides in {settings_path}")

@@ -229,15 +229,26 @@ def test_bare_warning_present_in_wider_skillset(skill):
 
 
 # -------------------------------------------------------------------------
-# Test 5 — inserted block byte-equal across all 15 skills.
+# Test 5 — inserted block byte-equal across the 12 artifact-only skills.
 # CI-enforced byte-equality guardrail per lesson-2026-05-11 and D-09.
 # Sentinel comments are the SOLE extraction anchor; prose-anchor fallback removed.
+#
+# NOTE: The 3 source-mutating skills (implement, rollback, end_of_task) now carry
+# an additional §0-sidecar block inside the worktree-fallback sentinel (D-08,
+# nested-git-worktree-dispatch task). They are intentionally distinct and are
+# checked separately by test_sidecar_block_byte_equal_across_source_mutating_skills.
 # -------------------------------------------------------------------------
+_ARTIFACT_ONLY_WORKTREE_FALLBACK_SKILLS = [
+    s for s in WORKTREE_FALLBACK_SKILLS
+    if s not in {"implement", "rollback", "end_of_task"}
+]
+
+
 def test_inserted_block_byte_equal_across_skills():
-    """Worktree-fallback block must be byte-identical across all 15 SKILL.md files."""
+    """Worktree-fallback block must be byte-identical across the 12 artifact-only SKILL.md files."""
     blocks = {}
     missing = []
-    for skill in WORKTREE_FALLBACK_SKILLS:
+    for skill in _ARTIFACT_ONLY_WORKTREE_FALLBACK_SKILLS:
         path = skill_md_path(skill)
         block = extract_worktree_block(path)
         if not block:
@@ -250,7 +261,7 @@ def test_inserted_block_byte_equal_across_skills():
         f"Expected '{SENTINEL_BEGIN}' ... '{SENTINEL_END}' in §0 block."
     )
 
-    canonical_skill = WORKTREE_FALLBACK_SKILLS[0]
+    canonical_skill = _ARTIFACT_ONLY_WORKTREE_FALLBACK_SKILLS[0]
     canonical_block = blocks[canonical_skill]
     mismatches = []
     for skill, block in blocks.items():
@@ -291,3 +302,125 @@ def test_worktree_retry_grammar_pinned(skill):
         "rule ('first line' / 'FIRST LINE') was not found within 200 characters. "
         "The grammar must describe [worktree-retry] as a first-line sentinel, not substring-anywhere."
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tests 7-11 — D-08 WorktreeCreate hook: sidecar block invariants (nested-git-worktree-dispatch)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Source-mutating skills requiring the §0-sidecar block (D-08 scope)
+SOURCE_MUTATING_WORKTREE_SKILLS = {"implement", "rollback", "end_of_task"}
+
+SIDECAR_SENTINEL_BEGIN = "<!-- §0-sidecar-begin -->"
+SIDECAR_SENTINEL_END = "<!-- §0-sidecar-end -->"
+
+
+def extract_sidecar_block(skill_path: Path) -> str:
+    """Extract the §0-sidecar block anchored by sidecar sentinel comments."""
+    text = skill_path.read_text(encoding="utf-8")
+    begin_pos = text.find(SIDECAR_SENTINEL_BEGIN)
+    end_pos = text.find(SIDECAR_SENTINEL_END)
+    if begin_pos == -1 or end_pos == -1:
+        return ""
+    return text[begin_pos : end_pos + len(SIDECAR_SENTINEL_END)]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test 7 — sidecar block byte-identical across source-mutating skills
+# ─────────────────────────────────────────────────────────────────────────────
+def test_sidecar_block_byte_equal_across_source_mutating_skills():
+    """Sidecar block must be byte-identical across implement, rollback, end_of_task."""
+    blocks = {}
+    missing = []
+    for skill in sorted(SOURCE_MUTATING_WORKTREE_SKILLS):
+        path = skill_md_path(skill)
+        block = extract_sidecar_block(path)
+        if not block:
+            missing.append(skill)
+        else:
+            blocks[skill] = block
+
+    assert not missing, (
+        f"Sidecar sentinel comments not found in: {missing}. "
+        f"Expected '{SIDECAR_SENTINEL_BEGIN}' ... '{SIDECAR_SENTINEL_END}' in §0 block."
+    )
+
+    skills_list = sorted(SOURCE_MUTATING_WORKTREE_SKILLS)
+    canonical_skill = skills_list[0]
+    canonical_block = blocks[canonical_skill]
+    mismatches = []
+    for skill in skills_list[1:]:
+        if blocks[skill] != canonical_block:
+            mismatches.append(skill)
+
+    assert not mismatches, (
+        f"Sidecar block is NOT byte-identical in: {mismatches}. "
+        f"Canonical block from '{canonical_skill}'."
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test 8 — sidecar block absent from artifact-only skills
+# ─────────────────────────────────────────────────────────────────────────────
+ARTIFACT_ONLY_SKILLS = [s for s in WORKTREE_FALLBACK_SKILLS if s not in SOURCE_MUTATING_WORKTREE_SKILLS]
+
+
+@pytest.mark.parametrize("skill", ARTIFACT_ONLY_SKILLS)
+def test_sidecar_block_absent_from_artifact_only_skills(skill):
+    """Artifact-only skills must NOT have the §0-sidecar block."""
+    block = extract_sidecar_block(skill_md_path(skill))
+    assert block == "", (
+        f"{skill}/SKILL.md contains §0-sidecar sentinel block but is an artifact-only skill. "
+        "Only implement/rollback/end_of_task should have this block."
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test 9 — sidecar invocation present in source-mutating skills
+# ─────────────────────────────────────────────────────────────────────────────
+@pytest.mark.parametrize("skill", sorted(SOURCE_MUTATING_WORKTREE_SKILLS))
+def test_sidecar_invocation_present(skill):
+    """Source-mutating §0 must contain dispatch_sidecar.py invocation."""
+    block = extract_sidecar_block(skill_md_path(skill))
+    assert "dispatch_sidecar.py" in block, (
+        f"{skill}/SKILL.md §0-sidecar block missing 'dispatch_sidecar.py' invocation. "
+        "The block must call the sidecar writer before Agent dispatch."
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test 10 — Phase 2 retry at cheap tier documented in source-mutating skills
+# ─────────────────────────────────────────────────────────────────────────────
+@pytest.mark.parametrize("skill", sorted(SOURCE_MUTATING_WORKTREE_SKILLS))
+def test_phase2_retry_documented(skill):
+    """Source-mutating §0 must document the cheap-tier retry without isolation."""
+    block = extract_sidecar_block(skill_md_path(skill))
+    assert "Phase 2" in block or "phase 2" in block.lower(), (
+        f"{skill}/SKILL.md §0-sidecar block missing Phase 2 retry documentation."
+    )
+    assert "without isolation" in block or "WITHOUT isolation" in block, (
+        f"{skill}/SKILL.md §0-sidecar block missing 'without isolation' language for Phase 2."
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test 11 — no parent-cd artifacts remain in source-mutating §0 blocks
+# ─────────────────────────────────────────────────────────────────────────────
+_RETIRED_ARTIFACTS = [
+    "ORIG_DIR",
+    "/tmp/quoin_orig_dir_",
+    "[dispatch-cwd-pivot=",
+    "DISPATCH_CWD",
+]
+
+
+@pytest.mark.parametrize("skill", sorted(SOURCE_MUTATING_WORKTREE_SKILLS))
+def test_no_parent_cd_artifacts_remain(skill):
+    """Source-mutating §0 must not contain retired parent-cd design artifacts."""
+    # Check the full §0 block for retired artifacts
+    slice_text = extract_preamble_block(skill_md_path(skill))
+    for artifact in _RETIRED_ARTIFACTS:
+        assert artifact not in slice_text, (
+            f"{skill}/SKILL.md §0 contains retired parent-cd artifact: {artifact!r}. "
+            "The parent-cd design was retired in round-4 pivot. Remove this carryover."
+        )

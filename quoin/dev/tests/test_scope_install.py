@@ -184,7 +184,7 @@ def _make_fake_src(tmp: Path) -> Path:
     hooks_dir = tmp / "hooks"
     hooks_dir.mkdir(parents=True)
     for fname in ("userpromptsubmit.sh", "precompact.sh", "postcompact.sh",
-                  "sessionstart.sh", "sessionend.sh", "_lib.sh"):
+                  "sessionstart.sh", "sessionend.sh", "_lib.sh", "worktreecreate.sh"):
         (hooks_dir / fname).write_text("#!/bin/bash\n")
     return tmp
 

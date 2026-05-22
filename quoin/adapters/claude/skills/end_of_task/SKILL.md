@@ -60,18 +60,44 @@ Fail-graceful path with error-class triage (per architecture I-01):
       * Other-class: any other tool error, exception, or harness rejection
         — skip to Other-class path below (existing fail-OPEN behavior).
 
-  - Worktree-class branch:
-      Worktree creation is hook-driven and cannot be skipped by omitting a
-      parameter. Use the AskUserQuestion tool to present the user with one
-      option:
-        (c) `proceed-current-tier` — Skip dispatch, proceed at the current
-            (more expensive) tier. This is the only available recovery path.
-      Question header: `Subagent dispatch failed (worktree creation). Proceeding at current tier.`
-      Note for the user: "Worktree dispatch failed and no retry mechanism
-      is available — worktree creation is unconditional in this harness.
-      Proceeding at current tier."
+<!-- §0-sidecar-begin -->
+  Source-mutating dispatch — two-phase worktree isolation (D-08):
 
-  - Other-class path (also: worktree-class after user acknowledges c):
+  STEP A — Write the dispatch sidecar BEFORE calling the Agent tool:
+     Run via Bash:
+       PROJECT_ROOT="$(python3 __QUOIN_HOME__/scripts/path_resolve.py --project-root)"
+       python3 __QUOIN_HOME__/scripts/dispatch_sidecar.py \
+           --skill <skill-name> \
+           --project-root "$PROJECT_ROOT" \
+           --plan "<resolved-plan-path-or-empty>"
+     (The WorktreeCreate hook reads this sidecar to resolve the nested git root.)
+
+  STEP B — Phase 1: Agent dispatch WITH isolation: "worktree" (normal path):
+     Call the Agent tool with isolation: "worktree" at the declared cheap-tier
+     model (sonnet for this skill). The deployed WorktreeCreate hook at
+     __QUOIN_HOME__/hooks/worktreecreate.sh reads the sidecar, runs
+     git_root_for_dispatch.py, and (when a single nested repo resolves)
+     creates a worktree IN the nested git root and returns its path.
+
+  STEP C — Phase 2 retry WITHOUT isolation (on Worktree-class error):
+     If Phase 1 fails with a Worktree-class error (regex above), the hook
+     either returned skip (no stdout → harness fails) or encountered an error.
+     Re-dispatch the Agent call WITHOUT isolation: "worktree", at the SAME
+     declared cheap-tier model (sonnet). Do NOT escalate to parent tier.
+     Emit one-line audit:
+       [quoin-stage-1: worktree dispatch skipped; proceeding at sonnet without isolation]
+
+  STEP D — Done:
+     No child-side coordination required. The harness handles cwd correctly:
+     on Phase 1 success, child sees the worktree as cwd; on Phase 2, child
+     inherits the parent's session cwd (today's behavior, unchanged).
+<!-- §0-sidecar-end -->
+
+  - Worktree-class branch: handled by Phase 2 (§0-sidecar block above).
+    Phase 2 retries at the declared cheap-tier model without isolation.
+    Do NOT use AskUserQuestion or proceed-current-tier for source-mutating skills.
+
+  - Other-class path (non-worktree Agent errors):
       Do NOT abort the user's invocation.
       Emit the bare warning (verbatim):
         `[quoin-stage-1: subagent dispatch unavailable; proceeding at current tier]`
