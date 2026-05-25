@@ -219,17 +219,32 @@ Invoke via Bash tool:
 (Filter by PID `$$` — excludes this /checkpoint invocation's own pidfile only.)
 
 If the output is non-empty (other skills are running):
-  - Set SELECTED_MODE="mid-agent" (ask user to confirm via one-line prompt).
-  - Prompt: "Active skills detected: SKILL_LIST. Saving in mid-agent mode (minimal sentinel only). Confirm? [y/n]"
-  - On `n`: ask user to choose a mode (restore / load-as-reference / mid-agent).
-  - On `y`: proceed with SELECTED_MODE="mid-agent".
+  - Set SELECTED_MODE="mid-agent" (ask user to confirm via AskUserQuestion):
+    ```
+    AskUserQuestion(
+      question="Active skills detected: SKILL_LIST. Save in mid-agent mode (minimal sentinel only)?",
+      options=[
+        {label: "Yes, save mid-agent", description: "Save a minimal sentinel; other skills are still running."},
+        {label: "Choose different mode", description: "Pick restore or load-as-reference instead."}
+      ]
+    )
+    ```
+  - On "Choose different mode": fall through to sub-step C below.
+  - On "Yes, save mid-agent": proceed with SELECTED_MODE="mid-agent".
 
 **C. User choice:** If no mid-agent detection:
   - If invoked with a clear user intent from the prompt (e.g., "checkpoint for reference"),
     pick the matching mode.
-  - Otherwise: ask user to choose:
-    "Save mode: [restore (resume this session later) / load-as-reference (open as background in new session)]"
-    Default: restore.
+  - Otherwise: use AskUserQuestion to ask the user to choose (default: restore):
+    ```
+    AskUserQuestion(
+      question="How would you like to save this checkpoint?",
+      options=[
+        {label: "Restore", description: "Resume this exact session later."},
+        {label: "Load as reference", description: "Open as read-only background in a new session."}
+      ]
+    )
+    ```
   - Set SELECTED_MODE accordingly.
 
 **Dispatch:** based on SELECTED_MODE:

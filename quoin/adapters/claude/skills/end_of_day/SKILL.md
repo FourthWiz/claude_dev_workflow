@@ -315,19 +315,26 @@ Check for insights files `daily/insights-<DATE>.md` for every DATE in the proces
 - Tell the user: "I've added N workflow improvement suggestion(s) to `.workflow_artifacts/memory/workflow-suggestions.md`."
 
 **Promotion confirmation:**
-If there are entries to promote (after filtering and dedup), present a compact list:
+If there are entries to promote (after filtering and dedup), use AskUserQuestion to let the user select which to keep:
 
+- If ≤4 insights: one AskUserQuestion call with `multiSelect=true`. First two options are always "Keep all" and "Keep none"; remaining slots (up to 2) are individual insight summaries. The implicit "Other" covers any subset not directly representable.
+- If >4 insights: present in batches of 4 (each batch as a separate AskUserQuestion with `multiSelect=true`). Include "Keep all remaining" / "Skip remaining" in the final batch.
+
+Example (≤4 insights):
 ```
-I captured N insights today worth keeping. Confirm which to add to lessons-learned:
-
-1. [yes] <insight summary, 1 line>
-2. [maybe] <insight summary, 1 line>
-3. [maybe] <insight summary, 1 line>
-
-Reply with the numbers to keep (e.g. "1 3"), "all", or "none".
+AskUserQuestion(
+  question="Which insights to promote to lessons-learned?",
+  multiSelect=true,
+  options=[
+    {label: "Keep all", description: "Promote all N insights."},
+    {label: "Keep none", description: "Skip promotion."},
+    {label: "<insight_1 summary>", description: "<insight_1 detail>"},
+    {label: "<insight_2 summary>", description: "<insight_2 detail>"}
+  ]
+)
 ```
 
-Wait for the user's response, then append confirmed entries to `.workflow_artifacts/memory/lessons-learned.md`:
+After the user responds, append confirmed entries to `.workflow_artifacts/memory/lessons-learned.md`:
 
 ```markdown
 ## <date> — <task-name>
@@ -342,14 +349,18 @@ When presenting the promotion confirmation, group entries by source-date: `[yes/
 
 Check `.workflow_artifacts/memory/lessons-learned.md`. Count the number of lesson entries by matching lines that begin with `## ` followed by a date pattern (YYYY-MM-DD) — i.e., lines matching the regex `^## \d{4}-\d{2}-\d{2}`. Ignore any such patterns inside HTML comments (`<!-- -->`), code blocks, or template examples.
 
-**If the count exceeds 30 entries**, present a pruning prompt to the user:
+**If the count exceeds 30 entries**, present a pruning prompt via AskUserQuestion:
 
-> "lessons-learned.md has grown to N entries (~X tokens). Large files add a fixed token cost to every /plan, /critic, and /architect session. Would you like to prune?"
->
-> Options:
-> 1. **Auto-prune** — I'll merge related entries, remove entries older than 90 days that haven't been referenced, and consolidate duplicates. You review before I save.
-> 2. **Manual prune** — I'll list all entries with a 1-line summary; you pick which to keep.
-> 3. **Skip** — keep the file as-is.
+```
+AskUserQuestion(
+  question="lessons-learned.md has grown to N entries (~X tokens). Large files add token cost to every /plan, /critic, and /architect session. Would you like to prune?",
+  options=[
+    {label: "Auto-prune", description: "Merge related entries, remove stale ones. You review before I save."},
+    {label: "Manual prune", description: "List all entries with summaries; you pick which to keep."},
+    {label: "Skip", description: "Keep lessons-learned.md as-is."}
+  ]
+)
+```
 
 **Auto-prune rules** (if selected):
 1. Group entries by `Applies to:` tag. If 3+ entries have the same tag and similar content, merge them into one consolidated entry preserving all unique information.
@@ -391,13 +402,20 @@ Check `.workflow_artifacts/memory/lessons-learned.md`. Count the number of lesso
 
 ### Step 4: Prompt for lessons learned
 
-Ask the user:
+Use AskUserQuestion to check if the user has anything else to add (this catches anything Claude missed from Step 3b):
 
-> "Anything else that surprised you today, or that should work differently next time?"
+```
+AskUserQuestion(
+  question="Anything else that surprised you today, or that should work differently next time?",
+  options=[
+    {label: "Nothing to add", description: "No additional lessons today."},
+    {label: "Yes, let me share", description: "I have something to add."}
+  ]
+)
+```
 
-(If insights were already promoted in Step 3b, this catches anything Claude missed.)
-
-If they share something, append it to `.workflow_artifacts/memory/lessons-learned.md` in the same format. If they say "nothing" or skip, that's fine.
+If the user selects "Nothing to add" or doesn't respond: skip silently.
+If the user selects "Yes, let me share" or uses the "Other" free-text option: capture their input and append it to `.workflow_artifacts/memory/lessons-learned.md` in the same format.
 
 Also: if any tasks were rolled back today, or if the critic-revise loop ran more than 3 rounds, auto-add a lesson capturing what made it difficult.
 

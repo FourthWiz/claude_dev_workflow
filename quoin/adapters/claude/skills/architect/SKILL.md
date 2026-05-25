@@ -328,10 +328,15 @@ round = 1
 while round <= max_rounds:
 
     if round == 2:
-        # cost guard — emit verbatim before spawning round 2:
-        inform_user("[critic round 2 starting — ~$10-30 estimated based on body size]")
-        confirm = ask_user("Proceed with round 2 critic? (yes/no)")
-        if confirm != "yes": break
+        # cost guard — use AskUserQuestion before spawning round 2:
+        confirm = AskUserQuestion(
+            question="[critic round 2 starting — ~$10-30 estimated based on body size] Proceed?",
+            options=[
+                {label: "Yes, proceed", description: "Run round 2 of the architecture critic."},
+                {label: "No, stop here", description: "Accept the architecture as-is after round 1."}
+            ]
+        )
+        if confirm != "Yes, proceed": break
 
     # Spawn /critic as a FRESH subagent (model: opus — non-negotiable per CLAUDE.md model assignments).
     # Convey target via spawn-prompt (D-01 spawn-prompt convention, not CLI flag):
@@ -368,8 +373,14 @@ while round <= max_rounds:
         this_family  = dominant_structural_surface_family(round)
         if prior_family and this_family and prior_family == this_family:
             inform_user("Same structural surface-family class '" + this_family + "' recurring across rounds — escalating.")
-            decision = ask_user("Accept architecture as-is, or continue revising?")
-            if decision == "accept": break
+            decision = AskUserQuestion(
+                question="The same structural issue class is recurring. Accept architecture as-is, or continue revising?",
+                options=[
+                    {label: "Accept as-is", description: "Stop revising; accept the current architecture."},
+                    {label: "Continue revising", description: "Run another critic round on the same surface-family."}
+                ]
+            )
+            if decision == "Accept as-is": break
 
     # REVISE — re-run Output format Steps 1-6 IN THE SAME /architect session (D-03):
     # /architect IS the synthesis skill; no fresh-session re-spawn for re-synthesis.

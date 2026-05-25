@@ -226,7 +226,26 @@ This skill uses Sonnet for fast, high-quality implementation. The architectural 
 
 3. **Read the relevant code.** Before modifying any file, read it. Understand the existing patterns, style, naming conventions, and architecture. Your changes must feel native to the codebase.
 
-4. **Confirm the task.** Ask the user which task(s) from the plan they want you to implement. Don't implement everything at once unless asked — work through the plan's implementation order.
+4. **Confirm the task.** Use AskUserQuestion to ask the user which task(s) from the plan they want you to implement. Dynamically populate options from the pending tasks (⏳) in `current-plan.md`:
+
+   - If 0 pending tasks: inform the user "All tasks already implemented." and stop.
+   - If 1 pending task: present it with "Yes, implement it" / "Skip for now".
+   - If 2+ pending tasks: list the next 3 pending tasks in plan order, plus "All remaining tasks" as the last option (capped at 4 total). If >3 pending, note the total count in the description.
+
+   Example (3+ pending tasks):
+   ```
+   AskUserQuestion(
+     question="Which task(s) would you like to implement?",
+     options=[
+       {label: "T-01: <title>", description: "<1-line summary>"},
+       {label: "T-02: <title>", description: "<1-line summary>"},
+       {label: "T-03: <title>", description: "<1-line summary>"},
+       {label: "All remaining tasks", description: "Implement all N pending tasks in plan order."}
+     ]
+   )
+   ```
+
+   Don't implement everything at once unless asked — work through the plan's implementation order.
 
 ## Implementation rules
 
