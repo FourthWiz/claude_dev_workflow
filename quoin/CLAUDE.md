@@ -1,13 +1,14 @@
 # Development Workflow — Shared Rules
 
-This file defines the common rules and behaviors shared across all development workflow skills: `/init_workflow`, `/discover`, `/architect`, `/plan`, `/critic`, `/revise`, `/thorough_plan` (orchestrator), `/run` (end-to-end orchestrator), `/gate`, `/implement`, `/review`, `/rollback`, `/end_of_task`, `/end_of_day`, `/start_of_day`, `/weekly_review`, `/cost_snapshot`, `/capture_insight`, `/next-steps`, `/triage`, and `/continue_work`.
+This file defines the common rules and behaviors shared across all development workflow skills: `/init_workflow`, `/discover`, `/architect`, `/plan`, `/critic`, `/revise`, `/thorough_plan` (orchestrator), `/run` (end-to-end orchestrator), `/gate`, `/implement`, `/review`, `/rollback`, `/end_of_task`, `/pr`, `/end_of_day`, `/start_of_day`, `/weekly_review`, `/cost_snapshot`, `/capture_insight`, `/next-steps`, `/triage`, and `/continue_work`.
 
 Runtime portability note: shared workflow semantics are being extracted under `quoin/core/workflow/` (`rules.md`, `task-layout.md`, `session-state.md`, `cost-ledger.md`). This file remains the active Claude Code runtime rules file installed by `bash quoin/install.sh`; do not treat it as generated yet.
 
 ## Working Rules
 
 ### Git & PR Safety
-- **Never push to remote or create PRs outside of `/end_of_task`.** During implementation and review, only commit locally. Push happens as part of `/end_of_task` (which requires `/review` first). PR creation is always a separate explicit user action — never auto-create PRs.
+- **Never push to remote or create PRs outside of `/end_of_task` and `/pr`.** During implementation and review, only commit locally. Push happens as part of `/end_of_task` (which requires `/review` first). PR creation is handled by `/pr`, invoked explicitly by the user after `/end_of_task`. PR creation is always a separate explicit user action — never auto-create PRs.
+- **Use `/pr` to create pull requests.** After `/end_of_task` finalizes and pushes the branch, invoke `/pr` to create the PR (with optional version bump), wait for merge, and switch to the merge target branch.
 - **Always start each new task on a fresh branch.** Commit current work, switch to main, fetch latest, then create the new branch.
 
 ### Communication
@@ -108,6 +109,9 @@ Each stage feeds into the next, with `/gate` checkpoints requiring explicit huma
 - `/review` verifies implementation against the plan, checking quality and safety (always Opus)
 - **GATE** — Full checks: review verdict is APPROVED, full test suite passes, no conflicts, user approves
 - `/end_of_task` — user explicitly accepts the work. Commits remaining changes, pushes branch to remote, prompts for lessons learned, marks task complete. Does NOT create a PR — that's a separate explicit action.
+
+After `/end_of_task`: the user explicitly invokes `/pr` to create a pull request. This is a separate user action — `/pr` is never auto-invoked by any skill or orchestrator.
+
 - `/rollback` is available at any point to safely undo implementation work
 
 Not every task needs every stage. Small tasks typically skip `/architect` entirely. Bug fixes might only need `/implement` + `/review` (bypassing `/thorough_plan` entirely). But gates ALWAYS run between phases.
@@ -169,7 +173,11 @@ The body should explain the "why" — the motivation for the change, not a list 
 
 #### Pull requests
 
-PR creation is always an explicit, separate user action — never auto-created by `/end_of_task`. When the user asks to create a PR, before doing so:
+PR creation is handled by the `/pr` skill. When the user asks to create a PR, invoke `/pr` which handles: pre-flight checks (branch ≠ main/master, gh CLI available and authenticated), optional version bump, push if not already pushed, PR creation via `gh pr create` with a structured message, waiting for the user to merge, and switching to the merge target branch after merge.
+
+The manual PR review checklist below applies as a fallback when `/pr` is not available or when creating PRs outside the quoin workflow.
+
+When creating a PR manually, before doing so:
 
 1. **Run all tests** for the affected code areas
 2. **Check for untested new code** — if tests are missing, flag it. If the plan specified tests, write them before the PR.
@@ -254,7 +262,7 @@ Every skill records its session to the task's cost ledger at session start.
 
 **Ledger path:** `.workflow_artifacts/<task-name>/cost-ledger.md`. Create with header `# Cost Ledger — <task-name>` if new. Columns: `UUID | DATE | PHASE | MODEL | task | NOTE | FALLBACK_FIRES` (7-col); 6-col rows (no FALLBACK_FIRES) remain valid forever — readers tolerate both. Append-only; never delete or rewrite rows.
 
-**Phase values:** `discover`, `architect`, `plan`, `critic`, `revise`, `implement`, `review`, `gate`, `end-of-task`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `triage`, `expand`, `checkpoint`, `sleep`, `session-close-hook`, `next-steps`, `ad-hoc`
+**Phase values:** `discover`, `architect`, `plan`, `critic`, `revise`, `implement`, `review`, `gate`, `end-of-task`, `pr`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `triage`, `expand`, `checkpoint`, `sleep`, `session-close-hook`, `next-steps`, `ad-hoc`
 
 **Category:** Always write `task`.
 
@@ -330,6 +338,7 @@ If adding a new file class: hand-edited or contract-approved → Tier 1; ephemer
 | /gate | Sonnet | Automated checks and human approval checkpoint |
 | /rollback | Sonnet | Safe undo of implementation phases |
 | /end_of_task | Sonnet | Commit, push branch, lessons, mark complete |
+| /pr | Sonnet | Procedural automation: version bump detection, PR creation, post-merge cleanup |
 | /end_of_day | Haiku | Session state capture and daily cache consolidation (structured template work) |
 | /init_workflow | Opus | Project bootstrap, /discover invocation, structure creation |
 | /start_of_day | Haiku | Context restoration and git state reconciliation (structured checklist) |
@@ -346,7 +355,7 @@ The 7 spawn-target skills (critic, revise, revise-fast, plan, review, gate, arch
 
 ### §0 Model dispatch preamble
 
-The 16 cheap-tier skills (gate, end_of_day, start_of_day, triage, capture_insight, cost_snapshot, weekly_review, end_of_task, implement, rollback, expand, revise-fast, sleep, next_steps, checkpoint, continue_work) carry a `## §0 Model dispatch` block as the first body H2 after the H1. When invoked from a session running on a model strictly more expensive than the declared tier, the skill self-dispatches via the Agent tool to its declared model and prefixes the child prompt with `[no-redispatch]` to prevent recursion. Counter form `[no-redispatch:N]` (N≥2) is an abort signal. The 9 Opus-tier skills do NOT carry the preamble.
+The 17 cheap-tier skills (gate, end_of_day, start_of_day, triage, capture_insight, cost_snapshot, weekly_review, end_of_task, implement, rollback, expand, revise-fast, sleep, next_steps, checkpoint, continue_work, pr) carry a `## §0 Model dispatch` block as the first body H2 after the H1. When invoked from a session running on a model strictly more expensive than the declared tier, the skill self-dispatches via the Agent tool to its declared model and prefixes the child prompt with `[no-redispatch]` to prevent recursion. Counter form `[no-redispatch:N]` (N≥2) is an abort signal. The 9 Opus-tier skills do NOT carry the preamble.
 
 Fail-OPEN on Agent unavailable (one-line `[quoin-stage-1: subagent dispatch unavailable; ...]` warning); architecture I-01 = best-effort cost guardrail. Worktree-class errors → AskUserQuestion recovery prompt. Manual override: prefix slash invocation with `[no-redispatch]`. Drift detection: `quoin/dev/tests/test_quoin_stage1_preamble.py`, `quoin/dev/tests/test_quoin_stage1_recursion_abort.py`. Verbose details (worktree-error classification, sentinel forms, recovery options): `__QUOIN_HOME__/memory/dispatch-guide.md`.
 

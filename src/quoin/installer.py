@@ -44,6 +44,7 @@ CANONICAL_SKILLS = (
     "init_workflow",
     "next_steps",
     "plan",
+    "pr",
     "review",
     "revise",
     "revise-fast",
@@ -89,6 +90,7 @@ SKILL_OVERRIDES: dict[str, str] = {
     "triage": "on",
     "checkpoint": "on",
     # Lifecycle / one-shot skills — invocable by name, no description in auto-suggest
+    "pr": "name-only",
     "init_workflow": "name-only",
     "init": "name-only",          # non-quoin skill; skillOverrides applies by name regardless
     "keybindings-help": "name-only",  # non-quoin skill; same
