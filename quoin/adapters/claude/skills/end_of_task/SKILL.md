@@ -176,6 +176,53 @@ Pre-flight: end_of_task
 Ready to finalize.
 ```
 
+**Step 1b: Working-tree cleanup scan**
+
+Before committing, scan the main repo working tree for files that should not
+be shipped. Run these checks from the repo root (the nested git root, not the
+project root):
+
+1. **Untracked files that match garbage patterns** — run `git ls-files --others --exclude-standard`
+   and flag any file matching these patterns:
+   - `*.tmp`, `*.bak`, `*.orig`, `*.swp`, `*.swo`
+   - `* 2.*`, `* 3.*` (macOS/iCloud duplicates, e.g., "README 2.md")
+   - `.planner-trace.md` (Tier-3 ephemeral — CLAUDE.md says "deleted by /end_of_task before archive")
+   - `.expanded-*.md` (expand --save scratch output)
+   - `.DS_Store` (if not gitignored)
+   - `__pycache__/` directories or `*.pyc` files (if not gitignored)
+   - `*.log` files at the repo root
+   - Any file or directory whose name starts with `.workflow_artifacts` inside the repo tree
+     (these should never leak into the repo — they belong at the project root)
+
+2. **Tracked files that look like debug leftovers** — run `git diff --name-only` (unstaged)
+   and `git diff --cached --name-only` (staged) and flag:
+   - Files containing `console.log`, `debugger`, `breakpoint()`, `import pdb`, or
+     `print("DEBUG` in their diff hunks (use `git diff -G` or read the diff output)
+   - This is advisory only — some repos legitimately use these. Flag, don't block.
+
+3. **Present findings** — if anything was found, show a categorized summary:
+
+   ```
+   Working-tree cleanup scan:
+   ⚠️  Garbage files found (recommend deleting before commit):
+      - README 2.md (macOS duplicate)
+      - .planner-trace.md (workflow ephemeral)
+
+   ⚠️  Debug leftovers in diff (review before commit):
+      - quoin/scripts/foo.py: contains `breakpoint()` (line 42)
+
+   ✅ No .workflow_artifacts/ leak detected.
+
+   Action needed: delete garbage files, or proceed as-is?
+   ```
+
+   Wait for the user's response before continuing to Step 2.
+
+4. **If nothing found** — print one line and continue:
+   ```
+   Working-tree cleanup scan: ✅ clean
+   ```
+
 **Step 2: Commit decision (interactive — must resolve before dispatching sub-phases)**
 
 Run `git status`. If there are uncommitted changes:

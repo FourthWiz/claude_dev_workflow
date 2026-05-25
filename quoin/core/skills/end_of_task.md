@@ -36,6 +36,8 @@ stage-aware resolver.
 
 ## Output
 
+- A working-tree cleanup scan summary presented to the user before the commit
+  decision, flagging garbage files and debug leftovers. No auto-deletion.
 - Branch pushed to its remote (no force push; no pull-request creation).
 - Lessons appended to `.workflow_artifacts/memory/lessons-learned.md` when the
   user supplied non-empty text.
@@ -62,6 +64,10 @@ stage-aware resolver.
 - The skill MUST run tests one final time before any commit or push.
 - The skill MUST scan the staged diff for obvious secrets (passwords, API keys,
   tokens) and refuse to proceed if any are found.
+- The skill MUST scan the repo working tree for garbage files (temporary files,
+  macOS duplicates, workflow ephemerals like planner traces, expand scratch
+  output) and debug leftovers in the diff BEFORE the commit decision. Findings
+  are presented to the user for action; the skill MUST NOT auto-delete files.
 - The skill MUST NOT force-push. MUST use a non-rewriting push.
 - The skill MUST NOT create a pull request as part of finalization.
 - The skill MUST collect interactive answers (commit-or-abort decision, lessons
