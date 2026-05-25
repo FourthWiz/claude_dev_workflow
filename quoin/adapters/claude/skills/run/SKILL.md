@@ -241,7 +241,7 @@ Phases: discover(<skipped|ran>), architect(<skipped|ran>), plan(<N> rounds), imp
 Archived: .workflow_artifacts/<task-name>/ → finalized/
 Cost ledger: .workflow_artifacts/<task-name>/cost-ledger.md (<N> sessions tracked)
 
-Next: create a PR from the branch when ready.
+Next: run /pr to create a pull request from the branch.
 ```
 
 ## Checkpoint interaction protocol
