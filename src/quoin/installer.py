@@ -120,6 +120,11 @@ _SUBSTITUTE_EXTS = frozenset({".md", ".py", ".sh", ".yaml", ".json", ".txt"})
 # Documentation-only prose keeps literal ~/.claude/... and is NOT substituted.
 QUOIN_HOME_PLACEHOLDER = "__QUOIN_HOME__"
 
+# Subdirectories under dest_root that quoin deploys to.
+# assert_no_placeholders scans ONLY these (positive allowlist) to avoid
+# false positives from Claude Code internal directories (projects/, todos/, etc.).
+_QUOIN_DEPLOYED_SUBDIRS = frozenset({"skills", "scripts", "core", "memory", "hooks"})
+
 
 def substitute_quoin_home(text: str, dest_root: pathlib.Path) -> str:
     """Replace all __QUOIN_HOME__ occurrences with str(dest_root.resolve()).
@@ -613,10 +618,14 @@ def assert_no_placeholders(dest_root: pathlib.Path) -> list[str]:
     """Return list of 'path:line_no' strings where __QUOIN_HOME__ was found after deploy.
 
     Call this after all deploy functions complete to verify substitution was fully applied.
+    Only scans quoin-deployed paths (root-level files + _QUOIN_DEPLOYED_SUBDIRS) to avoid
+    false positives from Claude Code internal directories (projects/, todos/, etc.).
     """
-    violations = []
-    for p in dest_root.rglob("*"):
-        if p.is_file() and p.suffix in (".md", ".sh", ".py", ".json", ".yaml", ".txt"):
+    violations: list[str] = []
+    check_exts = (".md", ".sh", ".py", ".json", ".yaml", ".txt")
+
+    def _scan_file(p: pathlib.Path) -> None:
+        if p.is_file() and p.suffix in check_exts:
             try:
                 text = p.read_text(encoding="utf-8", errors="replace")
                 for i, line in enumerate(text.splitlines(), 1):
@@ -624,6 +633,19 @@ def assert_no_placeholders(dest_root: pathlib.Path) -> list[str]:
                         violations.append(f"{p}:{i}")
             except Exception:
                 pass
+
+    # 1. Root-level files only (CLAUDE.md, QUICKSTART.md, settings.json, etc.)
+    for entry in dest_root.iterdir():
+        if entry.is_file():
+            _scan_file(entry)
+
+    # 2. Quoin-deployed subdirectories only
+    for subdir_name in _QUOIN_DEPLOYED_SUBDIRS:
+        subdir = dest_root / subdir_name
+        if subdir.is_dir():
+            for p in subdir.rglob("*"):
+                _scan_file(p)
+
     return violations
 
 
