@@ -91,3 +91,39 @@ class TestEndOfTaskDecomposed:
             f"'Write `eot-preflights' (line {write_line}) must appear BEFORE "
             f"'Dispatch Sub-phase A' (line {dispatch_line}) — MIN-3 ordering requirement"
         )
+
+    def test_has_cleanup_scan_step(self):
+        """SKILL.md must contain the working-tree cleanup scan step (IVG-56)."""
+        text = _text()
+        assert "Working-tree cleanup scan" in text, (
+            "end_of_task/SKILL.md is missing 'Working-tree cleanup scan' step (IVG-56)"
+        )
+
+    def test_cleanup_scan_before_commit_decision(self):
+        """Working-tree cleanup scan must appear BEFORE commit decision step.
+
+        The scan runs before the user decides whether to commit, so it can
+        flag garbage files before they get swept up in the commit.
+        """
+        text = _text()
+        lines = text.splitlines()
+
+        scan_line = None
+        commit_line = None
+
+        for i, line in enumerate(lines, start=1):
+            if scan_line is None and "Working-tree cleanup scan" in line:
+                scan_line = i
+            if commit_line is None and "Commit decision" in line:
+                commit_line = i
+
+        assert scan_line is not None, (
+            "end_of_task/SKILL.md does not contain 'Working-tree cleanup scan' text"
+        )
+        assert commit_line is not None, (
+            "end_of_task/SKILL.md does not contain 'Commit decision' text"
+        )
+        assert scan_line < commit_line, (
+            f"'Working-tree cleanup scan' (line {scan_line}) must appear BEFORE "
+            f"'Commit decision' (line {commit_line}) — cleanup runs before commit decision"
+        )
