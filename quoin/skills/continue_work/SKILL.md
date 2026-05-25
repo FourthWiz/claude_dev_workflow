@@ -101,11 +101,21 @@ tail -5 "<cwd>/.workflow_artifacts/memory/recent-sessions.md" 2>/dev/null
 
 **Case B — Multiple distinct session_ids:**
   Deduplicate by session_id, keeping most recent timestamp for each.
-  Present numbered picker (most recent first):
-    1. [<timestamp>] <session_id>
-    2. [<timestamp>] <session_id>
-    ...
-  Ask: "Which session do you want to revive? Enter number, or 'cancel':"
+  Cap at 4 sessions (most recent first). Use AskUserQuestion to present the picker:
+
+  ```
+  AskUserQuestion(
+    question="Which session do you want to revive?",
+    options=[
+      {label: "[<timestamp>] <session_id_1>", description: "<task name or context if available>"},
+      {label: "[<timestamp>] <session_id_2>", description: "<task name or context if available>"},
+      ...  # up to 4 options
+    ]
+    # implicit "Other" covers cancel
+  )
+  ```
+
+  If the user selects "Other" or types "cancel": STOP with "No session selected."
 
 ## Step 2: Locate JSONL for selected session
 

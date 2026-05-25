@@ -213,10 +213,18 @@ project root):
 
    ✅ No .workflow_artifacts/ leak detected.
 
-   Action needed: delete garbage files, or proceed as-is?
    ```
 
-   Wait for the user's response before continuing to Step 2.
+   Use AskUserQuestion before continuing to Step 2:
+   ```
+   AskUserQuestion(
+     question="Garbage files or debug leftovers found. How would you like to proceed?",
+     options=[
+       {label: "Delete garbage files", description: "Remove the flagged files before committing."},
+       {label: "Proceed as-is", description: "Keep all files; commit everything shown."}
+     ]
+   )
+   ```
 
 4. **If nothing found** — print one line and continue:
    ```
@@ -227,18 +235,37 @@ project root):
 
 Run `git status`. If there are uncommitted changes:
 - Show them to the user
-- Ask: **commit or abort?** (no stash option — stash manually then re-invoke if needed)
-- If **commit**: collect a conventional commit message inline.
-- If **abort**: STOP. Tell the user: "Stash manually then re-invoke /end_of_task."
+- Use AskUserQuestion to get the commit decision (no stash option — stash manually then re-invoke if needed):
+  ```
+  AskUserQuestion(
+    question="There are uncommitted changes. Commit them now or abort?",
+    options=[
+      {label: "Commit", description: "Commit all uncommitted changes with a conventional message."},
+      {label: "Abort", description: "Stop here. Stash manually then re-invoke /end_of_task."}
+    ]
+  )
+  ```
+- If **Commit**: collect a conventional commit message inline.
+- If **Abort**: STOP. Tell the user: "Stash manually then re-invoke /end_of_task."
 Capture the answer as `commit_or_abort` (`"commit"` or `"abort"`).
 If no uncommitted changes: set `commit_or_abort = "commit"` (nothing to do) and skip.
 
 **Step 3: Lessons learned (interactive — capture inline)**
 
-Ask the user:
-> "Task complete. Anything that surprised you, or that the workflow should handle differently next time?"
+Use AskUserQuestion to check for lessons:
+```
+AskUserQuestion(
+  question="Task complete. Anything that surprised you, or that the workflow should handle differently next time?",
+  options=[
+    {label: "Nothing to add", description: "No lessons to record for this task."},
+    {label: "Yes, let me share", description: "I have something to add to lessons-learned."}
+  ]
+)
+```
 
-Capture their response as `lessons_text` (may be empty string if nothing to share).
+If the user selects "Nothing to add": set `lessons_text = ""`.
+If the user selects "Yes, let me share" or uses the "Other" free-text option: capture their input as `lessons_text`.
+Capture the response as `lessons_text` (may be empty string if nothing to share).
 
 Auto-capture lessons if:
 - The critic-revise loop ran more than 3 rounds (what made convergence hard?)
@@ -247,10 +274,18 @@ Auto-capture lessons if:
 
 **Step 4: Archive type (interactive — capture inline)**
 
-If the task folder lives directly under `.workflow_artifacts/` (not inside a parent feature folder), ask:
-> "Is the feature `<task-name>` fully complete, or is there more work planned under this folder?"
+If the task folder lives directly under `.workflow_artifacts/` (not inside a parent feature folder), use AskUserQuestion:
+```
+AskUserQuestion(
+  question="Is the feature '<task-name>' fully complete, or is there more work planned under this folder?",
+  options=[
+    {label: "Fully complete", description: "Archive the task folder to finalized/."},
+    {label: "More work planned", description: "Keep the task folder active; do not archive."}
+  ]
+)
+```
 
-Capture as `archive_type`: `"feature"` (fully complete) or `"subtask"` or `"none"` (more work planned — do not archive).
+Capture as `archive_type`: `"feature"` (fully complete) or `"none"` (more work planned — do not archive).
 
 If the task folder is inside a parent feature folder (detected by presence of planning artifacts or stage-* sibling folders in the parent), set `archive_type = "subtask"` without asking.
 

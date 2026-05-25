@@ -143,7 +143,18 @@ Uncommitted:
 
 ### Step 2: Determine rollback scope
 
-Ask the user what they want to undo:
+Use AskUserQuestion to ask the user what they want to undo:
+
+```
+AskUserQuestion(
+  question="What would you like to roll back?",
+  options=[
+    {label: "Full phase rollback", description: "Revert everything from /implement to the pre-implementation state. Cleanest option."},
+    {label: "Selective task rollback", description: "Revert specific tasks only; dependencies will be flagged."},
+    {label: "Last commit only", description: "Quick undo of the most recent commit."}
+  ]
+)
+```
 
 **Full phase rollback** — revert everything from `/implement`:
 - Find the commit or branch point where implementation started
@@ -191,7 +202,21 @@ Present exactly what will happen:
 
 ### Step 4: Confirm and execute
 
-Wait for explicit user confirmation. Then:
+Use AskUserQuestion to get explicit user confirmation before proceeding:
+
+```
+AskUserQuestion(
+  question="Proceed with the rollback as shown above?",
+  options=[
+    {label: "Confirm rollback", description: "Execute the rollback as previewed above."},
+    {label: "Cancel", description: "Abort; no changes will be made."}
+  ]
+)
+```
+
+If the user selects "Cancel": STOP. Tell the user: "Rollback cancelled. No changes were made."
+
+Then (after "Confirm rollback"):
 
 **For full phase rollback:**
 ```bash

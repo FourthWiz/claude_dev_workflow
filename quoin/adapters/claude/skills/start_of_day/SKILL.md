@@ -199,10 +199,34 @@ Keep the briefing factual. Report what you found in each step — do not specula
 
 ### Step 6: Offer to resume
 
-After presenting the briefing, ask the user what they want to work on:
-- Resume a specific unfinished task (invoke the appropriate skill — `/implement`, `/review`, etc.)
-- Start something new
-- Check on a blocked item
+After presenting the briefing, use AskUserQuestion to ask the user what they want to work on. Dynamically populate options from the daily cache:
+
+- If unfinished tasks exist: include one option per task (capped at 3), ordered by suggested priority. Label = task name; description = current stage + 1-line resume point. Always include "Start something new" as the last option.
+- If no unfinished tasks: show only "Start something new" and "Run /discover" (if no discovery data).
+- If >3 unfinished tasks: show top 3 by priority and note the rest in chat.
+
+Example (2 unfinished tasks):
+```
+AskUserQuestion(
+  question="What would you like to work on today?",
+  options=[
+    {label: "auth-refactor", description: "implement — resume at T-04: update token refresh logic"},
+    {label: "payment-v2", description: "review — run /review to verify the implementation"},
+    {label: "Start something new", description: "Begin a new task not listed above."}
+  ]
+)
+```
+
+Example (no tasks):
+```
+AskUserQuestion(
+  question="What would you like to work on today?",
+  options=[
+    {label: "Start something new", description: "Begin a new task."},
+    {label: "Run /discover", description: "Index the repos first."}
+  ]
+)
+```
 
 ## Handling multiple unfinished sessions
 
