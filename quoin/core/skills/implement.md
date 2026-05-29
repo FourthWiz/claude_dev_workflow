@@ -62,6 +62,10 @@ stage-aware path resolver when locating phase artifacts.
   working state at every commit.
 - The skill MUST stop and flag plan deviations rather than silently diverging
   — re-planning is a separate explicit user action.
+- After the phase completes, the skill MUST emit a concise human-readable
+  summary of the step's outcome to the user as its final message, independent
+  of any gate rendering; the summary restates the artifact's substance in
+  plain language because the stored artifact may be in a compressed format.
 - The skill MUST update `<task_dir>/current-plan.md` with task-status markers
   as tasks complete (file-local IDs per format-kit invariants).
 - The skill MUST update or create cache entries for files it modifies, creates,

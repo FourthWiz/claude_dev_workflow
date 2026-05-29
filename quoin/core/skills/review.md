@@ -61,6 +61,10 @@ Verdict is one of three closed values: `APPROVED`, `CHANGES_REQUESTED`,
   post-review gate via the runtime adapter's mechanism; on `CHANGES_REQUESTED`
   or `BLOCKED`, control returns to the implementation phase.
 - Cost-ledger writes are mandatory when a task context is active.
+- After the phase completes, the skill MUST emit a concise human-readable
+  summary of the step's outcome to the user as its final message, independent
+  of any gate rendering; the summary restates the artifact's substance in
+  plain language because the stored artifact may be in a compressed format.
 
 ## Out of scope
 

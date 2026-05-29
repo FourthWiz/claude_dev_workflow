@@ -145,7 +145,7 @@ If the task profile is Small, do NOT enter the critic loop. Instead:
 1. Invoke `/plan` (Opus) — same as round 1 of the normal loop. Output: `current-plan.md`.
 2. Run a smoke gate (plan artifact exists, has tasks with file paths and acceptance criteria).
 3. Add the convergence summary to the top of `current-plan.md` with `Task profile: Small`, `Rounds: 1`, and `Key revisions: N/A — single-pass plan`.
-4. Inform the user: "Task classified as Small — single-pass plan produced. Plan is ready at `<task_dir>/current-plan.md`." (where `<task_dir>` was resolved in Setup §1 via `path_resolve.py`)
+4. Print an **inline summary** in the chat (do NOT rely on the user reading `current-plan.md`): (a) "Task classified as Small — produced a single-pass plan in 1 round." (b) 3–5 bullets of what the plan covers in plain language. (c) Remaining concerns or decisions ("none" if clean). (d) Plan path: `<task_dir>/current-plan.md` — note that the plan body is terse and can be `/expand`-ed for detail. (where `<task_dir>` was resolved in Setup §1 via `path_resolve.py`)
 5. **STOP.** Do not invoke `/implement`. Wait for the user.
 
 ## Medium and Large profiles (critic loop)
@@ -239,11 +239,12 @@ For Small-profile tasks that took the single-pass path, the convergence summary 
 
 Then spawn `/gate` as a subagent session (post-plan boundary — subagent dispatch required because the parent has just exited the plan→critic loop and the post-plan checks operate against a different context shape than the loop. Audit-log persistence applies regardless of mode — see `/gate/SKILL.md`.) to present automated checks and a summary to the user.
 
-After the gate, inform the user:
-- The plan is ready at `<task_dir>/current-plan.md`
-- Summary of what was planned (high-level, 3-5 bullet points)
-- How many rounds it took and what the main themes were
-- Any remaining concerns or decisions the user needs to make
+After the gate, print an **inline summary** in the chat as your final user-facing message (REQUIRED — do NOT rely on the user reading `current-plan.md`; the plan body is Tier-3 terse). Cover the canonical field set:
+1. **What this step produced** — e.g., "Produced a converged Medium-profile plan in N round(s)."
+2. **Main planned tasks** — 2–4 bullets in plain language (e.g., "Add retry logic to the payment client", "Write integration tests for the new endpoint") — no terse glyphs, no T-NN shorthand.
+3. **How many rounds and main revision themes** — e.g., "1 round, PASS on first critic pass" or "2 rounds: main revision addressed missing error-handling in the queue consumer."
+4. **Remaining concerns or decisions** — one line; "none" if clean.
+5. **Artifact location** — `<task_dir>/current-plan.md` — note that the plan body is terse and can be `/expand`-ed for full detail.
 
 **STOP HERE.** Do NOT invoke `/implement`. Do NOT offer to start implementing. The user must explicitly type `/implement` to proceed. This is a hard rule — implementation requires a conscious human decision.
 

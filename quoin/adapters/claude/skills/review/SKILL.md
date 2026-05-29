@@ -225,12 +225,23 @@ Filename auto-detection identifies type as `review` (matches `^review-` regex in
 ## After the review
 
 If the verdict is CHANGES_REQUESTED or BLOCKED:
+- Print an **inline summary** in the chat (REQUIRED — do NOT rely on the user reading the terse review artifact). Cover the canonical field set:
+  - **Verdict** — "CHANGES_REQUESTED" or "BLOCKED" in plain language (e.g., "Review requires changes before implementation can proceed").
+  - **2–4 most important findings** — in plain language, no terse glyphs.
+  - **Specific issues that must be fixed** — file and location where relevant.
+  - **Integration or test risk highlights** — one line.
+  - **Artifact location** — `<task_dir>/review-N.md` — note the body is terse and can be `/expand`-ed.
 - The issues go back to `/implement` for fixing
 - After fixes, run `/review` again
 - Repeat until APPROVED
 
 If the verdict is APPROVED:
 - **Run `/gate` inline** (Full level, post-review — read `/gate/SKILL.md` from the same session and execute the gate process directly; write the audit log per gate Step 5 before yielding control). This is the manual (non-`/run`) post-review boundary; audit-log persistence applies inline per `/gate/SKILL.md`.
+- Print an **inline summary** in the chat as your final user-facing message (REQUIRED — do NOT rely on the user reading the terse review artifact). Cover the canonical field set:
+  - **Verdict** — "APPROVED" in plain language.
+  - **2–4 most important findings or highlights** — what was verified, in plain language.
+  - **Remaining concerns** — one line; "none" if clean.
+  - **Artifact location** — `<task_dir>/review-N.md` — note the body is terse and can be `/expand`-ed.
 - After gate approval, **STOP and wait** for the user to invoke `/end_of_task`. Do NOT auto-create a PR or auto-invoke `/end_of_task` — those are explicit user actions per CLAUDE.md `## Working Rules`.
 - The review document should be referenced in the eventual PR description.
 

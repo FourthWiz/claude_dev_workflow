@@ -13,6 +13,12 @@ Runtime portability note: shared workflow semantics are being extracted under `q
 
 ### Communication
 - **Keep multi-step workflow progress verbose.** When working through plans, implementations, or multi-round processes, provide status updates at each step. Don't go silent during long operations.
+- **End-of-step inline summary.** After `/thorough_plan`, `/implement`, or `/review` completes its major step, the skill MUST print a concise human-readable English summary in the chat as its **final user-facing message, before the STOP/next-step instruction**. The summary is a chat message (Tier 1 always-English), never terse, never written to disk. Canonical field set:
+  1. **What this step produced** — one sentence (e.g., "Produced a converged Medium-profile plan in 1 round" / "Implemented tasks T-01 through T-04").
+  2. **Main tasks or components** — 2–4 bullets in plain language, no terse glyphs.
+  3. **Remaining concerns or decisions for the user** — one line; "none" if clean.
+  4. **Artifact location** — the path to the written artifact, with a note that the body is terse and can be `/expand`-ed for detail.
+  This rule is REQUIRED even when `/gate` will also render a summary — the skill's inline chat summary and the gate's `## For human` echo are complementary (the skill summary describes the step's work; the gate echo renders the stored artifact summary). Do NOT rely on the user reading terse artifacts — restate the substance in plain English in the chat. `/run` already satisfies this via its Checkpoint A–D summaries; the per-skill summaries additionally cover **standalone invocation** (skill run directly, not under `/run`).
 
 ### Workflow conventions
 - **Never place stage plans into `.workflow_artifacts/finalized/` until `/end_of_task` is explicitly run.** Plans stay in their working location until the user triggers finalization.
