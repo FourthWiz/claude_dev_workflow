@@ -369,6 +369,12 @@ Spawn an Agent subagent:
        b. For each UUID in ledger (<5 sessions): `timeout 15 npx ccusage session -i <UUID> --json`
           For ≥5 sessions (bulk): `npx ccusage session --json --since <earliest-date-from-ledger>`
           then filter returned sessions against the UUIDs in the ledger.
+          Parsing bulk responses: ccusage v20+ wraps results as
+          `{"session": [{"period": "UUID", "totalCost": ..., ...}, ...], "totals": {...}}`.
+          The UUID is in `period`; the array is under top-level key `session`.
+          If the response instead has a `sessionId` field (v18 shape) or is a bare array, use `sessionId`.
+          Version-detection: presence of top-level `session` key (array) → v20; else v18 fallback.
+          Extract `totalCost` per UUID. Filter to ledger UUIDs only.
           Path-agnostic all-failed gate: whichever of the per-UUID loop or bulk call was taken,
           if NO ledger UUID was successfully resolved, fall back to cost_from_jsonl.py for all UUIDs.
        c. Fallback (from binary-check branch OR all-failed gate):
