@@ -601,8 +601,8 @@ consumed_sentinel_path=""
 
    After applying the B1 mtime filter, check the B3 session-state fallback trigger (two-clause OR):
    - **Clause A:** `candidate_count == 0` (zero candidates after B1 filter AND checkpoint enum).
-   - **Clause B:** `candidate_count > 0` AND `max(sentinel candidate mtimes) < max(sessions/*.md mtime within ${QUOIN_SESSION_FALLBACK_WINDOW:-7}d)`.
-     Clause B is the same-day-symptom mitigation: when all surviving sentinels are older than the user's freshest session-state file, that session-state file is a more relevant resume anchor.
+   - **Clause B:** `candidate_count > 0` AND `max(ALL candidate mtimes) < max(sessions/*.md mtime within ${QUOIN_SESSION_FALLBACK_WINDOW:-7}d)`.
+     Clause B is the same-day-symptom mitigation: when ALL candidates (both sentinel-backed and disk-only) are older than the user's freshest session-state file, that session-state file is a more relevant resume anchor. Using `max(ALL candidate mtimes)` prevents fresh disk-only checkpoints from being unfairly skipped when no sentinel file exists.
 
    **B3 trigger fires if EITHER clause holds** — see "B3 session-state fallback" below. If the trigger does NOT fire (candidate_count > 0 AND sessions are not fresher than sentinels), proceed with the normal picker below.
 

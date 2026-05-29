@@ -136,7 +136,20 @@ timeout 30 npx ccusage session --json --since <earliest-date-across-all-entries>
 
 Then filter the returned results to only the UUIDs present in your collections.
 
-Parse each JSON response: `{"sessionId": "...", "totalCost": 1.23, "totalTokens": 123456, "entries": [...]}`. Extract `totalCost` per UUID.
+**Parsing ccusage JSON responses:**
+
+For **per-UUID calls** (`-i UUID`), the response is a single object — parse directly:
+  `{"sessionId": "...", "totalCost": 1.23, "totalTokens": 123456, "entries": [...]}`.
+  Key: `sessionId` → UUID; `totalCost` → cost.
+
+For **bulk calls** (`--since DATE`), ccusage v20+ returns a top-level wrapper:
+  `{"session": [{"period": "UUID", "totalCost": 1.23, "modelBreakdowns": [...], ...}, ...], "totals": {...}}`.
+  The array is under key `session` (NOT `sessions`). Each element's UUID is in `period` (NOT `sessionId`).
+  If instead the response is a bare array or has a `sessions` key (v18 shape), parse using `sessionId`.
+  Version-detection: check for presence of top-level `session` key (array) → v20 path;
+  otherwise fall back to v18 path (array elements have `sessionId`).
+
+Extract `totalCost` per UUID from whichever shape is detected. Filter to only UUIDs present in your collections.
 
 If `npx` or `ccusage` is not available (binary not found), OR every ccusage
 call returns non-zero, fall back to `cost_from_jsonl.py`:
