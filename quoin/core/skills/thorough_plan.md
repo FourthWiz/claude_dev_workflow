@@ -84,6 +84,10 @@ convergence, and updates a session-state file under
   and gate, the skill STOPS and waits for an explicit user command to proceed.
 - Cost-ledger writes are mandatory when a task context is active.
   The ledger lives at `.workflow_artifacts/<task-name>/cost-ledger.md`.
+- After the phase completes, the skill MUST emit a concise human-readable
+  summary of the step's outcome to the user as its final message, independent
+  of any gate rendering; the summary restates the artifact's substance in
+  plain language because the stored artifact may be in a compressed format.
 - The skill MUST tolerate missing optional inputs (architecture.md,
   lessons-learned.md, critic responses) without aborting.
 - The skill MUST honor the stage-aware task layout by writing

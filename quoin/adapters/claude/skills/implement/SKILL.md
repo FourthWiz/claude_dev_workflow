@@ -481,5 +481,12 @@ This is what `/end_of_day` reads to consolidate the day's work. Without it, this
 
 When all requested tasks are complete:
 1. Run `/gate` **inline** — read `/gate/SKILL.md` from the same session and execute the gate process directly (do not spawn a subagent). The post-implement boundary keeps the parent's cache hot. Step 5 audit-log persistence applies; write `gate-implement-<date>.md` per `/gate/SKILL.md` before yielding control.
-2. **STOP and wait** — the user must explicitly invoke `/review` to proceed
-3. If the user wants to undo anything, `/rollback` can safely revert specific tasks or the entire phase
+2. Print an **inline summary** in the chat as your final user-facing message (REQUIRED on both the clean-finish path and the §0a scope-cap path — do NOT rely on the user reading terse `current-plan.md`). Cover the canonical field set:
+   - **What was implemented** — e.g., "Implemented T-01 through T-04 (shared rule + 3 SKILL.md edits)."
+   - **Files created or modified** — list paths in plain language.
+   - **Tests written or run** — state pass/fail.
+   - **Any deviations from the plan** — brief rationale; "none" if clean.
+   - **What remains** — if the §0a scope cap was hit, name the deferred tasks (⏳) and that a fresh `/implement` dispatch is needed; if the clean-finish (no-cap) path, state "nothing — all requested tasks complete."
+   - **Artifact location** — `<task_dir>/current-plan.md` — note task status is tracked there and the body is terse and can be `/expand`-ed.
+3. **STOP and wait** — the user must explicitly invoke `/review` to proceed
+4. If the user wants to undo anything, `/rollback` can safely revert specific tasks or the entire phase
