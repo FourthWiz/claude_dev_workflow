@@ -55,6 +55,7 @@ packages = ["src/quoin"]
 "quoin/memory/cost-ledger-format.md" = "src/quoin/data/memory/cost-ledger-format.md"
 "quoin/memory/dispatch-guide.md" = "src/quoin/data/memory/dispatch-guide.md"
 "quoin/memory/lifecycle-guide.md" = "src/quoin/data/memory/lifecycle-guide.md"
+"quoin/tools/agentdesk" = "src/quoin/data/tools/agentdesk"
 
 [tool.hatch.build.targets.sdist]
 include = [
