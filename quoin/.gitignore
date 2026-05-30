@@ -14,9 +14,8 @@ build/
 *.egg-info/
 
 # ── Distribution boundary: dev artifacts excluded from the distributable package ──
-
-# Dev-only subtree — tests, spikes, verify logs, dev tooling
-dev/
+# NOTE: quoin/dev/ is NOT git-ignored — distribution exclusion is handled by pyproject.toml
+#       sdist/wheel config, not gitignore (see IVG-49).
 
 # Internal design/audit docs — stage-specific investigation artifacts
 docs/revise-crossover-decision-*.md
