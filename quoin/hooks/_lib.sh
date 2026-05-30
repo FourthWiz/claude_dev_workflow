@@ -15,11 +15,15 @@
 
 # read_constants — sources env-var defaults for tunable constants.
 # After calling, the following are exported:
-#   BPT      — bytes per token (e.g., "8.0")
-#   LIMIT    — effective context limit in tokens (e.g., 150000)
-#   STOP_BPS — stop/advisory threshold in basis-points (e.g., 7000)
-#   BLOCK_BPS — block threshold in basis-points (e.g., 9500)
-#   STALE_DAYS — sentinel staleness threshold in days (e.g., 7)
+#   BPT            — bytes per token (e.g., "8.0")
+#   LIMIT          — effective context limit in tokens (e.g., 150000)
+#   STOP_BPS       — stop/advisory threshold in basis-points (e.g., 7000)
+#   BLOCK_BPS      — block threshold in basis-points (e.g., 9500)
+#   STALE_DAYS     — sentinel staleness threshold in days (e.g., 7)
+#   COMPACT_FIRST_BPS — /checkpoint high-util notice tier (e.g., 9000 = 90.00%)
+#   PANIC_BPS      — /checkpoint panic/degraded-save tier (default 10000 = 100.00%)
+#                    compute_utilization is unclamped so values >10000 are normal;
+#                    PANIC_BPS=10000 correctly fires for all true overflow (>=100%).
 read_constants() {
     BPT=${QUOIN_BYTES_PER_TOKEN:-8.0}
     LIMIT=${QUOIN_EFFECTIVE_CONTEXT_LIMIT:-150000}
@@ -27,7 +31,8 @@ read_constants() {
     BLOCK_BPS=${QUOIN_BLOCK_BPS:-9500}
     STALE_DAYS=${QUOIN_STALE_SENTINEL_DAYS:-7}
     COMPACT_FIRST_BPS=${QUOIN_COMPACT_FIRST_BPS:-9000}
-    export BPT LIMIT STOP_BPS BLOCK_BPS STALE_DAYS COMPACT_FIRST_BPS
+    PANIC_BPS=${QUOIN_PANIC_BPS:-10000}
+    export BPT LIMIT STOP_BPS BLOCK_BPS STALE_DAYS COMPACT_FIRST_BPS PANIC_BPS
 }
 
 # compute_utilization <transcript_path> — returns a basis-point INTEGER (0..10000)
