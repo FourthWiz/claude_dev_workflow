@@ -268,10 +268,9 @@ _agentdesk_parse_custom_tokens() {
   local input="$1"
   local -a parsed=()
 
-  # Split on commas, strip leading/trailing whitespace from each token
-  local IFS=','
-  local raw_tokens
-  read -rA raw_tokens <<< "$input"
+  # Split on commas using zsh parameter expansion, then strip whitespace from each token.
+  # ${(@s:,:)input} is zsh-specific: splits $input on ',' into an array.
+  local -a raw_tokens=("${(@s:,:)input}")
 
   local tok
   for tok in "${raw_tokens[@]}"; do
