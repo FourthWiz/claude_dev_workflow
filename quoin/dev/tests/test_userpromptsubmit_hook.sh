@@ -313,8 +313,9 @@ wait "$PID_B" 2>/dev/null || true
 
 if [ -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-aaa.txt" ]; then
   content_a=$(cat "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-aaa.txt")
-  if [ "$content_a" = "prompt for session aaa" ]; then
-    ok "concurrent-fire (CRIT-3): pending-prompt-sess-aaa.txt has correct content"
+  if printf '%s' "$content_a" | grep -q "prompt for session aaa" && \
+     printf '%s' "$content_a" | grep -q "=== BLOCKED PROMPT"; then
+    ok "concurrent-fire (CRIT-3): pending-prompt-sess-aaa.txt has headered content with correct prompt"
   else
     fail "concurrent-fire: pending-prompt-sess-aaa.txt has wrong content: $content_a"
   fi
@@ -324,8 +325,9 @@ fi
 
 if [ -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-bbb.txt" ]; then
   content_b=$(cat "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-bbb.txt")
-  if [ "$content_b" = "prompt for session bbb" ]; then
-    ok "concurrent-fire (CRIT-3): pending-prompt-sess-bbb.txt has correct content"
+  if printf '%s' "$content_b" | grep -q "prompt for session bbb" && \
+     printf '%s' "$content_b" | grep -q "=== BLOCKED PROMPT"; then
+    ok "concurrent-fire (CRIT-3): pending-prompt-sess-bbb.txt has headered content with correct prompt"
   else
     fail "concurrent-fire: pending-prompt-sess-bbb.txt has wrong content: $content_b"
   fi
