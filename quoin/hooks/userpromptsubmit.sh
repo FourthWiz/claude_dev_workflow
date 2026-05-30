@@ -197,26 +197,94 @@ else
   # Each entry is prefixed with a === BLOCKED PROMPT [<timestamp>] === header.
   # Migration: if the file exists in legacy raw-text format (no header), convert it
   # to headered format on first append so no prior content is dropped.
+  # Task-notification detection (T-03): background subagent completions (wrapped in
+  # <task-notification>...</task-notification> tags) are marked [non-replayable:task-notification]
+  # in the header so restore CASE B excludes them from 'all' replay while preserving
+  # the audit trail. Users can still replay them by explicit single-number selection.
   _timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _timestamp="unknown"
+  _is_task_notification=0
+  case "$prompt" in *'<task-notification>'*) _is_task_notification=1 ;; esac
+  if [ "$_is_task_notification" -eq 1 ]; then
+    _prompt_header="=== BLOCKED PROMPT [${_timestamp}] [non-replayable:task-notification] ==="
+  else
+    _prompt_header="=== BLOCKED PROMPT [${_timestamp}] ==="
+  fi
   if [ -f "$pending_prompt_file" ] && ! head -1 "$pending_prompt_file" 2>/dev/null | grep -q '^=== BLOCKED PROMPT'; then
     _legacy=$(cat "$pending_prompt_file" 2>/dev/null)
     {
       printf '=== BLOCKED PROMPT [legacy-pre-migration] ===\n'
       printf '%s\n' "$_legacy"
-      printf '=== BLOCKED PROMPT [%s] ===\n' "$_timestamp"
+      printf '%s\n' "$_prompt_header"
       printf '%s\n' "$prompt"
     } > "$pending_prompt_file" 2>/dev/null || exit 0
   else
     {
-      printf '=== BLOCKED PROMPT [%s] ===\n' "$_timestamp"
+      printf '%s\n' "$_prompt_header"
       printf '%s\n' "$prompt"
     } >> "$pending_prompt_file" 2>/dev/null || exit 0
   fi
 
+  # STEP C2: Hook forced minimal save (T-02) — write skeleton checkpoint + pending-restore sentinel.
+  # Pure bash; fail-OPEN: failures here do NOT prevent STEP D block JSON emission.
+  # Error-ordering invariant preserved: STEP C2 is strictly between STEP C and STEP D.
+  # Atomic writes: skeleton and sentinel both written via tmp+mv (mirrors precompact.sh:216-221).
+  # PID suffix ($$) in skeleton filename prevents same-minute filename collision under
+  # parallel block fires (same session_id, concurrent task-notifications).
+  # A3 guard: if pending-restore-${session_id}.txt already exists, skip the skeleton write
+  # to preserve the higher-quality anchor from a prior voluntary or precompact save.
+  _blocksave_ok=0
+  _pr_file="${cwd}/.workflow_artifacts/memory/pending-restore-${session_id}.txt"
+  if [ -f "$_pr_file" ]; then
+    _blocksave_ok=1  # A3 guard: valid sentinel already exists; preserve it
+  else
+    _cp_dir="${cwd}/.workflow_artifacts/memory/checkpoints"
+    if mkdir -p "$_cp_dir" 2>/dev/null; then
+      _now=$(date -u +%Y-%m-%dT%H%M 2>/dev/null) || _now="0000-00-00T0000"
+      _date=$(printf '%s' "$_now" | cut -dT -f1)
+      _hhmm=$(printf '%s' "$_now" | cut -dT -f2)
+      _ts_iso=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _ts_iso="unknown"
+      _ss_dir="${cwd}/.workflow_artifacts/memory/sessions"
+      _latest_ss=$(ls -t "$_ss_dir"/*.md 2>/dev/null | head -1)
+      _task="unknown-task"
+      [ -n "$_latest_ss" ] && _task=$(basename "$_latest_ss" .md | sed 's/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-//')
+      _branch="unknown"
+      command -v git >/dev/null 2>&1 && _b=$(git -C "$cwd" rev-parse --abbrev-ref HEAD 2>/dev/null) && _branch="$_b"
+      _plan=$(find "${cwd}/.workflow_artifacts" -name current-plan.md -exec ls -t {} + 2>/dev/null | head -1)
+      _arch=$(find "${cwd}/.workflow_artifacts" -name architecture.md -exec ls -t {} + 2>/dev/null | head -1)
+      _cp_file="${_cp_dir}/${_date}T${_hhmm}-$$-${_task}-blocksave.md"
+      _cp_tmp="${_cp_file}.tmp"
+      {
+        printf '## Status\nblock-hook forced save (context overflow)\n\n'
+        printf '## Current stage\n(unknown - forced save)\n\n'
+        printf '## Active task\n%s\n\n' "$_task"
+        printf '## Branch\n%s\n\n' "$_branch"
+        printf '## Session ID\n%s\n\n' "$session_id"
+        printf '## Saved at\n%s\n\n' "$_ts_iso"
+        printf '## In-flight artifacts\n- current-plan.md: %s\n- architecture.md: %s\n- session-state: %s\n\n' \
+          "${_plan:-(none found)}" "${_arch:-(none found)}" "${_latest_ss:-(none found)}"
+        printf '## Restore hint\nRun /checkpoint --restore in a fresh session to resume task %s from branch %s.\n' \
+          "$_task" "$_branch"
+      } > "$_cp_tmp" 2>/dev/null && mv "$_cp_tmp" "$_cp_file" 2>/dev/null && {
+        printf '%s\n' "$_cp_file" > "${_pr_file}.tmp" 2>/dev/null \
+          && mv "${_pr_file}.tmp" "$_pr_file" 2>/dev/null \
+          && _blocksave_ok=1
+      }
+      [ "$_blocksave_ok" -eq 1 ] || printf '[quoin-ups] WARNING: block-path skeleton save failed; pending-prompt still saved\n' >&2
+    fi
+  fi
+  # fall through to STEP D regardless of _blocksave_ok — NEVER exit 0 before STEP D
+
   # STEP D: Emit block JSON (only reaches here if STEP C succeeded)
+  # Message reflects actual saved state (_blocksave_ok=1: fresh skeleton+sentinel written;
+  # _blocksave_ok=0: pre-existing sentinel or skeleton save failed but prompt is saved).
   pct_int=$((util / 100))
   pct_dec=$(printf '%02d' $((util % 100)))
-  printf '{"decision": "block", "reason": "context at %d.%s%% — your prompt was saved to pending-prompt-%s.txt; run /checkpoint --restore in a fresh session"}\n' \
-    "$pct_int" "$pct_dec" "$session_id"
+  if [ "$_blocksave_ok" -eq 1 ]; then
+    _restore_note="restore state saved (checkpoint + pending-restore sentinel)"
+  else
+    _restore_note="restore state is available (if a prior save exists)"
+  fi
+  printf '{"decision": "block", "reason": "context at %d.%s%% — your prompt was saved to pending-prompt-%s.txt; %s; run /checkpoint --restore in a fresh session"}\n' \
+    "$pct_int" "$pct_dec" "$session_id" "$_restore_note"
   exit 0
 fi

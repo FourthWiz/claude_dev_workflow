@@ -72,21 +72,22 @@ else
     pass "Test 2: no idle advisory for session with recent activity"
 fi
 
-# ── Test 3: Prompt with old entry for same session (>1h ago) → idle flag created
+# ── Test 3: Prompt with old entry for same session (>1h ago) → advisory emitted
+# Note: STEP 0.7 writes the idle flag and STEP 0.9 immediately consumes+deletes it
+# in the same hook invocation, so we check stdout for the advisory JSON instead.
 
 TMP3=$(mktemp -d)
 mkdir -p "${TMP3}/.workflow_artifacts/memory"
-# Write an entry with a timestamp 2 hours in the past
+# Write an entry with a timestamp far in the past (guaranteed >1h ago)
 OLD_TS="2000-01-01T00:00:00Z"
 printf '%s | test-uuid-t3\n' "$OLD_TS" > "${TMP3}/.workflow_artifacts/memory/recent-sessions.md"
 
-printf '{"session_id":"test-uuid-t3","cwd":"%s","transcript_path":"/dev/null","prompt":"hello"}' \
-    "$TMP3" | sh "$HOOK_UPS" 2>/dev/null
-
-if [ -f "${TMP3}/.workflow_artifacts/memory/idle-advisory-pending-test-uuid-t3.txt" ]; then
-    pass "Test 3: idle advisory flag created for session idle >1h"
+OUT3=$(printf '{"session_id":"test-uuid-t3","cwd":"%s","transcript_path":"/dev/null","prompt":"hello"}' \
+    "$TMP3" | sh "$HOOK_UPS" 2>/dev/null)
+if printf '%s' "$OUT3" | grep -q "quoin-idle"; then
+    pass "Test 3: idle advisory emitted for session idle >1h"
 else
-    fail "Test 3: idle advisory flag NOT created for session idle >1h"
+    fail "Test 3: idle advisory NOT emitted for session idle >1h"
 fi
 
 # ── Test 4: Missing session_id → no file written, no advisory (fail-open) ─────
