@@ -179,7 +179,48 @@ If `[ -f "$_sentinel" ] && [ -f "$_pending" ]`:
   - Release pidfile: `pidfile_release checkpoint`
   - STOP (do NOT proceed to Steps 1–6).
 
-Otherwise (sentinel absent, or only `compact-happened-*` present): proceed to Step 1.5.
+Otherwise (sentinel absent, or only `compact-happened-*` present): proceed to Step 1.45.
+
+### Step 1.45: Panic/degraded save check
+
+(Conditional: SKIP this step entirely if SELECTED_MODE was explicitly passed via `--mode` OR if AFTER_COMPACT_FLAG_PRESENT=true. Proceed directly to Step 1.5.)
+
+This step detects whether the session is at or beyond the panic tier (≥ PANIC_BPS, default 10000 = 100.00%). At extreme utilization the heavy Step 1 gathering (UUID grep across sessions, multiple file reads, AskUserQuestion) may not complete before context exhaustion — as happened in the root-cause incident (115–127% utilization, 75s churn, no restore state saved). The panic path writes a minimal skeleton checkpoint + pending-restore sentinel using only cheap bash calls (git, find, printf) and STOPS immediately.
+
+**PANIC_BPS tier:** `PANIC_BPS=${QUOIN_PANIC_BPS:-10000}`. Defined in `__QUOIN_HOME__/hooks/_lib.sh:read_constants()`. Tier ordering: `COMPACT_FIRST_BPS` (9000 = 90.00%, notice-only) < `PANIC_BPS` (10000 = 100.00%, degrade-to-minimal-save). Source and read constants:
+```sh
+. __QUOIN_HOME__/hooks/_lib.sh && read_constants && compute_utilization TRANSCRIPT_PATH
+```
+(same call already used in Step 1.5 sub-step A).
+
+**Util-read failure contract:** If `compute_utilization` returns empty or non-numeric (e.g., `TRANSCRIPT_PATH` unavailable), the panic check MUST NOT error out:
+```sh
+if [ -z "$util_bps" ] || ! printf '%d' "$util_bps" >/dev/null 2>&1; then
+  util_bps=0   # fail-safe: fall through to Step 1.5 (no crash)
+fi
+```
+The hook forced-save (userpromptsubmit.sh STEP C2) is the independent backstop when both util-read and the normal skill save path are unavailable.
+
+**If `util_bps >= PANIC_BPS`:** Skip ALL of: Step 1 deep gathering, mid-agent check, AskUserQuestion mode selection. Write a minimal skeleton checkpoint and pending-restore sentinel using only cheap operations:
+
+1. **Session ID:** harness-provided context UUID; else newest `~/.claude/projects/<project-hash>/<uuid>.jsonl` filename stem (Step 1.1 acquisition — cheap stem only, no grep across session files).
+2. **Task:** filename-derived from newest `<cwd>/.workflow_artifacts/memory/sessions/*.md` (strip `YYYY-MM-DD-` date prefix, strip `.md` suffix).
+3. **Branch:** `git -C "$cwd" rev-parse --abbrev-ref HEAD` (|| `unknown`).
+4. **In-flight paths:** `find "${cwd}/.workflow_artifacts" -name current-plan.md -exec ls -t {} + 2>/dev/null | head -1` (same for `architecture.md`).
+5. Write skeleton checkpoint to `<cwd>/.workflow_artifacts/memory/checkpoints/<YYYY-MM-DD>T<HHMM>-<task>.md` (standard timestamped form). Use the same section set as the STEP C2 hook skeleton: `## Status`, `## Current stage`, `## Active task`, `## Branch`, `## Session ID`, `## Saved at`, `## In-flight artifacts`, `## Restore hint`.
+6. Write `<cwd>/.workflow_artifacts/memory/pending-restore-<sid>.txt` containing the skeleton path on line 1.
+7. Append cost-ledger row: `<uuid> | <date> | checkpoint | haiku | task | "save (panic mode)" | 0`
+8. Release pidfile: `pidfile_release checkpoint`
+9. Report:
+   ```
+   [checkpoint] PANIC tier (util >= 100%): context too full for full save. Minimal restore state saved.
+   Checkpoint: <path>
+   Sentinel: pending-restore-<sid>.txt
+   Start a fresh session and run /checkpoint --restore to resume.
+   ```
+10. **STOP.** Do NOT proceed to Step 1.5 / Step 1 / Step 2 / normal save flow.
+
+**If `util_bps < PANIC_BPS`:** Proceed to Step 1.5 (normal flow; existing COMPACT_FIRST_BPS high-util notice applies there).
 
 ### Step 1.5: Orchestrate mode (auto-detect if --mode not explicitly given)
 
@@ -535,6 +576,61 @@ Detect mode: if the user's invocation includes `--restore`, run restore mode.
 
 Use a unified picker that covers both pending-restore sentinels and recent checkpoint files on disk.
 
+**Step 1.0 — Anchor selection (priority order)**
+
+Before enumerating disk checkpoints, attempt to resolve a restore anchor from higher-priority signals. Proceed through tiers in order; stop at the first anchor found.
+
+**Tier 1 — Fast path (current-session sentinel, sub-second):** check for `pending-restore-${current_session_id}.txt`. If it exists and its checkpoint path is valid: return that checkpoint immediately (skip all enumeration).
+
+**Tier 2 — Pending-prompt cross-reference (fix #5):** when the fast path misses (fresh session: current_session_id has no pending-restore), enumerate ALL in-window `pending-prompt-<SID>.txt` sentinels. This automates the manual "look into pending prompts to find today's real session" recovery.
+
+```sh
+_w="${QUOIN_RESTORE_SENTINEL_WINDOW:-7}"
+_mem_dir="${cwd}/.workflow_artifacts/memory"   # cwd-from-stdin, NOT bare 'memory'
+_anchor=""
+_anchor_task=""
+# Iterate in mtime-descending order so the freshest pending-prompt is tried first
+for pp in $(find "$_mem_dir" -maxdepth 1 -name 'pending-prompt-*.txt' \
+              -mtime -"${_w}" -print0 2>/dev/null \
+            | xargs -0 ls -t 2>/dev/null); do
+  sid=$(basename "$pp" | sed 's/^pending-prompt-//; s/\.txt$//')
+  _pr_candidate="${_mem_dir}/pending-restore-${sid}.txt"
+  if [ -f "$_pr_candidate" ]; then
+    _cp_candidate=$(head -1 "$_pr_candidate" 2>/dev/null)
+    if [ -n "$_cp_candidate" ] && [ -f "$_cp_candidate" ]; then
+      _anchor="$_cp_candidate"          # strongest: both hook sentinels present for this SID
+      consumed_sentinel_path="$_pr_candidate"
+      break
+    fi
+  fi
+  # No pending-restore for this SID; extract task name from session-state to seed
+  # the tier-3 cross-task guard (T-04) even when no pending-restore exists.
+  # Use the existing Step 1.1 Session UUID grep to associate SID → session-state file:
+  _implied_ss=$(grep -iEl "^([[:space:]]*-[[:space:]]*)?(Session UUID:[[:space:]]*)${sid}" \
+                  "$_mem_dir/sessions/"*.md 2>/dev/null | head -1)
+  if [ -z "$_implied_ss" ]; then
+    # Fallback: most-recently-modified session-state file (mtime heuristic)
+    _implied_ss=$(ls -t "$_mem_dir/sessions/"*.md 2>/dev/null | head -1)
+  fi
+  if [ -n "$_implied_ss" ] && [ -z "$_anchor_task" ]; then
+    _basename=$(basename "$_implied_ss" .md)
+    _anchor_task="${_basename#????-??-??-}"   # strip YYYY-MM-DD- date prefix
+  fi
+  # Do NOT break — keep scanning for a stronger (anchor) candidate
+done
+```
+
+Explicit fallthrough behavior:
+- `_anchor` set → present it (skip to Step 2).
+- `_anchor` not set but `_anchor_task` set → feed `_anchor_task` to tier-3 freshest_task override; proceed to tier-3 full enumeration.
+- Neither set → fall through to tier-3 full enumeration (no silent failure; the combined gate at auto-pick applies).
+
+**Tier 3 — Full enumeration with combined gate:** standard B1 sentinel + 30d checkpoint scan below, with the cross-task + staleness combined gate applied at auto-pick (D-03). See "Normal picker" and "Combined auto-pick gate" below.
+
+**Tier 4 — B3 session-state synthesis:** fires when tier-3 auto-pick is suppressed or candidate_count == 0. See "B3 session-state fallback" below.
+
+---
+
 **Fast path (sub-second, bypass all enumeration):**
 Before building the candidate list, check for a current-session sentinel:
 ```
@@ -603,12 +699,13 @@ consumed_sentinel_path=""
    - **Clause A:** `candidate_count == 0` (zero candidates after B1 filter AND checkpoint enum).
    - **Clause B:** `candidate_count > 0` AND `max(ALL candidate mtimes) < max(sessions/*.md mtime within ${QUOIN_SESSION_FALLBACK_WINDOW:-7}d)`.
      Clause B is the same-day-symptom mitigation: when ALL candidates (both sentinel-backed and disk-only) are older than the user's freshest session-state file, that session-state file is a more relevant resume anchor. Using `max(ALL candidate mtimes)` prevents fresh disk-only checkpoints from being unfairly skipped when no sentinel file exists.
+     Note: the B3 trigger (Clause A or B) is evaluated BEFORE the Normal picker's auto-pick step. The cross-task identity guard and staleness guard (see "Combined auto-pick gate" below) are SECOND, INDEPENDENT safety nets that apply within the Normal picker when B3 does not trigger. Together these two layers catch the incident scenario: a stale cross-task checkpoint auto-picked when Clause B did not fire because the candidate mtime appeared fresher than the sessions mtime (e.g., due to a timestamp bump or wrong cwd in the sessions lookup).
 
    **B3 trigger fires if EITHER clause holds** — see "B3 session-state fallback" below. If the trigger does NOT fire (candidate_count > 0 AND sessions are not fresher than candidates), proceed with the normal picker below.
 
    **Normal picker (when B3 does not fire):**
    - **Zero candidates:** fall through to Step 3 (graceful error message: no checkpoints found).
-   - **Exactly 1 candidate:** auto-pick with session-id mismatch warning. Set `consumed_sentinel_path` to the sentinel path if source=sentinel; else leave `""`.
+   - **Exactly 1 candidate:** apply the combined auto-pick gate (see "Combined auto-pick gate" below) BEFORE silently auto-picking. If the gate suppresses auto-pick, route to B3 synthesis. Otherwise auto-pick with session-id mismatch warning. Set `consumed_sentinel_path` to the sentinel path if source=sentinel; else leave `""`.
    - **Two or more:** present the numbered picker:
      ```
      Multiple recent checkpoints found. Which session do you want to restore?
@@ -619,9 +716,53 @@ consumed_sentinel_path=""
      ```
      Where `DATETIME_N` is the saved-time value derived per the filename-shape detection above (`YYYY-MM-DD HH:MM UTC`, `YYYY-MM-DD (legacy)`, or `YYYY-MM-DD (precompact)`).
      `*` marks sentinel-backed entries. Cap at 10 items (mtime descending). If more: `... and <N> older. Use --defer to skip.`
-     - On a valid number: use that entry's checkpoint file. Set `consumed_sentinel_path` to the sentinel path if the chosen entry's source=sentinel; else leave `""`.
+     - On a valid number: use that entry's checkpoint file. Apply the combined auto-pick gate before presenting (annotate the mismatch in the numbered list display; the user's explicit selection overrides the gate — they may still choose any entry). Set `consumed_sentinel_path` to the sentinel path if the chosen entry's source=sentinel; else leave `""`.
      - On `skip`: fall through to Step 3.
      - On invalid input: re-prompt once; on second invalid input, fall through to Step 3.
+
+   **Combined auto-pick gate (D-03 — T-04 cross-task + T-05 staleness):**
+
+   Before silently auto-picking a single candidate (or when annotating the numbered picker), apply both guards with OR semantics. A candidate is silently auto-picked ONLY IF it passes BOTH checks:
+
+   ```sh
+   # Resolve freshest_task: use tier-2 seed if available, else derive from freshest session-state
+   freshest_ss=$(ls -t "${_mem_dir}/sessions/"*.md 2>/dev/null | head -1)
+   freshest_task="${_anchor_task}"   # from tier-2 pending-prompt cross-ref (may be "")
+   if [ -z "$freshest_task" ] && [ -n "$freshest_ss" ]; then
+     _fs_basename=$(basename "$freshest_ss" .md)
+     freshest_task="${_fs_basename#????-??-??-}"
+   fi
+
+   cand_task=$(awk '/^## Active task[[:space:]]*$/{getline; gsub(/\r$/,""); print; exit}' "$cand_cp_file")
+   cand_age_days=$(python3 -c "
+   import os, datetime, sys
+   f = sys.argv[1]
+   mtime = os.path.getmtime(f)
+   age = (datetime.datetime.now().timestamp() - mtime) / 86400
+   print(int(age))
+   " "$cand_cp_file" 2>/dev/null || echo 999)
+
+   _stale_days="${QUOIN_RESTORE_STALE_DAYS:-1}"
+   stale=0
+   cross_task=0
+   [ -n "$freshest_ss" ] && [ "$cand_age_days" -gt "$_stale_days" ] && stale=1
+   [ -n "$freshest_task" ] && [ "$cand_task" != "$freshest_task" ] && cross_task=1
+
+   if [ "$stale" -eq 1 ] || [ "$cross_task" -eq 1 ]; then
+     # LOUD WARNING — do NOT silently auto-pick
+     echo "[checkpoint] WARNING: auto-pick suppressed."
+     [ "$stale" -eq 1 ]      && echo "  Stale: candidate is ${cand_age_days}d old (threshold: ${_stale_days}d)."
+     [ "$cross_task" -eq 1 ] && echo "  Cross-task: candidate task='${cand_task}' vs freshest session task='${freshest_task}'."
+     echo "  Routing to session-state synthesis (B3). Run /checkpoint --restore and choose 'y' to synthesize from the freshest session-state."
+     # Route to B3 session-state synthesis (same as Clause A/B trigger)
+     <invoke B3 session-state fallback>
+   else
+     # Guards passed — silent auto-pick (current behavior)
+     <auto-pick the candidate>
+   fi
+   ```
+
+   **Key guarantee:** a candidate is suppressed (stale=1 OR cross_task=1) when EITHER condition holds. This prevents the incident scenario (5-day-old pep-mvp checkpoint auto-picked instead of today's dgp-price-interactions session) even when B3 Clause B does not fire. The `test_checkpoint_picker_incident_repro.py` test verifies this gate cannot be silently inverted.
 
    **B3 session-state fallback (fires when trigger is true — BEFORE Step 3 graceful-error path):**
 
@@ -748,17 +889,20 @@ Read the file. Detect format by checking for `=== BLOCKED PROMPT [...]` headers:
 - **Multi-entry format (one or more `=== BLOCKED PROMPT [<timestamp>] ===` headers):**
   Parse all entries. Each entry is the text between one header line and the next header line (or end of file), with leading/trailing blank lines trimmed. Any text appearing before the first `=== BLOCKED PROMPT` header (e.g., legacy preamble from a migration-on-append) is treated as an implicit first entry with timestamp `legacy`.
 
+  **Non-replayable detection:** if a header line contains the substring `[non-replayable:`, tag that entry as `non-replayable`. Example header: `=== BLOCKED PROMPT [2026-05-30T14:22:00Z] [non-replayable:task-notification] ===`. Non-replayable entries are background agent completions (task-notifications) that were blocked by the hook — they are preserved for audit purposes but excluded from `all` replay. A user who explicitly selects a non-replayable entry by number can still replay it.
+
   Surface a numbered list:
   ```
   <N> blocked prompt(s) were saved while context was overloaded:
     1. [<timestamp_1>] <first 80 chars of prompt_1>...
-    2. [<timestamp_2>] <first 80 chars of prompt_2>...
+    2. [<timestamp_2>] [non-replayable] <first 80 chars of prompt_2>...
     ...
   Replay which? [all / 1 / 2 / 1,3 / edit 1 / none]
+  (Note: 'all' skips non-replayable entries; select by number to replay them individually.)
   ```
 
-  - `all`: emit all entries in chronological order (oldest first, separated by a blank line).
-  - A single number (e.g. `2`): emit only that entry.
+  - `all`: emit all REPLAYABLE entries in chronological order (oldest first, separated by a blank line). **Skip** entries tagged `non-replayable` — they are background notifications, not user prompts.
+  - A single number (e.g. `2`): emit only that entry (even if tagged `non-replayable` — explicit user selection overrides the tag).
   - Comma-separated numbers (e.g. `1,3`): emit those entries in ascending order.
   - `edit N`: surface entry N in full, invite the user to paste an edited version before submitting. Wait for the user to provide the edited text, then emit that instead of the stored entry.
   - `none` or `n`: trash-move the file without replaying any entry.
