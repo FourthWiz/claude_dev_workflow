@@ -253,6 +253,72 @@ workflow intent through natural-language phase requests and repo-local docs.
 | `/capture_insight` | Haiku | Logs a pattern or discovery to daily insights |
 | `/expand <path>` | Sonnet | Re-renders a terse workflow artifact in readable English |
 
+## Agentdesk
+
+Agentdesk is a Zellij terminal layout launcher bundled with quoin. It opens a
+named Zellij session with panes pre-configured for agent-assisted development —
+Claude Code, Codex, and a plain shell — in a single command.
+
+### Setup
+
+Agentdesk is deployed automatically when you install the Claude adapter at user
+scope:
+
+```bash
+quoin install --runtime claude        # or: quoin install --runtime claude --scope user
+```
+
+This copies `agentdesk.zsh` and `setup-agentdesk.sh` to `~/.config/agentdesk/`.
+Then run the setup script once to install dependencies (Zellij, lazygit, fzf)
+and patch your `.zshrc`:
+
+```bash
+bash ~/.config/agentdesk/setup-agentdesk.sh
+```
+
+After that, `agentdesk` is available in every new shell session.
+
+> Agentdesk is user-scope only — it is not deployed in project-scope installs.
+
+### Usage
+
+```
+agentdesk                              # interactive picker (when run in a TTY)
+agentdesk <session-name>               # named session with fixed layout
+agentdesk --mode solo|duo|trio         # preset layout
+agentdesk --mode trio --name my-sess   # named preset-layout session
+agentdesk claude [codex] [shell] [...]  # custom layout from window-type tokens
+```
+
+**Preset modes:**
+
+| Mode | Panes |
+|------|-------|
+| `solo` | One Claude Code pane, full-width |
+| `duo` | Claude Code + Shell, side-by-side |
+| `trio` | Claude Code + Codex + Shell, side-by-side |
+
+**Window-type tokens** (positional, mutually exclusive with `--mode`):
+
+| Token | Pane contents |
+|-------|---------------|
+| `claude` | Claude Code |
+| `codex` | Codex |
+| `shell` | Plain zsh shell |
+
+**Examples:**
+
+```bash
+agentdesk                    # picker — choose a preset or enter custom tokens
+agentdesk pricing            # named session, fixed layout
+agentdesk --mode trio        # Claude + Codex + Shell
+agentdesk claude codex       # custom two-pane layout
+agentdesk claude claude      # two Claude panes side-by-side
+```
+
+If Zellij is not running, agentdesk starts a new session. If the named session
+already exists, it reattaches.
+
 ## Architecture
 
 ![Quoin architecture](quoin/docs/images/quoin-architecture.png)
