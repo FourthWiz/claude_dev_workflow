@@ -97,18 +97,21 @@ _repo_path() {
 # Returns the zsh -lc command string for the given window type token.
 # $PROJECT_ROOT and $HOME are NOT expanded here — they remain literal
 # shell variable references for Zellij/zsh to evaluate at runtime.
+# Inner double-quotes are emitted as \" so the string survives embedding
+# in the KDL `args "-lc" "..."` field (matches the fixed agent-desk.kdl
+# escaping). Single-quoted echo strings stay as literal single quotes.
 # ============================================================
 _agentdesk_pane_cmd() {
   local token="$1"
   case "$token" in
     claude)
-      printf '%s' 'source "$HOME/.config/agentdesk/agentdesk.zsh" 2>/dev/null || true; cd "$PROJECT_ROOT" && echo '\''Claude Code - project root:'\'' "$PWD" && if command -v claude >/dev/null 2>&1; then claude; else echo '\''claude not found'\''; fi; zsh'
+      printf '%s' 'source \"$HOME/.config/agentdesk/agentdesk.zsh\" 2>/dev/null || true; cd \"$PROJECT_ROOT\" && echo '\''Claude Code - project root:'\'' \"$PWD\" && if command -v claude >/dev/null 2>&1; then claude; else echo '\''claude not found'\''; fi; zsh'
       ;;
     codex)
-      printf '%s' 'source "$HOME/.config/agentdesk/agentdesk.zsh" 2>/dev/null || true; cd "$PROJECT_ROOT" && echo '\''Codex - project root:'\'' "$PWD" && if command -v codex >/dev/null 2>&1; then codex; else echo '\''codex not found'\''; fi; zsh'
+      printf '%s' 'source \"$HOME/.config/agentdesk/agentdesk.zsh\" 2>/dev/null || true; cd \"$PROJECT_ROOT\" && echo '\''Codex - project root:'\'' \"$PWD\" && if command -v codex >/dev/null 2>&1; then codex; else echo '\''codex not found'\''; fi; zsh'
       ;;
     shell)
-      printf '%s' 'source "$HOME/.config/agentdesk/agentdesk.zsh" 2>/dev/null || true; cd "$PROJECT_ROOT" && echo '\''Shell'\''; zsh'
+      printf '%s' 'source \"$HOME/.config/agentdesk/agentdesk.zsh\" 2>/dev/null || true; cd \"$PROJECT_ROOT\" && echo '\''Shell'\''; zsh'
       ;;
   esac
 }
@@ -138,6 +141,12 @@ _agentdesk_gen_layout() {
   local layout_tmp
   layout_tmp="$(mktemp /tmp/agentdesk-layout-XXXXXX.kdl)"
 
+  # Declare loop locals ONCE, outside the redirected block. zsh's typeset
+  # echoes `name=value` to stdout when re-declaring an existing local, which
+  # would leak into the KDL file if `local` were used inside the `{ } > file`
+  # block. Hoisting the declarations here avoids that.
+  local t name cmd i
+
   # Write the KDL with single-quoted heredoc so $PROJECT_ROOT/$HOME are NOT
   # expanded at write time — they remain shell variable refs for zsh at runtime.
   {
@@ -158,8 +167,7 @@ layout {
 KDLHEADER
 
     if [ "$count" -eq 1 ]; then
-      local t="${tokens[1]}"
-      local name cmd
+      t="${tokens[1]}"
       name="$(_agentdesk_pane_name "$t")"
       cmd="$(_agentdesk_pane_cmd "$t")"
       printf '    tab name="main" {\n'
@@ -172,10 +180,8 @@ KDLHEADER
       # side-by-side: split_direction="vertical" = vertical divider = side-by-side
       printf '    tab name="main" {\n'
       printf '        pane split_direction="vertical" {\n'
-      local i
       for (( i=1; i<=count; i++ )); do
-        local t="${tokens[$i]}"
-        local name cmd
+        t="${tokens[$i]}"
         name="$(_agentdesk_pane_name "$t")"
         cmd="$(_agentdesk_pane_cmd "$t")"
         printf '            pane name="%s" {\n' "$name"
@@ -189,10 +195,8 @@ KDLHEADER
       # >3 panes: stack horizontally
       printf '    tab name="main" {\n'
       printf '        pane split_direction="horizontal" {\n'
-      local i
       for (( i=1; i<=count; i++ )); do
-        local t="${tokens[$i]}"
-        local name cmd
+        t="${tokens[$i]}"
         name="$(_agentdesk_pane_name "$t")"
         cmd="$(_agentdesk_pane_cmd "$t")"
         printf '            pane name="%s" {\n' "$name"

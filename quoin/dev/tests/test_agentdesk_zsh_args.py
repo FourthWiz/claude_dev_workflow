@@ -91,6 +91,31 @@ def _run_pick_layout(stdin_input: str, tmp_path: Path) -> subprocess.CompletedPr
     )
 
 
+def _gen_layout(tokens: str, tmp_path: Path) -> str:
+    """Call _agentdesk_gen_layout with the given tokens, return the KDL file content.
+
+    The function echoes the temp-file path; we read and return its content,
+    then clean up the temp file.
+    """
+    script = textwrap.dedent(f"""
+        source "{AGENTDESK_ZSH}"
+        out="$(_agentdesk_gen_layout {tokens})"
+        cat "$out"
+        rm -f "$out"
+    """).strip()
+    result = subprocess.run(
+        ["zsh", "-c", script],
+        env=_make_mock_env(tmp_path),
+        input="",
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=10,
+    )
+    assert result.returncode == 0, f"gen_layout failed: {result.stderr}"
+    return result.stdout
+
+
 # ── Arg parsing tests ──────────────────────────────────────────────────────────
 
 def test_agentdesk_zsh_exists() -> None:
@@ -243,3 +268,92 @@ def test_agentdesk_picker_empty_input_returns_empty(tmp_path: Path) -> None:
     assert result.stdout.strip() == "", (
         f"Empty input should produce empty output, got: {result.stdout.strip()!r}"
     )
+
+
+# ── KDL layout generation validity (regression: review I-01 / I-02) ─────────────
+
+def _assert_kdl_valid(kdl: str) -> None:
+    """Structural validity checks for generated KDL.
+
+    Catches the two review-1 CRITICAL bugs:
+      I-01: leaked `name=`/`cmd=` lines from `local` inside a redirected loop.
+      I-02: unescaped inner double-quotes that terminate the args "..." string.
+    """
+    lines = kdl.splitlines()
+
+    # I-01: no leaked variable-assignment lines (e.g. name='Claude Code', cmd=...)
+    for ln in lines:
+        stripped = ln.strip()
+        assert not stripped.startswith("name="), f"Leaked 'name=' line in KDL: {ln!r}"
+        assert not stripped.startswith("cmd="), f"Leaked 'cmd=' line in KDL: {ln!r}"
+
+    # Balanced braces
+    assert kdl.count("{") == kdl.count("}"), "Unbalanced braces in KDL"
+
+    # I-02: every args line must escape inner double-quotes as \" — there must be
+    # NO bare (unescaped) `"$HOME` or `"$PROJECT_ROOT` or `"$PWD` inside the cmd.
+    for ln in lines:
+        if 'args "-lc"' in ln:
+            # The outer wrapper is `args "-lc" "<cmd>"`. Inner var refs must be \"
+            assert '"$HOME' not in ln.replace('\\"$HOME', ""), (
+                f"Unescaped \"$HOME in args line: {ln!r}"
+            )
+            assert '"$PROJECT_ROOT' not in ln.replace('\\"$PROJECT_ROOT', ""), (
+                f"Unescaped \"$PROJECT_ROOT in args line: {ln!r}"
+            )
+            assert '"$PWD' not in ln.replace('\\"$PWD', ""), (
+                f"Unescaped \"$PWD in args line: {ln!r}"
+            )
+
+
+def test_kdl_solo_valid(tmp_path: Path) -> None:
+    """_agentdesk_gen_layout claude → valid single-pane KDL, no leaks, escaped quotes."""
+    kdl = _gen_layout("claude", tmp_path)
+    _assert_kdl_valid(kdl)
+    assert 'tab name="main"' in kdl
+    assert 'pane name="Claude Code"' in kdl
+    assert 'split_direction' not in kdl, "Solo layout should not have a split"
+
+
+def test_kdl_duo_valid(tmp_path: Path) -> None:
+    """_agentdesk_gen_layout claude shell → valid 2-pane side-by-side KDL."""
+    kdl = _gen_layout("claude shell", tmp_path)
+    _assert_kdl_valid(kdl)
+    assert 'split_direction="vertical"' in kdl, "Duo should split side-by-side"
+    assert 'pane name="Claude Code"' in kdl
+    assert 'pane name="Shell"' in kdl
+
+
+def test_kdl_trio_valid_no_leaks(tmp_path: Path) -> None:
+    """_agentdesk_gen_layout claude codex shell → valid 3-pane KDL, NO leaked lines.
+
+    This is the exact case that exposed review I-01 (leaked name=/cmd= lines).
+    """
+    kdl = _gen_layout("claude codex shell", tmp_path)
+    _assert_kdl_valid(kdl)
+    assert 'pane name="Claude Code"' in kdl
+    assert 'pane name="Codex"' in kdl
+    assert 'pane name="Shell"' in kdl
+    # Exactly 3 panes inside the split (plus the 0 from solo path)
+    assert kdl.count('command "zsh"') == 3, "Trio must have exactly 3 command panes"
+
+
+def test_kdl_four_panes_stack_horizontal(tmp_path: Path) -> None:
+    """_agentdesk_gen_layout with 4 tokens → horizontal stack, valid KDL."""
+    kdl = _gen_layout("claude claude codex shell", tmp_path)
+    _assert_kdl_valid(kdl)
+    assert 'split_direction="horizontal"' in kdl, ">3 panes should stack vertically"
+    assert kdl.count('command "zsh"') == 4
+
+
+def test_kdl_escaping_matches_fixed_layout(tmp_path: Path) -> None:
+    """Generated KDL escapes inner quotes the same way as the fixed agent-desk.kdl.
+
+    The fixed layout uses `source \\"$HOME/...\\"` — verify the generator matches.
+    """
+    kdl = _gen_layout("claude", tmp_path)
+    # Inner var refs must appear escaped
+    assert '\\"$HOME/.config/agentdesk/agentdesk.zsh\\"' in kdl, (
+        "Generated KDL must escape $HOME ref like the fixed layout"
+    )
+    assert '\\"$PROJECT_ROOT\\"' in kdl, "Generated KDL must escape $PROJECT_ROOT ref"
