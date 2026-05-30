@@ -596,6 +596,38 @@ def check_prerequisites() -> list[str]:
     return missing
 
 
+def deploy_agentdesk(source_dir: pathlib.Path, dest_agentdesk_dir: pathlib.Path) -> None:
+    """Copy agentdesk tool files to dest_agentdesk_dir (~/.config/agentdesk/).
+
+    If source files are missing, logs a warning and returns without error.
+    agentdesk is an optional user-level tool; its absence must not abort install.
+    """
+    src_agentdesk = source_dir / "tools" / "agentdesk"
+    if not src_agentdesk.exists():
+        print(f"[warn] agentdesk source not found: {src_agentdesk}", file=sys.stderr)
+        return
+
+    dest_agentdesk_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy agentdesk.zsh — _copy_with_substitution only sets +x for .py/.sh,
+    # so we call os.chmod explicitly for the .zsh file.
+    _copy_with_substitution(
+        src_agentdesk / "agentdesk.zsh",
+        dest_agentdesk_dir / "agentdesk.zsh",
+        dest_agentdesk_dir,
+    )
+    os.chmod(dest_agentdesk_dir / "agentdesk.zsh", 0o755)
+
+    # Copy setup-agentdesk.sh — .sh extension, _copy_with_substitution sets +x.
+    _copy_with_substitution(
+        src_agentdesk / "setup-agentdesk.sh",
+        dest_agentdesk_dir / "setup-agentdesk.sh",
+        dest_agentdesk_dir,
+    )
+
+    print(f"Deployed agentdesk to {dest_agentdesk_dir}")
+
+
 def regenerate_preambles(source_dir: pathlib.Path, *, allow_writes: bool) -> None:
     """Regenerate subagent preambles if running from a writable working tree."""
     if not allow_writes:

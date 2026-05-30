@@ -7,6 +7,13 @@
 # Tier 1 (fast, no network): installed version matches local → exec quoin install
 # Tier 2 (offline stdlib):   quoin not installed → PYTHONPATH=src/ exec python -m quoin
 # Tier 3 (network, opt-in):  version mismatch or --upgrade/--use-pip → pip install -e .
+#
+# Agentdesk: the Python installer (quoin install) deploys agentdesk tool files to
+# ~/.config/agentdesk/ automatically for user-mode installs. After quoin install
+# completes, it will print a hint to run setup-agentdesk.sh for the full setup
+# (installs zellij, lazygit, fzf via Homebrew and patches ~/.zshrc). That step
+# is intentionally NOT auto-run here — it modifies system state and requires
+# explicit user consent.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

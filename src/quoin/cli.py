@@ -260,6 +260,15 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
     # Hooks
     installer.deploy_hooks(source_dir, dest_root, is_project_mode=is_project_mode)
 
+    # agentdesk tool — user-mode only (user-level ~/.config/agentdesk/ location)
+    if not is_project_mode:
+        agentdesk_dest = pathlib.Path.home() / ".config" / "agentdesk"
+        installer.deploy_agentdesk(source_dir, agentdesk_dest)
+        if agentdesk_dest.exists():
+            print()
+            print("To complete agentdesk setup (install zellij, lazygit, fzf, patch .zshrc), run:")
+            print(f"  bash {agentdesk_dest}/setup-agentdesk.sh")
+
     # T-06: CLAUDE.md placement differs by mode (D-02)
     if is_project_mode:
         # project mode: write to <project>/CLAUDE.md (one level above .claude/)
