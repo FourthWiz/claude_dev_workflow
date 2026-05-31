@@ -24,6 +24,7 @@
 | `/next-steps` | Append-only queue for future work items (`add` / `list` / `done N`) |
 | `/run` | End-to-end pipeline: discover → architect → plan → implement → review → end_of_task |
 | `/cost_snapshot` | Shows today's cost, project lifetime cost, and per-task breakdown |
+| `/status` | Renders the workflow pipeline graph with the active phase marked (read-only) |
 | `/triage` | Suggests which skill fits your request; type the command to confirm |
 | `/expand <path>` | Re-renders a terse workflow artifact in English. File-switch (instant) for files with a `.original.md` side-file; LLM re-expansion (lossy, banner-flagged) for ephemeral terse files. No-op for files that are already English. **Never use for contract-file approval — the `/gate` skill already handles that.** |
 

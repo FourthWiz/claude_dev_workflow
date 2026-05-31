@@ -351,6 +351,7 @@ If adding a new file class: hand-edited or contract-approved → Tier 1; ephemer
 | /weekly_review | Haiku | Aggregates weekly progress, decisions, and outcomes (template-driven) |
 | /capture_insight | Haiku | Quick insight logging to daily scratchpad during task work |
 | /cost_snapshot | Haiku | Read-only cost reporting from ledger files and ccusage (lightweight) |
+| /status | Haiku | Read-only pipeline-graph reporting (shows active workflow phase) |
 | /triage | Haiku | Lightweight routing: reads prompt, inspects state, proposes a skill. |
 | /next-steps | Haiku | Lightweight queue management for future work items |
 | /continue_work | Sonnet | Revive context from a prior session: reads recent-sessions.md, presents session picker, extracts checkpoint summary and recent messages from JSONL. |
@@ -361,7 +362,7 @@ The 7 spawn-target skills (critic, revise, revise-fast, plan, review, gate, arch
 
 ### §0 Model dispatch preamble
 
-The 17 cheap-tier skills (gate, end_of_day, start_of_day, triage, capture_insight, cost_snapshot, weekly_review, end_of_task, implement, rollback, expand, revise-fast, sleep, next_steps, checkpoint, continue_work, pr) carry a `## §0 Model dispatch` block as the first body H2 after the H1. When invoked from a session running on a model strictly more expensive than the declared tier, the skill self-dispatches via the Agent tool to its declared model and prefixes the child prompt with `[no-redispatch]` to prevent recursion. Counter form `[no-redispatch:N]` (N≥2) is an abort signal. The 9 Opus-tier skills do NOT carry the preamble.
+The 18 cheap-tier skills (gate, end_of_day, start_of_day, triage, capture_insight, cost_snapshot, weekly_review, end_of_task, implement, rollback, expand, revise-fast, sleep, next_steps, checkpoint, continue_work, pr, status) carry a `## §0 Model dispatch` block as the first body H2 after the H1. When invoked from a session running on a model strictly more expensive than the declared tier, the skill self-dispatches via the Agent tool to its declared model and prefixes the child prompt with `[no-redispatch]` to prevent recursion. Counter form `[no-redispatch:N]` (N≥2) is an abort signal. The 9 Opus-tier skills do NOT carry the preamble.
 
 Fail-OPEN on Agent unavailable (one-line `[quoin-stage-1: subagent dispatch unavailable; ...]` warning); architecture I-01 = best-effort cost guardrail. Worktree-class errors → AskUserQuestion recovery prompt. Manual override: prefix slash invocation with `[no-redispatch]`. Drift detection: `quoin/dev/tests/test_quoin_stage1_preamble.py`, `quoin/dev/tests/test_quoin_stage1_recursion_abort.py`. Verbose details (worktree-error classification, sentinel forms, recovery options): `__QUOIN_HOME__/memory/dispatch-guide.md`.
 

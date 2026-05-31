@@ -1,7 +1,7 @@
 """
 Quoin Stage 1 — structural consistency tests for the §0 self-dispatch preamble.
 
-The 16 cheap-tier SKILL.md files carry a `## §0 Model dispatch ...` block as
+The 17 cheap-tier SKILL.md files carry a `## §0 Model dispatch ...` block as
 the first body H2 after the H1. This test file enforces the static-structural
 invariants of that block: heading uniqueness, ordering, two-layer dispatch
 contract (load-bearing `model:` parameter line + defensive `dispatched-tier:`
@@ -29,7 +29,7 @@ ADAPTER_SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
 # Skills migrated to the three-file adapter pattern (Phase 6 / Phase 7).
 # When this set grows, add the skill name here AND verify the install.sh
 # override branch exists.
-MIGRATED_TO_ADAPTER = {"capture_insight", "triage", "start_of_day", "plan", "critic", "revise", "revise-fast", "gate", "implement", "rollback", "end_of_task", "run", "end_of_day", "weekly_review", "cost_snapshot", "expand", "pr"}
+MIGRATED_TO_ADAPTER = {"capture_insight", "triage", "start_of_day", "plan", "critic", "revise", "revise-fast", "gate", "implement", "rollback", "end_of_task", "run", "end_of_day", "weekly_review", "cost_snapshot", "expand", "pr", "status"}
 
 
 def skill_md_path(skill_name: str) -> Path:
@@ -47,7 +47,7 @@ SO_HEADING = "## §0 Model dispatch (FIRST STEP — execute before anything else
 MR_HEADING = "## Model requirement"
 POLLUTION_HEADING = "## §0' Pollution dispatch (execute after §0 / §0c if present — before skill body)"
 
-# 16 cheap-tier skills — must carry §0.
+# 17 cheap-tier skills — must carry §0.
 CHEAP_TIER_SKILLS = [
     "gate",
     "end_of_day",
@@ -65,6 +65,7 @@ CHEAP_TIER_SKILLS = [
     "next_steps",
     "checkpoint",
     "pr",
+    "status",
 ]
 
 # 9 Opus-tier skills — must NOT carry §0.
