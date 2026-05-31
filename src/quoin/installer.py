@@ -288,6 +288,7 @@ CORE_SCRIPTS = (
     "validate_artifact.py",
     "path_resolve.py",
     "classify_critic_issues.py",
+    "status_graph.py",
 )
 
 

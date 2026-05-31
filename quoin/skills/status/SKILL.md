@@ -11,7 +11,7 @@ model: haiku
 > intent doc lives at `quoin/core/skills/status.md`.
 >
 > `bash quoin/install.sh` deploys the adapter file (not this stub) to
-> `~/.claude/skills/status/SKILL.md`.
+> the Claude skills directory (`__QUOIN_HOME__/skills/status/SKILL.md`).
 >
 > Do NOT add behavior here. Edit the adapter file. This stub remains only
 > so that `quoin/skills/*/SKILL.md` glob-based tests and the manifest
