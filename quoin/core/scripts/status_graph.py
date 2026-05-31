@@ -236,7 +236,7 @@ def render_graph(result: PhaseResult, task_name: str, compact: bool = False) -> 
 
 def _render_full(result: PhaseResult, task_name: str, active_node: str, label: str) -> str:
     lines: list[str] = []
-    lines.append(f"quoin pipeline — {task_name}")
+    lines.append(f"quoin pipeline -- {task_name}")
     lines.append("")
 
     # Build pipeline row with active node marked
@@ -323,7 +323,7 @@ def _find_project_root(start: Path) -> Optional[Path]:
 # CLI
 # ---------------------------------------------------------------------------
 
-def main(argv: list[str] | None = None) -> int:  # noqa: UP007  (3.9-compat)
+def main(argv=None) -> int:  # type: ignore[assignment]  # argv: list[str] | None
     parser = argparse.ArgumentParser(
         prog="status_graph",
         description="Show quoin workflow pipeline status for the active task.",
@@ -348,6 +348,9 @@ def main(argv: list[str] | None = None) -> int:  # noqa: UP007  (3.9-compat)
     project_root_str = args.project_root
     if project_root_str:
         project_root = Path(project_root_str).resolve()
+        if not (project_root / ".workflow_artifacts").is_dir():
+            print(f"No .workflow_artifacts/ directory found under {project_root}", file=sys.stderr)
+            return 1
     else:
         project_root = _find_project_root(Path.cwd())
         if project_root is None:
@@ -423,8 +426,10 @@ def _run_once(args: argparse.Namespace, project_root: Path) -> tuple[str, int]:
         return json.dumps(data, indent=2), 0
 
     graph = render_graph(result, task_name, compact=args.compact)
-    footer = f"\n(showing {task_name}; use --task to pick another)"
-    return graph + footer, 0
+    if not args.compact:
+        footer = f"\n(showing {task_name}; use --task to pick another)"
+        return graph + footer, 0
+    return graph, 0
 
 
 def _watch_loop(args: argparse.Namespace, project_root: Path, interval: int) -> None:

@@ -113,6 +113,9 @@ _agentdesk_pane_cmd() {
     shell)
       printf '%s' 'source \"$HOME/.config/agentdesk/agentdesk.zsh\" 2>/dev/null || true; cd \"$PROJECT_ROOT\" && echo '\''Shell'\''; zsh'
       ;;
+    status)
+      printf '%s' 'source \"$HOME/.config/agentdesk/agentdesk.zsh\" 2>/dev/null || true; cd \"$PROJECT_ROOT\" && python3 \"$HOME/.claude/scripts/status_graph.py\" --compact --watch'
+      ;;
   esac
 }
 
@@ -126,6 +129,7 @@ _agentdesk_pane_name() {
     claude) printf '%s' 'Claude Code' ;;
     codex)  printf '%s' 'Codex' ;;
     shell)  printf '%s' 'Shell' ;;
+    status) printf '%s' 'Status' ;;
   esac
 }
 
@@ -284,11 +288,11 @@ _agentdesk_parse_custom_tokens() {
     [ -z "$tok" ] && continue
 
     case "$tok" in
-      claude|codex|shell)
+      claude|codex|shell|status)
         parsed+=("$tok")
         ;;
       *)
-        printf 'Unknown token: "%s". Valid tokens: claude, codex, shell\n' "$tok" >&2
+        printf 'Unknown token: "%s". Valid tokens: claude, codex, shell, status\n' "$tok" >&2
         printf 'Re-enter comma-separated tokens (or press Enter to cancel): ' >&2
         local retry
         read -r retry
@@ -360,6 +364,7 @@ Window types (positional):
   claude   start Claude Code in pane
   codex    start Codex in pane
   shell    plain zsh shell
+  status   show workflow pipeline status graph
 
 Examples:
   agentdesk
@@ -370,7 +375,7 @@ Examples:
 HELP
         return 0
         ;;
-      claude|codex|shell)
+      claude|codex|shell|status)
         tokens+=("$1")
         ;;
       *)
