@@ -357,3 +357,77 @@ def test_kdl_escaping_matches_fixed_layout(tmp_path: Path) -> None:
         "Generated KDL must escape $HOME ref like the fixed layout"
     )
     assert '\\"$PROJECT_ROOT\\"' in kdl, "Generated KDL must escape $PROJECT_ROOT ref"
+
+
+# ============================================================
+# T-10: /status agentdesk token tests (IVG-59)
+# ============================================================
+
+def _run_zsh_fn(fn_call: str, tmp_path: Path, stdin_input: str = "") -> subprocess.CompletedProcess:
+    """Source agentdesk.zsh and call an arbitrary zsh function/expression."""
+    script = f'source "{AGENTDESK_ZSH}"\n{fn_call}'
+    return subprocess.run(
+        ["zsh", "-c", script],
+        env=_make_mock_env(tmp_path),
+        input=stdin_input,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=15,
+    )
+
+
+def test_agentdesk_status_token_valid(tmp_path: Path) -> None:
+    """status token → generates a pane with status_graph.py (not a named session).
+
+    Verifies the L373 fix: 'status' must be in the positional-token case so it
+    routes as a window token. We verify via _gen_layout (same as other KDL tests)
+    rather than the full agentdesk() invocation (which adds zellij/mktemp overhead).
+    """
+    # Verify layout generation works (status routed as window token, not session name)
+    kdl = _gen_layout("status", tmp_path)
+    assert "status_graph.py" in kdl, (
+        "status token must generate a pane with status_graph.py; "
+        f"got KDL: {kdl[:300]}"
+    )
+    assert "--compact" in kdl, "status pane command must include --compact"
+    assert 'pane name="Status"' in kdl, f"status pane must be named 'Status': {kdl[:300]}"
+
+
+def test_agentdesk_status_pane_cmd(tmp_path: Path) -> None:
+    """_agentdesk_pane_cmd status → contains status_graph.py and --compact."""
+    result = _run_zsh_fn("_agentdesk_pane_cmd status", tmp_path)
+    assert result.returncode == 0
+    cmd = result.stdout
+    assert "status_graph.py" in cmd, f"pane cmd missing status_graph.py: {cmd!r}"
+    assert "--compact" in cmd, f"pane cmd missing --compact: {cmd!r}"
+
+
+def test_agentdesk_status_pane_name(tmp_path: Path) -> None:
+    """_agentdesk_pane_name status → 'Status'."""
+    result = _run_zsh_fn("_agentdesk_pane_name status", tmp_path)
+    assert result.returncode == 0
+    assert result.stdout.strip() == "Status", (
+        f"Expected pane name 'Status', got: {result.stdout.strip()!r}"
+    )
+
+
+def test_agentdesk_parse_custom_tokens_with_status(tmp_path: Path) -> None:
+    """_agentdesk_parse_custom_tokens 'claude, status' → outputs both tokens."""
+    result = _run_zsh_fn("_agentdesk_parse_custom_tokens 'claude, status'", tmp_path)
+    assert result.returncode == 0
+    output = result.stdout
+    assert "status" in output, f"status token not in output: {output!r}"
+    assert "claude" in output, f"claude token not in output: {output!r}"
+
+
+def test_agentdesk_unknown_token_error_includes_status(tmp_path: Path) -> None:
+    """_agentdesk_parse_custom_tokens with unknown token → error mentions 'status'."""
+    # Provide empty retry so the function terminates
+    result = _run_zsh_fn("_agentdesk_parse_custom_tokens 'emacs'", tmp_path, stdin_input="\n")
+    assert result.returncode != 0 or "status" in result.stderr, (
+        f"Error message for unknown token should mention 'status': {result.stderr!r}"
+    )
+    assert "status" in result.stderr, (
+        f"Valid-tokens error message missing 'status': {result.stderr!r}"
+    )

@@ -52,12 +52,13 @@ CANONICAL_SKILLS = (
     "run",
     "sleep",
     "start_of_day",
+    "status",
     "thorough_plan",
     "triage",
     "weekly_review",
 )
 
-# T-05: canonical script list — all 11 scripts deployed to ~/.claude/scripts/
+# T-05: canonical script list — all 12 scripts deployed to ~/.claude/scripts/
 DEPLOYED_SCRIPTS = (
     "validate_artifact.py",
     "path_resolve.py",
@@ -70,6 +71,7 @@ DEPLOYED_SCRIPTS = (
     "analyze_cost_ledger.py",
     "git_root_for_dispatch.py",
     "dispatch_sidecar.py",
+    "status_graph.py",
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -100,6 +102,7 @@ SKILL_OVERRIDES: dict[str, str] = {
     "sleep": "name-only",
     "expand": "name-only",
     "cost_snapshot": "name-only",
+    "status": "name-only",
     "rollback": "name-only",
     "run": "name-only",
     "weekly_review": "name-only",
@@ -285,6 +288,7 @@ CORE_SCRIPTS = (
     "validate_artifact.py",
     "path_resolve.py",
     "classify_critic_issues.py",
+    "status_graph.py",
 )
 
 
