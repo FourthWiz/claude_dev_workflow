@@ -143,7 +143,16 @@ _agentdesk_gen_layout() {
   local tokens=("$@")
   local count="${#tokens[@]}"
   local layout_tmp
-  layout_tmp="$(mktemp /tmp/agentdesk-layout-XXXXXX.kdl)"
+  # mktemp only randomizes *trailing* X's on macOS (BSD mktemp). A suffix after
+  # the X's prevents randomisation, creating the same literal path every time and
+  # failing with "File exists" on the second call. Fix: generate without suffix,
+  # then rename to add .kdl. Uses TMPDIR so sandboxed environments work too.
+  layout_tmp="$(mktemp "${TMPDIR:-/tmp}/agentdesk-layout-XXXXXX")" || {
+    echo "agentdesk: failed to create temp layout file" >&2
+    return 1
+  }
+  mv -f "$layout_tmp" "$layout_tmp.kdl" || return 1
+  layout_tmp="$layout_tmp.kdl"
 
   # Declare loop locals ONCE, outside the redirected block. zsh's typeset
   # echoes `name=value` to stdout when re-declaring an existing local, which
