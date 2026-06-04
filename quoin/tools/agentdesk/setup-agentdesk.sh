@@ -12,6 +12,8 @@ AGENTDESK_DIR="$HOME/.config/agentdesk"
 AGENTDESK_HELPERS="$AGENTDESK_DIR/agentdesk.zsh"
 ZELLIJ_LAYOUT_DIR="$HOME/.config/zellij/layouts"
 ZELLIJ_LAYOUT="$ZELLIJ_LAYOUT_DIR/agent-desk.kdl"
+ZELLIJ_CONFIG_DIR="$HOME/.config/zellij"
+ZELLIJ_CONFIG="$ZELLIJ_CONFIG_DIR/config.kdl"
 
 SOURCE_LINE='[ -f "$HOME/.config/agentdesk/agentdesk.zsh" ] && source "$HOME/.config/agentdesk/agentdesk.zsh"'
 
@@ -130,6 +132,26 @@ patch_zshrc_once() {
   } >> "$ZSHRC"
 
   echo "Added Agent Desk source line to ~/.zshrc"
+}
+
+detect_clipboard_backend() {
+  local os
+  os="$(uname -s)"
+  if [ "$os" = "Darwin" ]; then
+    echo "pbcopy"
+  elif [ -n "${WAYLAND_DISPLAY:-}" ] || [ "${XDG_SESSION_TYPE:-}" = "wayland" ]; then
+    echo "wl-copy"
+  else
+    echo "xclip -selection clipboard"
+  fi
+}
+
+clipboard_backend_label() {
+  case "$1" in
+    pbcopy)   echo "macOS (pbcopy)" ;;
+    wl-copy)  echo "Linux Wayland (wl-copy)" ;;
+    *)        echo "Linux X11 (xclip -selection clipboard)" ;;
+  esac
 }
 
 echo "Step 1: install base tools"
@@ -772,6 +794,71 @@ layout {
 EOF
 
 write_if_changed "$ZELLIJ_LAYOUT" "$layout_tmp" "agentdesk-layout"
+
+echo
+echo "Step 3b: configure Zellij copy_command"
+
+_detected_backend="$(detect_clipboard_backend)"
+_detected_label="$(clipboard_backend_label "$_detected_backend")"
+echo "Detected clipboard backend: $_detected_label"
+
+_chosen_backend="$_detected_backend"
+if [ -t 0 ]; then
+  echo "  1) $_detected_label  [detected, default]"
+  echo "  2) macOS (pbcopy)"
+  echo "  3) Linux Wayland (wl-copy)"
+  echo "  4) Linux X11 (xclip -selection clipboard)"
+  printf "Select clipboard backend [1]: "
+  read -r _choice || true
+  case "${_choice:-1}" in
+    1|"") _chosen_backend="$_detected_backend" ;;
+    2)    _chosen_backend="pbcopy" ;;
+    3)    _chosen_backend="wl-copy" ;;
+    4)    _chosen_backend="xclip -selection clipboard" ;;
+    *)    echo "Invalid choice; using detected backend."; _chosen_backend="$_detected_backend" ;;
+  esac
+fi
+
+mkdir -p "$ZELLIJ_CONFIG_DIR"
+
+if [ ! -f "$ZELLIJ_CONFIG" ]; then
+  printf 'copy_command "%s"\ncopy_on_select true\n' "$_chosen_backend" > "$ZELLIJ_CONFIG"
+  echo "Created: $ZELLIJ_CONFIG (with copy_command \"$_chosen_backend\")"
+elif grep -qE '^\s*copy_command\s' "$ZELLIJ_CONFIG" 2>/dev/null; then
+  _existing_val="$(grep -E '^\s*copy_command\s' "$ZELLIJ_CONFIG" | head -1 | sed 's/.*copy_command[[:space:]]*"\(.*\)".*/\1/')"
+  if [ "$_existing_val" = "$_chosen_backend" ]; then
+    echo "Unchanged: copy_command already set to \"$_chosen_backend\""
+  else
+    _cfg_backup="${ZELLIJ_CONFIG}.copy-cmd.$(timestamp).bak"
+    cp "$ZELLIJ_CONFIG" "$_cfg_backup"
+    echo "Backup created: $_cfg_backup"
+    sed -i.tmp "s|^\([[:space:]]*\)copy_command .*|\1copy_command \"$_chosen_backend\"|" "$ZELLIJ_CONFIG"
+    rm -f "${ZELLIJ_CONFIG}.tmp"
+    echo "Updated copy_command to \"$_chosen_backend\" in $ZELLIJ_CONFIG"
+  fi
+elif grep -qE '^\s*//\s*copy_command\s' "$ZELLIJ_CONFIG" 2>/dev/null; then
+  _cfg_backup="${ZELLIJ_CONFIG}.copy-cmd.$(timestamp).bak"
+  cp "$ZELLIJ_CONFIG" "$_cfg_backup"
+  echo "Backup created: $_cfg_backup"
+  # Use awk to replace only the FIRST commented copy_command line.
+  # Zellij's default config has three example lines (x11/wayland/osx); sed would
+  # uncomment all three and produce multiple active directives.
+  awk -v cmd="$_chosen_backend" '
+    !replaced && /^[[:space:]]*\/\/[[:space:]]*copy_command[[:space:]]/ {
+      print "copy_command \"" cmd "\""
+      replaced = 1
+      next
+    }
+    { print }
+  ' "$ZELLIJ_CONFIG" > "${ZELLIJ_CONFIG}.tmp" && mv "${ZELLIJ_CONFIG}.tmp" "$ZELLIJ_CONFIG"
+  echo "Uncommented and set copy_command to \"$_chosen_backend\" in $ZELLIJ_CONFIG"
+else
+  _cfg_backup="${ZELLIJ_CONFIG}.copy-cmd.$(timestamp).bak"
+  cp "$ZELLIJ_CONFIG" "$_cfg_backup"
+  echo "Backup created: $_cfg_backup"
+  printf '\ncopy_command "%s"\n' "$_chosen_backend" >> "$ZELLIJ_CONFIG"
+  echo "Appended copy_command \"$_chosen_backend\" to $ZELLIJ_CONFIG"
+fi
 
 echo
 echo "Step 4: patch ~/.zshrc if needed"
