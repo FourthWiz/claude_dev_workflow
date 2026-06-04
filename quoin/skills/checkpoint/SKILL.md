@@ -578,9 +578,9 @@ Use a unified picker that covers both pending-restore sentinels and recent check
 
 **Step 1.0 — Anchor selection (priority order)**
 
-Before enumerating disk checkpoints, attempt to resolve a restore anchor from higher-priority signals. Proceed through tiers in order; stop at the first anchor found.
+Before enumerating disk checkpoints, attempt to resolve a restore anchor from higher-priority signals. Proceed through tiers in order; stop at the first anchor found. Tier-1 applies a cross-task guard before returning (fast validation); Tier-2 cross-references pending-prompt sentinels; Tier-3 runs full enumeration with the combined cross-task + staleness gate.
 
-**Tier 1 — Fast path (current-session sentinel, sub-second):** check for `pending-restore-${current_session_id}.txt`. If it exists and its checkpoint path is valid: return that checkpoint immediately (skip all enumeration).
+**Tier 1 — Fast path (current-session sentinel, fast validation):** check for `pending-restore-${current_session_id}.txt`. If it exists and its checkpoint path is valid, apply the cross-task identity guard before returning (fast validation, not fast bypass). Resolve `freshest_task` from the freshest `sessions/*.md` filename — the tier-2 `_anchor_task` variable is not yet set at this execution position (it is assigned inside the Tier-2 loop below). If `freshest_task` is non-empty and the candidate's `## Active task` differs from `freshest_task`, emit a loud warning and route to B3 synthesis instead of returning. If `## Active task` cannot be parsed, drop the fast path and fall through to Tier-2/Tier-3 enumeration. Otherwise (same task, or `freshest_task` is empty — no session-state to compare) return immediately — the common case still returns sub-second without full enumeration. The staleness guard is NOT applied here; a same-task sentinel that is several days old passes unconditionally (see D-01 rationale in the plan: the Tier-3 picker handles stale-same-task via fresher alternatives; suppressing it at Tier-1 would break the normal save-tonight/resume-tomorrow workflow).
 
 **Tier 2 — Pending-prompt cross-reference (fix #5):** when the fast path misses (fresh session: current_session_id has no pending-restore), enumerate ALL in-window `pending-prompt-<SID>.txt` sentinels. This automates the manual "look into pending prompts to find today's real session" recovery.
 
@@ -631,14 +631,37 @@ Explicit fallthrough behavior:
 
 ---
 
-**Fast path (sub-second, bypass all enumeration):**
-Before building the candidate list, check for a current-session sentinel:
+**Fast path (sub-second, fast validation — cross-task guard applied):**
+Before building the candidate list, check for a current-session sentinel. If found,
+validate it with the cross-task guard (staleness is NOT evaluated — see Tier-1 description
+above for rationale; a same-task sentinel that is several days old passes and returns fast):
 ```
 if exists pending-restore-${current_session_id}.txt:
   read its single-line content (cp_path)
-  verify cp_path exists; if yes: return cp_path immediately (skip enumeration entirely)
+  verify cp_path exists; if no: drop fast path, fall through to Tier-2/Tier-3 enumeration
+
+  # Fast validation: cross-task guard only
+  cand_task=$(awk '/^## Active task[[:space:]]*$/{getline; gsub(/\r$/,""); print; exit}' "$cp_path")
+  if [ -z "$cand_task" ]: drop fast path, fall through to Tier-2/Tier-3 (parse failure)
+
+  freshest_task=$(ls -t "${_mem_dir}/sessions/"*.md 2>/dev/null | head -1 \
+    | xargs -I{} basename {} .md 2>/dev/null | sed 's/^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}-//')
+  # Note: freshest_task derives from sessions/*.md filename only.
+  # The tier-2 _anchor_task variable is empty at this point (assigned inside the Tier-2 loop below).
+
+  if [ -n "$freshest_task" ] && [ "$cand_task" != "$freshest_task" ]; then
+    # Cross-task mismatch: LOUD WARNING + route to B3 (do NOT silently return)
+    echo "[checkpoint] WARNING: auto-pick suppressed."
+    echo "  Cross-task: fast-path candidate task='${cand_task}' vs freshest session task='${freshest_task}'."
+    echo "  Routing to session-state synthesis (B3). Run /checkpoint --restore and choose 'y' to synthesize."
+    <invoke B3 session-state fallback>
+  else
+    # Same task, or freshest_task is empty (no session-state files — safe no-op, guard short-circuits)
+    return cp_path immediately  # fast validation passed; no full enumeration needed
+  fi
 ```
 `current_session_id` is obtained via the same UUID-acquisition procedure as Step 1.1 (harness-provided UUID; else most recently modified JSONL filename stem).
+When `freshest_task` is empty (no `sessions/*.md` files exist), the guard short-circuits and the candidate is returned fast — no over-suppression on a clean slate.
 
 **Full enumeration path** (fires only when fast path finds nothing):
 
@@ -671,7 +694,8 @@ consumed_sentinel_path=""
 
    | # | Picker path | `consumed_sentinel_path` value |
    |---|-------------|-------------------------------|
-   | 1 | Fast-path (current-session sentinel return) | `""` (empty) — current-session cleanup at Step 5 covers it |
+   | 1 | Fast-path (current-session sentinel, cross-task guard PASSED → return) | `""` (empty) — current-session cleanup at Step 5 covers it |
+   | 1a | Fast-path (current-session sentinel, cross-task guard SUPPRESSED → B3 route) | `""` (empty) — no sentinel consumed; current-session cleanup at Step 5 still runs (it keys off `current_session_id`, not `consumed_sentinel_path`) so re-running after suppression does not loop |
    | 2 | Zero-candidates fall-through | `""` (empty) — no candidate, Step 5 unchanged |
    | 3 | Auto-pick (exactly-1 candidate), source=sentinel | absolute path of the chosen sentinel file |
    | 3a | Auto-pick (exactly-1 candidate), source=disk-only | `""` (empty) — no sentinel consumed |
