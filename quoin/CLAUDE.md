@@ -11,6 +11,9 @@ Two launch modes exist for quoin users who have set up claude-code-router (CCR):
 
 **Sanity-check:** inside a `ccr code` session, type `/help`. The quoin skill list should
 resolve. If it doesn't, run `quoin router status` and check proxy liveness.
+The model shown in the Claude Code header (e.g. "Sonnet 4.6") remains unchanged — CCR
+routes requests transparently at the HTTP layer; the Claude Code UI has no visibility
+into the substitution. The actual invoked model is what CCR maps to.
 
 Setup: `export OPENROUTER_API_KEY=sk-or-... && quoin router setup`
 

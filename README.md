@@ -290,6 +290,11 @@ your terminal — quoin's slash commands and skills work normally.
 **Sanity-check:** inside a `ccr code` session, type `/help`. The quoin skill list
 should resolve. If it does not, run `quoin doctor` and file an issue.
 
+> **Note:** the model shown in the Claude Code header will still say "Sonnet 4.6" (or
+> whatever your default Claude model is). This is expected — CCR routes requests
+> transparently at the HTTP layer, below what the Claude Code UI can see. The actual
+> model invoked is the one CCR maps to (e.g. DeepSeek V4 for default requests).
+
 ### Switching back
 
 Run `claude` directly (not `ccr code`) to use native Anthropic models. No config
