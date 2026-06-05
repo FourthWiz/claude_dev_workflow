@@ -550,6 +550,25 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         print(f"  ✗ {claude_md_label} — not found")
         errors.append(f"CLAUDE.md not found at {claude_md_label}; run 'quoin install'")
 
+    # Open-model router probe (user-scope only — home CCR paths are not project-scoped)
+    if not is_project_mode:
+        from quoin import ccr_config as _ccr
+        from quoin import router as _router
+        ccr_installed = _router._verify_ccr() or bool(shutil.which("ccr"))
+        ccr_cfg = _ccr.ccr_config_path().exists()
+        ccr_live = _ccr.probe_service()
+        if ccr_installed or ccr_cfg:
+            mode = "open via CCR" if (ccr_live and ccr_cfg) else "native"
+            print(
+                f"  {'✓' if ccr_installed else '·'} claude-code-router: "
+                f"{'installed' if ccr_installed else 'not installed'}, "
+                f"config {'present' if ccr_cfg else 'absent'}, "
+                f"proxy {'running' if ccr_live else 'stopped'} → {mode}"
+            )
+        else:
+            print("  · claude-code-router: not set up (run 'quoin router setup' to enable open-model routing)")
+        print()
+
     print()
     if warnings:
         print(f"doctor: {len(warnings)} warning(s):")
@@ -708,6 +727,30 @@ def main(argv: list[str] | None = None) -> int:
         help="Override quoin data source directory for Codex adapter scripts.",
     )
 
+    router_p = sub.add_parser(
+        "router",
+        help="Set up open-model routing via claude-code-router (opt-in)",
+    )
+    router_sub = router_p.add_subparsers(dest="router_command")
+
+    router_setup_p = router_sub.add_parser(
+        "setup",
+        help=(
+            "Install claude-code-router and scaffold an OpenRouter config. "
+            "Reads OPENROUTER_API_KEY from the environment."
+        ),
+    )
+    router_setup_p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print what would change without writing any files.",
+    )
+
+    router_sub.add_parser(
+        "status",
+        help="Show CCR install state, config, proxy liveness, and active launch mode (read-only).",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "install" or args.command is None:
@@ -721,6 +764,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.codex_command == "init":
             return _cmd_codex_init(args)
         codex_p.print_help()
+        return 1
+    elif args.command == "router":
+        # Lazy import keeps quoin install path import-clean (R-11 / D-01).
+        from quoin import router as _router
+        if args.router_command == "setup":
+            return _router._cmd_router_setup(args)
+        if args.router_command == "status":
+            return _router._cmd_router_status(args)
+        router_p.print_help()
         return 1
 
     parser.print_help()

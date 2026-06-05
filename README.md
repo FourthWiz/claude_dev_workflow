@@ -253,6 +253,60 @@ workflow intent through natural-language phase requests and repo-local docs.
 | `/capture_insight` | Haiku | Logs a pattern or discovery to daily insights |
 | `/expand <path>` | Sonnet | Re-renders a terse workflow artifact in readable English |
 
+## Open-model routing (opt-in)
+
+Quoin can route Claude Code through [claude-code-router](https://github.com/musistudio/claude-code-router)
+to use open models from OpenRouter (DeepSeek V4, GLM-5.1, and others) when your
+Anthropic quota is low. This is fully opt-in — `quoin install` is unchanged.
+
+### Setup
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...   # your OpenRouter key
+quoin router setup                    # install CCR + scaffold config
+```
+
+This installs `claude-code-router` globally (requires Node.js) and scaffolds
+`~/.claude-code-router/config.json` with an OpenRouter provider and a tier routing
+map. Any existing config is backed up with a timestamp before changes are applied.
+
+Check the result:
+
+```bash
+quoin router status    # installed? config present? proxy running? key set?
+quoin doctor           # includes a one-line CCR probe
+```
+
+### Launch modes
+
+| Mode | Command | When to use |
+|------|---------|-------------|
+| Open models via CCR | `ccr code` | Quota exhausted, cost-sensitive work |
+| Native Anthropic | `claude` | Normal use, full quoin skill fidelity |
+
+`ccr code` auto-starts the local proxy and launches the real `claude` binary in
+your terminal — quoin's slash commands and skills work normally.
+
+**Sanity-check:** inside a `ccr code` session, type `/help`. The quoin skill list
+should resolve. If it does not, run `quoin doctor` and file an issue.
+
+> **Note:** the model shown in the Claude Code header will still say "Sonnet 4.6" (or
+> whatever your default Claude model is). This is expected — CCR routes requests
+> transparently at the HTTP layer, below what the Claude Code UI can see. The actual
+> model invoked is the one CCR maps to (e.g. DeepSeek V4 for default requests).
+
+### Switching back
+
+Run `claude` directly (not `ccr code`) to use native Anthropic models. No config
+changes needed — the CCR config is left intact so you can flip back by running
+`ccr code` again.
+
+### Model defaults
+
+The tier → model mapping is seeded to `~/.config/quoin/models.json` on first setup.
+Edit it any time to change which open model each tier uses. The Stage 2 `quoin models`
+command (IVG-65, coming soon) will provide a CLI for this.
+
 ## Agentdesk
 
 Agentdesk is a Zellij terminal layout launcher bundled with quoin. It opens a

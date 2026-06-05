@@ -1,5 +1,27 @@
 # Development Workflow — Shared Rules
 
+## Open-model routing (opt-in)
+
+Two launch modes exist for quoin users who have set up claude-code-router (CCR):
+
+- **Open models via CCR:** `ccr code` — auto-starts the local proxy and launches the
+  real `claude` binary in your terminal. Quoin's slash commands and skills work normally
+  (the proxy uses `stdio: "inherit"`, preserving the interactive PTY).
+- **Native Anthropic:** `claude` — launches Claude Code directly with your Anthropic key.
+
+**Sanity-check:** inside a `ccr code` session, type `/help`. The quoin skill list should
+resolve. If it doesn't, run `quoin router status` and check proxy liveness.
+The model shown in the Claude Code header (e.g. "Sonnet 4.6") remains unchanged — CCR
+routes requests transparently at the HTTP layer; the Claude Code UI has no visibility
+into the substitution. The actual invoked model is what CCR maps to.
+
+Setup: `export OPENROUTER_API_KEY=sk-or-... && quoin router setup`
+
+Note: the `__QUOIN_HOME__` placeholder refers to the quoin deploy root (installed by
+`quoin install`). CCR's own config lives in `$HOME/.claude-code-router/` and quoin's
+model defaults are in `$HOME/.config/quoin/models.json` — these are NOT deploy-tree
+paths and are never substituted by the installer.
+
 This file defines the common rules and behaviors shared across all development workflow skills: `/init_workflow`, `/discover`, `/architect`, `/plan`, `/critic`, `/revise`, `/thorough_plan` (orchestrator), `/run` (end-to-end orchestrator), `/gate`, `/implement`, `/review`, `/rollback`, `/end_of_task`, `/pr`, `/end_of_day`, `/start_of_day`, `/weekly_review`, `/cost_snapshot`, `/capture_insight`, `/next-steps`, `/triage`, and `/continue_work`.
 
 Runtime portability note: shared workflow semantics are being extracted under `quoin/core/workflow/` (`rules.md`, `task-layout.md`, `session-state.md`, `cost-ledger.md`). This file remains the active Claude Code runtime rules file installed by `bash quoin/install.sh`; do not treat it as generated yet.
