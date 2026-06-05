@@ -1,0 +1,539 @@
+"""Tests for quoin router setup (IVG-64 Stage 1).
+
+All tests run in CI with NO network/npm access.
+- _install_ccr and _verify_ccr are monkeypatched.
+- Temp HOME (tmp_path) isolates filesystem side-effects.
+- No subprocess calls to npm or ccr in the test suite.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+from quoin.ccr_config import (  # noqa: E402
+    CcrConfigError,
+    assert_no_secret_in,
+    backup_config,
+    ccr_config_path,
+    load_config,
+    merge_openrouter_provider,
+    merge_router_keys,
+    probe_service,
+    read_openrouter_key,
+    write_config,
+)
+from quoin.router import (  # noqa: E402
+    DEFAULT_MODELS,
+    ROUTER_MAP,
+    _cmd_router_setup,
+    _cmd_router_status,
+    quoin_models_path,
+    seed_models_file_if_absent,
+)
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _make_args(dry_run: bool = False, home: Path | None = None) -> argparse.Namespace:
+    args = argparse.Namespace(dry_run=dry_run)
+    if home is not None:
+        args._home_override = home
+    return args
+
+
+def _setup_env(monkeypatch, api_key: str = "sk-or-SENTINEL-KEY") -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", api_key)
+
+
+# ── ccr_config.py unit tests ───────────────────────────────────────────────────
+
+class TestCcrConfigPath:
+    def test_default_path(self) -> None:
+        path = ccr_config_path()
+        assert path.name == "config.json"
+        assert path.parent.name == ".claude-code-router"
+
+    def test_home_override(self, tmp_path: Path) -> None:
+        path = ccr_config_path(home=tmp_path)
+        assert path == tmp_path / ".claude-code-router" / "config.json"
+
+
+class TestReadOpenrouterKey:
+    def test_reads_key(self, monkeypatch) -> None:
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-abc123")
+        assert read_openrouter_key() == "sk-or-abc123"
+
+    def test_missing_key_raises(self, monkeypatch) -> None:
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        with pytest.raises(CcrConfigError, match="OPENROUTER_API_KEY"):
+            read_openrouter_key()
+
+    def test_empty_key_raises(self, monkeypatch) -> None:
+        monkeypatch.setenv("OPENROUTER_API_KEY", "   ")
+        with pytest.raises(CcrConfigError, match="OPENROUTER_API_KEY"):
+            read_openrouter_key()
+
+
+class TestBackupConfig:
+    def test_no_backup_if_absent(self, tmp_path: Path) -> None:
+        path = tmp_path / "config.json"
+        result = backup_config(path)
+        assert result is None
+
+    def test_creates_backup(self, tmp_path: Path) -> None:
+        path = tmp_path / "config.json"
+        path.write_text('{"existing": true}', encoding="utf-8")
+        backup = backup_config(path)
+        assert backup is not None
+        assert backup.exists()
+        assert backup.name.startswith("config.json.bak-")
+        assert json.loads(backup.read_text())["existing"] is True
+
+
+class TestLoadConfig:
+    def test_missing_file_returns_empty(self, tmp_path: Path) -> None:
+        path = tmp_path / "config.json"
+        assert load_config(path) == {}
+
+    def test_valid_json(self, tmp_path: Path) -> None:
+        path = tmp_path / "config.json"
+        path.write_text('{"Providers": []}', encoding="utf-8")
+        assert load_config(path) == {"Providers": []}
+
+    def test_malformed_returns_empty(self, tmp_path: Path) -> None:
+        path = tmp_path / "config.json"
+        path.write_text("NOT JSON", encoding="utf-8")
+        result = load_config(path)
+        assert result == {}
+
+
+class TestMergeOpenrouterProvider:
+    def test_fresh_empty_config(self) -> None:
+        cfg, changes = merge_openrouter_provider({}, "sk-key", ["model1", "model2"])
+        assert "Providers" in cfg
+        assert len(cfg["Providers"]) == 1
+        assert cfg["Providers"][0]["name"] == "openrouter"
+        assert cfg["Providers"][0]["models"] == ["model1", "model2"]
+        assert "added" in changes[0]
+
+    def test_no_keyerror_on_empty(self) -> None:
+        # MAJ-2 coverage: must not raise KeyError on fresh {}
+        cfg, _ = merge_openrouter_provider({}, "sk-key", ["m"])
+        assert cfg["Providers"][0]["api_key"] == "sk-key"
+
+    def test_preserves_other_providers(self) -> None:
+        existing_cfg = {"Providers": [{"name": "other-provider", "models": ["x"]}]}
+        cfg, _ = merge_openrouter_provider(existing_cfg, "sk-key", ["m"])
+        names = [p["name"] for p in cfg["Providers"]]
+        assert "other-provider" in names
+        assert "openrouter" in names
+
+    def test_update_existing_no_duplicate(self) -> None:
+        cfg0 = {"Providers": [{"name": "openrouter", "api_key": "old-key", "models": []}]}
+        cfg, changes = merge_openrouter_provider(cfg0, "new-key", ["m"])
+        assert len(cfg["Providers"]) == 1  # no duplicate
+        assert cfg["Providers"][0]["api_key"] == "new-key"
+        assert "updated" in changes[0]
+
+    def test_non_list_providers_treated_as_empty(self) -> None:
+        cfg, _ = merge_openrouter_provider({"Providers": "broken"}, "sk-key", ["m"])
+        assert isinstance(cfg["Providers"], list)
+
+    def test_models_list_coercion(self) -> None:
+        # dict_values must be coerced to list before JSON serialization
+        models_values = DEFAULT_MODELS.values()
+        cfg, _ = merge_openrouter_provider({}, "sk-key", list(models_values))
+        assert isinstance(cfg["Providers"][0]["models"], list)
+
+
+class TestMergeRouterKeys:
+    def test_fresh_empty_config(self) -> None:
+        cfg, changes, warnings = merge_router_keys({}, ROUTER_MAP)
+        assert "Router" in cfg
+        assert "default" in cfg["Router"]
+        assert not warnings  # no foreign keys on fresh config
+
+    def test_no_keyerror_on_empty(self) -> None:
+        # MAJ-2 coverage
+        cfg, changes, _ = merge_router_keys({}, ROUTER_MAP)
+        assert cfg["Router"]["background"] == ROUTER_MAP["background"]
+
+    def test_router_values_are_provider_model_format(self) -> None:
+        # Round-2 MIN-1: values must be "provider,model" not bare slugs
+        for val in ROUTER_MAP.values():
+            assert "," in val, f"Router value {val!r} is not 'provider,model' format"
+            assert val.startswith("openrouter,"), f"Router value {val!r} does not start with 'openrouter,'"
+
+    def test_non_clobber_foreign_router_default(self) -> None:
+        # D-05: if Router.default points at something else, preserve and warn
+        cfg0 = {"Router": {"default": "my-provider,my-model"}}
+        cfg, changes, warnings = merge_router_keys(cfg0, ROUTER_MAP)
+        assert cfg["Router"]["default"] == "my-provider,my-model"
+        assert any("default" in w for w in warnings)
+
+    def test_updates_existing_openrouter_key(self) -> None:
+        cfg0 = {"Router": {"default": "openrouter,old-model"}}
+        cfg, changes, warnings = merge_router_keys(cfg0, ROUTER_MAP)
+        assert cfg["Router"]["default"] == ROUTER_MAP["default"]
+        assert not any("default" in w for w in warnings)
+
+    def test_preserves_foreign_keys(self) -> None:
+        cfg0 = {"Router": {"longContextThreshold": 80000, "webSearch": "some-model"}}
+        cfg, _, _ = merge_router_keys(cfg0, ROUTER_MAP)
+        assert cfg["Router"]["longContextThreshold"] == 80000
+        assert cfg["Router"]["webSearch"] == "some-model"
+
+    def test_never_sets_non_interactive_mode(self) -> None:
+        cfg, _, _ = merge_router_keys({}, ROUTER_MAP)
+        assert "NON_INTERACTIVE_MODE" not in cfg["Router"]
+
+
+class TestProbeService:
+    def test_returns_false_when_nothing_listening(self) -> None:
+        # Port 3456 is very unlikely to be open in CI
+        result = probe_service(port=3456, timeout=0.1)
+        # We can't assert False because in theory something could listen there,
+        # but we verify the function doesn't crash and returns a bool.
+        assert isinstance(result, bool)
+
+    def test_returns_true_with_real_listener(self, tmp_path: Path) -> None:
+        import socket
+        import threading
+        # Spin up a real listener on a random port and probe it
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(("127.0.0.1", 0))
+        server.listen(1)
+        _, port = server.getsockname()
+
+        def _accept_and_close() -> None:
+            try:
+                conn, _ = server.accept()
+                conn.close()
+            except OSError:
+                pass
+            finally:
+                server.close()
+
+        t = threading.Thread(target=_accept_and_close, daemon=True)
+        t.start()
+        try:
+            assert probe_service(port=port, timeout=1.0) is True
+        finally:
+            t.join(timeout=2)
+
+
+class TestSeedModelsFile:
+    def test_seeds_if_absent(self, tmp_path: Path) -> None:
+        path = tmp_path / ".config" / "quoin" / "models.json"
+        result = seed_models_file_if_absent(path, DEFAULT_MODELS)
+        assert result is True
+        assert json.loads(path.read_text()) == DEFAULT_MODELS
+
+    def test_does_not_overwrite_existing(self, tmp_path: Path) -> None:
+        path = tmp_path / ".config" / "quoin" / "models.json"
+        path.parent.mkdir(parents=True)
+        user_data = {"haiku": "some/other-model"}
+        path.write_text(json.dumps(user_data), encoding="utf-8")
+        result = seed_models_file_if_absent(path, DEFAULT_MODELS)
+        assert result is False
+        assert json.loads(path.read_text()) == user_data  # untouched
+
+
+# ── Integration tests for _cmd_router_setup ────────────────────────────────────
+
+class TestCmdRouterSetup:
+    """End-to-end handler tests — no real npm, no real ccr binary."""
+
+    def _run_setup(
+        self,
+        monkeypatch,
+        tmp_path: Path,
+        *,
+        node_present: bool = True,
+        ccr_initially_present: bool = False,
+        install_rc: int = 0,
+        api_key: str = "sk-or-SENTINEL-KEY",
+        dry_run: bool = False,
+        existing_cfg: dict | None = None,
+    ) -> int:
+        # Patch injectable seams
+        monkeypatch.setenv("OPENROUTER_API_KEY", api_key)
+        monkeypatch.setattr("quoin.router._node_present", lambda: node_present)
+        ccr_state = {"verified": ccr_initially_present}
+
+        def _verify():
+            return ccr_state["verified"]
+
+        def _install():
+            ccr_state["verified"] = (install_rc == 0)
+            return install_rc
+
+        monkeypatch.setattr("quoin.router._verify_ccr", _verify)
+        monkeypatch.setattr("quoin.router._install_ccr", _install)
+
+        # Optionally pre-seed a config
+        config_path = ccr_config_path(home=tmp_path)
+        if existing_cfg is not None:
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            write_config(config_path, existing_cfg)
+
+        args = _make_args(dry_run=dry_run, home=tmp_path)
+        return _cmd_router_setup(args)
+
+    def test_happy_path_creates_config(self, monkeypatch, tmp_path: Path) -> None:
+        rc = self._run_setup(monkeypatch, tmp_path, ccr_initially_present=True)
+        assert rc == 0
+        config_path = ccr_config_path(home=tmp_path)
+        assert config_path.exists()
+        cfg = json.loads(config_path.read_text())
+        assert any(p["name"] == "openrouter" for p in cfg["Providers"])
+        assert "default" in cfg["Router"]
+        assert "NON_INTERACTIVE_MODE" not in cfg.get("Router", {})
+
+    def test_node_absent_returns_1_writes_nothing(self, monkeypatch, tmp_path: Path) -> None:
+        rc = self._run_setup(monkeypatch, tmp_path, node_present=False)
+        assert rc == 1
+        assert not ccr_config_path(home=tmp_path).exists()
+
+    def test_missing_key_returns_1_writes_nothing(self, monkeypatch, tmp_path: Path) -> None:
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        monkeypatch.setattr("quoin.router._node_present", lambda: True)
+        monkeypatch.setattr("quoin.router._verify_ccr", lambda: True)
+        monkeypatch.setattr("quoin.router._install_ccr", lambda: 0)
+        args = _make_args(home=tmp_path)
+        rc = _cmd_router_setup(args)
+        assert rc == 1
+        assert not ccr_config_path(home=tmp_path).exists()
+
+    def test_install_failure_returns_nonzero_writes_nothing(self, monkeypatch, tmp_path: Path) -> None:
+        rc = self._run_setup(monkeypatch, tmp_path, ccr_initially_present=False, install_rc=1)
+        assert rc != 0
+        assert not ccr_config_path(home=tmp_path).exists()
+
+    def test_dry_run_writes_nothing(self, monkeypatch, tmp_path: Path) -> None:
+        rc = self._run_setup(monkeypatch, tmp_path, ccr_initially_present=True, dry_run=True)
+        assert rc == 0
+        assert not ccr_config_path(home=tmp_path).exists()
+
+    def test_return_code_is_int_not_systemexit(self, monkeypatch, tmp_path: Path) -> None:
+        # D-07: handler must return int, never call sys.exit
+        rc = self._run_setup(monkeypatch, tmp_path, ccr_initially_present=True)
+        assert isinstance(rc, int)
+
+    def test_idempotent_skips_install_on_rerun(self, monkeypatch, tmp_path: Path) -> None:
+        """D-06: probe-first — _install_ccr must NOT be called when CCR is already present."""
+        install_call_count = {"n": 0}
+
+        def _verify():
+            return True
+
+        def _install():
+            install_call_count["n"] += 1
+            return 0
+
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-SENTINEL")
+        monkeypatch.setattr("quoin.router._node_present", lambda: True)
+        monkeypatch.setattr("quoin.router._verify_ccr", _verify)
+        monkeypatch.setattr("quoin.router._install_ccr", _install)
+
+        args = _make_args(home=tmp_path)
+        _cmd_router_setup(args)
+        _cmd_router_setup(args)  # second run
+        assert install_call_count["n"] == 0, "_install_ccr should not be called when CCR already present"
+
+    def test_idempotent_config_no_duplicates(self, monkeypatch, tmp_path: Path) -> None:
+        """Second run: backup created, no duplicate providers/keys, models.json untouched."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-SENTINEL")
+        monkeypatch.setattr("quoin.router._node_present", lambda: True)
+        monkeypatch.setattr("quoin.router._verify_ccr", lambda: True)
+        monkeypatch.setattr("quoin.router._install_ccr", lambda: 0)
+
+        args = _make_args(home=tmp_path)
+        _cmd_router_setup(args)
+
+        # Mutate models.json to simulate user edit
+        mp = quoin_models_path(home=tmp_path)
+        mp.write_text('{"haiku":"user-edited-model"}', encoding="utf-8")
+
+        _cmd_router_setup(args)
+
+        cfg = json.loads(ccr_config_path(home=tmp_path).read_text())
+        # No duplicate openrouter providers
+        openrouter_entries = [p for p in cfg["Providers"] if p.get("name") == "openrouter"]
+        assert len(openrouter_entries) == 1
+
+        # models.json user edit preserved
+        assert json.loads(mp.read_text()) == {"haiku": "user-edited-model"}
+
+    def test_secret_not_in_stdout(self, monkeypatch, tmp_path: Path, capsys) -> None:
+        """R-03: OPENROUTER_API_KEY must never appear in stdout."""
+        sentinel = "sk-or-SENTINEL-KEY-DO-NOT-PRINT"
+        monkeypatch.setenv("OPENROUTER_API_KEY", sentinel)
+        monkeypatch.setattr("quoin.router._node_present", lambda: True)
+        monkeypatch.setattr("quoin.router._verify_ccr", lambda: True)
+        monkeypatch.setattr("quoin.router._install_ccr", lambda: 0)
+
+        args = _make_args(home=tmp_path)
+        _cmd_router_setup(args)
+
+        captured = capsys.readouterr()
+        assert_no_secret_in(captured.out, sentinel)
+        assert_no_secret_in(captured.err, sentinel)
+
+    def test_secret_not_in_models_file(self, monkeypatch, tmp_path: Path) -> None:
+        """R-03: models.json must contain slugs only, never the API key."""
+        sentinel = "sk-or-SENTINEL-KEY-MODELS-FILE"
+        monkeypatch.setenv("OPENROUTER_API_KEY", sentinel)
+        monkeypatch.setattr("quoin.router._node_present", lambda: True)
+        monkeypatch.setattr("quoin.router._verify_ccr", lambda: True)
+        monkeypatch.setattr("quoin.router._install_ccr", lambda: 0)
+
+        args = _make_args(home=tmp_path)
+        _cmd_router_setup(args)
+
+        mp = quoin_models_path(home=tmp_path)
+        assert mp.exists()
+        assert_no_secret_in(mp.read_text(), sentinel)
+
+    def test_backup_created_on_existing_config(self, monkeypatch, tmp_path: Path) -> None:
+        """R-04: existing config gets a .bak-<ts> backup before writing."""
+        existing = {"Providers": [{"name": "other", "models": []}], "Router": {}}
+        rc = self._run_setup(monkeypatch, tmp_path, ccr_initially_present=True, existing_cfg=existing)
+        assert rc == 0
+        cfg_dir = ccr_config_path(home=tmp_path).parent
+        backups = list(cfg_dir.glob("config.json.bak-*"))
+        assert len(backups) == 1
+
+    def test_foreign_provider_preserved(self, monkeypatch, tmp_path: Path) -> None:
+        """R-04 / D-05: existing non-openrouter providers must be preserved."""
+        existing = {
+            "Providers": [{"name": "other-provider", "api_key": "x", "models": ["m"]}],
+            "Router": {},
+        }
+        self._run_setup(monkeypatch, tmp_path, ccr_initially_present=True, existing_cfg=existing)
+        cfg = json.loads(ccr_config_path(home=tmp_path).read_text())
+        names = [p["name"] for p in cfg["Providers"]]
+        assert "other-provider" in names
+        assert "openrouter" in names
+
+    def test_no_non_interactive_mode_in_config(self, monkeypatch, tmp_path: Path) -> None:
+        """PTY constraint: NON_INTERACTIVE_MODE must never appear in the written config."""
+        self._run_setup(monkeypatch, tmp_path, ccr_initially_present=True)
+        cfg = json.loads(ccr_config_path(home=tmp_path).read_text())
+        assert "NON_INTERACTIVE_MODE" not in cfg
+        assert "NON_INTERACTIVE_MODE" not in cfg.get("Router", {})
+
+
+# ── Integration tests for _cmd_router_status ──────────────────────────────────
+
+class TestCmdRouterStatus:
+    def _run_status(
+        self,
+        monkeypatch,
+        tmp_path: Path,
+        *,
+        ccr_installed: bool = False,
+        cfg_present: bool = False,
+        live: bool = False,
+        key_set: bool = False,
+    ) -> tuple[int, str]:
+        import io
+        monkeypatch.setattr("quoin.router._verify_ccr", lambda: ccr_installed)
+        monkeypatch.setattr("quoin.ccr_config.probe_service", lambda **kw: live)
+        monkeypatch.setattr("quoin.router.probe_service", lambda **kw: live)
+
+        if key_set:
+            monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+        else:
+            monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+        config_path = ccr_config_path(home=tmp_path)
+        if cfg_present:
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            write_config(config_path, {"Providers": [], "Router": {}})
+
+        args = argparse.Namespace(_home_override=tmp_path)
+        buf = io.StringIO()
+
+        import builtins
+        orig_print = builtins.print
+
+        def capturing_print(*a, **kw):
+            if kw.get("file") in (None, sys.stdout):
+                buf.write(" ".join(str(x) for x in a) + "\n")
+            else:
+                orig_print(*a, **kw)
+
+        with patch("builtins.print", side_effect=capturing_print):
+            rc = _cmd_router_status(args)
+        return rc, buf.getvalue()
+
+    def test_returns_0_always(self, monkeypatch, tmp_path: Path) -> None:
+        rc, _ = self._run_status(monkeypatch, tmp_path)
+        assert rc == 0
+
+    def test_return_code_is_int(self, monkeypatch, tmp_path: Path) -> None:
+        rc, _ = self._run_status(monkeypatch, tmp_path)
+        assert isinstance(rc, int)
+
+    def test_no_config_reports_native(self, monkeypatch, tmp_path: Path) -> None:
+        _, out = self._run_status(monkeypatch, tmp_path, live=False, cfg_present=False)
+        assert "native" in out.lower()
+
+    def test_config_present_but_service_down_reports_native(self, monkeypatch, tmp_path: Path) -> None:
+        _, out = self._run_status(monkeypatch, tmp_path, cfg_present=True, live=False)
+        assert "native" in out.lower()
+        assert "open via" not in out.lower()
+
+    def test_live_and_config_reports_open(self, monkeypatch, tmp_path: Path) -> None:
+        _, out = self._run_status(monkeypatch, tmp_path, cfg_present=True, live=True)
+        assert "open" in out.lower()
+
+    def test_key_shown_as_set_unset_never_value(self, monkeypatch, tmp_path: Path, capsys) -> None:
+        sentinel = "sk-or-SECRET-STATUS-LEAK"
+        monkeypatch.setenv("OPENROUTER_API_KEY", sentinel)
+        monkeypatch.setattr("quoin.router._verify_ccr", lambda: False)
+        monkeypatch.setattr("quoin.router.probe_service", lambda **kw: False)
+        args = argparse.Namespace(_home_override=tmp_path)
+        _cmd_router_status(args)
+        out = capsys.readouterr().out
+        assert_no_secret_in(out, sentinel)
+
+
+# ── Opt-in isolation test ──────────────────────────────────────────────────────
+
+class TestOptInIsolation:
+    def test_install_path_does_not_import_router(self) -> None:
+        """R-11 / D-01: quoin.installer must not import quoin.router or quoin.ccr_config."""
+        import importlib
+        import importlib.util
+
+        # Load installer source without executing it
+        spec = importlib.util.spec_from_file_location(
+            "quoin.installer",
+            str(REPO_ROOT / "src" / "quoin" / "installer.py"),
+        )
+        assert spec is not None
+        source = Path(REPO_ROOT / "src" / "quoin" / "installer.py").read_text()
+        assert "router" not in source.split("import")[-1] or "from quoin import router" not in source
+        assert "ccr_config" not in source
+
+    def test_cli_top_level_does_not_import_router(self) -> None:
+        """Lazy import: router/ccr_config must not appear as top-level imports in cli.py."""
+        source = Path(REPO_ROOT / "src" / "quoin" / "cli.py").read_text()
+        # Top-level imports are before the first `def ` line
+        top_level = source.split("def _cmd_")[0]
+        assert "from quoin import router" not in top_level
+        assert "from quoin import ccr_config" not in top_level
+        assert "from quoin.router" not in top_level
+        assert "from quoin.ccr_config" not in top_level
