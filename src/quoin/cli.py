@@ -751,6 +751,48 @@ def main(argv: list[str] | None = None) -> int:
         help="Show CCR install state, config, proxy liveness, and active launch mode (read-only).",
     )
 
+    models_p = sub.add_parser(
+        "models",
+        help="Manage tier→open-model mapping for claude-code-router (opt-in)",
+    )
+    models_sub = models_p.add_subparsers(dest="models_command")
+
+    models_set_p = models_sub.add_parser(
+        "set",
+        help="Set the slug for one tier (haiku, sonnet, or opus).",
+    )
+    models_set_p.add_argument(
+        "tier",
+        help="The tier to update: haiku, sonnet, or opus.",
+    )
+    models_set_p.add_argument(
+        "model",
+        help=(
+            "OpenRouter slug (e.g. 'deepseek/deepseek-v4-pro') or "
+            "friendly alias (flash, pro, glm)."
+        ),
+    )
+
+    models_preset_p = models_sub.add_parser(
+        "preset",
+        help="Apply a preset mapping (currently only 'open' is supported).",
+    )
+    models_preset_p.add_argument(
+        "name",
+        choices=["open"],
+        help="Preset name. Currently only 'open' (apply default open-model mapping).",
+    )
+
+    models_reset_p = models_sub.add_parser(
+        "reset",
+        help="Document native-launch instructions and back up the CCR config (non-destructive).",
+    )
+    models_reset_p.add_argument(
+        "--native",
+        action="store_true",
+        help="Explicit-intent alias for reset; produces identical behaviour.",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "install" or args.command is None:
@@ -774,6 +816,17 @@ def main(argv: list[str] | None = None) -> int:
             return _router._cmd_router_status(args)
         router_p.print_help()
         return 1
+    elif args.command == "models":
+        # Lazy import keeps quoin install path import-clean (R-05 / D-01).
+        from quoin import models as _models
+        if args.models_command == "set":
+            return _models._cmd_models_set(args)
+        if args.models_command == "preset":
+            return _models._cmd_models_preset(args)
+        if args.models_command == "reset":
+            return _models._cmd_models_reset(args)
+        # Bare 'quoin models' → show mapping.
+        return _models._cmd_models_show(args)
 
     parser.print_help()
     return 1
