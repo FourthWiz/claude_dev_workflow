@@ -1,0 +1,541 @@
+#!/usr/bin/env python3
+"""quoin/core/scripts/dashboard_model.py — portable workflow cost dashboard model.
+
+Runtime-neutral cost-aggregation and task-enumeration for the dashboard (Stage 1).
+
+This is a PORTABLE CORE module (quoin/quoin/core/scripts/).
+The doubled quoin/quoin/ prefix is INTENTIONAL: repo-root quoin/ + package quoin/.
+Do NOT collapse this to a single quoin/ — it is correct.
+
+CRITICAL: This module does NOT import from quoin/scripts/ (adapter layer).
+NO cost_from_jsonl, NO analyze_cost_ledger, NO adapter-specific session handling.
+All USD/token resolution is deferred to the injected cost_provider (Stage 2).
+
+Public API:
+  scan_tasks(root, include_finalized=False, cost_provider=None) -> dict
+  task_detail(root, name, cost_provider=None) -> dict
+  main(argv=None) -> int
+"""
+from __future__ import annotations
+
+import argparse
+import datetime
+import importlib.util
+import json
+import re
+import sys
+from pathlib import Path
+from typing import Callable, Optional, Union
+
+
+# ---------------------------------------------------------------------------
+# Sibling-core module loaders
+# ---------------------------------------------------------------------------
+
+def _load_core(name: str):
+    """Load a sibling core module (status_graph, path_resolve, cost_event).
+
+    Uses spec_from_file_location to avoid package-import assumptions.
+    Registers in sys.modules before exec_module for dataclass compatibility.
+    """
+    path = Path(__file__).resolve().parent / f"{name}.py"
+    if not path.exists():
+        raise ImportError(f"Cannot load {name}: {path} not found")
+
+    module_key = f"_dashboard_model_{name}"
+    spec = importlib.util.spec_from_file_location(module_key, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot create spec for {name} at {path}")
+
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[module_key] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+# Load sibling modules (this happens at import time)
+_status_graph = _load_core("status_graph")
+_path_resolve = _load_core("path_resolve")
+_cost_event = _load_core("cost_event")
+
+# Bind exported names from sibling modules
+detect_phase = _status_graph.detect_phase
+pick_active_task = _status_graph.pick_active_task
+_EXCLUDED_NAMES = _status_graph._EXCLUDED_NAMES
+_max_artifact_mtime = _status_graph._max_artifact_mtime
+_PHASE_LABELS = _status_graph._PHASE_LABELS
+
+task_path = _path_resolve.task_path
+_lookup_stage_by_name = _path_resolve._lookup_stage_by_name
+SECTION_RE = _path_resolve.SECTION_RE
+ROW_RE = _path_resolve.ROW_RE
+
+iter_events = _cost_event.iter_events
+
+
+# ---------------------------------------------------------------------------
+# Cost provider interface
+# ---------------------------------------------------------------------------
+
+# CostProvider: Callable[[str, list[dict]], Optional[dict]]
+# Cost provider interface.
+#
+# Receives:
+#   - task_name: str — name of the task
+#   - rows: list[dict] — list of ledger-row dicts with the FROZEN key set
+#     {uuid, date, phase, model_or_effort, note, fallback_fires}
+#
+# Returns:
+#   - None: no enrichment, use counts mode
+#   - dict with keys:
+#     - mode: "usd" | "tokens"
+#     - usd: float | None
+#     - tokens: int | None
+#     - by_phase: {phase: {...}} | {}
+#
+# Note: The architecture's 'model' shorthand (architecture.md:116) maps to
+# the 'model_or_effort' key — there is NO 'model' field on CostEvent.
+# The provider contract is bound to model_or_effort, not model.
+
+
+# ---------------------------------------------------------------------------
+# Ledger reading and cost computation
+# ---------------------------------------------------------------------------
+
+def _read_ledger_rows(task_dir: Path) -> list:
+    """Read and parse ledger rows from the task root's cost-ledger.md.
+
+    Returns a list of JSON-serializable dicts with the FROZEN key set:
+    {uuid, date, phase, model_or_effort, note, fallback_fires}
+
+    Gracefully handles missing files (returns []).
+    """
+    # Resolve ledger path: always at the task ROOT, never in stage subfolders
+    ledger_path = task_dir / "cost-ledger.md"
+
+    # Guard: if ledger doesn't exist, return empty list
+    if not ledger_path.exists():
+        return []
+
+    rows = []
+    try:
+        for event in iter_events(ledger_path):
+            rows.append({
+                "uuid": event.uuid,
+                "date": event.date,
+                "phase": event.phase,
+                "model_or_effort": event.model_or_effort,
+                "note": event.note,
+                "fallback_fires": event.fallback_fires,
+            })
+    except FileNotFoundError:
+        # iter_events raises this if file disappears mid-read (race condition)
+        pass
+
+    return rows
+
+
+def _counts_by_phase(rows: list) -> dict:
+    """Compute counts mode: per-phase session-row counts.
+
+    Returns dict like {"architect": 1, "critic": 2, "plan": 1} plus "total" key.
+    """
+    counts = {}
+    for row in rows:
+        phase = row.get("phase", "unknown")
+        counts[phase] = counts.get(phase, 0) + 1
+
+    result = dict(sorted(counts.items()))  # alphabetical
+    result["total"] = len(rows)
+    return result
+
+
+def _min_artifact_mtime(task_dir: Path) -> float:
+    """Return the MIN mtime of non-empty artifact files inside task_dir.
+
+    Returns 0.0 if no non-empty artifact files exist.
+    Scans top-level files + one level into stage-N/ subfolders (mirroring
+    _max_artifact_mtime from status_graph.py:126-147).
+    """
+    mtimes: list[float] = []
+    try:
+        for entry in task_dir.iterdir():
+            if entry.is_file() and entry.stat().st_size > 0:
+                mtimes.append(entry.stat().st_mtime)
+            elif entry.is_dir() and re.match(r"^stage-\d+$", entry.name):
+                # Stage subfolder: check its artifact files too
+                try:
+                    for sub in entry.iterdir():
+                        if sub.is_file() and sub.stat().st_size > 0:
+                            mtimes.append(sub.stat().st_mtime)
+                except (OSError, PermissionError):
+                    pass
+    except (OSError, PermissionError):
+        pass
+    return min(mtimes, default=0.0)
+
+
+# ---------------------------------------------------------------------------
+# Stage information
+# ---------------------------------------------------------------------------
+
+def _stage_info(task_dir: Path) -> dict:
+    """Detect multi-stage structure and enumerate stages.
+
+    Reads architecture.md from the task ROOT.
+    Returns:
+      {
+        "is_multi_stage": bool,
+        "stages": [{"n": int, "name": str, "phase": str}, ...] (empty if single-stage)
+      }
+    """
+    arch_path = task_dir / "architecture.md"
+
+    if not arch_path.exists():
+        return {"is_multi_stage": False, "stages": []}
+
+    try:
+        arch_text = arch_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {"is_multi_stage": False, "stages": []}
+
+    # Detect multi-stage: presence of "## Stage decomposition"
+    if not SECTION_RE.search(arch_text):
+        return {"is_multi_stage": False, "stages": []}
+
+    # Multi-stage: enumerate stages via ROW_RE
+    stages = []
+    for match in ROW_RE.finditer(arch_text):
+        stage_n = int(match.group(1))
+        stage_name = match.group(2).strip()
+
+        try:
+            stage_dir = task_path(task_dir.name, stage=stage_n, project_root=task_dir.parent.parent)
+            phase_result = detect_phase(stage_dir)
+            phase = phase_result.phase
+        except Exception:
+            # If resolution fails, skip this stage
+            phase = "unknown"
+
+        stages.append({"n": stage_n, "name": stage_name, "phase": phase})
+
+    return {"is_multi_stage": True, "stages": stages}
+
+
+# ---------------------------------------------------------------------------
+# Per-task assembler
+# ---------------------------------------------------------------------------
+
+def _task_summary(
+    root: Path,
+    task_dir: Path,
+    task_name: str,
+    cost_provider,
+) -> dict:
+    """Assemble a single task summary.
+
+    Includes: name, phase, phase_label, critic_rounds, review_rounds,
+    is_multi_stage, stage, last_activity, finalized, and cost.
+    """
+    phase_result = detect_phase(task_dir)
+    phase = phase_result.phase
+    phase_label = _PHASE_LABELS.get(phase, phase)  # UNCONDITIONAL (per D-07)
+
+    # Compute counts mode
+    rows = _read_ledger_rows(task_dir)
+    counts_mode = _counts_by_phase(rows)
+
+    default_cost = {
+        "mode": "counts",
+        "by_phase": counts_mode,
+        "usd": None,
+        "tokens": None,
+    }
+
+    # Apply provider enrichment if available
+    cost = default_cost.copy()
+    if cost_provider is not None:
+        try:
+            enrichment = cost_provider(task_name, rows)
+            if enrichment is not None and isinstance(enrichment, dict):
+                # Merge provider output over counts default
+                for key in ["mode", "usd", "tokens", "by_phase"]:
+                    if key in enrichment:
+                        cost[key] = enrichment[key]
+        except Exception:
+            # Provider raised: log to stderr, stay in counts mode
+            print(
+                f"dashboard_model: cost_provider raised for '{task_name}'; "
+                f"using counts mode",
+                file=sys.stderr,
+            )
+            # cost stays as default_cost
+
+    # Stage info
+    stage_info = _stage_info(task_dir)
+
+    # Last activity: ISO-8601 from max mtime, or None if 0.0
+    max_mtime = _max_artifact_mtime(task_dir)
+    last_activity = None
+    if max_mtime > 0.0:
+        last_activity = datetime.datetime.fromtimestamp(max_mtime).isoformat()
+
+    # Finalized: check if task_dir is under finalized/
+    finalized = "finalized" in task_dir.parts
+
+    # Active stage (for multi-stage tasks): highest stage number, or None
+    active_stage = None
+    if stage_info["is_multi_stage"] and stage_info["stages"]:
+        active_stage = max(s["n"] for s in stage_info["stages"])
+
+    return {
+        "name": task_name,
+        "phase": phase,
+        "phase_label": phase_label,
+        "critic_rounds": phase_result.critic_rounds,
+        "review_rounds": phase_result.review_rounds,
+        "is_multi_stage": stage_info["is_multi_stage"],
+        "stage": active_stage,
+        "last_activity": last_activity,
+        "finalized": finalized,
+        "cost": cost,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Task enumeration and detail
+# ---------------------------------------------------------------------------
+
+def scan_tasks(
+    root: Path,
+    include_finalized: bool = False,
+    cost_provider=None,
+) -> dict:
+    """Scan and summarize all tasks.
+
+    Returns:
+      {
+        "project_root": str,
+        "active_task": str | None,  (JSON-serializable name string, not Path)
+        "tasks": [task_summary, ...],
+      }
+    """
+    root = Path(root).resolve()
+
+    # Resolve root: if root/.workflow_artifacts exists, use root; else bail
+    artifacts_dir = root / ".workflow_artifacts"
+    if not artifacts_dir.is_dir():
+        # Try to find it by walking up
+        current = root
+        while current != current.parent:
+            if (current / ".workflow_artifacts").is_dir():
+                root = current
+                artifacts_dir = current / ".workflow_artifacts"
+                break
+            current = current.parent
+        else:
+            # No .workflow_artifacts found
+            return {
+                "project_root": str(root),
+                "active_task": None,
+                "tasks": [],
+            }
+
+    tasks = []
+
+    # Enumerate non-finalized tasks
+    try:
+        for entry in artifacts_dir.iterdir():
+            if not entry.is_dir():
+                continue
+            if entry.name in _EXCLUDED_NAMES:
+                continue
+
+            task_name = entry.name
+            summary = _task_summary(root, entry, task_name, cost_provider)
+            tasks.append(summary)
+    except (OSError, PermissionError):
+        pass
+
+    # Enumerate finalized tasks if requested (TOP-LEVEL finalized/ only)
+    if include_finalized:
+        finalized_dir = artifacts_dir / "finalized"
+        if finalized_dir.is_dir():
+            try:
+                for entry in finalized_dir.iterdir():
+                    if not entry.is_dir():
+                        continue
+
+                    task_name = entry.name
+                    summary = _task_summary(root, entry, task_name, cost_provider)
+                    tasks.append(summary)
+            except (OSError, PermissionError):
+                pass
+
+    # Compute active_task: JSON-serializable NAME STRING (not Path)
+    # pick_active_task returns Optional[Path]; take .name to get the string
+    active_task_path = pick_active_task(root)
+    active_task = active_task_path.name if active_task_path is not None else None
+
+    return {
+        "project_root": str(root),
+        "active_task": active_task,
+        "tasks": tasks,
+    }
+
+
+def task_detail(
+    root: Path,
+    name: str,
+    cost_provider=None,
+) -> dict:
+    """Get detailed info for a specific task.
+
+    Raises KeyError if task not found.
+
+    Returns task_summary fields PLUS:
+      - stages: full _stage_info (with per-stage phase)
+      - ledger_rows: list of dicts (non-finalized only)
+      - totals: counts/cost totals (finalized only)
+      - dates: {"first_activity", "last_activity"} (ISO-8601 or None)
+    """
+    root = Path(root).resolve()
+
+    # Resolve root if needed
+    artifacts_dir = root / ".workflow_artifacts"
+    if not artifacts_dir.is_dir():
+        current = root
+        while current != current.parent:
+            if (current / ".workflow_artifacts").is_dir():
+                root = current
+                artifacts_dir = current / ".workflow_artifacts"
+                break
+            current = current.parent
+
+    # Try to find task dir: first at top level, then in finalized/
+    task_dir = artifacts_dir / name
+    finalized_task = False
+
+    if not task_dir.is_dir():
+        task_dir = artifacts_dir / "finalized" / name
+        finalized_task = True
+
+    if not task_dir.is_dir():
+        raise KeyError(name)
+
+    # Build base summary
+    summary = _task_summary(root, task_dir, name, cost_provider)
+
+    # Add stage info
+    summary["stages"] = _stage_info(task_dir)["stages"]
+
+    # Add ledger rows (non-finalized) or totals (finalized)
+    rows = _read_ledger_rows(task_dir)
+
+    if finalized_task:
+        # Finalized: include totals only, no ledger_rows
+        summary["totals"] = _counts_by_phase(rows)
+    else:
+        # Non-finalized: include ledger_rows
+        summary["ledger_rows"] = rows
+
+    # Add dates
+    min_mtime = _min_artifact_mtime(task_dir)
+    max_mtime = _max_artifact_mtime(task_dir)
+
+    first_activity = None
+    if min_mtime > 0.0:
+        first_activity = datetime.datetime.fromtimestamp(min_mtime).isoformat()
+
+    last_activity = None
+    if max_mtime > 0.0:
+        last_activity = datetime.datetime.fromtimestamp(max_mtime).isoformat()
+
+    summary["dates"] = {
+        "first_activity": first_activity,
+        "last_activity": last_activity,
+    }
+
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def main(argv=None) -> int:
+    """CLI entry point.
+
+    Flags:
+      --json              dump scan_tasks result as JSON
+      --task NAME         dump task_detail instead
+      --include-finalized include finalized tasks in scan
+      --project-root PATH project root (default: walk up from cwd)
+    """
+    parser = argparse.ArgumentParser(
+        prog="dashboard_model.py",
+        description="Workflow cost dashboard model — task enumeration and aggregation.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="dump scan_tasks result as indented JSON",
+    )
+    parser.add_argument(
+        "--task",
+        default=None,
+        metavar="NAME",
+        help="dump task_detail for a specific task (implies --json output)",
+    )
+    parser.add_argument(
+        "--include-finalized",
+        action="store_true",
+        help="include finalized tasks in scan",
+    )
+    parser.add_argument(
+        "--project-root",
+        default=None,
+        metavar="PATH",
+        help="project root directory (default: walk up from cwd to find .workflow_artifacts/)",
+    )
+
+    args = parser.parse_args(argv)
+
+    # Resolve project root
+    if args.project_root:
+        root = Path(args.project_root).resolve()
+    else:
+        # Walk up from cwd
+        root = Path.cwd().resolve()
+        while root != root.parent:
+            if (root / ".workflow_artifacts").is_dir():
+                break
+            root = root.parent
+        else:
+            print(
+                f"error: no .workflow_artifacts found in {Path.cwd()} or parents",
+                file=sys.stderr,
+            )
+            return 1
+
+    try:
+        if args.task:
+            # Dump task_detail
+            result = task_detail(root, args.task)
+            print(json.dumps(result, indent=2))
+            return 0
+        else:
+            # Dump scan_tasks
+            result = scan_tasks(root, include_finalized=args.include_finalized)
+            print(json.dumps(result, indent=2))
+            return 0
+    except KeyError as e:
+        print(f"error: task not found: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
