@@ -919,6 +919,7 @@ echo "  agentdesk my-session"
 echo "  agentdesk --name my-session"
 echo "  agentdesk --mode solo|duo|trio"
 echo "  agentdesk claude codex shell"
+echo "  agentdesk claude ccr shell"
 echo
 echo "Useful commands:"
 echo "  repos"
