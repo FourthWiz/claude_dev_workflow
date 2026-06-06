@@ -36,7 +36,7 @@ def _make_mock_env(tmp_path: Path) -> dict:
     mock_bin = tmp_path / "mock_bin"
     mock_bin.mkdir()
 
-    for name in ("zellij", "claude", "codex"):
+    for name in ("zellij", "claude", "codex", "ccr"):
         stub = mock_bin / name
         stub.write_text("#!/bin/zsh\nexit 0\n")
         stub.chmod(0o755)
@@ -244,9 +244,9 @@ def test_agentdesk_picker_custom_no_spaces(tmp_path: Path) -> None:
 
 
 def test_agentdesk_picker_unknown_token_in_custom(tmp_path: Path) -> None:
-    """_agentdesk_pick_layout with option 5 + unknown token + empty retry returns rc=1."""
-    # Input: choose option 5, then type bad token, then empty retry (cancel)
-    result = _run_pick_layout("5\nemacs, shell\n\n", tmp_path)
+    """_agentdesk_pick_layout with option 6 + unknown token + empty retry returns rc=1."""
+    # Input: choose option 6 (Custom — was 5 before ccr renumber), then type bad token, then empty retry (cancel)
+    result = _run_pick_layout("6\nemacs, shell\n\n", tmp_path)
     assert result.returncode != 0, (
         f"Unknown token in custom input should return non-zero after re-prompt (rc={result.returncode})"
     )
@@ -430,4 +430,66 @@ def test_agentdesk_unknown_token_error_includes_status(tmp_path: Path) -> None:
     )
     assert "status" in result.stderr, (
         f"Valid-tokens error message missing 'status': {result.stderr!r}"
+    )
+
+
+# ============================================================
+# CCR token tests (agentdesk-ccr-token)
+# ============================================================
+
+def test_agentdesk_ccr_pane_cmd(tmp_path: Path) -> None:
+    """_agentdesk_pane_cmd ccr → contains 'ccr code' and 'command -v ccr' and fallback."""
+    result = _run_zsh_fn("_agentdesk_pane_cmd ccr", tmp_path)
+    assert result.returncode == 0
+    cmd = result.stdout
+    assert "ccr code" in cmd, f"pane cmd missing 'ccr code': {cmd!r}"
+    assert "command -v ccr" in cmd, f"pane cmd missing 'command -v ccr' guard: {cmd!r}"
+    assert "ccr not found" in cmd, f"pane cmd missing 'ccr not found' fallback: {cmd!r}"
+
+
+def test_agentdesk_ccr_pane_name(tmp_path: Path) -> None:
+    """_agentdesk_pane_name ccr → prints exactly 'CCR (OpenRouter)'."""
+    result = _run_zsh_fn("_agentdesk_pane_name ccr", tmp_path)
+    assert result.returncode == 0
+    assert result.stdout.strip() == "CCR (OpenRouter)", (
+        f"Expected pane name 'CCR (OpenRouter)', got: {result.stdout.strip()!r}"
+    )
+
+
+def test_agentdesk_ccr_token_valid(tmp_path: Path) -> None:
+    """ccr token → generates valid KDL with 'ccr code' command and correct pane name."""
+    kdl = _gen_layout("ccr", tmp_path)
+    assert "ccr code" in kdl, f"KDL missing 'ccr code': {kdl[:400]}"
+    assert 'pane name="CCR (OpenRouter)"' in kdl, (
+        f"KDL missing pane name 'CCR (OpenRouter)': {kdl[:400]}"
+    )
+    _assert_kdl_valid(kdl)
+
+
+def test_agentdesk_parse_custom_tokens_with_ccr(tmp_path: Path) -> None:
+    """_agentdesk_parse_custom_tokens 'claude, ccr' → outputs both tokens."""
+    result = _run_zsh_fn("_agentdesk_parse_custom_tokens 'claude, ccr'", tmp_path)
+    assert result.returncode == 0
+    output = result.stdout
+    assert "ccr" in output, f"ccr token not in output: {output!r}"
+    assert "claude" in output, f"claude token not in output: {output!r}"
+
+
+def test_agentdesk_unknown_token_error_includes_ccr(tmp_path: Path) -> None:
+    """_agentdesk_parse_custom_tokens with unknown token → error mentions 'status, ccr' tail."""
+    result = _run_zsh_fn("_agentdesk_parse_custom_tokens 'emacs'", tmp_path, stdin_input="\n")
+    assert result.returncode != 0 or "ccr" in result.stderr, (
+        f"Error message for unknown token should mention 'ccr': {result.stderr!r}"
+    )
+    assert "status, ccr" in result.stderr, (
+        f"Valid-tokens error message missing ordered tail 'status, ccr': {result.stderr!r}"
+    )
+
+
+def test_agentdesk_picker_option5_claude_ccr_shell(tmp_path: Path) -> None:
+    """_agentdesk_pick_layout with input '5' returns 'claude ccr shell'."""
+    result = _run_pick_layout("5\n", tmp_path)
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    assert result.stdout.strip() == "claude ccr shell", (
+        f"Expected 'claude ccr shell', got: {result.stdout.strip()!r}"
     )

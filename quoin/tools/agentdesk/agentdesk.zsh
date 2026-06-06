@@ -116,6 +116,9 @@ _agentdesk_pane_cmd() {
     status)
       printf '%s' 'source \"$HOME/.config/agentdesk/agentdesk.zsh\" 2>/dev/null || true; cd \"$PROJECT_ROOT\" && python3 \"$HOME/.claude/scripts/status_graph.py\" --compact --watch'
       ;;
+    ccr)
+      printf '%s' 'source \"$HOME/.config/agentdesk/agentdesk.zsh\" 2>/dev/null || true; cd \"$PROJECT_ROOT\" && echo '\''CCR (OpenRouter) - project root:'\'' \"$PWD\" && if command -v ccr >/dev/null 2>&1; then ccr code; else echo '\''ccr not found'\''; fi; zsh'
+      ;;
   esac
 }
 
@@ -130,6 +133,7 @@ _agentdesk_pane_name() {
     codex)  printf '%s' 'Codex' ;;
     shell)  printf '%s' 'Shell' ;;
     status) printf '%s' 'Status' ;;
+    ccr)    printf '%s' 'CCR (OpenRouter)' ;;
   esac
 }
 
@@ -239,7 +243,8 @@ _agentdesk_pick_layout() {
   printf '  2) claude + shell\n' >&2
   printf '  3) claude + claude + shell\n' >&2
   printf '  4) claude + codex + shell\n' >&2
-  printf '  5) Custom — type comma-separated: e.g. claude, codex, shell\n' >&2
+  printf '  5) claude + ccr + shell\n' >&2
+  printf '  6) Custom — type comma-separated: e.g. claude, codex, shell, ccr\n' >&2
   printf 'Choice [1]: ' >&2
 
   local choice
@@ -264,7 +269,11 @@ _agentdesk_pick_layout() {
       return 0
       ;;
     5)
-      printf 'Type comma-separated tokens (claude, codex, shell): ' >&2
+      printf 'claude ccr shell\n'
+      return 0
+      ;;
+    6)
+      printf 'Type comma-separated tokens (claude, codex, shell, ccr): ' >&2
       read -r choice
       ;;
     *)
@@ -297,11 +306,11 @@ _agentdesk_parse_custom_tokens() {
     [ -z "$tok" ] && continue
 
     case "$tok" in
-      claude|codex|shell|status)
+      claude|codex|shell|status|ccr)
         parsed+=("$tok")
         ;;
       *)
-        printf 'Unknown token: "%s". Valid tokens: claude, codex, shell, status\n' "$tok" >&2
+        printf 'Unknown token: "%s". Valid tokens: claude, codex, shell, status, ccr\n' "$tok" >&2
         printf 'Re-enter comma-separated tokens (or press Enter to cancel): ' >&2
         local retry
         read -r retry
@@ -374,17 +383,19 @@ Window types (positional):
   codex    start Codex in pane
   shell    plain zsh shell
   status   show workflow pipeline status graph
+  ccr      start ccr code (OpenRouter via CCR) in pane
 
 Examples:
   agentdesk
   agentdesk pricing
   agentdesk --mode trio
   agentdesk claude codex shell
+  agentdesk claude ccr shell
   agentdesk claude claude
 HELP
         return 0
         ;;
-      claude|codex|shell|status)
+      claude|codex|shell|status|ccr)
         tokens+=("$1")
         ;;
       *)
