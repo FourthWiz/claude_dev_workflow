@@ -304,8 +304,49 @@ changes needed — the CCR config is left intact so you can flip back by running
 ### Model defaults
 
 The tier → model mapping is seeded to `~/.config/quoin/models.json` on first setup.
-Edit it any time to change which open model each tier uses. The Stage 2 `quoin models`
-command (IVG-65, coming soon) will provide a CLI for this.
+Edit it any time, or use the `quoin models` command (see below).
+
+### quoin models
+
+View and manage the tier → open-model mapping:
+
+```bash
+quoin models                  # show current mapping and active launch mode
+quoin models set <tier> <slug>  # update one tier's slug
+quoin models preset open      # restore all three defaults at once
+quoin models reset            # document native-launch; back up CCR config (non-destructive)
+quoin models reset --native   # identical to reset (explicit-intent spelling)
+```
+
+**Tiers:** `haiku`, `sonnet`, `opus`
+
+**Friendly aliases** (expand to the corresponding default slug):
+
+| Alias | Slug |
+|-------|------|
+| `flash` | `deepseek/deepseek-v4-flash` |
+| `pro` | `deepseek/deepseek-v4-pro` |
+| `glm` | `z-ai/glm-5.1` |
+
+Examples:
+
+```bash
+quoin models set opus glm          # set opus → z-ai/glm-5.1 (alias)
+quoin models set sonnet pro        # set sonnet → deepseek/deepseek-v4-pro (alias)
+quoin models set haiku anthropic/claude-3-haiku  # any OpenRouter slug
+```
+
+**Slug validation is advisory:** known slugs are accepted silently; unknown-but-plausible
+slugs (containing a `/`) are accepted with a warning; only structurally malformed input
+is rejected. You can always edit `~/.config/quoin/models.json` directly.
+
+**Secret rule:** `quoin models` never reads or writes `OPENROUTER_API_KEY`. The key lives
+only in the CCR config authored by `quoin router setup`. `set` and `preset` update the
+provider's `models` list in-place, leaving `api_key` byte-unchanged.
+
+**reset is non-destructive:** `quoin models reset` backs up the CCR config and prints
+native-launch instructions, but leaves the Router keys, provider block, and `models.json`
+intact. Run `ccr code` again to switch back to open models with no re-setup required.
 
 ## Agentdesk
 
