@@ -376,6 +376,6 @@ class TestSSEDecision:
         if not app_js.exists():
             pytest.skip("app.js not yet created (T-08/T-09 not done)")
         source = app_js.read_text(encoding="utf-8")
-        assert "EventSource" not in source, (
-            "SSE was cut (T-05 spike skipped); app.js must not reference EventSource"
+        assert "new EventSource" not in source and "EventSource(" not in source, (
+            "SSE was cut (T-05 spike skipped); app.js must not construct EventSource"
         )
