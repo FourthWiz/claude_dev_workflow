@@ -25,7 +25,16 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
+
+# CostProvider interface (Python 3.8-safe alias):
+#   provider(task_name: str, rows: list[dict]) -> Optional[dict]
+# rows: list of ledger-row dicts with frozen key set
+#   {uuid, date, phase, model_or_effort, note, fallback_fires}
+# return: {"mode": "usd"|"tokens", "usd": float|None, "tokens": int|None,
+#          "by_phase": {phase: {"usd"|"tokens": ...}}}
+#   or None (caller stays in counts mode)
+CostProvider = Callable[[str, list], Optional[dict]]
 
 
 # ---------------------------------------------------------------------------
@@ -138,16 +147,15 @@ def _read_ledger_rows(task_dir: Path) -> list:
 def _counts_by_phase(rows: list) -> dict:
     """Compute counts mode: per-phase session-row counts.
 
-    Returns dict like {"architect": 1, "critic": 2, "plan": 1} plus "total" key.
+    Returns dict like {"architect": 1, "critic": 2, "plan": 1}.
+    Note: does NOT include a "total" key — callers that need total add it separately.
     """
     counts = {}
     for row in rows:
         phase = row.get("phase", "unknown")
         counts[phase] = counts.get(phase, 0) + 1
 
-    result = dict(sorted(counts.items()))  # alphabetical
-    result["total"] = len(rows)
-    return result
+    return dict(sorted(counts.items()))  # alphabetical
 
 
 def _min_artifact_mtime(task_dir: Path) -> float:
@@ -210,7 +218,14 @@ def _stage_info(task_dir: Path) -> dict:
         stage_name = match.group(2).strip()
 
         try:
-            stage_dir = task_path(task_dir.name, stage=stage_n, project_root=task_dir.parent.parent)
+            # For finalized tasks (<root>/.workflow_artifacts/finalized/<name>),
+            # task_dir.parent.parent is .workflow_artifacts/ — one level too deep.
+            # Detect finalized layout and go one extra level up.
+            if "finalized" in task_dir.parts:
+                _proj_root = task_dir.parent.parent.parent
+            else:
+                _proj_root = task_dir.parent.parent
+            stage_dir = task_path(task_dir.name, stage=stage_n, project_root=_proj_root)
             phase_result = detect_phase(stage_dir)
             phase = phase_result.phase
         except Exception:
@@ -248,6 +263,7 @@ def _task_summary(
     default_cost = {
         "mode": "counts",
         "by_phase": counts_mode,
+        "total": len(rows),
         "usd": None,
         "tokens": None,
     }
@@ -434,7 +450,9 @@ def task_detail(
 
     if finalized_task:
         # Finalized: include totals only, no ledger_rows
-        summary["totals"] = _counts_by_phase(rows)
+        totals = _counts_by_phase(rows)
+        totals["total"] = len(rows)
+        summary["totals"] = totals
     else:
         # Non-finalized: include ledger_rows
         summary["ledger_rows"] = rows

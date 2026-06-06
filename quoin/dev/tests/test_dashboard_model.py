@@ -170,7 +170,11 @@ def test_read_ledger_rows_missing(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_counts_by_phase_basic():
-    """Test counts mode computation."""
+    """Test counts mode computation.
+
+    _counts_by_phase returns per-phase counts only — no "total" key.
+    "total" lives at cost["total"] (top-level), not inside by_phase.
+    """
     rows = [
         {"phase": "architect", "fallback_fires": 0},
         {"phase": "critic", "fallback_fires": 0},
@@ -183,7 +187,8 @@ def test_counts_by_phase_basic():
     assert counts["architect"] == 1
     assert counts["critic"] == 2
     assert counts["plan"] == 1
-    assert counts["total"] == 4
+    # "total" must NOT appear inside by_phase (it lives at cost["total"])
+    assert "total" not in counts
 
 
 # ---------------------------------------------------------------------------
