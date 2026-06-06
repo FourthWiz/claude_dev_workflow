@@ -255,6 +255,7 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
     installer.deploy_skills(source_dir, dest_root)
     installer.deploy_scripts(source_dir, dest_root)
     installer.deploy_core_scripts(source_dir, dest_root)
+    installer.deploy_dashboard_assets(source_dir, dest_root)  # T-12: SPA assets (D-11)
     installer.cleanup_obsolete_scripts(dest_root)
 
     # Hooks
@@ -492,6 +493,31 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         print(f"  {status} {fname}")
         if not found:
             errors.append(f"Missing script: {fname}")
+
+    print()
+
+    # Core scripts
+    print(f"Core scripts ({dest_label}/core/scripts/):")
+    for fname in installer.CORE_SCRIPTS:
+        p = dest_root / "core" / "scripts" / fname
+        found = p.exists()
+        status = "✓" if found else "✗"
+        print(f"  {status} {fname}")
+        if not found:
+            errors.append(f"Missing core script: {fname}")
+
+    print()
+
+    # Assets block — runs in BOTH user and project modes (T-14, D-11 rationale)
+    assets_dir = dest_root / "core" / "scripts" / "dashboard_assets"
+    print(f"Assets ({dest_label}/core/scripts/dashboard_assets/):")
+    for fname in installer._DASHBOARD_ASSETS:
+        p = assets_dir / fname
+        found = p.exists()
+        status = "✓" if found else "✗"
+        print(f"  {status} {fname}")
+        if not found:
+            errors.append(f"Missing dashboard asset: {fname}")
 
     print()
 
