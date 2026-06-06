@@ -8,6 +8,7 @@ Picker tests isolate _agentdesk_pick_layout() via piped stdin (non-TTY path
 bypasses the picker in agentdesk(); we call _agentdesk_pick_layout() directly).
 """
 import os
+import pty
 import shutil
 import subprocess
 import textwrap
@@ -546,6 +547,62 @@ def _make_dashboard_env(tmp_path: Path, with_server: bool = True) -> dict:
     return env
 
 
+def _run_dashboard_fn_with_pty(
+    env: dict,
+    input_text: str,
+    tmp_path: Path,
+    timeout: int = 25,
+) -> subprocess.CompletedProcess:
+    """Run _agentdesk_open_dashboard with a real PTY as stdin.
+
+    Uses pty.openpty() to provide a file descriptor that satisfies [ -t 0 ],
+    so the TTY guard inside _agentdesk_open_dashboard passes and the real
+    function body executes.  input_text is written to the PTY master side
+    after the subprocess is started; the child reads it via 'read -r reply'.
+    stdout and stderr are captured via PIPE (not the PTY) so assertions are
+    straightforward.
+    """
+    script = f'source "{AGENTDESK_ZSH}"\n_agentdesk_open_dashboard'
+    master_fd, slave_fd = pty.openpty()
+    stdout_b: bytes = b""
+    stderr_b: bytes = b""
+    rc: int = -1
+    try:
+        try:
+            proc = subprocess.Popen(
+                ["zsh", "-c", script],
+                stdin=slave_fd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                cwd=str(tmp_path),
+                close_fds=True,
+            )
+        finally:
+            os.close(slave_fd)  # parent no longer needs the slave end
+        try:
+            os.write(master_fd, input_text.encode())
+        except OSError:
+            pass  # process may have exited before the write
+        try:
+            stdout_b, stderr_b = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout_b, stderr_b = proc.communicate()
+        rc = proc.returncode
+    finally:
+        try:
+            os.close(master_fd)
+        except OSError:
+            pass
+    return subprocess.CompletedProcess(
+        args=["zsh", "-c", script],
+        returncode=rc,
+        stdout=stdout_b.decode(errors="replace"),
+        stderr=stderr_b.decode(errors="replace"),
+    )
+
+
 def test_open_dashboard_non_tty_skips(tmp_path: Path) -> None:
     """_agentdesk_open_dashboard with piped stdin (non-TTY) returns 0 with no prompt
     and does not invoke the server stub.
@@ -574,120 +631,26 @@ def test_open_dashboard_non_tty_skips(tmp_path: Path) -> None:
 
 
 def test_open_dashboard_declines_default(tmp_path: Path) -> None:
-    """_agentdesk_open_dashboard with stdin 'n\\n' (explicit No) returns 0 and does
-    not start the server or open a browser.
+    """_agentdesk_open_dashboard with PTY stdin 'n\\n' returns 0 and does not
+    start the server or open a browser.
 
-    Since subprocess pipes stdin (non-TTY), we test the decision branch directly
-    by removing the [ ! -t 0 ] guard and feeding "n\\n" — this exercises the
-    prompt-and-decline path without requiring a real TTY.
+    Uses pty.openpty() so [ -t 0 ] is true and the real function body runs.
     """
     env = _make_dashboard_env(tmp_path)
-    # Bypass the TTY guard by calling the body logic directly — we replace the
-    # guard with a forced pass so the rest of the function runs with piped stdin.
-    script = textwrap.dedent(f"""
-        source "{AGENTDESK_ZSH}"
-        # Redefine with the TTY guard stripped so we can feed stdin directly.
-        _agentdesk_open_dashboard_no_tty_guard() {{
-          printf 'Open quoin dashboard? [y/N]: ' >&2
-          local reply
-          read -r reply
-          case "$reply" in
-            [Yy]|[Yy][Ee][Ss]) ;;
-            *) return 0 ;;
-          esac
-          local server_script="$HOME/.claude/scripts/dashboard_server.py"
-          if [ ! -f "$server_script" ]; then
-            printf 'agentdesk: dashboard server not found at %s; skipping\\n' "$server_script" >&2
-            return 0
-          fi
-          local stdout_tmp
-          stdout_tmp="$(mktemp)"
-          python3 "$server_script" --no-browser > "$stdout_tmp" 2>/dev/null &
-          local i=0
-          local url=""
-          while [ $i -lt 50 ]; do
-            if grep -q '^URL=' "$stdout_tmp" 2>/dev/null; then
-              url="$(grep '^URL=' "$stdout_tmp" | head -1 | sed 's/^URL=//')"
-              break
-            fi
-            sleep 0.2
-            i=$((i + 1))
-          done
-          rm -f "$stdout_tmp"
-          [ -z "$url" ] && return 0
-          if command -v open >/dev/null 2>&1; then open "$url"
-          elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$url"
-          fi
-          return 0
-        }}
-        _agentdesk_open_dashboard_no_tty_guard
-    """).strip()
-    result = subprocess.run(
-        ["zsh", "-c", script],
-        env=env,
-        input="n\n",  # explicit No
-        capture_output=True,
-        text=True,
-        cwd=str(tmp_path),
-        timeout=15,
-    )
+    result = _run_dashboard_fn_with_pty(env, "n\n", tmp_path)
     assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
     marker = tmp_path / "open_called.txt"
     assert not marker.exists(), "Browser opener should NOT have been called on 'n' reply"
 
 
 def test_open_dashboard_accepts_opens_url(tmp_path: Path) -> None:
-    """_agentdesk_open_dashboard with stdin 'y\\n' starts the stub server, captures
-    URL=..., calls the mock `open` stub, and returns 0.
+    """_agentdesk_open_dashboard with PTY stdin 'y\\n' starts the stub server,
+    captures URL=..., calls the mock `open` stub, and returns 0.
+
+    Uses pty.openpty() so [ -t 0 ] is true and the real function body runs.
     """
     env = _make_dashboard_env(tmp_path, with_server=True)
-    # Same no-TTY-guard variant as above, feeding "y\n"
-    script = textwrap.dedent(f"""
-        source "{AGENTDESK_ZSH}"
-        _agentdesk_open_dashboard_no_tty_guard() {{
-          printf 'Open quoin dashboard? [y/N]: ' >&2
-          local reply
-          read -r reply
-          case "$reply" in
-            [Yy]|[Yy][Ee][Ss]) ;;
-            *) return 0 ;;
-          esac
-          local server_script="$HOME/.claude/scripts/dashboard_server.py"
-          if [ ! -f "$server_script" ]; then
-            printf 'agentdesk: dashboard server not found at %s; skipping\\n' "$server_script" >&2
-            return 0
-          fi
-          local stdout_tmp
-          stdout_tmp="$(mktemp)"
-          python3 "$server_script" --no-browser > "$stdout_tmp" 2>/dev/null &
-          local i=0
-          local url=""
-          while [ $i -lt 50 ]; do
-            if grep -q '^URL=' "$stdout_tmp" 2>/dev/null; then
-              url="$(grep '^URL=' "$stdout_tmp" | head -1 | sed 's/^URL=//')"
-              break
-            fi
-            sleep 0.2
-            i=$((i + 1))
-          done
-          rm -f "$stdout_tmp"
-          [ -z "$url" ] && return 0
-          if command -v open >/dev/null 2>&1; then open "$url"
-          elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$url"
-          fi
-          return 0
-        }}
-        _agentdesk_open_dashboard_no_tty_guard
-    """).strip()
-    result = subprocess.run(
-        ["zsh", "-c", script],
-        env=env,
-        input="y\n",
-        capture_output=True,
-        text=True,
-        cwd=str(tmp_path),
-        timeout=20,
-    )
+    result = _run_dashboard_fn_with_pty(env, "y\n", tmp_path, timeout=25)
     assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
     marker = tmp_path / "open_called.txt"
     assert marker.exists(), (
@@ -700,39 +663,13 @@ def test_open_dashboard_accepts_opens_url(tmp_path: Path) -> None:
 
 
 def test_open_dashboard_missing_server_noop(tmp_path: Path) -> None:
-    """_agentdesk_open_dashboard with stdin 'y\\n' but no server script returns 0
+    """_agentdesk_open_dashboard with PTY stdin 'y\\n' but no server script returns 0
     and prints the 'not found' note to stderr without crashing.
+
+    Uses pty.openpty() so [ -t 0 ] is true and the real function body runs.
     """
     env = _make_dashboard_env(tmp_path, with_server=False)
-    script = textwrap.dedent(f"""
-        source "{AGENTDESK_ZSH}"
-        _agentdesk_open_dashboard_no_tty_guard() {{
-          printf 'Open quoin dashboard? [y/N]: ' >&2
-          local reply
-          read -r reply
-          case "$reply" in
-            [Yy]|[Yy][Ee][Ss]) ;;
-            *) return 0 ;;
-          esac
-          local server_script="$HOME/.claude/scripts/dashboard_server.py"
-          if [ ! -f "$server_script" ]; then
-            printf 'agentdesk: dashboard server not found at %s; skipping\\n' "$server_script" >&2
-            return 0
-          fi
-          # Should not reach here
-          exit 99
-        }}
-        _agentdesk_open_dashboard_no_tty_guard
-    """).strip()
-    result = subprocess.run(
-        ["zsh", "-c", script],
-        env=env,
-        input="y\n",
-        capture_output=True,
-        text=True,
-        cwd=str(tmp_path),
-        timeout=15,
-    )
+    result = _run_dashboard_fn_with_pty(env, "y\n", tmp_path)
     assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
     assert "not found" in result.stderr, (
         f"Expected 'not found' note in stderr: {result.stderr!r}"
