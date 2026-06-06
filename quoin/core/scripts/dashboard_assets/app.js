@@ -52,7 +52,7 @@
 
   function badgeText(cost) {
     if (!cost || cost.mode === 'counts') {
-      var sessions = cost && cost.total_sessions ? cost.total_sessions : '?';
+      var sessions = cost && cost.total != null ? cost.total : '?';
       return sessions + ' sessions, cost unavailable';
     }
     if (cost.mode === 'usd' && cost.usd != null) {
@@ -144,11 +144,10 @@
         (isFinalized ? ' finalized-row' : '') +
         (t.name === state.selectedTask ? ' selected-row' : '');
 
-      // Stage display: "n/total" for multi-stage, blank for single
+      // Stage display: "stage N" for multi-stage, blank for single
       var stageText = '';
-      if (t.stage_info && t.stage_info.total > 1) {
-        stageText = '<span class="task-stage">stage ' +
-          t.stage_info.current + '/' + t.stage_info.total + '</span>';
+      if (t.is_multi_stage && t.stage != null) {
+        stageText = '<span class="task-stage">stage ' + t.stage + '</span>';
       }
 
       // Phase label
@@ -269,7 +268,7 @@
         var st = detail.stages[si];
         var stPhaseLabel = st.phase_label || st.phase || '—';
         var stPhaseCls = PHASE_CSS[(stPhaseLabel).toLowerCase()] || 'phase-default';
-        html += '<li><span>Stage ' + escHtml(String(st.stage || si + 1)) + '</span>' +
+        html += '<li><span>Stage ' + escHtml(String(st.n != null ? st.n : si + 1)) + '</span>' +
           '<span class="phase-chip ' + stPhaseCls + '">' + escHtml(stPhaseLabel) + '</span></li>';
       }
       html += '</ul></div>';
@@ -302,9 +301,9 @@
     html += '<div class="detail-section"><h3>Activity</h3>';
     html += '<table class="by-phase-table"><tbody>';
     html += '<tr><td class="date-label">First activity</td><td class="date-value">' +
-      escHtml(fmtDate(detail.first_activity)) + '</td></tr>';
+      escHtml(fmtDate(detail.dates && detail.dates.first_activity)) + '</td></tr>';
     html += '<tr><td class="date-label">Last activity</td><td class="date-value">' +
-      escHtml(fmtDate(detail.last_activity)) + '</td></tr>';
+      escHtml(fmtDate(detail.dates && detail.dates.last_activity)) + '</td></tr>';
     html += '</tbody></table></div>';
 
     pane.innerHTML = html;
