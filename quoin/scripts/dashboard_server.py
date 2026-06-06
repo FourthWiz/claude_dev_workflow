@@ -1,0 +1,373 @@
+#!/usr/bin/env python3
+"""dashboard_server.py — ThreadingHTTPServer for the quoin workflow dashboard.
+
+Serves:
+  GET /api/tasks                     → scan_tasks() JSON
+  GET /api/tasks/<name>              → task_detail() JSON
+  GET /                              → index.html
+  GET /dashboard.css                 → dashboard.css
+  GET /app.js                        → app.js
+  POST/PUT/DELETE/PATCH any path     → 405 Method Not Allowed
+  anything else                      → 404
+
+Security: binds 127.0.0.1 only; GET-only for data; fixed asset allowlist (no path join).
+"""
+from __future__ import annotations
+
+import argparse
+import http.server
+import importlib.util
+import json
+import os
+import signal
+import socketserver
+import sys
+import threading
+import time
+import webbrowser
+from http.server import BaseHTTPRequestHandler
+from pathlib import Path
+from urllib.parse import unquote, urlparse, parse_qs
+
+# ---------------------------------------------------------------------------
+# Cross-load portable dashboard_model (D-02: parents[1]/core/scripts/)
+# ---------------------------------------------------------------------------
+
+def _load_module(module_key: str, path: Path):
+    """Load a module from an absolute path, registering in sys.modules."""
+    if module_key in sys.modules:
+        return sys.modules[module_key]
+    spec = importlib.util.spec_from_file_location(module_key, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot create spec for {module_key} at {path}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[module_key] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_CORE_SCRIPTS = Path(__file__).resolve().parents[1] / "core" / "scripts"
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+
+_dm = _load_module(
+    "_dashboard_server_model",
+    _CORE_SCRIPTS / "dashboard_model.py",
+)
+scan_tasks = _dm.scan_tasks
+task_detail = _dm.task_detail
+
+# Load adapter cost provider (same-dir sibling, D-03)
+_dc = _load_module(
+    "_dashboard_server_cost",
+    _SCRIPTS_DIR / "dashboard_cost.py",
+)
+make_cost_provider = _dc.make_cost_provider
+
+# ---------------------------------------------------------------------------
+# Asset serving (D-07: fixed allowlist, no path join)
+# ---------------------------------------------------------------------------
+
+_ASSETS_DIR = _CORE_SCRIPTS / "dashboard_assets"
+
+_ASSET_ALLOWLIST = {
+    "/":             "index.html",
+    "/index.html":   "index.html",
+    "/dashboard.css": "dashboard.css",
+    "/app.js":       "app.js",
+}
+
+_CONTENT_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".css":  "text/css; charset=utf-8",
+    ".js":   "application/javascript; charset=utf-8",
+}
+
+
+# ---------------------------------------------------------------------------
+# Shutdown state (shared between main thread and signal handler)
+# ---------------------------------------------------------------------------
+
+_stop_event = threading.Event()
+_server_ref: list = []  # [server_instance] once bound
+
+
+# ---------------------------------------------------------------------------
+# Request handler (D-07, D-08)
+# ---------------------------------------------------------------------------
+
+class DashboardHandler(BaseHTTPRequestHandler):
+    """Handles GET requests for the dashboard API and static assets."""
+
+    # Project root injected at server startup (D-15 shared root invariant)
+    project_root: Path = None
+    cost_provider = None
+
+    def log_message(self, format, *args):
+        """Suppress all access log output — URL= line is the only reliable stdout marker."""
+        pass
+
+    def _send_json(self, code: int, data) -> None:
+        body = json.dumps(data).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_asset(self, filename: str) -> None:
+        path = _ASSETS_DIR / filename
+        try:
+            content = path.read_bytes()
+        except (IOError, OSError):
+            self._send_json(404, {"error": "asset not found"})
+            return
+        suffix = Path(filename).suffix
+        content_type = _CONTENT_TYPES.get(suffix, "application/octet-stream")
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
+    def do_GET(self):
+        try:
+            parsed = urlparse(self.path)
+            path = parsed.path
+
+            # API routing
+            if path == "/api/tasks" or path == "/api/tasks/":
+                qs = parse_qs(parsed.query)
+                include_fin_str = qs.get("include_finalized", ["false"])[0].lower()
+                include_finalized = include_fin_str in ("true", "1", "yes")
+                result = scan_tasks(
+                    self.project_root,
+                    include_finalized=include_finalized,
+                    cost_provider=self.cost_provider,
+                )
+                self._send_json(200, result)
+                return
+
+            if path.startswith("/api/tasks/"):
+                name = unquote(path[len("/api/tasks/"):])
+                if not name:
+                    self._send_json(404, {"error": "task not found"})
+                    return
+                try:
+                    result = task_detail(
+                        self.project_root,
+                        name,
+                        cost_provider=self.cost_provider,
+                    )
+                    self._send_json(200, result)
+                except KeyError:
+                    self._send_json(404, {"error": "task not found"})
+                return
+
+            if path.startswith("/api/"):
+                self._send_json(404, {"error": "not found"})
+                return
+
+            # Asset routing (fixed allowlist — no path join)
+            filename = _ASSET_ALLOWLIST.get(path)
+            if filename is not None:
+                self._send_asset(filename)
+                return
+
+            self._send_json(404, {"error": "not found"})
+
+        except Exception as exc:
+            try:
+                self._send_json(500, {"error": "internal server error"})
+            except Exception:
+                pass
+
+    def do_POST(self):
+        self._method_not_allowed()
+
+    def do_PUT(self):
+        self._method_not_allowed()
+
+    def do_DELETE(self):
+        self._method_not_allowed()
+
+    def do_PATCH(self):
+        self._method_not_allowed()
+
+    def _method_not_allowed(self):
+        self._send_json(405, {"error": "method not allowed"})
+
+
+# ---------------------------------------------------------------------------
+# ThreadingHTTPServer subclass (127.0.0.1 bind)
+# ---------------------------------------------------------------------------
+
+class DashboardServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    """Thread-per-request HTTP server bound to loopback."""
+    daemon_threads = True
+    allow_reuse_address = True
+
+
+# ---------------------------------------------------------------------------
+# Port binding helper (D-01)
+# ---------------------------------------------------------------------------
+
+def _bind_server(port: int, explicit: bool, handler_class) -> DashboardServer:
+    """Bind to port, auto-incrementing from 8787 when using the default port.
+
+    explicit=True: fail immediately on in-use port (exit 2).
+    explicit=False (default 8787): try 8787..8796 (cap 10).
+    port==0: ask the OS for an ephemeral port.
+    """
+    if port == 0:
+        return DashboardServer(("127.0.0.1", 0), handler_class)
+
+    if explicit:
+        try:
+            return DashboardServer(("127.0.0.1", port), handler_class)
+        except OSError:
+            print(
+                f"dashboard_server: port {port} is already in use "
+                "(explicit --port; no auto-increment)",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
+    # Default path: auto-increment
+    max_tries = 10
+    for p in range(port, port + max_tries):
+        try:
+            return DashboardServer(("127.0.0.1", p), handler_class)
+        except OSError:
+            continue
+    print(
+        f"dashboard_server: no free port found in {port}..{port + max_tries - 1}",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+
+
+# ---------------------------------------------------------------------------
+# Project root resolution (D-06 / D-15)
+# ---------------------------------------------------------------------------
+
+def _find_project_root(start: Path) -> Path:
+    """Walk up from start to find a directory containing .workflow_artifacts/."""
+    candidate = start.resolve()
+    for _ in range(20):
+        if (candidate / ".workflow_artifacts").is_dir():
+            return candidate
+        parent = candidate.parent
+        if parent == candidate:
+            break
+        candidate = parent
+    return start.resolve()
+
+
+# ---------------------------------------------------------------------------
+# Watcher thread (D-09)
+# ---------------------------------------------------------------------------
+
+def _make_watcher(artifacts_dir: Path, provider, stop_event: threading.Event):
+    """Return a daemon thread that polls artifacts_dir every ~2s and pre-warms the provider."""
+
+    def _watch():
+        last_mtime = None
+        while not stop_event.wait(2.0):
+            try:
+                if artifacts_dir.is_dir():
+                    current = max(
+                        (p.stat().st_mtime for p in artifacts_dir.rglob("*") if p.is_file()),
+                        default=None,
+                    )
+                    if current is not None and current != last_mtime:
+                        last_mtime = current
+                        # Pre-warm: call provider with empty rows (touches the cache)
+                        try:
+                            provider("_watcher_prewarm", [])
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+    t = threading.Thread(target=_watch, daemon=True, name="dashboard-watcher")
+    return t
+
+
+# ---------------------------------------------------------------------------
+# main(argv)
+# ---------------------------------------------------------------------------
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="dashboard_server.py",
+        description="quoin workflow dashboard HTTP server (127.0.0.1 only)",
+    )
+    parser.add_argument(
+        "--port", type=int, default=8787,
+        help="Port to listen on (default 8787; 0 = ephemeral OS port)",
+    )
+    parser.add_argument(
+        "--no-browser", action="store_true",
+        help="Do not open a browser window after startup",
+    )
+    parser.add_argument(
+        "--project-root", default=".",
+        help="Project root to scan (default: walk up from cwd to .workflow_artifacts/)",
+    )
+
+    args = parser.parse_args(argv)
+
+    # Resolve project root (D-15)
+    raw_root = Path(args.project_root).resolve()
+    if (raw_root / ".workflow_artifacts").is_dir():
+        project_root = raw_root
+    else:
+        project_root = _find_project_root(raw_root)
+
+    # Build cost provider once at startup (D-03/D-05)
+    provider = make_cost_provider(project_root)
+
+    # Inject into handler class (class-level, thread-safe for reads)
+    DashboardHandler.project_root = project_root
+    DashboardHandler.cost_provider = provider
+
+    # Determine if port was explicitly set (not the default 8787)
+    explicit_port = args.port != 8787 and args.port != 0
+
+    # Bind server (D-01)
+    server = _bind_server(args.port, explicit=explicit_port, handler_class=DashboardHandler)
+    _server_ref.append(server)
+
+    actual_port = server.server_address[1]
+    url = f"http://127.0.0.1:{actual_port}"
+
+    # D-09 lifecycle ordering: bind → print URL → browser → watcher → signals → serve
+    print(f"URL={url}", flush=True)
+
+    if not args.no_browser:
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
+
+    # Daemon watcher thread (D-09/D-16: starts after URL line, non-blocking)
+    artifacts_dir = project_root / ".workflow_artifacts"
+    watcher = _make_watcher(artifacts_dir, provider, _stop_event)
+    watcher.start()
+
+    # Signal handlers — must be installed AFTER URL line (D-09)
+    def _shutdown_handler(signum, frame):
+        _stop_event.set()
+        # Shutdown from a separate thread to avoid deadlocking serve_forever
+        threading.Thread(target=server.shutdown, daemon=True).start()
+
+    signal.signal(signal.SIGINT, _shutdown_handler)
+    signal.signal(signal.SIGTERM, _shutdown_handler)
+
+    # Blocking: serve until SIGINT/SIGTERM
+    server.serve_forever()
+    watcher.join(timeout=3.0)
+
+
+if __name__ == "__main__":
+    main()

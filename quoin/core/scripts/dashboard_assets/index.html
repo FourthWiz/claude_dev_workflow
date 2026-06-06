@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quoin Dashboard</title>
+  <link rel="stylesheet" href="./dashboard.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>Quoin Workflow Dashboard</h1>
+    <div class="header-controls">
+      <label class="toggle-label">
+        <input type="checkbox" id="show-finalized">
+        Show finalized tasks
+      </label>
+    </div>
+    <details class="phase-legend">
+      <summary>Phase legend</summary>
+      <ul>
+        <li><span class="phase-chip phase-discover">discover</span> Discovery scan</li>
+        <li><span class="phase-chip phase-architect">architect</span> Architecture review</li>
+        <li><span class="phase-chip phase-plan">plan</span> Planning</li>
+        <li><span class="phase-chip phase-implement">implement</span> Implementation</li>
+        <li><span class="phase-chip phase-review">review</span> Review</li>
+        <li><span class="phase-chip phase-done">done</span> Completed</li>
+      </ul>
+      <p class="legend-note">
+        Note: <em>implement</em> and <em>in-progress</em> are indistinguishable
+        without the git probe — see <code>_PHASE_LABELS</code> in
+        <code>quoin/core/scripts/status_graph.py</code>.
+      </p>
+    </details>
+  </header>
+
+  <main class="app-body">
+    <section class="task-table-region" id="task-table-region">
+      <div id="task-table">
+        <p class="loading">Loading tasks…</p>
+      </div>
+    </section>
+
+    <section class="detail-pane" id="detail-pane">
+      <p class="detail-placeholder">Select a task to see details.</p>
+    </section>
+  </main>
+
+  <noscript>
+    <p>JavaScript is required to display the Quoin dashboard. Enable JavaScript in your browser.</p>
+  </noscript>
+
+  <script src="./app.js"></script>
+</body>
+</html>

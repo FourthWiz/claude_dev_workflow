@@ -58,7 +58,7 @@ CANONICAL_SKILLS = (
     "weekly_review",
 )
 
-# T-05: canonical script list — all 12 scripts deployed to ~/.claude/scripts/
+# T-05: canonical script list — adapter scripts deployed to ~/.claude/scripts/
 DEPLOYED_SCRIPTS = (
     "validate_artifact.py",
     "path_resolve.py",
@@ -72,6 +72,8 @@ DEPLOYED_SCRIPTS = (
     "git_root_for_dispatch.py",
     "dispatch_sidecar.py",
     "status_graph.py",
+    "dashboard_cost.py",    # T-11: dashboard adapter cost provider (D-11)
+    "dashboard_server.py",  # T-11: dashboard HTTP server (D-11)
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -289,6 +291,8 @@ CORE_SCRIPTS = (
     "path_resolve.py",
     "classify_critic_issues.py",
     "status_graph.py",
+    "cost_event.py",       # required by dashboard_model.py (sibling core load)
+    "dashboard_model.py",  # T-11: deferred from stage 1 — added here (D-11)
 )
 
 
@@ -320,6 +324,41 @@ def deploy_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
         dst = dst_scripts / fname
         _copy_with_substitution(src, dst, dest_root)
         print(f"Copied {fname} to {dest_root}/scripts/")
+
+
+# T-12: Dashboard asset directory — fixed set of SPA files
+_DASHBOARD_ASSETS = ("index.html", "dashboard.css", "app.js")
+
+
+def deploy_dashboard_assets(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
+    """Copy the dashboard SPA assets from source_dir/core/scripts/dashboard_assets/
+    to dest_root/core/scripts/dashboard_assets/.
+
+    (a) Creates the destination directory with parents=True before copying
+        (fresh-install safety — _copy_with_substitution does not mkdir).
+    (b) Copies index.html, dashboard.css, app.js via _copy_with_substitution
+        (no __QUOIN_HOME__ placeholders in these files; byte-copy harmless).
+    (c) Fails with clear stderr + sys.exit(1) if a source asset is missing.
+
+    Per D-11 (arch R-06): caller is _cmd_claude_install, after deploy_core_scripts.
+    """
+    src_assets = source_dir / "core" / "scripts" / "dashboard_assets"
+    dst_assets = dest_root / "core" / "scripts" / "dashboard_assets"
+    # (a) mkdir before any copy
+    dst_assets.mkdir(parents=True, exist_ok=True)
+    # (b) copy each asset
+    for fname in _DASHBOARD_ASSETS:
+        src = src_assets / fname
+        if not src.exists():
+            print(
+                f"quoin: Expected dashboard asset {fname} at {src} but not found; "
+                "ensure quoin/core/scripts/dashboard_assets/ is present in the source tree",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        dst = dst_assets / fname
+        _copy_with_substitution(src, dst, dest_root)
+        print(f"Copied dashboard asset {fname} to {dst_assets}/")
 
 
 def _merge_skill_overrides(settings: dict) -> int:

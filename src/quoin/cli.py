@@ -255,6 +255,7 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
     installer.deploy_skills(source_dir, dest_root)
     installer.deploy_scripts(source_dir, dest_root)
     installer.deploy_core_scripts(source_dir, dest_root)
+    installer.deploy_dashboard_assets(source_dir, dest_root)  # T-12: SPA assets (D-11)
     installer.cleanup_obsolete_scripts(dest_root)
 
     # Hooks
@@ -411,6 +412,29 @@ def _cmd_codex_init(args: argparse.Namespace) -> int:
     return _run_codex_script(generator, script_args)
 
 
+def _cmd_dashboard(args: argparse.Namespace) -> int:
+    """Launch the quoin workflow dashboard server (D-06)."""
+    source_dir = _resolve_source_dir(args.source_dir)
+    script = source_dir / "scripts" / "dashboard_server.py"
+    if not script.is_file():
+        print(
+            f"quoin: dashboard_server.py not found at {script}; "
+            "re-run 'quoin install' or pass --source-dir <path-to-clone>/quoin",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    # Marshal argv for the server (--source-dir is NOT forwarded — server uses --project-root)
+    server_argv = [
+        "--port", str(args.port),
+        "--project-root", str(pathlib.Path(args.project_root).resolve()),
+    ]
+    if args.no_browser:
+        server_argv.append("--no-browser")
+
+    return _run_codex_script(script, server_argv)
+
+
 def _cmd_doctor(args: argparse.Namespace) -> int:
     if args.runtime == "codex":
         return _cmd_codex_doctor(args)
@@ -469,6 +493,31 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         print(f"  {status} {fname}")
         if not found:
             errors.append(f"Missing script: {fname}")
+
+    print()
+
+    # Core scripts
+    print(f"Core scripts ({dest_label}/core/scripts/):")
+    for fname in installer.CORE_SCRIPTS:
+        p = dest_root / "core" / "scripts" / fname
+        found = p.exists()
+        status = "✓" if found else "✗"
+        print(f"  {status} {fname}")
+        if not found:
+            errors.append(f"Missing core script: {fname}")
+
+    print()
+
+    # Assets block — runs in BOTH user and project modes (T-14, D-11 rationale)
+    assets_dir = dest_root / "core" / "scripts" / "dashboard_assets"
+    print(f"Assets ({dest_label}/core/scripts/dashboard_assets/):")
+    for fname in installer._DASHBOARD_ASSETS:
+        p = assets_dir / fname
+        found = p.exists()
+        status = "✓" if found else "✗"
+        print(f"  {status} {fname}")
+        if not found:
+            errors.append(f"Missing dashboard asset: {fname}")
 
     print()
 
@@ -727,6 +776,27 @@ def main(argv: list[str] | None = None) -> int:
         help="Override quoin data source directory for Codex adapter scripts.",
     )
 
+    dashboard_p = sub.add_parser(
+        "dashboard",
+        help="Launch the quoin workflow dashboard (local HTTP server, 127.0.0.1)",
+    )
+    dashboard_p.add_argument(
+        "--port", type=int, default=8787,
+        help="Port to listen on (default 8787; auto-increments if taken; 0 = ephemeral)",
+    )
+    dashboard_p.add_argument(
+        "--no-browser", action="store_true",
+        help="Do not open a browser window after startup",
+    )
+    dashboard_p.add_argument(
+        "--project-root", default=".",
+        help="Project root to scan for .workflow_artifacts/ (default: cwd)",
+    )
+    dashboard_p.add_argument(
+        "--source-dir", metavar="PATH",
+        help="Override quoin data source directory (same as 'quoin install --source-dir')",
+    )
+
     router_p = sub.add_parser(
         "router",
         help="Set up open-model routing via claude-code-router (opt-in)",
@@ -800,6 +870,8 @@ def main(argv: list[str] | None = None) -> int:
             # bare 'quoin' with no subcommand → install with no args
             args = install_p.parse_args([])
         return _cmd_install(args)
+    elif args.command == "dashboard":
+        return _cmd_dashboard(args)
     elif args.command == "doctor":
         return _cmd_doctor(args)
     elif args.command == "codex":
