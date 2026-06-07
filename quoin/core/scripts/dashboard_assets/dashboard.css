@@ -216,7 +216,10 @@ body {
   cursor: pointer;
   background: var(--bg-card);
   transition: background 0.1s;
-  /* T-06: staggered entry animation */
+}
+
+/* T-06: staggered entry animation — only on explicit load, not on poll updates */
+.task-card.card-entering {
   animation: card-in 0.2s ease both;
   animation-delay: calc(var(--i, 0) * 40ms);
 }

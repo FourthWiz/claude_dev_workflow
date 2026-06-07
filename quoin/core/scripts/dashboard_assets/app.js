@@ -49,9 +49,10 @@
     tasks: [],
     activeTask: null,
     searchQuery: '',
-    detailLoaded: false,    // T-07: true after first successful detail render
-    lastDetail: null,       // T-07/T-08: cached detail payload for tab re-renders
-    selectedStage: null,    // T-08: selected stage tab (stage n value)
+    detailLoaded: false,       // T-07: true after first successful detail render
+    lastDetail: null,          // T-07/T-08: cached detail payload for tab re-renders
+    selectedStage: null,       // T-08: selected stage tab (stage n value)
+    lastCardFingerprint: null, // T-07b: skip DOM mutation when structure unchanged on poll
   };
 
   // ---------------------------------------------------------------------------
@@ -171,7 +172,7 @@
   // T-03: Task card rendering (replaces old 4-col table)
   // ---------------------------------------------------------------------------
 
-  function renderCards(data) {
+  function renderCards(data, silent) {
     state.tasks = data.tasks || [];
     state.activeTask = data.active_task || null;
 
@@ -185,14 +186,41 @@
     });
 
     if (state.tasks.length === 0) {
+      state.lastCardFingerprint = null;
       container.innerHTML = '<p class="empty-msg">No tasks found under .workflow_artifacts/</p>';
       return;
     }
 
     if (visible.length === 0) {
+      state.lastCardFingerprint = null;
       container.innerHTML = '<p class="empty-msg">No tasks match "' + escHtml(query) + '"</p>';
       return;
     }
+
+    // T-07b: structural fingerprint — excludes relative time (changes every ~60s).
+    // If structure is unchanged on a silent poll, only update time spans in-place.
+    var fingerprint = query + '|' + JSON.stringify(visible.map(function (t) {
+      return [t.name, t.phase, t.phase_label, t.finalized, t.stage,
+              t.cost && t.cost.total, t.name === state.selectedTask];
+    }));
+
+    if (silent && fingerprint === state.lastCardFingerprint) {
+      // Nothing structural changed — update only the relative-time spans in-place
+      var existingCards = container.querySelectorAll('.task-card[data-name]');
+      for (var ei = 0; ei < existingCards.length; ei++) {
+        var eName = existingCards[ei].getAttribute('data-name');
+        for (var eti = 0; eti < state.tasks.length; eti++) {
+          if (state.tasks[eti].name === eName) {
+            var metaEl = existingCards[ei].querySelector('.task-card-meta');
+            if (metaEl) metaEl.textContent = relativeTime(state.tasks[eti].last_activity);
+            break;
+          }
+        }
+      }
+      return;
+    }
+
+    state.lastCardFingerprint = fingerprint;
 
     // T-07: save scroll position before wiping innerHTML
     var _savedScroll = container.scrollTop;
@@ -203,7 +231,9 @@
       var isFinalized = t.finalized || false;
       var isSelected = t.name === state.selectedTask;
 
+      // T-07b: card-entering (animation) only on user-triggered renders, not polls
       var cardCls = 'task-card' +
+        (silent ? '' : ' card-entering') +
         (isFinalized ? ' finalized-card' : '') +
         (isSelected ? ' selected-card' : '');
 
@@ -255,9 +285,10 @@
     var name = card.getAttribute('data-name');
     if (!name) return;
     state.selectedTask = name;
-    state.selectedStage = null;    // T-08: reset tab selection on task switch
-    refreshTaskList();
-    loadTaskDetail(name, false);   // T-07: non-silent — show spinner, reset scroll
+    state.selectedStage = null;       // T-08: reset tab selection on task switch
+    state.lastCardFingerprint = null; // T-07b: force re-render to update selected-card highlight
+    refreshTaskList(false);           // non-silent — animate, update selection highlight
+    loadTaskDetail(name, false);      // T-07: non-silent — show spinner, reset scroll
   }
 
   function onCardKeydown(e) {
@@ -470,7 +501,7 @@
   // Data loading + polling (unconditional 3s — D-10)
   // ---------------------------------------------------------------------------
 
-  function refreshTaskList() {
+  function refreshTaskList(silent) {
     fetchJSON(tasksUrl(state.includeFinalized), function (err, data) {
       if (err) {
         console.warn('dashboard: task list fetch error:', err.message);
@@ -481,7 +512,7 @@
         }
         return;
       }
-      renderCards(data);
+      renderCards(data, silent);
     });
   }
 
@@ -536,7 +567,7 @@
   function startPolling() {
     if (state.pollInterval) clearInterval(state.pollInterval);
     state.pollInterval = setInterval(function () {
-      refreshTaskList();
+      refreshTaskList(true);  // T-07b: silent — no animation, no DOM mutation if unchanged
       if (state.selectedTask) {
         loadTaskDetail(state.selectedTask, true);  // T-07: silent — preserve scroll
       }
@@ -553,7 +584,8 @@
     if (toggle) {
       toggle.addEventListener('change', function () {
         state.includeFinalized = toggle.checked;
-        refreshTaskList();
+        state.lastCardFingerprint = null; // T-07b: force full re-render on filter change
+        refreshTaskList(false);           // user-triggered — show animation
       });
     }
 
@@ -563,12 +595,13 @@
       search.addEventListener('input', function () {
         state.searchQuery = search.value;
         // Re-render current tasks with filter applied (no new fetch needed)
-        renderCards({ tasks: state.tasks, active_task: state.activeTask });
+        state.lastCardFingerprint = null; // T-07b: search change forces full re-render
+        renderCards({ tasks: state.tasks, active_task: state.activeTask }, false);
       });
     }
 
-    // Initial load
-    refreshTaskList();
+    // Initial load (non-silent — animate cards on first render)
+    refreshTaskList(false);
 
     // Start polling (~3s, unconditional — D-10)
     startPolling();
