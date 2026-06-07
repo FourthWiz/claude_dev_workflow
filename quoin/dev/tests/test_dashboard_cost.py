@@ -257,6 +257,51 @@ class TestMemoCache:
 
 
 # ---------------------------------------------------------------------------
+# Pricing table tests
+# ---------------------------------------------------------------------------
+
+class TestPricing:
+    """Verify PRICES table contains required model entries."""
+
+    def test_claude_opus_4_8_in_prices(self):
+        """claude-opus-4-8 must be in PRICES so sessions using it report cost > 0."""
+        # Load cost_from_jsonl directly to access PRICES
+        _cfj_path = _SCRIPTS_PATH / "cost_from_jsonl.py"
+        import importlib.util as _ilu
+        spec = _ilu.spec_from_file_location("_cfj_pricing_test", _cfj_path)
+        cfj = _ilu.module_from_spec(spec)
+        spec.loader.exec_module(cfj)
+
+        assert "claude-opus-4-8" in cfj.PRICES, (
+            "claude-opus-4-8 missing from PRICES — sessions using this model will "
+            "report $0 cost even when JSONL data is available"
+        )
+        p = cfj.PRICES["claude-opus-4-8"]
+        assert p["input"] > 0
+        assert p["output"] > 0
+
+    def test_claude_opus_4_8_cost_positive(self, tmp_path):
+        """make_cost_provider resolves non-zero USD for claude-opus-4-8 sessions."""
+        home = tmp_path / "home"
+        project_root = tmp_path / "project"
+        project_root.mkdir(parents=True)
+        proj_hash = project_hash(str(project_root))
+
+        uuid1 = "bbbbbbbb-0001-0001-0001-000000000001"
+        jsonl_dir = home / ".claude" / "projects" / proj_hash
+        _make_jsonl(jsonl_dir / f"{uuid1}.jsonl", "claude-opus-4-8",
+                    input_tokens=100_000, output_tokens=10_000)
+
+        rows = _make_rows([(uuid1, "implement")])
+        provider = make_cost_provider(project_root, home=home)
+        result = provider("my-task", rows)
+
+        assert result is not None
+        assert result["mode"] == "usd"
+        assert result["usd"] > 0, "claude-opus-4-8 must produce positive USD cost"
+
+
+# ---------------------------------------------------------------------------
 # T-01 tests: import boundary — no core imports
 # ---------------------------------------------------------------------------
 

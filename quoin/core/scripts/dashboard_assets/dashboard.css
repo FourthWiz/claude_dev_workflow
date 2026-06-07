@@ -322,7 +322,7 @@ body {
 /* T-05: Stats grid */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
   gap: 12px;
   margin-bottom: 24px;
 }
@@ -405,7 +405,7 @@ body {
 }
 
 /* ── Cost event count badge (rail cards) ─────────────────────────────── */
-.event-badge {
+.cost-badge {
   display: inline-block;
   padding: 1px 6px;
   border-radius: 4px;

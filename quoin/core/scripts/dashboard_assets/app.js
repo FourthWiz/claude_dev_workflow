@@ -237,10 +237,19 @@
         (isFinalized ? ' finalized-card' : '') +
         (isSelected ? ' selected-card' : '');
 
-      // T-03: event count from cost.total — label as "N events" (honest row count)
-      var evtCount = (t.cost && t.cost.total != null) ? t.cost.total : null;
-      var evtBadge = evtCount != null
-        ? '<span class="event-badge">' + pluralEvents(evtCount) + '</span>'
+      // T-03: cost badge — show USD or tokens when available, fall back to row count
+      var costBadgeText = null;
+      if (t.cost) {
+        if (t.cost.mode === 'usd' && t.cost.usd != null && t.cost.usd > 0) {
+          costBadgeText = '$' + t.cost.usd.toFixed(2);
+        } else if (t.cost.mode === 'tokens' && t.cost.tokens != null && t.cost.tokens > 0) {
+          costBadgeText = (t.cost.tokens / 1e6).toFixed(1) + 'M tok';
+        } else if (t.cost.total != null) {
+          costBadgeText = pluralEvents(t.cost.total);
+        }
+      }
+      var evtBadge = costBadgeText != null
+        ? '<span class="cost-badge">' + escHtml(costBadgeText) + '</span>'
         : '';
 
       // T-03: active stage label (multi-stage only)
@@ -345,6 +354,22 @@
     var criticRounds = detail.critic_rounds != null ? detail.critic_rounds : '—';
     var reviewRounds = detail.review_rounds != null ? detail.review_rounds : '—';
 
+    // Cost summary for stats-grid: show USD or tokens when available
+    var costStatValue = '—';
+    var costStatLabel = 'cost';
+    if (detail.cost) {
+      if (detail.cost.mode === 'usd' && detail.cost.usd != null && detail.cost.usd > 0) {
+        costStatValue = '$' + detail.cost.usd.toFixed(2);
+        costStatLabel = 'cost (USD)';
+      } else if (detail.cost.mode === 'tokens' && detail.cost.tokens != null && detail.cost.tokens > 0) {
+        costStatValue = (detail.cost.tokens / 1e6).toFixed(1) + 'M';
+        costStatLabel = 'tokens';
+      } else if (detail.cost.total != null) {
+        costStatValue = String(detail.cost.total);
+        costStatLabel = 'ledger rows';
+      }
+    }
+
     html += '<div class="stats-grid">' +
       '<div class="stat-cell"><div class="stat-value">' + escHtml(String(sessionCount)) + '</div>' +
         '<div class="stat-label">' + (ledgerRows.length > 0 ? 'sessions' : 'events') + '</div></div>' +
@@ -352,6 +377,8 @@
         '<div class="stat-label">critic rounds</div></div>' +
       '<div class="stat-cell"><div class="stat-value">' + escHtml(String(reviewRounds)) + '</div>' +
         '<div class="stat-label">review rounds</div></div>' +
+      '<div class="stat-cell"><div class="stat-value">' + escHtml(costStatValue) + '</div>' +
+        '<div class="stat-label">' + escHtml(costStatLabel) + '</div></div>' +
     '</div>';
 
     // T-04 / T-05: Pipeline graph — highlight node via normalizePhase(detail.phase)

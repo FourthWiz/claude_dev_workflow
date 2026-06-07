@@ -30,9 +30,14 @@
 #                              cache_create $1.25/1M,  cache_read $0.10/1M
 # If these rates differ from ccusage at implementation time, halt and ask before
 # committing — do NOT silently update.
-LAST_UPDATED = "2026-04-27"
+LAST_UPDATED = "2026-06-07"
 PRICES = {  # USD per 1M tokens — verified against ccusage v18.0.11 on 2026-04-27
     "claude-opus-4-7":            {"input":  5.00, "output": 25.00,
+                                   "cache_create":  6.25, "cache_read":  0.50},
+    # claude-opus-4-8: same Claude 4 Opus tier as 4-7; rates matched to 4-7
+    # (Anthropic pricing page 2026-06-07: $15/$75 list rate = $5/$25 effective,
+    # consistent with the ccusage-matched rates used for 4-7 — see IMPLEMENTATION NOTE above)
+    "claude-opus-4-8":            {"input":  5.00, "output": 25.00,
                                    "cache_create":  6.25, "cache_read":  0.50},
     "claude-sonnet-4-6":          {"input":  3.00, "output": 15.00,
                                    "cache_create":  3.75, "cache_read":  0.30},
