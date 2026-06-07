@@ -332,6 +332,84 @@ _agentdesk_parse_custom_tokens() {
   return 0
 }
 
+# ============================================================
+# _agentdesk_open_dashboard
+# Opt-in quoin dashboard prompt shown before the zellij TTY hand-off.
+#
+# User-mode only: deployed via deploy_agentdesk (not project mode); the server
+# is reached via the $HOME/.claude deploy path (same convention as the status
+# pane). Non-interactive / scripted desks are silently skipped via [ -t 0 ].
+#
+# Behavior:
+#   - Skips (returns 0) immediately when stdin is not a TTY.
+#   - Prompts "Open quoin dashboard? [y/N]:" — default No.
+#   - On No/empty: returns 0, no server started.
+#   - On Yes: starts dashboard_server.py in background with --no-browser,
+#     captures the printed URL=<url> line, opens it in the default browser,
+#     leaves the server running for the duration of the desk session.
+#   - Always returns 0; any internal failure prints a note to stderr.
+# ============================================================
+_agentdesk_open_dashboard() {
+  # Guard: skip entirely when stdin is not a TTY (non-interactive / scripted desks).
+  [ ! -t 0 ] && return 0
+
+  printf 'Open quoin dashboard? [y/N]: ' >&2
+  local reply
+  read -r reply
+
+  # Default No: only explicit y/Y/yes/YES proceeds.
+  case "$reply" in
+    [Yy]|[Yy][Ee][Ss]) ;;
+    *) return 0 ;;
+  esac
+
+  local server_script="$HOME/.claude/scripts/dashboard_server.py"
+
+  # Presence guard: skip gracefully when the server is absent (e.g. project-scope
+  # installs where deploy_agentdesk did not run, or the quoin install is stale).
+  if [ ! -f "$server_script" ]; then
+    printf 'agentdesk: dashboard server not found at %s; skipping\n' "$server_script" >&2
+    return 0
+  fi
+
+  # Launch the server detached, capturing its stdout to a temp file so we can
+  # poll for the "URL=<url>" line without blocking the foreground shell.
+  local stdout_tmp
+  stdout_tmp="$(mktemp)"
+  python3 "$server_script" --no-browser > "$stdout_tmp" 2>/dev/null &
+  local server_pid=$!
+
+  # Poll for up to ~10 s (50 × 0.2 s) for the URL= line.
+  local url=""
+  local i=0
+  while [ $i -lt 50 ]; do
+    if grep -q '^URL=' "$stdout_tmp" 2>/dev/null; then
+      url="$(grep '^URL=' "$stdout_tmp" | head -1 | sed 's/^URL=//')"
+      break
+    fi
+    sleep 0.2
+    i=$((i + 1))
+  done
+
+  rm -f "$stdout_tmp"
+
+  if [ -z "$url" ]; then
+    printf 'agentdesk: dashboard did not report a URL (server pid %s still running)\n' "$server_pid" >&2
+    return 0
+  fi
+
+  # Open the URL in the default browser; fall back to printing if no opener found.
+  if command -v open >/dev/null 2>&1; then
+    open "$url"
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$url"
+  else
+    printf 'agentdesk: dashboard running at %s (no browser opener found)\n' "$url" >&2
+  fi
+
+  return 0
+}
+
 agentdesk() {
   local mode=""
   local custom_name=""
@@ -536,6 +614,10 @@ HELP
   echo "  REPOS:"
   cat "$project_root/.workflow_artifacts/repos.md"
   echo
+
+  # Offer the quoin dashboard before handing the TTY to zellij.
+  # _agentdesk_open_dashboard self-skips on non-TTY and always returns 0.
+  _agentdesk_open_dashboard
 
   if _zellij_session_exists "$session_name"; then
     PROJECT_ROOT="$project_root" zellij attach "$session_name"

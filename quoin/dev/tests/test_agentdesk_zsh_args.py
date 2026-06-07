@@ -8,6 +8,7 @@ Picker tests isolate _agentdesk_pick_layout() via piped stdin (non-TTY path
 bypasses the picker in agentdesk(); we call _agentdesk_pick_layout() directly).
 """
 import os
+import pty
 import shutil
 import subprocess
 import textwrap
@@ -493,3 +494,185 @@ def test_agentdesk_picker_option5_claude_ccr_shell(tmp_path: Path) -> None:
     assert result.stdout.strip() == "claude ccr shell", (
         f"Expected 'claude ccr shell', got: {result.stdout.strip()!r}"
     )
+
+
+# ============================================================
+# S-3: _agentdesk_open_dashboard tests (IVG-63 stage-3)
+# ============================================================
+
+def _make_dashboard_env(tmp_path: Path, with_server: bool = True) -> dict:
+    """Extend _make_mock_env with a fake $HOME containing (optionally) a stub
+    dashboard_server.py that immediately prints URL=http://127.0.0.1:8787 and
+    exits, and stub `open` / `xdg-open` that record their argv to a marker file.
+
+    Args:
+        with_server: if True, create the stub server script; if False, omit it
+                     to test the missing-server code path.
+    """
+    env = _make_mock_env(tmp_path)
+    mock_bin = tmp_path / "mock_bin"  # already exists from _make_mock_env
+
+    # Fake HOME so $HOME/.claude/scripts/ resolves to a writable temp dir.
+    fake_home = tmp_path / "fake_home"
+    fake_home.mkdir()
+    env["HOME"] = str(fake_home)
+
+    if with_server:
+        scripts_dir = fake_home / ".claude" / "scripts"
+        scripts_dir.mkdir(parents=True)
+        server = scripts_dir / "dashboard_server.py"
+        # Stub: print URL= line and exit immediately.
+        server.write_text(
+            "import sys\n"
+            "print('URL=http://127.0.0.1:8787', flush=True)\n"
+            "# --no-browser flag accepted and ignored\n"
+        )
+        server.chmod(0o755)
+
+    # Stub `open` writes argv[1] (the URL) to a marker file so tests can assert it.
+    marker = tmp_path / "open_called.txt"
+    open_stub = mock_bin / "open"
+    open_stub.write_text(
+        f"#!/bin/sh\necho \"$1\" > '{marker}'\nexit 0\n"
+    )
+    open_stub.chmod(0o755)
+
+    # Also stub xdg-open with same behaviour (fallback path).
+    xdg_stub = mock_bin / "xdg-open"
+    xdg_stub.write_text(
+        f"#!/bin/sh\necho \"$1\" > '{marker}'\nexit 0\n"
+    )
+    xdg_stub.chmod(0o755)
+
+    return env
+
+
+def _run_dashboard_fn_with_pty(
+    env: dict,
+    input_text: str,
+    tmp_path: Path,
+    timeout: int = 25,
+) -> subprocess.CompletedProcess:
+    """Run _agentdesk_open_dashboard with a real PTY as stdin.
+
+    Uses pty.openpty() to provide a file descriptor that satisfies [ -t 0 ],
+    so the TTY guard inside _agentdesk_open_dashboard passes and the real
+    function body executes.  input_text is written to the PTY master side
+    after the subprocess is started; the child reads it via 'read -r reply'.
+    stdout and stderr are captured via PIPE (not the PTY) so assertions are
+    straightforward.
+    """
+    script = f'source "{AGENTDESK_ZSH}"\n_agentdesk_open_dashboard'
+    master_fd, slave_fd = pty.openpty()
+    stdout_b: bytes = b""
+    stderr_b: bytes = b""
+    rc: int = -1
+    try:
+        try:
+            proc = subprocess.Popen(
+                ["zsh", "-c", script],
+                stdin=slave_fd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                cwd=str(tmp_path),
+                close_fds=True,
+            )
+        finally:
+            os.close(slave_fd)  # parent no longer needs the slave end
+        try:
+            os.write(master_fd, input_text.encode())
+        except OSError:
+            pass  # process may have exited before the write
+        try:
+            stdout_b, stderr_b = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout_b, stderr_b = proc.communicate()
+        rc = proc.returncode
+    finally:
+        try:
+            os.close(master_fd)
+        except OSError:
+            pass
+    return subprocess.CompletedProcess(
+        args=["zsh", "-c", script],
+        returncode=rc,
+        stdout=stdout_b.decode(errors="replace"),
+        stderr=stderr_b.decode(errors="replace"),
+    )
+
+
+def test_open_dashboard_non_tty_skips(tmp_path: Path) -> None:
+    """_agentdesk_open_dashboard with piped stdin (non-TTY) returns 0 with no prompt
+    and does not invoke the server stub.
+
+    stdin piped = [ ! -t 0 ] fires → function returns immediately.
+    """
+    env = _make_dashboard_env(tmp_path)
+    script = f'source "{AGENTDESK_ZSH}"\n_agentdesk_open_dashboard'
+    result = subprocess.run(
+        ["zsh", "-c", script],
+        env=env,
+        input="",  # piped → non-TTY
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=15,
+    )
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    # No prompt should appear on stderr (function returned before printf)
+    assert "Open quoin dashboard" not in result.stderr, (
+        f"Prompt should not appear on non-TTY: stderr={result.stderr!r}"
+    )
+    # Server marker file must NOT exist (server never launched)
+    marker = tmp_path / "open_called.txt"
+    assert not marker.exists(), "Browser opener should NOT have been called on non-TTY"
+
+
+def test_open_dashboard_declines_default(tmp_path: Path) -> None:
+    """_agentdesk_open_dashboard with PTY stdin 'n\\n' returns 0 and does not
+    start the server or open a browser.
+
+    Uses pty.openpty() so [ -t 0 ] is true and the real function body runs.
+    """
+    env = _make_dashboard_env(tmp_path)
+    result = _run_dashboard_fn_with_pty(env, "n\n", tmp_path)
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    marker = tmp_path / "open_called.txt"
+    assert not marker.exists(), "Browser opener should NOT have been called on 'n' reply"
+
+
+def test_open_dashboard_accepts_opens_url(tmp_path: Path) -> None:
+    """_agentdesk_open_dashboard with PTY stdin 'y\\n' starts the stub server,
+    captures URL=..., calls the mock `open` stub, and returns 0.
+
+    Uses pty.openpty() so [ -t 0 ] is true and the real function body runs.
+    """
+    env = _make_dashboard_env(tmp_path, with_server=True)
+    result = _run_dashboard_fn_with_pty(env, "y\n", tmp_path, timeout=25)
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    marker = tmp_path / "open_called.txt"
+    assert marker.exists(), (
+        f"Browser opener stub should have been called; stderr={result.stderr!r}"
+    )
+    url_opened = marker.read_text().strip()
+    assert url_opened == "http://127.0.0.1:8787", (
+        f"Unexpected URL passed to opener: {url_opened!r}"
+    )
+
+
+def test_open_dashboard_missing_server_noop(tmp_path: Path) -> None:
+    """_agentdesk_open_dashboard with PTY stdin 'y\\n' but no server script returns 0
+    and prints the 'not found' note to stderr without crashing.
+
+    Uses pty.openpty() so [ -t 0 ] is true and the real function body runs.
+    """
+    env = _make_dashboard_env(tmp_path, with_server=False)
+    result = _run_dashboard_fn_with_pty(env, "y\n", tmp_path)
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    assert "not found" in result.stderr, (
+        f"Expected 'not found' note in stderr: {result.stderr!r}"
+    )
+    marker = tmp_path / "open_called.txt"
+    assert not marker.exists(), "Browser opener should NOT be called when server is absent"
