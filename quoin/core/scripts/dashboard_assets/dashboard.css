@@ -440,33 +440,60 @@ body {
   color: var(--text-primary);
 }
 
-/* ── Stage list ──────────────────────────────────────────────────────── */
-.stage-list {
-  list-style: none;
+/* ── T-08: Stage tabs ────────────────────────────────────────────────── */
+.stage-tabs {
   display: flex;
-  flex-direction: column;
   gap: 6px;
+  flex-wrap: wrap;
+  margin: 0 0 4px;
 }
 
-.stage-list li {
-  padding: 6px 10px;
-  font-size: 13px;
-  border: 1px solid var(--border-light);
-  border-radius: 6px;
+.stage-tab {
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.82em;
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.stage-tab:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+
+.stage-tab.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.stage-detail-panel {
+  margin-top: 8px;
+  padding: 12px 14px;
   background: var(--bg-card);
+  border-radius: 6px;
+  border: 1px solid var(--border-light);
+}
+
+.stage-detail-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--text-primary);
 }
 
-.stage-list-name {
-  color: var(--text-primary);
-  font-weight: 500;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.stage-cost-note {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  margin: 8px 0 4px;
+  font-style: italic;
 }
 
 /* ── Sessions table ──────────────────────────────────────────────────── */

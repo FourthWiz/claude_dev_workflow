@@ -49,6 +49,9 @@
     tasks: [],
     activeTask: null,
     searchQuery: '',
+    detailLoaded: false,    // T-07: true after first successful detail render
+    lastDetail: null,       // T-07/T-08: cached detail payload for tab re-renders
+    selectedStage: null,    // T-08: selected stage tab (stage n value)
   };
 
   // ---------------------------------------------------------------------------
@@ -191,6 +194,9 @@
       return;
     }
 
+    // T-07: save scroll position before wiping innerHTML
+    var _savedScroll = container.scrollTop;
+
     var html = '';
     for (var i = 0; i < visible.length; i++) {
       var t = visible[i];
@@ -233,6 +239,8 @@
     }
 
     container.innerHTML = html;
+    // T-07: restore scroll so poll updates don't jump to top
+    container.scrollTop = _savedScroll;
 
     // Attach click + keyboard handlers
     var cards = container.querySelectorAll('.task-card');
@@ -247,8 +255,9 @@
     var name = card.getAttribute('data-name');
     if (!name) return;
     state.selectedTask = name;
+    state.selectedStage = null;    // T-08: reset tab selection on task switch
     refreshTaskList();
-    loadTaskDetail(name);
+    loadTaskDetail(name, false);   // T-07: non-silent — show spinner, reset scroll
   }
 
   function onCardKeydown(e) {
@@ -332,27 +341,76 @@
     }
     html += '</div></div>';
 
-    // T-05: Stages — guard with length > 0; use st.name and st.phase (no st.phase_label)
-    if (detail.stages && detail.stages.length > 0) {
-      html += '<div class="detail-section"><h3>Stages</h3><ul class="stage-list">';
+    // T-08: Stage tabs — clickable navigation; replaces flat stage list
+    var isMultiStage = detail.stages && detail.stages.length > 0;
+    if (isMultiStage) {
+      // Auto-select first stage when no tab is selected yet
+      if (state.selectedStage === null) {
+        state.selectedStage = detail.stages[0].n != null ? detail.stages[0].n : 1;
+      }
+
+      html += '<div class="detail-section"><h3>Stages</h3>';
+      html += '<div class="stage-tabs">';
       for (var si = 0; si < detail.stages.length; si++) {
         var st = detail.stages[si];
         var stNum = st.n != null ? st.n : si + 1;
-        // st.name = real stage name string; st.phase = raw backend key
-        html += '<li>' +
-          '<span class="stage-list-name" title="' + escHtml(st.name || 'Stage ' + stNum) + '">' +
-            'Stage ' + escHtml(String(stNum)) + ': ' + escHtml(st.name || '—') +
-          '</span>' +
-          stagePill(st.phase) +
-        '</li>';
+        var isActive = stNum === state.selectedStage;
+        html += '<button class="stage-tab' + (isActive ? ' active' : '') + '"' +
+          ' data-stage-n="' + escHtml(String(stNum)) + '">' +
+          'Stage ' + escHtml(String(stNum)) + ': ' + escHtml(st.name || '—') +
+          '</button>';
       }
-      html += '</ul></div>';
+      html += '</div>'; // end .stage-tabs
+
+      // Find the selected stage and render its detail panel
+      var selSt = null;
+      for (var ssi = 0; ssi < detail.stages.length; ssi++) {
+        var ssn = detail.stages[ssi].n != null ? detail.stages[ssi].n : ssi + 1;
+        if (ssn === state.selectedStage) { selSt = detail.stages[ssi]; break; }
+      }
+
+      if (selSt !== null) {
+        html += '<div class="stage-detail-panel">';
+        html += '<div class="stage-detail-header">' +
+          '<strong>' + escHtml(selSt.name || 'Stage ' + state.selectedStage) + '</strong>' +
+          '&nbsp;&nbsp;' + stagePill(selSt.phase) +
+          '</div>';
+
+        // Cost table (all stages combined — per-stage breakdown requires schema change)
+        var sCost = detail.cost;
+        if (sCost && sCost.by_phase && Object.keys(sCost.by_phase).length > 0) {
+          html += '<p class="stage-cost-note">Cost breakdown — all stages combined</p>';
+          html += '<table class="by-phase-table"><thead><tr><th>Phase</th><th>Cost</th></tr></thead><tbody>';
+          var sByPhase = sCost.by_phase;
+          var sPhases = Object.keys(sByPhase).sort();
+          for (var spi = 0; spi < sPhases.length; spi++) {
+            var sph = sPhases[spi];
+            var sval = sByPhase[sph];
+            var scell;
+            if (sCost.mode === 'counts') {
+              scell = (typeof sval === 'number' ? sval : '?') + ' events';
+            } else if (sCost.mode === 'usd') {
+              scell = '$' + ((sval && sval.usd != null) ? sval.usd.toFixed(2) : '?');
+            } else if (sCost.mode === 'tokens') {
+              scell = ((sval && sval.tokens != null) ? (sval.tokens / 1e6).toFixed(2) : '?') + 'M tokens';
+            } else {
+              scell = JSON.stringify(sval);
+            }
+            html += '<tr><td>' + escHtml(sph) + '</td><td>' + escHtml(scell) + '</td></tr>';
+          }
+          html += '</tbody></table>';
+        }
+
+        html += '</div>'; // end .stage-detail-panel
+      }
+
+      html += '</div>'; // end .detail-section
     }
 
-    // T-05: Cost by phase breakdown (retain cost.mode branches — P6 fix: sessions table removed,
-    // this is the only cost section; the old duplicate "Cost by phase" / Sessions table is gone)
+    // T-05: Cost by phase breakdown — shown for single-stage tasks only
+    // (multi-stage tasks show cost inside the stage detail panel above)
     var cost = detail.cost;
-    if (cost && cost.by_phase && Object.keys(cost.by_phase).length > 0) {
+    if (!isMultiStage && cost && cost.by_phase && Object.keys(cost.by_phase).length > 0) {
       html += '<div class="detail-section"><h3>Cost by phase</h3>';
       html += '<table class="by-phase-table"><thead><tr><th>Phase</th><th>Cost</th></tr></thead><tbody>';
       var byPhase = cost.by_phase;
@@ -427,9 +485,12 @@
     });
   }
 
-  function loadTaskDetail(name) {
+  // T-07: silent=true on poll (no spinner, scroll preserved); false on explicit selection
+  function loadTaskDetail(name, silent) {
     var pane = document.getElementById('detail-pane');
-    if (pane) pane.innerHTML = '<p class="loading">Loading…</p>';
+    // T-07: save scroll before fetch (innerHTML not changed yet on silent path)
+    var _paneScroll = (silent && pane) ? pane.scrollTop : 0;
+    if (!silent && pane) pane.innerHTML = '<p class="loading">Loading…</p>';
 
     fetchJSON(taskDetailUrl(name), function (err, data) {
       if (err) {
@@ -437,8 +498,39 @@
           escHtml(err.message) + '</p>';
         return;
       }
+      state.lastDetail = data;        // T-08: cache for tab re-renders
       renderDetailPane(data);
+      // T-08: reattach stage tab click handlers after every innerHTML replacement
+      _attachStageTabHandlers();
+      // T-07: restore scroll position on silent poll updates
+      if (silent && pane) pane.scrollTop = _paneScroll;
+      state.detailLoaded = true;
     });
+  }
+
+  // T-08: attach click handlers on .stage-tab buttons inside the detail pane
+  function _attachStageTabHandlers() {
+    var pane = document.getElementById('detail-pane');
+    if (!pane) return;
+    var tabs = pane.querySelectorAll('.stage-tab');
+    for (var ti = 0; ti < tabs.length; ti++) {
+      tabs[ti].addEventListener('click', onStageTabClick);
+    }
+  }
+
+  // T-08: handle stage tab click — update selected stage and re-render in place
+  function onStageTabClick(e) {
+    var btn = e.currentTarget;
+    var n = parseInt(btn.getAttribute('data-stage-n'), 10);
+    if (!isNaN(n) && state.lastDetail) {
+      state.selectedStage = n;
+      var pane = document.getElementById('detail-pane');
+      var _scroll = pane ? pane.scrollTop : 0;
+      renderDetailPane(state.lastDetail);
+      _attachStageTabHandlers();
+      // preserve scroll when switching tabs
+      if (pane) pane.scrollTop = _scroll;
+    }
   }
 
   function startPolling() {
@@ -446,7 +538,7 @@
     state.pollInterval = setInterval(function () {
       refreshTaskList();
       if (state.selectedTask) {
-        loadTaskDetail(state.selectedTask);
+        loadTaskDetail(state.selectedTask, true);  // T-07: silent — preserve scroll
       }
     }, 3000);
   }
