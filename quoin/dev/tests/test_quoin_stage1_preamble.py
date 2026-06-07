@@ -1,7 +1,7 @@
 """
 Quoin Stage 1 — structural consistency tests for the §0 self-dispatch preamble.
 
-The 17 cheap-tier SKILL.md files carry a `## §0 Model dispatch ...` block as
+The 18 cheap-tier SKILL.md files carry a `## §0 Model dispatch ...` block as
 the first body H2 after the H1. This test file enforces the static-structural
 invariants of that block: heading uniqueness, ordering, two-layer dispatch
 contract (load-bearing `model:` parameter line + defensive `dispatched-tier:`
@@ -47,12 +47,13 @@ SO_HEADING = "## §0 Model dispatch (FIRST STEP — execute before anything else
 MR_HEADING = "## Model requirement"
 POLLUTION_HEADING = "## §0' Pollution dispatch (execute after §0 / §0c if present — before skill body)"
 
-# 17 cheap-tier skills — must carry §0.
+# 18 cheap-tier skills — must carry §0.
 CHEAP_TIER_SKILLS = [
     "gate",
     "end_of_day",
     "start_of_day",
     "capture_insight",
+    "cleanup",
     "cost_snapshot",
     "weekly_review",
     "end_of_task",
@@ -67,6 +68,10 @@ CHEAP_TIER_SKILLS = [
     "pr",
     "status",
 ]
+# NOTE: CLAUDE.md prose counts 19 cheap-tier skills; this list has 18. The +1 gap is
+# intentional — `continue_work` carries §0 but is intentionally absent from this test
+# file's parametrized lists (it is covered separately via MIGRATED_TO_ADAPTER paths).
+# Do NOT add `continue_work` here to "fix" the count — the gap is by design.
 
 # 9 Opus-tier skills — must NOT carry §0.
 OPUS_TIER_SKILLS = [

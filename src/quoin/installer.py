@@ -32,6 +32,7 @@ CANONICAL_SKILLS = (
     "architect",
     "capture_insight",
     "checkpoint",
+    "cleanup",
     "continue_work",
     "cost_snapshot",
     "critic",
@@ -102,6 +103,7 @@ SKILL_OVERRIDES: dict[str, str] = {
     "end_of_day": "name-only",
     # Internal / rarely-typed-directly skills — name-only to stay within skill listing budget
     "sleep": "name-only",
+    "cleanup": "name-only",
     "expand": "name-only",
     "cost_snapshot": "name-only",
     "status": "name-only",

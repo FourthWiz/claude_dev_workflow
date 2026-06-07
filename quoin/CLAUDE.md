@@ -290,7 +290,7 @@ Every skill records its session to the task's cost ledger at session start.
 
 **Ledger path:** `.workflow_artifacts/<task-name>/cost-ledger.md`. Create with header `# Cost Ledger — <task-name>` if new. Columns: `UUID | DATE | PHASE | MODEL | task | NOTE | FALLBACK_FIRES` (7-col); 6-col rows (no FALLBACK_FIRES) remain valid forever — readers tolerate both. Append-only; never delete or rewrite rows.
 
-**Phase values:** `discover`, `architect`, `plan`, `critic`, `revise`, `implement`, `review`, `gate`, `end-of-task`, `pr`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `triage`, `expand`, `checkpoint`, `sleep`, `session-close-hook`, `next-steps`, `ad-hoc`
+**Phase values:** `discover`, `architect`, `plan`, `critic`, `revise`, `implement`, `review`, `gate`, `end-of-task`, `pr`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `triage`, `expand`, `checkpoint`, `cleanup`, `sleep`, `session-close-hook`, `next-steps`, `ad-hoc`
 
 **Category:** Always write `task`.
 
@@ -377,6 +377,7 @@ If adding a new file class: hand-edited or contract-approved → Tier 1; ephemer
 | /triage | Haiku | Lightweight routing: reads prompt, inspects state, proposes a skill. |
 | /next-steps | Haiku | Lightweight queue management for future work items |
 | /continue_work | Sonnet | Revive context from a prior session: reads recent-sessions.md, presents session picker, extracts checkpoint summary and recent messages from JSONL. |
+| /cleanup | Haiku | Mechanical trash-move of stale sentinels/checkpoints (structured file ops). |
 
 ### Subagent preamble (Stage 2 of pipeline-efficiency-improvements)
 
@@ -384,7 +385,7 @@ The 7 spawn-target skills (critic, revise, revise-fast, plan, review, gate, arch
 
 ### §0 Model dispatch preamble
 
-The 18 cheap-tier skills (gate, end_of_day, start_of_day, triage, capture_insight, cost_snapshot, weekly_review, end_of_task, implement, rollback, expand, revise-fast, sleep, next_steps, checkpoint, continue_work, pr, status) carry a `## §0 Model dispatch` block as the first body H2 after the H1. When invoked from a session running on a model strictly more expensive than the declared tier, the skill self-dispatches via the Agent tool to its declared model and prefixes the child prompt with `[no-redispatch]` to prevent recursion. Counter form `[no-redispatch:N]` (N≥2) is an abort signal. The 9 Opus-tier skills do NOT carry the preamble.
+The 19 cheap-tier skills (gate, end_of_day, start_of_day, triage, capture_insight, cleanup, cost_snapshot, weekly_review, end_of_task, implement, rollback, expand, revise-fast, sleep, next_steps, checkpoint, continue_work, pr, status) carry a `## §0 Model dispatch` block as the first body H2 after the H1. When invoked from a session running on a model strictly more expensive than the declared tier, the skill self-dispatches via the Agent tool to its declared model and prefixes the child prompt with `[no-redispatch]` to prevent recursion. Counter form `[no-redispatch:N]` (N≥2) is an abort signal. The 9 Opus-tier skills do NOT carry the preamble.
 
 Fail-OPEN on Agent unavailable (one-line `[quoin-stage-1: subagent dispatch unavailable; ...]` warning); architecture I-01 = best-effort cost guardrail. Worktree-class errors → AskUserQuestion recovery prompt. Manual override: prefix slash invocation with `[no-redispatch]`. Drift detection: `quoin/dev/tests/test_quoin_stage1_preamble.py`, `quoin/dev/tests/test_quoin_stage1_recursion_abort.py`. Verbose details (worktree-error classification, sentinel forms, recovery options): `__QUOIN_HOME__/memory/dispatch-guide.md`.
 
@@ -398,12 +399,13 @@ The 7 Opus-tier non-orchestrator skills (architect, plan, critic, revise, review
 
 All hooks fail-OPEN (exit 0 on any error). jq is a soft-required dependency. Tunable constants (`QUOIN_BYTES_PER_TOKEN`, `QUOIN_EFFECTIVE_CONTEXT_LIMIT`, `QUOIN_STOP_BPS`, `QUOIN_BLOCK_BPS`, `QUOIN_COMPACT_FIRST_BPS`, etc.) use `${QUOIN_*:-default}` expansion with integer basis-points arithmetic. Full table + verbose details: `__QUOIN_HOME__/memory/hooks-table.md` and `quoin/docs/hooks-guide.md`.
 
-### Lifecycle skills (checkpoint / end_of_day / sleep)
+### Lifecycle skills (checkpoint / end_of_day / sleep / cleanup)
 
-Three skills handle session lifecycle at different granularities (v3 lifecycle separation):
+Four skills handle session lifecycle at different granularities (v3 lifecycle separation):
 - `/checkpoint` — general-purpose state-save (mid-session, between tasks, between sessions). Three save modes: `--mode restore` (default), `--mode load-as-reference`, `--mode mid-agent`. Auto-detects compact-already-ran (auto-compact+pending-restore skip path) and high-util state (save immediately + surface fresh-session-or-compact options); see lifecycle-guide.md for full rules. Paths-not-content rule (D-04). `/checkpoint --restore` re-hydrates in fresh session.
 - `/end_of_day` — rolls up daily session state into `.workflow_artifacts/memory/daily/<date>.md`. Touches `lessons-learned.md` if insights promoted. Auto-invokes `/sleep`.
 - `/sleep` — Haiku-tier. Scans daily insights + session files (30-day window). Three-bucket decisions: Promote → `lessons-learned.md`; Soft-Forget → `forgotten/<date>.md`; Middle-Band → deferred. Subcommands: `--restore <pattern>`, `--purge --older-than 90d`, `--escalate`, `--dry-run`. Writes ONLY to `lessons-learned.md` + `forgotten/`; never touches `~/.claude/projects/<hash>/memory/`.
+- `/cleanup` — Haiku-tier. Trash-moves stale sentinels (all sessions except freshest/current, identified by UUID-suffix skip before any age check) and old checkpoints into recoverable `trash/<date>/` archive. Recovery via manual `mv` from `.workflow_artifacts/memory/trash/<date>/` — NOT `/sleep --restore` (which only reads `forgotten/` text entries). Auto-fires as the FIRST sub-block of `/checkpoint` Step 1.5 (default-on, `--no-cleanup` opt-out; skipped at high-util/mid-agent for compress-first ordering). Env knobs: `QUOIN_CLEANUP_SENTINEL_WINDOW` (default 1d), `QUOIN_CLEANUP_CKPT_WINDOW` (default 30d).
 
 Session hooks (S-4): `sessionstart.sh` + `sessionend.sh` check `end_of_day_due: yes` (36 h window); non-blocking informational banners; 5-min sentinel dedup. Full subcommand contracts, mode auto-detection rules, restore-picker logic, and `--after-compact`/`--defer` semantics: `__QUOIN_HOME__/memory/lifecycle-guide.md`.
 
