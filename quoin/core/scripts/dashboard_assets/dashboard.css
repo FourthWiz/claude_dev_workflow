@@ -1,38 +1,70 @@
 /* quoin workflow dashboard — plain CSS, no preprocessor, no remote imports */
 
+/* ── T-01: CSS custom properties (dark palette) ──────────────────────── */
+:root {
+  --bg-body:       #0f1117;
+  --bg-sidebar:    #161b22;
+  --bg-detail:     #0d1117;
+  --bg-card:       #1c2128;
+  --bg-card-hover: #222a34;
+  --bg-card-sel:   #1f3458;
+  --bg-header:     #161b22;
+  --accent:        #6c63ff;
+  --accent-border: #9088ff;
+  --text-primary:  #e6edf3;
+  --text-secondary:#8b949e;
+  --text-muted:    #6e7681;
+  --border:        #30363d;
+  --border-light:  #21262d;
+  --text-on-chip:  #fff;
+  --error-text:    #ff6b6b;
+  --font-sans:     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono:     "SFMono-Regular", Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 /* ── Reset / base ────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+html { height: 100%; }
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
-  background: #f5f5f5;
-  color: #222;
+  background: var(--bg-body);
+  /* contrast ratio: #e6edf3 on #0f1117 ≈ 12.5:1 — well above 4.5:1 */
+  color: var(--text-primary);
+  height: 100%;
 }
 
 /* ── App layout ──────────────────────────────────────────────────────── */
 .app-header {
-  background: #1a1a2e;
-  color: #eee;
-  padding: 12px 20px;
+  background: var(--bg-header);
+  color: var(--text-primary);
+  padding: 10px 20px;
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 16px;
   flex-wrap: wrap;
-  border-bottom: 3px solid #e94560;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .app-header h1 {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
+  color: var(--text-primary);
+  white-space: nowrap;
 }
 
 .header-controls {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .toggle-label {
@@ -41,27 +73,51 @@ body {
   gap: 6px;
   cursor: pointer;
   font-size: 13px;
-  color: #ccc;
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 .toggle-label input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: #e94560;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
   cursor: pointer;
+}
+
+/* T-06: Search input */
+.task-search {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  padding: 4px 10px;
+  width: 180px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.task-search:focus {
+  border-color: var(--accent-border);
+}
+
+.task-search::placeholder {
+  color: var(--text-muted);
 }
 
 /* ── Phase legend ────────────────────────────────────────────────────── */
 .phase-legend {
   margin-left: auto;
   font-size: 12px;
-  color: #aaa;
+  color: var(--text-muted);
 }
 
 .phase-legend summary {
   cursor: pointer;
-  color: #ccc;
+  color: var(--text-secondary);
   padding: 4px 0;
+  user-select: none;
 }
 
 .phase-legend ul {
@@ -70,201 +126,248 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-top: 4px;
+  position: absolute;
+  right: 20px;
+  z-index: 20;
 }
 
 .phase-legend li {
   display: flex;
   align-items: center;
   gap: 6px;
+  color: var(--text-secondary);
 }
 
-.legend-note {
-  margin-top: 8px;
-  font-size: 11px;
-  color: #888;
-  max-width: 420px;
-}
-
-.legend-note code {
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 11px;
-  background: rgba(255,255,255,0.1);
-  padding: 0 3px;
-  border-radius: 2px;
-}
-
-/* ── Main body (table + detail side-by-side) ─────────────────────────── */
+/* ── Main body layout (T-02: responsive) ─────────────────────────────── */
 .app-body {
   display: flex;
-  height: calc(100vh - 60px);
+  flex-direction: row;
+  /* subtract approximate header height */
+  height: calc(100vh - 45px);
   overflow: hidden;
 }
 
+/* T-02: Sidebar — flexible, not fixed 360px */
 .task-table-region {
-  width: 360px;
-  min-width: 260px;
+  min-width: 220px;
+  max-width: 380px;
+  flex-basis: 30%;
   flex-shrink: 0;
   overflow-y: auto;
-  border-right: 1px solid #ddd;
-  background: #fff;
+  border-right: 1px solid var(--border);
+  background: var(--bg-sidebar);
 }
 
 .detail-pane {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
-  background: #fafafa;
+  padding: 24px;
+  background: var(--bg-detail);
+  min-width: 0;
 }
 
 .detail-placeholder {
-  color: #999;
+  color: var(--text-muted);
   font-style: italic;
-  margin-top: 40px;
+  margin-top: 60px;
   text-align: center;
 }
 
-/* ── Task table ──────────────────────────────────────────────────────── */
-.task-table {
-  width: 100%;
-  border-collapse: collapse;
+/* T-02: Mobile responsive — stack vertically below 860px */
+@media (max-width: 860px) {
+  .app-body {
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
+  }
+
+  .task-table-region {
+    width: 100%;
+    max-width: 100%;
+    flex-basis: auto;
+    flex-shrink: unset;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    /* allow rail to grow but cap so detail pane gets space */
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+
+  .detail-pane {
+    flex: none;
+    width: 100%;
+    min-height: 40vh;
+    padding: 16px;
+  }
 }
 
-.task-table thead th {
-  position: sticky;
-  top: 0;
-  background: #f0f0f0;
-  font-weight: 600;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #555;
-  padding: 8px 12px;
-  border-bottom: 1px solid #ddd;
-  text-align: left;
-}
-
-.task-table tbody tr {
+/* ── T-03: Task cards ────────────────────────────────────────────────── */
+.task-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-light);
   cursor: pointer;
-  border-bottom: 1px solid #eee;
+  background: var(--bg-card);
   transition: background 0.1s;
+  /* T-06: staggered entry animation */
+  animation: card-in 0.2s ease both;
+  animation-delay: calc(var(--i, 0) * 40ms);
 }
 
-.task-table tbody tr:hover {
-  background: #f0f4ff;
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.task-table tbody tr.active-row {
-  background: #e8f0fe;
+.task-card:hover {
+  background: var(--bg-card-hover);
+}
+
+.task-card.selected-card {
+  background: var(--bg-card-sel);
+  border-left: 3px solid var(--accent);
+}
+
+.task-card.finalized-card {
+  opacity: 0.65;
+}
+
+.task-card-name {
   font-weight: 600;
-}
-
-.task-table tbody tr.finalized-row {
-  color: #888;
-  background: #f8f8f8;
-}
-
-.task-table tbody tr.selected-row {
-  background: #d4e3fc;
-}
-
-.task-table td {
-  padding: 8px 12px;
-  vertical-align: middle;
   font-size: 13px;
+  color: var(--text-primary);
+  /* T-03: single-line ellipsis, never per-syllable wrap */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.task-name {
-  font-weight: 500;
-  word-break: break-word;
+.task-card-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
-.task-stage {
-  color: #666;
-  font-size: 12px;
+.task-card-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.task-card-stage {
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 /* ── Phase chips ─────────────────────────────────────────────────────── */
 .phase-chip {
   display: inline-block;
   padding: 2px 7px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: lowercase;
-  white-space: nowrap;
-  color: #fff;
-}
-
-.phase-discover  { background: #7b61ff; }
-.phase-architect { background: #5c6bc0; }
-.phase-plan      { background: #1e88e5; }
-.phase-implement { background: #f57c00; }
-.phase-review    { background: #c62828; }
-.phase-done      { background: #2e7d32; }
-.phase-default   { background: #757575; }
-
-/* ── Cost badges ─────────────────────────────────────────────────────── */
-.cost-badge {
-  display: inline-block;
-  padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: 10px;
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
+  color: var(--text-on-chip);
 }
 
-.cost-badge-usd {
-  background: #e8f5e9;
-  color: #2e7d32;
-  border: 1px solid #a5d6a7;
+/* T-04: All 6 canonical pipeline node classes + default */
+.phase-discover      { background: #7b61ff; }
+.phase-architect     { background: #5c6bc0; }
+.phase-thorough_plan { background: #1e88e5; }
+.phase-implement     { background: #f57c00; }
+.phase-review        { background: #c62828; }
+.phase-end_of_task   { background: #2e7d32; }
+.phase-default       { background: #484f58; }
+
+/* ── T-05: Detail pane — hero + stats grid ───────────────────────────── */
+.detail-hero {
+  margin-bottom: 24px;
 }
 
-.cost-badge-tokens {
-  background: #e3f2fd;
-  color: #1565c0;
-  border: 1px solid #90caf9;
-}
-
-.cost-badge-counts {
-  background: #f5f5f5;
-  color: #757575;
-  border: 1px solid #e0e0e0;
-}
-
-/* ── Detail pane content ─────────────────────────────────────────────── */
-.detail-title {
-  font-size: 18px;
+.detail-hero-name {
+  font-size: 22px;
   font-weight: 700;
-  margin-bottom: 4px;
+  color: var(--text-primary);
   word-break: break-word;
+  margin-bottom: 6px;
+  line-height: 1.3;
 }
 
-.detail-meta {
+.detail-hero-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.detail-hero-dates {
   font-size: 12px;
-  color: #888;
-  margin-bottom: 16px;
+  color: var(--text-muted);
+  margin-top: 6px;
 }
 
+/* T-05: Stats grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.stat-cell {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 4px;
+}
+
+/* ── Detail sections ─────────────────────────────────────────────────── */
 .detail-section {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .detail-section h3 {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #555;
-  border-bottom: 1px solid #e0e0e0;
-  padding-bottom: 4px;
-  margin-bottom: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  margin-bottom: 12px;
 }
 
-/* ── Phase graph in detail pane ─────────────────────────────────────── */
+/* ── Pipeline graph in detail pane ──────────────────────────────────── */
 .phase-graph {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
 }
 
@@ -272,8 +375,9 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  font-size: 11px;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--text-muted);
 }
 
 .phase-graph-chip {
@@ -281,22 +385,36 @@ body {
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
-  color: #fff;
-  opacity: 0.4;
+  color: var(--text-on-chip);
+  opacity: 0.35;
+  transition: opacity 0.15s;
 }
 
 .phase-graph-chip.current {
   opacity: 1;
-  box-shadow: 0 0 0 2px #333;
+  box-shadow: 0 0 0 2px var(--accent-border);
 }
 
 .phase-graph-arrow {
-  font-size: 16px;
-  color: #bbb;
+  font-size: 14px;
+  color: var(--text-muted);
   line-height: 1;
 }
 
-/* ── by_phase cost breakdown ─────────────────────────────────────────── */
+/* ── Cost event count badge (rail cards) ─────────────────────────────── */
+.event-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-body);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+/* ── by_phase cost breakdown table ──────────────────────────────────── */
 .by-phase-table {
   width: 100%;
   border-collapse: collapse;
@@ -306,57 +424,100 @@ body {
 .by-phase-table th {
   text-align: left;
   font-weight: 600;
-  color: #666;
+  color: var(--text-muted);
   padding: 4px 8px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border);
 }
 
 .by-phase-table td {
-  padding: 4px 8px;
-  border-bottom: 1px solid #f5f5f5;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-secondary);
+}
+
+.by-phase-table td:last-child {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
 }
 
 /* ── Stage list ──────────────────────────────────────────────────────── */
 .stage-list {
   list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .stage-list li {
-  padding: 4px 0;
+  padding: 6px 10px;
   font-size: 13px;
-  border-bottom: 1px dotted #eee;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  background: var(--bg-card);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
 }
 
-.stage-list li:last-child {
-  border-bottom: none;
+.stage-list-name {
+  color: var(--text-primary);
+  font-weight: 500;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Sessions table ──────────────────────────────────────────────────── */
+.sessions-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.sessions-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.sessions-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  vertical-align: top;
+}
+
+.sessions-table td.mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
 }
 
 /* ── Loading / error states ──────────────────────────────────────────── */
 .loading {
-  color: #999;
+  color: var(--text-muted);
   font-style: italic;
-  padding: 20px;
+  padding: 24px;
+  text-align: center;
+}
+
+.empty-msg {
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 24px;
   text-align: center;
 }
 
 .error-msg {
-  color: #c62828;
+  color: var(--error-text);
   padding: 12px;
-  background: #ffebee;
-  border-radius: 4px;
+  background: rgba(198, 40, 40, 0.15);
+  border: 1px solid rgba(198, 40, 40, 0.3);
+  border-radius: 6px;
   font-size: 13px;
-}
-
-/* ── Dates ───────────────────────────────────────────────────────────── */
-.date-label {
-  font-size: 12px;
-  color: #666;
-}
-
-.date-value {
-  font-size: 12px;
-  font-weight: 500;
 }
