@@ -169,21 +169,40 @@ def _run_layer2_negative_safety() -> bool:
     else:
         _pass("Layer 2b: no bare '*.txt' catch-all glob as sweep iteration target")
 
-    # (c) 'lessons-learned.md' and 'forgotten/' not in allow-list section as sweep targets
-    if "lessons-learned.md" not in section:
-        _pass("Layer 2c: 'lessons-learned.md' NOT in allow-list section")
+    # (c) 'lessons-learned.md' not listed as a sentinel family (co-occurrence check)
+    # It's fine to mention it in "NEVER targets lessons-learned.md" prose — we only
+    # care that it's not named alongside sentinel family patterns as a sweep target.
+    family_list_pattern = re.compile(
+        r"(pending-restore|pending-prompt|compact-happened|mid-agent-handoff|"
+        r"pending-resume-ref|checkpoint-defer|postcompact-reset|checkpoint-pending-compact)"
+    )
+    lessons_in_family_context = any(
+        "lessons-learned" in line and family_list_pattern.search(line)
+        for line in section.splitlines()
+    )
+    if not lessons_in_family_context:
+        _pass(
+            "Layer 2c: 'lessons-learned.md' NOT listed alongside sentinel families in allow-list section"
+        )
     else:
         _fail(
-            "Layer 2c: 'lessons-learned.md' appears in the allow-list section — "
-            "it must not be listed as a sentinel family"
+            "Layer 2c: 'lessons-learned.md' appears in sentinel family context in allow-list section — "
+            "it must not be listed as a sweep target"
         )
         failures += 1
 
-    if "forgotten/" not in section:
-        _pass("Layer 2d: 'forgotten/' NOT in allow-list section")
+    # (d) 'forgotten/' not listed as a sentinel family target (co-occurrence check)
+    forgotten_in_family_context = any(
+        "forgotten/" in line and family_list_pattern.search(line)
+        for line in section.splitlines()
+    )
+    if not forgotten_in_family_context:
+        _pass(
+            "Layer 2d: 'forgotten/' NOT listed alongside sentinel families in allow-list section"
+        )
     else:
         _fail(
-            "Layer 2d: 'forgotten/' appears in the allow-list section — "
+            "Layer 2d: 'forgotten/' appears in sentinel family context in allow-list section — "
             "it must not be listed as a sweep target"
         )
         failures += 1
