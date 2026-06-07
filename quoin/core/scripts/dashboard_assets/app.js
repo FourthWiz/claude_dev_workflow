@@ -1,9 +1,43 @@
 /* quoin workflow dashboard — vanilla JS SPA, no CDN, no build step */
-/* SSE decision: polling-only (T-05 spike skipped per D-10 fallback).
-   No EventSource reference; setInterval drives live refresh (~3s). */
+/* Polling: unconditional every 3s (no diff-based polling in this redesign). */
 
 (function () {
   'use strict';
+
+  // ---------------------------------------------------------------------------
+  // T-04: normalizePhase() — port of _PHASE_TO_NODE from status_graph.py
+  // Keys are raw backend `phase` field values produced by detect_phase().
+  // ---------------------------------------------------------------------------
+  var PHASE_TO_NODE = {
+    'discover':        'discover',
+    'architecture':    'architect',
+    'planning':        'thorough_plan',
+    'plan-gated':      'thorough_plan',
+    'implement':       'implement',
+    'implement-gated': 'implement',
+    'review':          'review',
+    'review-gated':    'review',
+    'done':            'end_of_task',
+  };
+
+  function normalizePhase(phase) {
+    return PHASE_TO_NODE[phase] || 'discover';
+  }
+
+  // ---------------------------------------------------------------------------
+  // T-04: 6 canonical pipeline nodes (must match CSS class names)
+  // ---------------------------------------------------------------------------
+  var PIPELINE_NODES = ['discover', 'architect', 'thorough_plan', 'implement', 'review', 'end_of_task'];
+
+  // Human-friendly display labels for pipeline rail nodes
+  var NODE_DISPLAY = {
+    'discover':      'discover',
+    'architect':     'architect',
+    'thorough_plan': 'Plan',
+    'implement':     'implement',
+    'review':        'review',
+    'end_of_task':   'Done',
+  };
 
   // ---------------------------------------------------------------------------
   // State
@@ -14,6 +48,11 @@
     pollInterval: null,
     tasks: [],
     activeTask: null,
+    searchQuery: '',
+    detailLoaded: false,       // T-07: true after first successful detail render
+    lastDetail: null,          // T-07/T-08: cached detail payload for tab re-renders
+    selectedStage: null,       // T-08: selected stage tab (stage n value)
+    lastCardFingerprint: null, // T-07b: skip DOM mutation when structure unchanged on poll
   };
 
   // ---------------------------------------------------------------------------
@@ -47,53 +86,6 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Cost badge rendering (T-08, D-14)
-  // ---------------------------------------------------------------------------
-
-  function badgeText(cost) {
-    if (!cost || cost.mode === 'counts') {
-      var sessions = cost && cost.total != null ? cost.total : '?';
-      return sessions + ' sessions, cost unavailable';
-    }
-    if (cost.mode === 'usd' && cost.usd != null) {
-      return '$' + cost.usd.toFixed(2);
-    }
-    if (cost.mode === 'tokens' && cost.tokens != null) {
-      var m = (cost.tokens / 1e6).toFixed(2);
-      return m + 'M tokens';
-    }
-    return '—';
-  }
-
-  function badgeClass(cost) {
-    if (!cost || cost.mode === 'counts') return 'cost-badge cost-badge-counts';
-    if (cost.mode === 'usd') return 'cost-badge cost-badge-usd';
-    if (cost.mode === 'tokens') return 'cost-badge cost-badge-tokens';
-    return 'cost-badge cost-badge-counts';
-  }
-
-  // ---------------------------------------------------------------------------
-  // Phase chip
-  // ---------------------------------------------------------------------------
-
-  var PHASE_CSS = {
-    discover:  'phase-discover',
-    architect: 'phase-architect',
-    plan:      'phase-plan',
-    implement: 'phase-implement',
-    review:    'phase-review',
-    done:      'phase-done',
-  };
-
-  function phaseChip(phaseLabel, isCurrent) {
-    var cssKey = (phaseLabel || '').toLowerCase().replace(/[^a-z]/g, '');
-    var cls = PHASE_CSS[cssKey] || 'phase-default';
-    var currentCls = isCurrent ? ' current' : '';
-    return '<span class="phase-graph-chip ' + cls + currentCls + '">' +
-      escHtml(phaseLabel || '—') + '</span>';
-  }
-
-  // ---------------------------------------------------------------------------
   // HTML escape
   // ---------------------------------------------------------------------------
 
@@ -106,8 +98,35 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Date formatting
+  // T-06: Relative time
+  // Note: server emits local-time ISO strings (no tz suffix, from
+  // datetime.fromtimestamp().isoformat()). new Date(iso) parses as local time
+  // in browsers — correct match. If server gains tz-aware strings later,
+  // revisit this assumption to avoid silent skew.
   // ---------------------------------------------------------------------------
+
+  function relativeTime(iso) {
+    if (!iso) return '—';
+    try {
+      var now = Date.now();
+      var then = new Date(iso).getTime();
+      if (isNaN(then)) return iso;
+      var diffMs = now - then;
+      if (diffMs < 0) diffMs = 0;
+      var s = Math.floor(diffMs / 1000);
+      if (s < 60) return 'just now';
+      var m = Math.floor(s / 60);
+      if (m < 60) return m + 'm ago';
+      var h = Math.floor(m / 60);
+      if (h < 24) return h + 'h ago';
+      var d = Math.floor(h / 24);
+      if (d < 30) return d + 'd ago';
+      var mo = Math.floor(d / 30);
+      return mo + 'mo ago';
+    } catch (e) {
+      return iso;
+    }
+  }
 
   function fmtDate(iso) {
     if (!iso) return '—';
@@ -119,121 +138,337 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Task table rendering (T-08)
+  // T-04: Phase chip helper (for top-level task/detail objects)
+  // phase      = raw backend key (for normalizePhase → CSS class)
+  // phaseLabel = display string (task.phase_label or detail.phase_label)
   // ---------------------------------------------------------------------------
 
-  function renderTaskTable(data) {
+  function phaseChip(phase, phaseLabel) {
+    var node = normalizePhase(phase);
+    var cls = 'phase-chip phase-' + node;
+    return '<span class="' + cls + '">' + escHtml(phaseLabel || phase || '—') + '</span>';
+  }
+
+  // T-04: Stage pill — stage objects have only `phase` (raw key), no phase_label
+  function stagePill(stPhase) {
+    var node = normalizePhase(stPhase);
+    var cls = 'phase-chip phase-' + node;
+    return '<span class="' + cls + '">' + escHtml(stPhase || '—') + '</span>';
+  }
+
+  // ---------------------------------------------------------------------------
+  // T-06: Grammar helpers
+  // ---------------------------------------------------------------------------
+
+  function pluralEvents(n) {
+    return n === 1 ? '1 event' : n + ' events';
+  }
+
+  function pluralSessions(n) {
+    return n === 1 ? '1 session' : n + ' sessions';
+  }
+
+  // ---------------------------------------------------------------------------
+  // T-03: Task card rendering (replaces old 4-col table)
+  // ---------------------------------------------------------------------------
+
+  function renderCards(data, silent) {
     state.tasks = data.tasks || [];
     state.activeTask = data.active_task || null;
 
-    var container = document.getElementById('task-table');
+    var container = document.getElementById('task-card-list');
     if (!container) return;
 
-    if (!state.tasks.length) {
-      container.innerHTML = '<p class="loading">No tasks found under .workflow_artifacts/</p>';
+    // T-06: filter by search query
+    var query = state.searchQuery.toLowerCase().trim();
+    var visible = state.tasks.filter(function (t) {
+      return !query || t.name.toLowerCase().indexOf(query) !== -1;
+    });
+
+    if (state.tasks.length === 0) {
+      state.lastCardFingerprint = null;
+      container.innerHTML = '<p class="empty-msg">No tasks found under .workflow_artifacts/</p>';
       return;
     }
 
-    var rows = '';
-    for (var i = 0; i < state.tasks.length; i++) {
-      var t = state.tasks[i];
-      var isActive = t.name === state.activeTask;
-      var isFinalized = t.finalized || false;
-      var rowCls = 'task-row' +
-        (isActive ? ' active-row' : '') +
-        (isFinalized ? ' finalized-row' : '') +
-        (t.name === state.selectedTask ? ' selected-row' : '');
-
-      // Stage display: "stage N" for multi-stage, blank for single
-      var stageText = '';
-      if (t.is_multi_stage && t.stage != null) {
-        stageText = '<span class="task-stage">stage ' + t.stage + '</span>';
-      }
-
-      // Phase label
-      var phaseLabel = t.phase_label || t.phase || '—';
-      var phaseCssKey = (phaseLabel).toLowerCase().replace(/[^a-z]/g, '');
-      var phaseCls = PHASE_CSS[phaseCssKey] || 'phase-default';
-      var chipHtml = '<span class="phase-chip ' + phaseCls + '">' +
-        escHtml(phaseLabel) + '</span>';
-
-      // Cost badge
-      var badgeHtml = '<span class="' + badgeClass(t.cost) + '">' +
-        escHtml(badgeText(t.cost)) + '</span>';
-
-      // Last activity
-      var lastAct = fmtDate(t.last_activity);
-
-      rows += '<tr class="' + rowCls + '" data-name="' + escHtml(t.name) + '">' +
-        '<td><div class="task-name">' + escHtml(t.name) + '</div>' + stageText + '</td>' +
-        '<td>' + chipHtml + '</td>' +
-        '<td>' + badgeHtml + '</td>' +
-        '<td class="date-label">' + escHtml(lastAct) + '</td>' +
-        '</tr>';
+    if (visible.length === 0) {
+      state.lastCardFingerprint = null;
+      container.innerHTML = '<p class="empty-msg">No tasks match "' + escHtml(query) + '"</p>';
+      return;
     }
 
-    container.innerHTML =
-      '<table class="task-table">' +
-      '<thead><tr>' +
-      '<th>Task</th><th>Phase</th><th>Cost</th><th>Last activity</th>' +
-      '</tr></thead>' +
-      '<tbody>' + rows + '</tbody>' +
-      '</table>';
+    // T-07b: structural fingerprint — excludes relative time (changes every ~60s).
+    // If structure is unchanged on a silent poll, only update time spans in-place.
+    var fingerprint = query + '|' + JSON.stringify(visible.map(function (t) {
+      return [t.name, t.phase, t.phase_label, t.finalized, t.stage,
+              t.cost && t.cost.total, t.name === state.selectedTask];
+    }));
 
-    // Attach click handlers
-    var trs = container.querySelectorAll('tr.task-row');
-    for (var j = 0; j < trs.length; j++) {
-      trs[j].addEventListener('click', onTaskRowClick);
+    if (silent && fingerprint === state.lastCardFingerprint) {
+      // Nothing structural changed — update only the relative-time spans in-place
+      var existingCards = container.querySelectorAll('.task-card[data-name]');
+      for (var ei = 0; ei < existingCards.length; ei++) {
+        var eName = existingCards[ei].getAttribute('data-name');
+        for (var eti = 0; eti < state.tasks.length; eti++) {
+          if (state.tasks[eti].name === eName) {
+            var metaEl = existingCards[ei].querySelector('.task-card-meta');
+            if (metaEl) metaEl.textContent = relativeTime(state.tasks[eti].last_activity);
+            break;
+          }
+        }
+      }
+      return;
+    }
+
+    state.lastCardFingerprint = fingerprint;
+
+    // T-07: save scroll position before wiping innerHTML
+    var _savedScroll = container.scrollTop;
+
+    var html = '';
+    for (var i = 0; i < visible.length; i++) {
+      var t = visible[i];
+      var isFinalized = t.finalized || false;
+      var isSelected = t.name === state.selectedTask;
+
+      // T-07b: card-entering (animation) only on user-triggered renders, not polls
+      var cardCls = 'task-card' +
+        (silent ? '' : ' card-entering') +
+        (isFinalized ? ' finalized-card' : '') +
+        (isSelected ? ' selected-card' : '');
+
+      // T-03: cost badge — show USD or tokens when available, fall back to row count
+      var costBadgeText = null;
+      if (t.cost) {
+        if (t.cost.mode === 'usd' && t.cost.usd != null && t.cost.usd > 0) {
+          costBadgeText = '$' + t.cost.usd.toFixed(2);
+        } else if (t.cost.mode === 'tokens' && t.cost.tokens != null && t.cost.tokens > 0) {
+          costBadgeText = (t.cost.tokens / 1e6).toFixed(1) + 'M tok';
+        } else if (t.cost.total != null) {
+          costBadgeText = pluralEvents(t.cost.total);
+        }
+      }
+      var evtBadge = costBadgeText != null
+        ? '<span class="cost-badge">' + escHtml(costBadgeText) + '</span>'
+        : '';
+
+      // T-03: active stage label (multi-stage only)
+      var stageHtml = '';
+      if (t.is_multi_stage && t.stage != null) {
+        stageHtml = '<span class="task-card-stage">stage ' + escHtml(String(t.stage)) + '</span>';
+      }
+
+      // T-04: phase pill — CSS class from normalizePhase(task.phase), display from task.phase_label
+      var chipHtml = phaseChip(t.phase, t.phase_label);
+
+      // T-06: relative time
+      var timeHtml = '<span class="task-card-meta">' + escHtml(relativeTime(t.last_activity)) + '</span>';
+
+      // T-06: staggered animation via CSS custom property --i
+      html += '<div class="' + cardCls + '" role="listitem" data-name="' + escHtml(t.name) + '"' +
+        ' style="--i:' + i + '" tabindex="0">' +
+        '<div class="task-card-name" title="' + escHtml(t.name) + '">' + escHtml(t.name) + '</div>' +
+        '<div class="task-card-row">' +
+          chipHtml +
+          stageHtml +
+          evtBadge +
+          timeHtml +
+        '</div>' +
+        '</div>';
+    }
+
+    container.innerHTML = html;
+    // T-07: restore scroll so poll updates don't jump to top
+    container.scrollTop = _savedScroll;
+
+    // Attach click + keyboard handlers
+    var cards = container.querySelectorAll('.task-card');
+    for (var j = 0; j < cards.length; j++) {
+      cards[j].addEventListener('click', onCardClick);
+      cards[j].addEventListener('keydown', onCardKeydown);
     }
   }
 
-  function onTaskRowClick(e) {
-    var tr = e.currentTarget;
-    var name = tr.getAttribute('data-name');
+  function onCardClick(e) {
+    var card = e.currentTarget;
+    var name = card.getAttribute('data-name');
     if (!name) return;
     state.selectedTask = name;
-    // Re-render table to update selected highlight
-    refreshTaskList();
-    loadTaskDetail(name);
+    state.selectedStage = null;       // T-08: reset tab selection on task switch
+    state.lastCardFingerprint = null; // T-07b: force re-render to update selected-card highlight
+    refreshTaskList(false);           // non-silent — animate, update selection highlight
+    loadTaskDetail(name, false);      // T-07: non-silent — show spinner, reset scroll
+  }
+
+  function onCardKeydown(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onCardClick(e);
+    }
   }
 
   // ---------------------------------------------------------------------------
-  // Detail pane rendering (T-09)
+  // T-05: Detail pane rendering
   // ---------------------------------------------------------------------------
 
   function renderDetailPane(detail) {
     var pane = document.getElementById('detail-pane');
     if (!pane) return;
 
-    var html = '<div class="detail-title">' + escHtml(detail.name || '—') + '</div>';
+    var html = '';
 
-    // Meta line
-    var meta = [];
-    if (detail.phase_label) meta.push('Phase: ' + escHtml(detail.phase_label));
-    if (detail.linear) meta.push('Linear: ' + escHtml(detail.linear));
-    html += '<div class="detail-meta">' + meta.join(' · ') + '</div>';
+    // T-05: Hero — large task name + phase pill + dates
+    html += '<div class="detail-hero">';
+    html += '<div class="detail-hero-name">' + escHtml(detail.name || '—') + '</div>';
+    html += '<div class="detail-hero-row">' +
+      phaseChip(detail.phase, detail.phase_label) +
+    '</div>';
+    var firstAct = detail.dates && detail.dates.first_activity;
+    var lastAct  = detail.dates && detail.dates.last_activity;
+    html += '<div class="detail-hero-dates">' +
+      'First: ' + escHtml(fmtDate(firstAct)) +
+      ' &nbsp;·&nbsp; Last: ' + escHtml(fmtDate(lastAct)) +
+    '</div>';
+    html += '</div>'; // end .detail-hero
 
-    // Phase graph (pipeline phases with active one marked)
+    // T-05: Stats grid — sessions (UUID-deduped), critic rounds, review rounds
+    var ledgerRows = detail.ledger_rows || [];
+    var sessionCount;
+    var sessionLabel;
+    if (ledgerRows.length > 0) {
+      // True session count: unique UUIDs across ledger rows
+      var uuidSet = {};
+      for (var ri = 0; ri < ledgerRows.length; ri++) {
+        var uuid = ledgerRows[ri].uuid;
+        if (uuid) uuidSet[uuid] = true;
+      }
+      sessionCount = Object.keys(uuidSet).length;
+      sessionLabel = pluralSessions(sessionCount);
+    } else {
+      // Fallback: use cost.total row count, label as "events"
+      var totalRows = (detail.cost && detail.cost.total != null) ? detail.cost.total : 0;
+      sessionCount = totalRows;
+      sessionLabel = pluralEvents(totalRows);
+    }
+
+    var criticRounds = detail.critic_rounds != null ? detail.critic_rounds : '—';
+    var reviewRounds = detail.review_rounds != null ? detail.review_rounds : '—';
+
+    // Cost summary for stats-grid: show USD or tokens when available
+    var costStatValue = '—';
+    var costStatLabel = 'cost';
+    if (detail.cost) {
+      if (detail.cost.mode === 'usd' && detail.cost.usd != null && detail.cost.usd > 0) {
+        costStatValue = '$' + detail.cost.usd.toFixed(2);
+        costStatLabel = 'cost (USD)';
+      } else if (detail.cost.mode === 'tokens' && detail.cost.tokens != null && detail.cost.tokens > 0) {
+        costStatValue = (detail.cost.tokens / 1e6).toFixed(1) + 'M';
+        costStatLabel = 'tokens';
+      } else if (detail.cost.total != null) {
+        costStatValue = String(detail.cost.total);
+        costStatLabel = 'ledger rows';
+      }
+    }
+
+    html += '<div class="stats-grid">' +
+      '<div class="stat-cell"><div class="stat-value">' + escHtml(String(sessionCount)) + '</div>' +
+        '<div class="stat-label">' + (ledgerRows.length > 0 ? 'sessions' : 'events') + '</div></div>' +
+      '<div class="stat-cell"><div class="stat-value">' + escHtml(String(criticRounds)) + '</div>' +
+        '<div class="stat-label">critic rounds</div></div>' +
+      '<div class="stat-cell"><div class="stat-value">' + escHtml(String(reviewRounds)) + '</div>' +
+        '<div class="stat-label">review rounds</div></div>' +
+      '<div class="stat-cell"><div class="stat-value">' + escHtml(costStatValue) + '</div>' +
+        '<div class="stat-label">' + escHtml(costStatLabel) + '</div></div>' +
+    '</div>';
+
+    // T-04 / T-05: Pipeline graph — highlight node via normalizePhase(detail.phase)
     html += '<div class="detail-section"><h3>Pipeline</h3><div class="phase-graph">';
-    var allPhases = ['discover', 'architect', 'plan', 'implement', 'review', 'done'];
-    var currentPhase = (detail.phase_label || '').toLowerCase();
-    for (var pi = 0; pi < allPhases.length; pi++) {
-      var ph = allPhases[pi];
-      var isCurrent = ph === currentPhase || (
-        ph === 'implement' && (currentPhase === 'in-progress' || currentPhase === 'in_progress')
-      );
+    var activeNode = normalizePhase(detail.phase);
+    for (var pi = 0; pi < PIPELINE_NODES.length; pi++) {
+      var node = PIPELINE_NODES[pi];
+      var isCurrent = node === activeNode;
+      var displayLabel = NODE_DISPLAY[node] || node;
       html += '<div class="phase-graph-item">' +
-        '<div class="phase-graph-chip ' + (PHASE_CSS[ph] || 'phase-default') +
-        (isCurrent ? ' current' : '') + '">' + ph + '</div></div>';
-      if (pi < allPhases.length - 1) {
+        '<div class="phase-graph-chip phase-' + node + (isCurrent ? ' current' : '') + '">' +
+          escHtml(displayLabel) +
+        '</div>' +
+      '</div>';
+      if (pi < PIPELINE_NODES.length - 1) {
         html += '<span class="phase-graph-arrow">›</span>';
       }
     }
     html += '</div></div>';
 
-    // Cost breakdown by_phase (D-14: must branch on cost.mode)
+    // T-08: Stage tabs — clickable navigation; replaces flat stage list
+    var isMultiStage = detail.stages && detail.stages.length > 0;
+    if (isMultiStage) {
+      // Auto-select first stage when no tab is selected yet
+      if (state.selectedStage === null) {
+        state.selectedStage = detail.stages[0].n != null ? detail.stages[0].n : 1;
+      }
+
+      html += '<div class="detail-section"><h3>Stages</h3>';
+      html += '<div class="stage-tabs">';
+      for (var si = 0; si < detail.stages.length; si++) {
+        var st = detail.stages[si];
+        var stNum = st.n != null ? st.n : si + 1;
+        var isActive = stNum === state.selectedStage;
+        html += '<button class="stage-tab' + (isActive ? ' active' : '') + '"' +
+          ' data-stage-n="' + escHtml(String(stNum)) + '">' +
+          'Stage ' + escHtml(String(stNum)) + ': ' + escHtml(st.name || '—') +
+          '</button>';
+      }
+      html += '</div>'; // end .stage-tabs
+
+      // Find the selected stage and render its detail panel
+      var selSt = null;
+      for (var ssi = 0; ssi < detail.stages.length; ssi++) {
+        var ssn = detail.stages[ssi].n != null ? detail.stages[ssi].n : ssi + 1;
+        if (ssn === state.selectedStage) { selSt = detail.stages[ssi]; break; }
+      }
+
+      if (selSt !== null) {
+        html += '<div class="stage-detail-panel">';
+        html += '<div class="stage-detail-header">' +
+          '<strong>' + escHtml(selSt.name || 'Stage ' + state.selectedStage) + '</strong>' +
+          '&nbsp;&nbsp;' + stagePill(selSt.phase) +
+          '</div>';
+
+        // Cost table (all stages combined — per-stage breakdown requires schema change)
+        var sCost = detail.cost;
+        if (sCost && sCost.by_phase && Object.keys(sCost.by_phase).length > 0) {
+          html += '<p class="stage-cost-note">Cost breakdown — all stages combined</p>';
+          html += '<table class="by-phase-table"><thead><tr><th>Phase</th><th>Cost</th></tr></thead><tbody>';
+          var sByPhase = sCost.by_phase;
+          var sPhases = Object.keys(sByPhase).sort();
+          for (var spi = 0; spi < sPhases.length; spi++) {
+            var sph = sPhases[spi];
+            var sval = sByPhase[sph];
+            var scell;
+            if (sCost.mode === 'counts') {
+              scell = (typeof sval === 'number' ? sval : '?') + ' events';
+            } else if (sCost.mode === 'usd') {
+              scell = '$' + ((sval && sval.usd != null) ? sval.usd.toFixed(2) : '?');
+            } else if (sCost.mode === 'tokens') {
+              scell = ((sval && sval.tokens != null) ? (sval.tokens / 1e6).toFixed(2) : '?') + 'M tokens';
+            } else {
+              scell = JSON.stringify(sval);
+            }
+            html += '<tr><td>' + escHtml(sph) + '</td><td>' + escHtml(scell) + '</td></tr>';
+          }
+          html += '</tbody></table>';
+        }
+
+        html += '</div>'; // end .stage-detail-panel
+      }
+
+      html += '</div>'; // end .detail-section
+    }
+
+    // T-05: Cost by phase breakdown — shown for single-stage tasks only
+    // (multi-stage tasks show cost inside the stage detail panel above)
     var cost = detail.cost;
-    if (cost && cost.by_phase && Object.keys(cost.by_phase).length > 0) {
+    if (!isMultiStage && cost && cost.by_phase && Object.keys(cost.by_phase).length > 0) {
       html += '<div class="detail-section"><h3>Cost by phase</h3>';
       html += '<table class="by-phase-table"><thead><tr><th>Phase</th><th>Cost</th></tr></thead><tbody>';
       var byPhase = cost.by_phase;
@@ -243,8 +478,8 @@
         var val = byPhase[bph];
         var cellText;
         if (cost.mode === 'counts') {
-          // val is plain int (flat shape, counts mode)
-          cellText = (typeof val === 'number' ? val : '?') + ' sessions';
+          // val is plain int (flat shape in counts mode)
+          cellText = (typeof val === 'number' ? val : '?') + ' events';
         } else if (cost.mode === 'usd') {
           // val is {"usd": float} (nested shape)
           var usdVal = (val && val.usd != null) ? val.usd.toFixed(2) : '?';
@@ -261,71 +496,59 @@
       html += '</tbody></table></div>';
     }
 
-    // Stages list
-    if (detail.stages && detail.stages.length > 0) {
-      html += '<div class="detail-section"><h3>Stages</h3><ul class="stage-list">';
-      for (var si = 0; si < detail.stages.length; si++) {
-        var st = detail.stages[si];
-        var stPhaseLabel = st.phase_label || st.phase || '—';
-        var stPhaseCls = PHASE_CSS[(stPhaseLabel).toLowerCase()] || 'phase-default';
-        html += '<li><span>Stage ' + escHtml(String(st.n != null ? st.n : si + 1)) + '</span>' +
-          '<span class="phase-chip ' + stPhaseCls + '">' + escHtml(stPhaseLabel) + '</span></li>';
-      }
-      html += '</ul></div>';
-    }
-
-    // Ledger rows (session metadata)
-    var rows = detail.ledger_rows || [];
-    if (rows.length > 0) {
-      html += '<div class="detail-section"><h3>Sessions (' + rows.length + ')</h3>';
-      html += '<table class="by-phase-table"><thead><tr><th>Date</th><th>Phase</th><th>Model/effort</th><th>Note</th></tr></thead><tbody>';
-      var maxRows = Math.min(rows.length, 20);
-      for (var ri = 0; ri < maxRows; ri++) {
-        var row = rows[ri];
-        // Note: the key is model_or_effort, NOT model
+    // T-05: Sessions / ledger rows table — uses model_or_effort (NOT model); P6 fix: not duplicated
+    if (ledgerRows.length > 0) {
+      html += '<div class="detail-section"><h3>Sessions (' + escHtml(pluralSessions(sessionCount)) + ', ' +
+        ledgerRows.length + ' rows)</h3>';
+      html += '<table class="sessions-table"><thead><tr>' +
+        '<th>Date</th><th>Phase</th><th>Model/effort</th><th>Note</th>' +
+      '</tr></thead><tbody>';
+      var maxRows = Math.min(ledgerRows.length, 20);
+      for (var li = 0; li < maxRows; li++) {
+        var row = ledgerRows[li];
+        // model_or_effort is the correct API field (not model)
         html += '<tr>' +
           '<td>' + escHtml(row.date || '—') + '</td>' +
           '<td>' + escHtml(row.phase || '—') + '</td>' +
-          '<td>' + escHtml(row.model_or_effort || '—') + '</td>' +
+          '<td class="mono">' + escHtml(row.model_or_effort || '—') + '</td>' +
           '<td>' + escHtml(row.note || '') + '</td>' +
-          '</tr>';
+        '</tr>';
       }
-      if (rows.length > 20) {
-        html += '<tr><td colspan="4" style="color:#888;font-style:italic">… and ' +
-          (rows.length - 20) + ' more</td></tr>';
+      if (ledgerRows.length > 20) {
+        html += '<tr><td colspan="4" style="color:var(--text-muted);font-style:italic">… and ' +
+          (ledgerRows.length - 20) + ' more rows</td></tr>';
       }
       html += '</tbody></table></div>';
     }
-
-    // Dates
-    html += '<div class="detail-section"><h3>Activity</h3>';
-    html += '<table class="by-phase-table"><tbody>';
-    html += '<tr><td class="date-label">First activity</td><td class="date-value">' +
-      escHtml(fmtDate(detail.dates && detail.dates.first_activity)) + '</td></tr>';
-    html += '<tr><td class="date-label">Last activity</td><td class="date-value">' +
-      escHtml(fmtDate(detail.dates && detail.dates.last_activity)) + '</td></tr>';
-    html += '</tbody></table></div>';
 
     pane.innerHTML = html;
   }
 
   // ---------------------------------------------------------------------------
-  // Data loading + polling (T-09: polling unconditional, D-10)
+  // Data loading + polling (unconditional 3s — D-10)
   // ---------------------------------------------------------------------------
 
-  function refreshTaskList() {
+  function refreshTaskList(silent) {
     fetchJSON(tasksUrl(state.includeFinalized), function (err, data) {
       if (err) {
         console.warn('dashboard: task list fetch error:', err.message);
+        var container = document.getElementById('task-card-list');
+        if (container && !state.tasks.length) {
+          container.innerHTML = '<p class="error-msg">Error loading tasks: ' +
+            escHtml(err.message) + '</p>';
+        }
         return;
       }
-      renderTaskTable(data);
+      renderCards(data, silent);
     });
   }
 
-  function loadTaskDetail(name) {
+  // T-07: silent=true on poll (no spinner, scroll preserved); false on explicit selection
+  function loadTaskDetail(name, silent) {
     var pane = document.getElementById('detail-pane');
-    if (pane) pane.innerHTML = '<p class="loading">Loading…</p>';
+    // T-07: save scroll before fetch (innerHTML not changed yet on silent path)
+    var _paneScroll = (silent && pane) ? pane.scrollTop : 0;
+    if (!silent && pane) pane.innerHTML = '<p class="loading">Loading…</p>';
 
     fetchJSON(taskDetailUrl(name), function (err, data) {
       if (err) {
@@ -333,16 +556,47 @@
           escHtml(err.message) + '</p>';
         return;
       }
+      state.lastDetail = data;        // T-08: cache for tab re-renders
       renderDetailPane(data);
+      // T-08: reattach stage tab click handlers after every innerHTML replacement
+      _attachStageTabHandlers();
+      // T-07: restore scroll position on silent poll updates
+      if (silent && pane) pane.scrollTop = _paneScroll;
+      state.detailLoaded = true;
     });
+  }
+
+  // T-08: attach click handlers on .stage-tab buttons inside the detail pane
+  function _attachStageTabHandlers() {
+    var pane = document.getElementById('detail-pane');
+    if (!pane) return;
+    var tabs = pane.querySelectorAll('.stage-tab');
+    for (var ti = 0; ti < tabs.length; ti++) {
+      tabs[ti].addEventListener('click', onStageTabClick);
+    }
+  }
+
+  // T-08: handle stage tab click — update selected stage and re-render in place
+  function onStageTabClick(e) {
+    var btn = e.currentTarget;
+    var n = parseInt(btn.getAttribute('data-stage-n'), 10);
+    if (!isNaN(n) && state.lastDetail) {
+      state.selectedStage = n;
+      var pane = document.getElementById('detail-pane');
+      var _scroll = pane ? pane.scrollTop : 0;
+      renderDetailPane(state.lastDetail);
+      _attachStageTabHandlers();
+      // preserve scroll when switching tabs
+      if (pane) pane.scrollTop = _scroll;
+    }
   }
 
   function startPolling() {
     if (state.pollInterval) clearInterval(state.pollInterval);
     state.pollInterval = setInterval(function () {
-      refreshTaskList();
+      refreshTaskList(true);  // T-07b: silent — no animation, no DOM mutation if unchanged
       if (state.selectedTask) {
-        loadTaskDetail(state.selectedTask);
+        loadTaskDetail(state.selectedTask, true);  // T-07: silent — preserve scroll
       }
     }, 3000);
   }
@@ -352,19 +606,31 @@
   // ---------------------------------------------------------------------------
 
   function init() {
-    // Wire up finalized toggle
+    // Finalized toggle
     var toggle = document.getElementById('show-finalized');
     if (toggle) {
       toggle.addEventListener('change', function () {
         state.includeFinalized = toggle.checked;
-        refreshTaskList();
+        state.lastCardFingerprint = null; // T-07b: force full re-render on filter change
+        refreshTaskList(false);           // user-triggered — show animation
       });
     }
 
-    // Initial load
-    refreshTaskList();
+    // T-06: Search input
+    var search = document.getElementById('task-search');
+    if (search) {
+      search.addEventListener('input', function () {
+        state.searchQuery = search.value;
+        // Re-render current tasks with filter applied (no new fetch needed)
+        state.lastCardFingerprint = null; // T-07b: search change forces full re-render
+        renderCards({ tasks: state.tasks, active_task: state.activeTask }, false);
+      });
+    }
 
-    // Start polling (~3s, unconditional — polling-only per D-10)
+    // Initial load (non-silent — animate cards on first render)
+    refreshTaskList(false);
+
+    // Start polling (~3s, unconditional — D-10)
     startPolling();
   }
 

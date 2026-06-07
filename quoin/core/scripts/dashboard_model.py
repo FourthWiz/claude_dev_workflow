@@ -194,7 +194,9 @@ def _stage_info(task_dir: Path) -> dict:
     Returns:
       {
         "is_multi_stage": bool,
-        "stages": [{"n": int, "name": str, "phase": str}, ...] (empty if single-stage)
+        "stages": [{"n": int, "name": str, "phase": str,
+                    "critic_rounds": int, "review_rounds": int}, ...]
+        (empty if single-stage)
       }
     """
     arch_path = task_dir / "architecture.md"
@@ -228,11 +230,21 @@ def _stage_info(task_dir: Path) -> dict:
             stage_dir = task_path(task_dir.name, stage=stage_n, project_root=_proj_root)
             phase_result = detect_phase(stage_dir)
             phase = phase_result.phase
+            critic_rounds = phase_result.critic_rounds
+            review_rounds = phase_result.review_rounds
         except Exception:
             # If resolution fails, skip this stage
             phase = "unknown"
+            critic_rounds = 0
+            review_rounds = 0
 
-        stages.append({"n": stage_n, "name": stage_name, "phase": phase})
+        stages.append({
+            "n": stage_n,
+            "name": stage_name,
+            "phase": phase,
+            "critic_rounds": critic_rounds,
+            "review_rounds": review_rounds,
+        })
 
     return {"is_multi_stage": True, "stages": stages}
 
@@ -290,6 +302,16 @@ def _task_summary(
     # Stage info
     stage_info = _stage_info(task_dir)
 
+    # For multi-stage tasks, aggregate critic/review rounds across stages.
+    # detect_phase(task_dir) only scans top-level files; critic/review artifacts
+    # live in stage-N/ subdirs and are invisible from the root scan.
+    if stage_info["is_multi_stage"] and stage_info["stages"]:
+        critic_rounds = sum(s.get("critic_rounds", 0) for s in stage_info["stages"])
+        review_rounds = sum(s.get("review_rounds", 0) for s in stage_info["stages"])
+    else:
+        critic_rounds = phase_result.critic_rounds
+        review_rounds = phase_result.review_rounds
+
     # Last activity: ISO-8601 from max mtime, or None if 0.0
     max_mtime = _max_artifact_mtime(task_dir)
     last_activity = None
@@ -308,8 +330,8 @@ def _task_summary(
         "name": task_name,
         "phase": phase,
         "phase_label": phase_label,
-        "critic_rounds": phase_result.critic_rounds,
-        "review_rounds": phase_result.review_rounds,
+        "critic_rounds": critic_rounds,
+        "review_rounds": review_rounds,
         "is_multi_stage": stage_info["is_multi_stage"],
         "stage": active_stage,
         "last_activity": last_activity,

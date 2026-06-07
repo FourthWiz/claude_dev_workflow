@@ -240,6 +240,79 @@ def test_stage_info_multi_stage(tmp_path):
     assert info["stages"][0]["name"] == "core model"
     assert info["stages"][1]["n"] == 2
     assert info["stages"][1]["name"] == "provider integration"
+    # Each stage dict must include critic_rounds and review_rounds
+    for st in info["stages"]:
+        assert "critic_rounds" in st
+        assert "review_rounds" in st
+
+
+def test_stage_info_critic_review_rounds_aggregated(tmp_path):
+    """Multi-stage tasks aggregate critic/review rounds from stage subdirs."""
+    root = tmp_path / "project"
+    root.mkdir()
+
+    task_dir = root / ".workflow_artifacts" / "my-task"
+    task_dir.mkdir(parents=True)
+
+    arch_text = """# Arch\n\n## Stage decomposition\n\n1. S-01: stage one\n2. S-02: stage two\n"""
+    (task_dir / "architecture.md").write_text(arch_text)
+
+    # stage-1: 2 critic rounds, 1 review round
+    s1 = task_dir / "stage-1"
+    s1.mkdir()
+    (s1 / "current-plan.md").write_text("")
+    (s1 / "critic-response-1.md").write_text("")
+    (s1 / "critic-response-2.md").write_text("")
+    (s1 / "review-1.md").write_text("")
+
+    # stage-2: 1 critic round, 0 review rounds (needs current-plan.md so
+    # detect_phase enters "planning" phase and reports critic_rounds)
+    s2 = task_dir / "stage-2"
+    s2.mkdir()
+    (s2 / "current-plan.md").write_text("")
+    (s2 / "critic-response-1.md").write_text("")
+
+    info = _stage_info(task_dir)
+
+    assert info["is_multi_stage"] is True
+    assert info["stages"][0]["critic_rounds"] == 2
+    assert info["stages"][0]["review_rounds"] == 1
+    assert info["stages"][1]["critic_rounds"] == 1
+    assert info["stages"][1]["review_rounds"] == 0
+
+
+def test_task_summary_multi_stage_rounds_aggregated(tmp_path):
+    """_task_summary sums critic/review rounds across stages for multi-stage tasks."""
+    root = tmp_path / "project"
+    root.mkdir()
+
+    task_dir = root / ".workflow_artifacts" / "my-task"
+    task_dir.mkdir(parents=True)
+
+    arch_text = """# Arch\n\n## Stage decomposition\n\n1. S-01: stage one\n2. S-02: stage two\n"""
+    (task_dir / "architecture.md").write_text(arch_text)
+    make_ledger(task_dir, [("u1", "2026-01-01", "plan", "opus", "note", 0)])
+
+    # stage-1: 2 critic rounds, 1 review
+    s1 = task_dir / "stage-1"
+    s1.mkdir()
+    (s1 / "critic-response-1.md").write_text("")
+    (s1 / "critic-response-2.md").write_text("")
+    (s1 / "review-1.md").write_text("")
+
+    # stage-2: 1 critic round (current-plan.md required so detect_phase enters
+    # "planning" phase and actually reports critic_rounds; without it the phase
+    # is "discover" which unconditionally returns critic_rounds=0)
+    s2 = task_dir / "stage-2"
+    s2.mkdir()
+    (s2 / "current-plan.md").write_text("")
+    (s2 / "critic-response-1.md").write_text("")
+
+    summary = _task_summary(root, task_dir, "my-task", cost_provider=None)
+
+    # Total: stage-1 (2 critic + 1 review) + stage-2 (1 critic) = 3 critic, 1 review
+    assert summary["critic_rounds"] == 3
+    assert summary["review_rounds"] == 1
 
 
 def test_stage_info_single_stage(tmp_path):
