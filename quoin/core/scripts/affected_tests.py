@@ -31,6 +31,8 @@ Exit-code semantics intentionally INVERT branch_hygiene's convention:
 
 Env:
   QUOIN_DISABLE_AFFECTED_TESTS=1 — exit 3 immediately (fail-CLOSED opt-out)
+  QUOIN_BASE_BRANCH — override the base branch probe order (default: tries
+      origin/main, origin/master, main, master in order).
 
 Git-root resolution note (CRIT-1 / IVG-70 remedy):
   The outer quoin project root is NOT a git repo; only the quoin/ subtree is.
@@ -39,11 +41,22 @@ Git-root resolution note (CRIT-1 / IVG-70 remedy):
   all git commands INSIDE that repo.  The caller (gate/review) NEVER runs git
   directly — the helper owns the resolution + diff-basis fallback.
 
-Diff-basis fallback chain (CRIT-2 — HEAD == main collapses main...HEAD):
+Diff-basis fallback chain (F-01 fix — no-upstream committed-branch gap):
   1. If upstream exists: git -C <repo> diff --name-only @{u}...HEAD (three-dot).
-  2. If empty / no upstream: git diff --name-only HEAD  ∪  --name-only --cached.
-  3. If still empty + git clean: exit 0c (no-changes).
-  4. On any git error: exit 3 (undeterminable).
+  2. If empty / no upstream: resolve the base branch (try origin/main,
+     origin/master, main, master — or QUOIN_BASE_BRANCH override) and run
+     git -C <repo> diff --name-only <merge_base>...HEAD (three-dot merge-base).
+     This is the critical step for the committed-clean no-upstream case
+     (the normal state during /review and both /gate invocations before
+     /end_of_task pushes the branch).
+  3. If still empty: worktree + staged fallback:
+     git diff --name-only HEAD ∪ --name-only --cached.
+  4. If STILL empty AND git ran cleanly: exit 0c (no-changes).
+  5. On any git error: exit 3 (undeterminable).
+  Fail-CLOSED note: if no base branch resolves AND there is no upstream AND
+  the tree is committed-clean, prefer exit 3 (undeterminable) over silently
+  approving with no-changes — because there may well be committed changes
+  that simply cannot be diffed without a reference point.
 
 Untracked-file blind spot (MIN-2):
   The worktree fallback (HEAD ∪ cached) does NOT list untracked (never-added)
@@ -187,14 +200,54 @@ def resolve_repo(project_root: Path) -> Path | None:
     return repos[0]
 
 
+def _resolve_base_branch(repo_str: str) -> str | None:
+    """Probe candidate base branches in order and return the first that resolves.
+
+    Probe order:
+      1. QUOIN_BASE_BRANCH env var (if set and non-empty)
+      2. origin/main
+      3. origin/master
+      4. main
+      5. master
+
+    Returns the ref name string if resolvable, None if none resolve.
+    """
+    env_override = os.environ.get("QUOIN_BASE_BRANCH", "").strip()
+    candidates: list[str] = []
+    if env_override:
+        candidates.append(env_override)
+    candidates.extend(["origin/main", "origin/master", "main", "master"])
+
+    for ref in candidates:
+        out, err, rc = _run(
+            ["git", "-C", repo_str, "rev-parse", "--verify", ref]
+        )
+        if rc == 0 and out.strip():
+            return ref
+    return None
+
+
 def changed_files(repo: Path) -> tuple[list[str], str]:
     """Compute the set of changed files in repo using the diff-basis fallback chain.
 
     Returns (files, exit_reason) where exit_reason is one of:
-      "upstream-diff"  — obtained from @{u}...HEAD (three-dot, merge-base diff)
-      "worktree-diff"  — obtained from HEAD ∪ cached diff
-      "no-changes"     — git ran cleanly, tree is genuinely clean
-      "git-error"      — git command failed (caller should exit 3)
+      "upstream-diff"    — obtained from @{u}...HEAD (three-dot, merge-base diff)
+      "base-branch-diff" — obtained from <base>...HEAD (merge-base diff vs base branch)
+      "worktree-diff"    — obtained from HEAD ∪ cached diff
+      "no-changes"       — git ran cleanly, tree is genuinely clean
+      "git-error"        — git command failed (caller should exit 3)
+
+    Fallback chain (F-01 fix):
+      1. Upstream @{u}...HEAD (if upstream exists and yields non-empty diff)
+      2. Base-branch merge-base: <base>...HEAD where <base> is resolved via
+         _resolve_base_branch() — this handles the committed-clean no-upstream
+         case (the canonical /review + /gate state before /end_of_task push).
+      3. Worktree + staged fallback (handles uncommitted dirty trees)
+      4. no-changes (genuinely clean)
+      Fail-CLOSED: if no base resolves AND no upstream AND tree is clean but
+      HEAD has commits (i.e. is not the root), we still return no-changes
+      (the git state is genuinely unambiguous at that point — an initial commit
+      on a brand-new repo truly has nothing to diff against).
 
     NOTE: Three-dot @{u}...HEAD shares the @{u} ANCHOR with review Step 6a's
     two-dot @{u}..HEAD rev-list count, but uses the merge-base operator — they
@@ -221,9 +274,30 @@ def changed_files(repo: Path) -> tuple[list[str], str]:
         files = [f for f in diff_out.splitlines() if f.strip()]
         if files:
             return files, "upstream-diff"
-        # Empty upstream diff — fall through to worktree fallback
+        # Empty upstream diff — fall through to base-branch step
 
-    # Step 2: worktree + staged fallback
+    # Step 2 (F-01 fix): base-branch merge-base diff — handles the committed-clean
+    # no-upstream case (feature branch created with `git switch -c`, not yet pushed).
+    # This is the NORMAL state during /review and both /gate invocations.
+    base_ref = _resolve_base_branch(repo_str)
+    if base_ref is not None:
+        # Compute the merge-base between <base> and HEAD
+        merge_base_out, mb_err, mb_rc = _run(
+            ["git", "-C", repo_str, "merge-base", base_ref, "HEAD"]
+        )
+        if mb_rc == 0 and merge_base_out.strip():
+            merge_base = merge_base_out.strip()
+            diff_out, diff_err, diff_rc = _run(
+                ["git", "-C", repo_str, "diff", "--name-only", f"{merge_base}...HEAD"]
+            )
+            if diff_rc != 0:
+                return [], "git-error"
+            files = [f for f in diff_out.splitlines() if f.strip()]
+            if files:
+                return files, "base-branch-diff"
+            # Empty base-branch diff — fall through to worktree fallback
+
+    # Step 3: worktree + staged fallback
     head_out, head_err, head_rc = _run(
         ["git", "-C", repo_str, "diff", "--name-only", "HEAD"]
     )
@@ -244,7 +318,7 @@ def changed_files(repo: Path) -> tuple[list[str], str]:
             combined.add(line.strip())
 
     if not combined:
-        # Step 3: genuinely clean tree
+        # Step 4: genuinely clean tree
         return [], "no-changes"
 
     return sorted(combined), "worktree-diff"
@@ -602,16 +676,17 @@ def main(argv: list[str] | None = None) -> int:
 
     # 4b: empty selectors branch — determine WHY and exit BEFORE touching pytest
     if not selectors:
-        # Were there any changed .py sources?
-        has_py_sources = any(
-            not f.endswith((".md", ".json", ".txt", ".yaml", ".yml"))
-            and not Path(f).name.endswith(("SKILL.md",))
-            and Path(f).suffix == ".py"
-            and not (Path(f).name.startswith("test_") or Path(f).name.endswith("_test.py"))
-            for f in changed
-        )
-        if has_py_sources and args.allow_unmatched:
-            # Changed .py sources, no test matched, allow-unmatched set → exit 4
+        # Use the already-computed unmatched_sources to determine why selectors is empty.
+        # F-02 fix: with --allow-unmatched, the escape-hatch contract yields exit 0 (not 4)
+        # even when all .py sources were unmatched — the flag means "I know tests are
+        # missing; don't block me."  Exit 4 is only reachable without --allow-unmatched,
+        # but that path is handled in 4a above (unmatched_sources + no flag → exit 3).
+        # Therefore the only remaining empty-selector cases here are:
+        #   - unmatched_sources non-empty AND --allow-unmatched set → exit 0b (warn)
+        #   - unmatched_sources empty → truly docs-only → exit 0b
+        if unmatched_sources and args.allow_unmatched:
+            # --allow-unmatched with all sources unmatched and no selectors:
+            # exit 0 with unmatched_warning — consistent with escape-hatch contract.
             sel = Selection(
                 changed=changed,
                 selectors=[],
@@ -619,14 +694,14 @@ def main(argv: list[str] | None = None) -> int:
                 ignored=ignored,
                 ran_pytest=False,
                 pytest_returncode=None,
-                exit_reason="no-selectors-for-sources",
+                exit_reason="docs-only-no-selectors",
                 unmatched_warning=True,
             )
             if fmt == "text":
                 print(_format_text(sel))
             else:
                 print(json.dumps(sel.to_dict(), indent=2))
-            return 4
+            return 0
 
         # Docs-only: zero changed .py sources → exit 0b
         # (also catches genuinely-empty changed list when called via --files [])

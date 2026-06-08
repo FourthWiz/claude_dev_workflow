@@ -12,6 +12,10 @@ Coverage:
   - --select-only does not invoke pytest (ran_pytest=False)
   - git-root resolution (CRIT-1): outer non-git dir with child git repo
   - diff-basis fallback (CRIT-2): HEAD==main + dirty .py -> worktree fallback
+  - F-01 fix: committed .py source on branch with no upstream, clean worktree
+    -> base-branch-diff (NOT no-changes)
+  - F-01 end-to-end: committed-clean no-upstream branch + red test -> exit 1
+  - F-02 fix: --allow-unmatched + single unmatched source, empty selectors -> exit 0
   - exit-code matrix: 0a, 0c, 1, 4, 2
   - docs-only branch (MAJ-1): .md/.json/SKILL.md only -> exit 0, ran_pytest=False,
     pytest NOT invoked (subprocess.run spy), exit_reason=docs-only-no-selectors
@@ -215,6 +219,41 @@ class TestChangedFiles:
         files, reason = _at.changed_files(not_repo)
         assert reason == "git-error"
 
+    def test_committed_clean_no_upstream_returns_base_branch_diff(self, tmp_path):
+        """F-01 fix: committed .py change on branch with no upstream, clean worktree
+        -> base-branch-diff (NOT no-changes).
+
+        This is the canonical /review + /gate state: git switch -c creates a
+        feature branch without --track, so @{u} does not exist.  The gate's
+        'No uncommitted changes' check ensures the tree is committed-clean.
+        Before F-01, this yielded 'no-changes' -> false APPROVE with zero tests run.
+        After F-01, the base-branch merge-base step detects the committed change.
+        """
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git("init", "-b", "main", cwd=repo)
+        _git("config", "user.email", "test@test.com", cwd=repo)
+        _git("config", "user.name", "Test", cwd=repo)
+        # Commit a baseline on main
+        (repo / "base.py").write_text("# baseline\n")
+        _git("add", "base.py", cwd=repo)
+        _git("commit", "-m", "baseline", cwd=repo)
+        # Create a feature branch (no upstream — mirrors `git switch -c`)
+        _git("switch", "-c", "feature/my-change", cwd=repo)
+        # Commit a .py source change on the feature branch (committed-clean)
+        (repo / "src.py").write_text("def src(): return 42\n")
+        _git("add", "src.py", cwd=repo)
+        _git("commit", "-m", "add src.py", cwd=repo)
+        # Tree is clean: no uncommitted changes, no upstream
+
+        files, reason = _at.changed_files(repo)
+        assert "src.py" in files, (
+            f"F-01 regression: committed src.py not detected; got files={files}, reason={reason}"
+        )
+        assert reason == "base-branch-diff", (
+            f"Expected reason=base-branch-diff, got {reason}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # CLI exit-code matrix
@@ -349,6 +388,69 @@ class TestCLIExitCodes:
                    "--repo-root", str(tmp_path),
                    "--allow-unmatched"])
         assert rc == 0, f"Expected exit 0 with --allow-unmatched and passing tests, got {rc}"
+
+    def test_allow_unmatched_single_unmatched_no_selectors_exit_0(self, tmp_path):
+        """F-02 fix: --allow-unmatched + single unmatched .py source (no selectors)
+        -> exit 0, NOT exit 4.
+
+        The escape-hatch contract says --allow-unmatched "yields exit 0 when
+        affected pytest passes."  With empty selectors there is nothing to run,
+        so exit 0 with ran_pytest=False and unmatched_warning=true is the
+        consistent interpretation (the user opted in to 'I know tests are missing').
+        """
+        (tmp_path / "orphan.py").write_text("def orphan(): pass\n")
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = _cli(["--files", "orphan.py",
+                       "--repo-root", str(tmp_path),
+                       "--allow-unmatched"])
+        assert rc == 0, (
+            f"F-02 regression: expected exit 0 with --allow-unmatched + single "
+            f"unmatched source and no selectors, got {rc}"
+        )
+        data = json.loads(buf.getvalue())
+        assert data.get("unmatched_warning") is True, (
+            f"Expected unmatched_warning=true in output, got {data}"
+        )
+        assert data["ran_pytest"] is False
+
+    def test_f01_committed_clean_no_upstream_red_test_exit_1(self, tmp_path):
+        """F-01 end-to-end: committed-clean feature branch, no upstream, red test
+        -> exit 1 (affected suite RED), NOT exit 0 (false APPROVE).
+
+        Reproduces the exact hermetic scenario from review-1.md: a branch with a
+        committed change to src.py whose test_src.py asserts False.  Before F-01
+        this yielded exit 0 / no-changes.  After F-01 the red test is selected
+        via the base-branch merge-base diff and exit 1 is produced.
+        """
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git("init", "-b", "main", cwd=repo)
+        _git("config", "user.email", "test@test.com", cwd=repo)
+        _git("config", "user.name", "Test", cwd=repo)
+        # Baseline commit on main
+        (repo / "baseline.py").write_text("# baseline\n")
+        _git("add", "baseline.py", cwd=repo)
+        _git("commit", "-m", "baseline", cwd=repo)
+        # Feature branch (no upstream)
+        _git("switch", "-c", "feature/red-test", cwd=repo)
+        # Commit src.py + a red test (tree committed-clean, no upstream)
+        (repo / "src.py").write_text("def src(): return 42\n")
+        (repo / "test_src.py").write_text(
+            "def test_src_fails(): assert False, 'deliberate failure — F-01 regression guard'\n"
+        )
+        _git("add", "src.py", "test_src.py", cwd=repo)
+        _git("commit", "-m", "add src + red test", cwd=repo)
+        # Tree is clean: committed-clean, no upstream — the exact false-APPROVE state
+
+        # Use --project-root (outer non-git) to exercise the full pipeline
+        rc = _cli(["--project-root", str(tmp_path)])
+        assert rc == 1, (
+            f"F-01 regression: expected exit 1 (red affected test), got {rc}. "
+            f"If exit 0 is returned, the base-branch merge-base diff step is not firing "
+            f"and the committed-clean no-upstream false-APPROVE bug is still present."
+        )
 
     def test_disable_env_exit_3(self):
         """QUOIN_DISABLE_AFFECTED_TESTS=1 -> exit 3 + {"disabled": true}."""
