@@ -201,7 +201,7 @@ done
 [ -z "$PROJECT_ROOT" ] && PROJECT_ROOT="$(pwd)"   # fail-OPEN: fall back to cwd if no .workflow_artifacts/ ancestor found
 ```
 
-Do NOT use `path_resolve.py --project-root` (that flag is an input arg with no print-root mode — it exits 2 with empty stdout). Do NOT use `git rev-parse --show-toplevel` (project root is not a git repo). Use the walk-up above.
+Do NOT invoke `path_resolve.py` with `--project-root` (that flag is an input arg with no print-root mode — it exits 2 with empty stdout). Do NOT use `git rev-parse --show-toplevel` (project root is not a git repo). Use the walk-up above.
 
 **Step 2: Run the check**
 

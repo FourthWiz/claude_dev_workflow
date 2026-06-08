@@ -105,3 +105,66 @@ def test_adapter_skill_md_does_not_have_section_0_dispatch():
     assert "## §0" not in text, (
         "review adapter SKILL.md must not have a ## §0 heading (Opus-tier skill)"
     )
+
+
+# ── IVG-70: Branch-hygiene review backstop assertions ─────────────────────
+
+
+def test_review_adapter_has_step_6a_branch_placement():
+    """IVG-70 T-08 AC-1: review adapter SKILL.md must contain ### Step 6a branch placement backstop."""
+    text = ADAPTER_SKILL_MD.read_text(encoding="utf-8")
+    assert "### Step 6a" in text, (
+        "review adapter SKILL.md must contain '### Step 6a' (branch placement backstop). "
+        "IVG-70 T-06 edit is missing or was reverted."
+    )
+
+
+def test_review_adapter_step_6a_references_branch_hygiene():
+    """IVG-70 T-08 AC-1: Step 6a must reference branch_hygiene.py."""
+    text = ADAPTER_SKILL_MD.read_text(encoding="utf-8")
+    assert "branch_hygiene.py" in text, (
+        "review adapter SKILL.md must reference 'branch_hygiene.py' in the "
+        "Step 6a backstop. IVG-70 T-06 edit is missing or was reverted."
+    )
+
+
+def test_review_adapter_step_6a_is_diff_independent():
+    """IVG-70 T-08 AC-3: Step 6a must state it runs unconditionally/independently of the diff."""
+    text = ADAPTER_SKILL_MD.read_text(encoding="utf-8")
+    # The section must mention unconditional or independent execution
+    assert "unconditionally" in text or "independently" in text, (
+        "review adapter SKILL.md Step 6a must state it runs unconditionally / "
+        "independently of the git diff basis. IVG-70 T-06 AC-3 guard failed."
+    )
+
+
+def test_review_adapter_step_6a_uses_pwd_root():
+    """IVG-70 T-08 AC-1: Step 6a must use $(pwd) for root resolution (review runs inline)."""
+    text = ADAPTER_SKILL_MD.read_text(encoding="utf-8")
+    assert "$(pwd)" in text, (
+        "review adapter SKILL.md Step 6a must use '$(pwd)' for project root "
+        "(review runs inline at project-root cwd — no walk-up needed). "
+        "IVG-70 T-06 AC-1 guard failed."
+    )
+
+
+def test_review_core_doc_has_placement_backstop_rule():
+    """IVG-70 T-08 AC-2: core review.md Behavior contract must contain the backstop line."""
+    text = CORE_SKILL_DOC.read_text(encoding="utf-8")
+    assert "protected branch" in text, (
+        "core/skills/review.md must mention 'protected branch' in the Behavior contract. "
+        "IVG-70 T-06 core doc edit is missing or was reverted."
+    )
+
+
+def test_review_core_doc_no_adapter_specific_refs():
+    """IVG-70 T-08: core review.md must NOT contain branch_hygiene.py or __QUOIN_HOME__."""
+    text = CORE_SKILL_DOC.read_text(encoding="utf-8")
+    assert "branch_hygiene.py" not in text, (
+        "core/skills/review.md must NOT contain 'branch_hygiene.py' "
+        "(adapter-specific). IVG-70 adapter/core boundary violated."
+    )
+    assert "__QUOIN_HOME__" not in text, (
+        "core/skills/review.md must NOT contain '__QUOIN_HOME__' "
+        "(adapter-specific). IVG-70 adapter/core boundary violated."
+    )

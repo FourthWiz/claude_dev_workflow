@@ -85,7 +85,7 @@ stage-aware path resolver when locating phase artifacts.
 
 Before the first commit, the skill MUST verify no affected repo is on a protected branch (main/master). If one is, the skill MUST surface the choice to create a feature branch, defer to manual base selection, or override — it MUST NOT silently commit onto a protected branch.
 
-This check runs at each `/implement` dispatch entry (not per-commit). A branch switched mid-run after the check has passed is a known residual; the post-implementation gate is the enforcement layer that catches any task commits that land on a protected branch regardless of when the switch happened.
+This check runs at each implement dispatch entry (not per-commit). A branch switched mid-run after the check has passed is a known residual; the post-implementation gate is the enforcement layer that catches any task commits that land on a protected branch regardless of when the switch happened.
 
 The check is fail-OPEN: if the detection mechanism is unavailable, the skill proceeds without blocking.
 
