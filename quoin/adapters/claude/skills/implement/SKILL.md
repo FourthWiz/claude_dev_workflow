@@ -181,6 +181,57 @@ re-invoke manually.
 Do NOT silently keep going past 40 tool uses. Stream-idle timeouts
 produce partial responses that the parent cannot reliably recover.
 
+## §0b Branch-hygiene precheck (EARLY DETECTION — runs at dispatch entry, not per-commit)
+
+**Scope statement (honest):** This precheck is early detection at each `/implement` dispatch entry. It is NOT a per-commit guarantee — `/implement` makes "small, focused commits" throughout a session (see Incremental progress below) and the §0a scope-cap path re-dispatches fresh children. The precheck re-runs at each fresh dispatch entry, but it does NOT protect against a branch switch mid-run after the check passes. The REAL enforcement net is the `/gate` FAIL (§0b is the early warning + prompt; gate is the enforcement layer). `/review` is the final backstop.
+
+If `QUOIN_DISABLE_BRANCH_HYGIENE=1` is set, skip this section entirely and proceed to §1.
+
+**Step 1: Resolve project root (worktree-safe)**
+
+Under worktree-isolated `/implement` dispatch, `$(pwd)` is the WORKTREE (a single git repo), NOT the multi-repo project root. A bare `$(pwd)` passed to `--project-root` would silently miss sibling repos on a protected branch. Walk up from cwd to the nearest ancestor that contains `.workflow_artifacts/`:
+
+```bash
+PROJECT_ROOT=""
+d="$(pwd)"
+while [ "$d" != "/" ]; do
+  if [ -d "$d/.workflow_artifacts" ]; then PROJECT_ROOT="$d"; break; fi
+  d="$(dirname "$d")"
+done
+[ -z "$PROJECT_ROOT" ] && PROJECT_ROOT="$(pwd)"   # fail-OPEN: fall back to cwd if no .workflow_artifacts/ ancestor found
+```
+
+Do NOT use `path_resolve.py --project-root` (that flag is an input arg with no print-root mode — it exits 2 with empty stdout). Do NOT use `git rev-parse --show-toplevel` (project root is not a git repo). Use the walk-up above.
+
+**Step 2: Run the check**
+
+```bash
+python3 __QUOIN_HOME__/scripts/branch_hygiene.py --project-root "$PROJECT_ROOT"
+```
+
+Parse the JSON output. The check uses `repos[]` from the JSON and filters on `on_protected` (at implement start, before any commits, we prompt on `on_protected` — broader than the gate's `has_task_commits` check, which requires actual commits to have landed).
+
+**Step 3: Act on the result**
+
+- Exit 3, script missing, or any error → emit `[quoin: branch-hygiene precheck unavailable; proceeding]` and continue to §1. **Fail-OPEN — do NOT block.**
+- Exit 0 AND `any_on_protected == false` → silent, proceed to §1. (A clean repo legitimately on main with zero ahead commits is NOT a violation.)
+- `any_on_protected == true` (any repo is on a protected branch) → surface the choice:
+
+  **Benchmark dual-guard bypass:** if BOTH `QUOIN_GATE_AUTO_APPROVE=1` AND `QUOIN_BENCHMARK_RUN` (any non-empty value) are set (matching gate's dual-guard exactly — BOTH required), skip `AskUserQuestion`, auto-create `feat/{task-name}` in each flagged repo, emit `[quoin: branch-hygiene auto-branch for benchmark run]`, and proceed to §1.
+
+  Otherwise, present `AskUserQuestion`:
+  - Question: "One or more affected repos are on a protected branch (main/master): {flagged-repo-list}. Implementation commits must NOT land on a protected branch. How do you want to proceed?"
+  - Header: "Branch hygiene"; multiSelect: false
+  - Option 1: label `"Create feature branch from here"` — desc: "Create `feat/{task-name}` (or the Linear gitBranchName if known) off the current HEAD in each flagged repo, then continue. Use this for the normal case."
+  - Option 2: label `"I'll pick the base branch"` — desc: "Stacked-PR / non-main base case. Stop so you can branch manually (e.g. off the last open PR branch per the stacked-PR workflow), then re-invoke /implement."
+  - Option 3: label `"Proceed on protected branch anyway"` — desc: "Override. Continue committing on the protected branch (NOT recommended; review will flag it)."
+
+  On Option 1: for each flagged repo, run `git -C {repo} switch -c {branch}` where `{branch}` = Linear `gitBranchName` if discoverable from task/session context, else `feat/{task-name}`. If branch already exists, `git -C {repo} switch {branch}`. Echo the branch created per repo. Proceed to §1.
+
+  On Option 2: print `[quoin: branch-hygiene — user will set base branch manually; STOP]` and STOP. Do NOT proceed to §1.
+
+  On Option 3: print `[quoin: branch-hygiene override — proceeding on protected branch per user choice]` and proceed to §1.
+
 ## Explicit invocation only
 
 This skill MUST be explicitly invoked by the user typing `/implement`. No other skill may auto-invoke it. If you are an orchestrator or another skill and you think implementation should start — STOP and tell the user to run `/implement` themselves. This is a hard rule.

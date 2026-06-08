@@ -31,7 +31,7 @@ Runtime portability note: shared workflow semantics are being extracted under `q
 ### Git & PR Safety
 - **Never push to remote or create PRs outside of `/end_of_task` and `/pr`.** During implementation and review, only commit locally. Push happens as part of `/end_of_task` (which requires `/review` first). PR creation is handled by `/pr`, invoked explicitly by the user after `/end_of_task`. PR creation is always a separate explicit user action — never auto-create PRs.
 - **Use `/pr` to create pull requests.** After `/end_of_task` finalizes and pushes the branch, invoke `/pr` to create the PR (with optional version bump), wait for merge, and switch to the merge target branch.
-- **Always start each new task on a fresh branch.** Commit current work, switch to main, fetch latest, then create the new branch.
+- **Always start each new task on a fresh branch.** Commit current work, switch to main, fetch latest, then create the new branch. This is now ENFORCED, not just advisory: `/implement` runs a branch-hygiene precheck at dispatch entry (prompts if on a protected branch), `/gate` FAILS if task commits land on a protected branch (commits ahead of upstream on main/master), and `/review` flags it as a diff-independent backstop. See `branch_hygiene.py`.
 
 ### Communication
 - **Keep multi-step workflow progress verbose.** When working through plans, implementations, or multi-round processes, provide status updates at each step. Don't go silent during long operations.
@@ -182,6 +182,8 @@ Before starting any new task on a repo, always:
 5. Create a new branch for the task
 
 Clean working state before each task avoids mixing unrelated changes and working on stale code. At the start of every implementation task, run `git status` + `git branch` on each affected repo. Handle any dirty state before proceeding. This applies to ALL repos involved, not just the primary one.
+
+This rule is enforced at three layers: (1) `/implement` §0b branch-hygiene precheck prompts to create a feature branch if any repo is on a protected branch before the first commit; (2) `/gate` FAILS if task commits (commits ahead of upstream on main/master, i.e., `has_task_commits: true`) are detected on a protected branch post-implement; (3) `/review` flags it as a diff-independent backstop. The gate keys on the commits-ahead signal, NOT bare on-main status — a clean repo sitting on main with no ahead commits is NOT a violation. Env knobs: `QUOIN_PROTECTED_BRANCHES` (csv, default `main,master`), `QUOIN_DISABLE_BRANCH_HYGIENE=1` (global opt-out).
 
 #### Commit messages
 

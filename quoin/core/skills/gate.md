@@ -133,6 +133,10 @@ for Small and Medium tasks.
   comments) left in committed code.
 - No credentials or secrets in the diff.
 - No uncommitted changes.
+- No task commits on a protected branch (main/master): a repo that has
+  committed task work onto a protected branch (commits ahead of its upstream
+  on main/master) is a **blocking failure**. A clean repo merely sitting on
+  a protected branch with zero ahead-commits is NOT a failure (fail-OPEN).
 
 ### Full gate
 
@@ -146,6 +150,9 @@ review for all task sizes.
 - Branch is up to date with the base branch.
 - No merge conflicts.
 - Review verdict is APPROVED (for post-review gates only).
+- No task commits on a protected branch (main/master): same rule as Standard
+  gate — a repo with task commits ahead of its upstream on a protected branch
+  is a blocking failure; a clean on-main state is not.
 
 ## Gate checkpoints
 
