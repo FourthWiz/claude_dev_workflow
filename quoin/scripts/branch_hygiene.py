@@ -10,6 +10,8 @@ _CORE_PATH = Path(__file__).resolve().parents[1] / "core" / "scripts" / "branch_
 _SPEC = importlib.util.spec_from_file_location("_quoin_core_branch_hygiene", _CORE_PATH)
 _CORE = importlib.util.module_from_spec(_SPEC)
 assert _SPEC.loader is not None
+# Register in sys.modules before exec so @dataclasses.dataclass can resolve cls.__module__
+sys.modules[_SPEC.name] = _CORE
 _SPEC.loader.exec_module(_CORE)
 
 for _name in dir(_CORE):
