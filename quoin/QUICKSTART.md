@@ -21,6 +21,7 @@
 | `/end_of_day` | Saves session state, promotes captured insights |
 | `/weekly_review` | Aggregates the week's progress into a structured review |
 | `/capture_insight` | Logs a pattern or gotcha to the daily scratchpad |
+| `/cleanup` | Trash-move stale sentinels/old checkpoints; auto-runs in /checkpoint |
 | `/next-steps` | Append-only queue for future work items (`add` / `list` / `done N`) |
 | `/run` | End-to-end pipeline: discover → architect → plan → implement → review → end_of_task |
 | `/cost_snapshot` | Shows today's cost, project lifetime cost, and per-task breakdown |

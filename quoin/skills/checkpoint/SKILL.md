@@ -1,6 +1,6 @@
 ---
 name: checkpoint
-description: "General-purpose state-saving — save session-restore state mid-session before context exhaustion, between tasks, between sessions, or before starting new heavy work. Writes a pending-restore sentinel so a fresh session can resume exactly where you left off. Also surfaces pending-restore state on --restore. Use for: /checkpoint, 'save my place', 'checkpoint', 'save session', '/checkpoint --restore', 'restore checkpoint', 'resume from checkpoint'. Does NOT roll up dailies, does NOT touch lessons-learned.md or forgotten/."
+description: "General-purpose state-saving — save session-restore state mid-session before context exhaustion, between tasks, between sessions, or before starting new heavy work. Writes a pending-restore sentinel so a fresh session can resume exactly where you left off. Also surfaces pending-restore state on --restore. Auto-runs /cleanup on save (trash-moves stale sentinels/old checkpoints) unless --no-cleanup. Use for: /checkpoint, 'save my place', 'checkpoint', 'save session', '/checkpoint --restore', 'restore checkpoint', 'resume from checkpoint'. Does NOT roll up dailies, does NOT touch lessons-learned.md or forgotten/."
 model: haiku
 ---
 
@@ -117,6 +117,7 @@ Detect mode: if the user's invocation does NOT include `--restore`, run save mod
 **Arg parsing (first in save mode):** Scan the user's prompt for these flags:
 - `--mode restore` | `--mode load-as-reference` | `--mode mid-agent` → sets SELECTED_MODE
 - `--after-compact` → sets AFTER_COMPACT_FLAG_PRESENT=true (deprecated — see Step 0.5)
+- `--no-cleanup` → sets NO_CLEANUP=true (suppress Step 1.47 auto-cleanup)
 - If no `--mode` flag: SELECTED_MODE will be determined by auto-detection in Step 1.5
 
 ### Step 0.5: Post-compact flag (deprecated) and stale-marker cleanup
@@ -226,6 +227,41 @@ The hook forced-save (userpromptsubmit.sh STEP C2) is the independent backstop w
 
 This step determines which sentinel to write (restore, load-as-reference, or mid-agent).
 If `--mode` was explicitly passed, skip auto-detection and go to the dispatch at the end.
+
+### Step 1.47: Auto-cleanup (default-on)
+
+Rationale: running cleanup before the checkpoint write prevents `/checkpoint --restore` from resurrecting stale sessions' sentinels.
+
+**Compute util_bps independently (Step 1.47 MUST compute this itself — Step 1.45 is skipped when `--mode` is explicitly passed or `AFTER_COMPACT_FLAG_PRESENT=true`):**
+```sh
+. __QUOIN_HOME__/hooks/_lib.sh && read_constants && compute_utilization TRANSCRIPT_PATH
+if [ -z "$util_bps" ] || ! printf '%d' "$util_bps" >/dev/null 2>&1; then
+  util_bps=0  # fail-safe: proceed with cleanup on unknown util
+fi
+```
+
+**Skip cleanup if ANY condition holds:**
+- `NO_CLEANUP=true` (user passed `--no-cleanup`)
+- SELECTED_MODE == "mid-agent" (explicit `--mode mid-agent`; auto-detect mid-agent fires later in sub-step B — belt-and-suspenders)
+- `util_bps >= COMPACT_FIRST_BPS` (compress-first ordering: high-util => compress first, skip cleanup)
+- `util_bps >= PANIC_BPS` (defensive; panic STOP fires in Step 1.45 for the auto-detect path)
+
+On skip: emit one-line `[checkpoint] cleanup skipped (<reason>)` and proceed to sub-step A. Reason tokens: `--no-cleanup`, `mid-agent`, `high-util`, `panic`.
+
+**Else (cleanup runs):** Execute the `/cleanup` Core procedure (steps 1–7) inline:
+1. Resolve `MEMORY_DIR = <cwd>/.workflow_artifacts/memory`. If absent, skip.
+2. Source `. __QUOIN_HOME__/hooks/_lib.sh` (fail-OPEN: skip if missing).
+3. Acquire current UUID (same Step 1.1 procedure — reuse value if already computed). UUID unavailable → skip sentinel sweep (fail-safe: skip sentinels, proceed to checkpoint sweep).
+4. Sentinel sweep: for each of the 8 families (see `/cleanup` SKILL.md for the hardcoded allow-list), find under MEMORY_DIR `-maxdepth 1 -name '<family-glob>' -mtime +${QUOIN_CLEANUP_SENTINEL_WINDOW:-1} -print0`. For each: SKIP if suffix matches `-<current_uuid>.txt` (UUID check BEFORE age check). Else `trash_move "<path>" "$MEMORY_DIR"`.
+5. Checkpoint sweep: `find "${MEMORY_DIR}/checkpoints" -maxdepth 1 -name '*.md' ! -name '*.tmp' -mtime +${QUOIN_CLEANUP_CKPT_WINDOW:-30} -print0`. For each: `trash_move`.
+6. Emit: `[checkpoint] cleanup: trashed <S> sentinel(s) -> .workflow_artifacts/memory/, <C> checkpoint(s) -> .workflow_artifacts/memory/checkpoints/ (recover: mv .workflow_artifacts/memory/trash/<date>/<file> <original-dir>)`. Or `[checkpoint] cleanup: nothing stale to clean` if zero. Do NOT say "recoverable via /sleep --restore" — `/sleep --restore` only reads `forgotten/` text entries, not `trash/` files.
+7. No ledger row here (the outer `/checkpoint` Step 4 records the session).
+
+**CRITICAL invariant:** Step 1.47 runs BEFORE Step 2 writes the new checkpoint file. The about-to-be-written checkpoint cannot be in scope for cleanup. The current session's sentinels are UUID-protected.
+
+**Sub-step A reuse:** The existing sub-step A util_bps compute in Step 1.5 may reuse the value set by Step 1.47 (same variable); or re-source independently — both are acceptable.
+
+To preview what auto-cleanup would trash without running a full save: use `--no-cleanup` to suppress auto-fire, then run `/cleanup --dry-run` standalone.
 
 **Auto-detection sequence (only when SELECTED_MODE is unset):**
 
