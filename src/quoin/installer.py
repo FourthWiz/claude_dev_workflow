@@ -76,6 +76,7 @@ DEPLOYED_SCRIPTS = (
     "dashboard_cost.py",    # T-11: dashboard adapter cost provider (D-11)
     "dashboard_server.py",  # T-11: dashboard HTTP server (D-11)
     "branch_hygiene.py",   # IVG-70: branch hygiene check wrapper
+    "affected_tests.py",   # IVG-71: affected-area test selector + runner wrapper
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -299,6 +300,7 @@ CORE_SCRIPTS = (
     "dispatch_sidecar.py",        # wrapped impl; required by ~/.claude/scripts/dispatch_sidecar.py parents[1] loader
     "git_root_for_dispatch.py",   # wrapped impl; required by ~/.claude/scripts/git_root_for_dispatch.py parents[1] loader
     "branch_hygiene.py",          # wrapped impl; required by ~/.claude/scripts/branch_hygiene.py parents[1] loader
+    "affected_tests.py",          # IVG-71: wrapped impl; required by ~/.claude/scripts/affected_tests.py parents[1] loader
 )
 
 
