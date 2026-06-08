@@ -690,3 +690,34 @@ def test_assert_no_placeholders_passes_clean_deploy(tmp_path):
     (tmp_path / "skills" / "test.md").write_text("python3 /resolved/path/scripts/foo.py")
     violations = assert_no_placeholders(tmp_path)
     assert violations == []
+
+
+# ── IVG-67: DEPLOYED_SCRIPTS / CORE_SCRIPTS deployment parity guard ──────────
+
+def test_deployed_scripts_core_parity():
+    """Every DEPLOYED_SCRIPTS entry that has a core/scripts/ impl must be in CORE_SCRIPTS.
+
+    This guards against the IVG-67 class of bug: a wrapper script uses the
+    parents[1]/core/scripts/<name> loader, the core impl file exists in the
+    source tree, but the script is absent from CORE_SCRIPTS so deploy_core_scripts()
+    never copies it — causing FileNotFoundError at runtime.
+
+    The check is existence-gated: pure wrapper scripts with no core counterpart
+    (e.g. cost_from_jsonl.py, build_preambles.py) are intentionally exempt.
+    """
+    from quoin.installer import DEPLOYED_SCRIPTS, CORE_SCRIPTS
+
+    core_scripts_dir = REPO / "quoin" / "core" / "scripts"
+    violations = []
+    for fname in DEPLOYED_SCRIPTS:
+        if (core_scripts_dir / fname).exists() and fname not in CORE_SCRIPTS:
+            violations.append(fname)
+
+    assert violations == [], (
+        "The following scripts have a core impl but are missing from CORE_SCRIPTS; "
+        "the deployed wrapper will FileNotFoundError at runtime: "
+        + ", ".join(
+            f"{fname} (exists in core/scripts/ but not in CORE_SCRIPTS)"
+            for fname in violations
+        )
+    )
