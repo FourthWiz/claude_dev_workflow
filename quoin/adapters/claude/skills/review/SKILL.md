@@ -132,6 +132,23 @@ This is the most critical part. For each integration point affected by the chang
 
 If tests are missing for new code, flag this as a CRITICAL issue and list exactly what tests are needed.
 
+### Step 6a: Branch placement check (BACKSTOP — diff-independent, runs unconditionally)
+
+Run this check FIRST and UNCONDITIONALLY, independent of the `git diff <base-branch>...HEAD` diff basis. When HEAD literally IS the protected branch, `main...HEAD` collapses to empty and the diff-based path sees "nothing to review" — so this backstop MUST NOT rely on the diff.
+
+**This is a backstop:** detection should have happened earlier (implement-start prompt at §0b and gate FAIL). Review is the last line of defense, not the first.
+
+```bash
+PROJECT_ROOT="$(pwd)"
+python3 __QUOIN_HOME__/scripts/branch_hygiene.py --project-root "$PROJECT_ROOT"
+```
+
+- If exit 1 (any repo has `has_task_commits: true` — commits ahead of upstream on a protected branch): raise a MAJOR issue (branch placement backstop). Note: this should have been caught earlier; flag the gate gap as well.
+- If exit 0: no issue — proceed with the rest of the review.
+- If exit 3 or script missing: emit a non-blocking note and proceed — fail-OPEN.
+
+The `commits_ahead`/`has_task_commits` signal is computed from `@{u}..HEAD`, which is well-defined even when HEAD is the protected branch (it compares against the upstream, not a sibling ref), so this check works in exactly the state that breaks the diff basis.
+
 ### Step 6: Risk assessment
 
 Produce a risk assessment for the deployment:

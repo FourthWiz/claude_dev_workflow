@@ -281,6 +281,73 @@ def test_install_fresh_clone_lists_gate_in_migrated_skills():
     )
 
 
+# ── IVG-70: Branch-hygiene gate check assertions ──────────────────────────
+
+
+def test_gate_adapter_standard_gate_has_branch_hygiene():
+    """IVG-70 T-08 AC-1: Standard gate checklist must contain the branch hygiene check."""
+    text = _adapter_skill("gate").read_text(encoding="utf-8")
+    # Both Standard and Full gate sections must reference branch_hygiene.py
+    assert "branch_hygiene.py" in text, (
+        "gate adapter SKILL.md must reference 'branch_hygiene.py'. "
+        "IVG-70 T-05 edit is missing or was reverted."
+    )
+    # has_task_commits or commits-ahead FAIL wording must be present
+    assert "has_task_commits" in text, (
+        "gate adapter SKILL.md must contain 'has_task_commits' (the commits-ahead "
+        "FAIL signal, NOT bare on-protected). IVG-70 T-05 AC-2 guard failed."
+    )
+    # $(pwd) root resolution must be present (not path_resolve.py --project-root)
+    assert "$(pwd)" in text, (
+        "gate adapter SKILL.md must use '$(pwd)' for project root resolution "
+        "(gate runs inline at project-root cwd — no walk-up needed). "
+        "IVG-70 T-05 AC-1 guard failed."
+    )
+
+
+def test_gate_adapter_audit_enumeration_has_branch_hygiene():
+    """IVG-70 T-08 AC-4 (MIN-4): 'Branch hygiene' must appear in the ## Automated checks audit enumeration.
+
+    This is a distinct location from the Standard/Full gate checklists.
+    The literal string 'Branch hygiene' must appear in the audit-log body
+    description near '## Automated checks', not just in the Standard/Full sections.
+    """
+    text = _adapter_skill("gate").read_text(encoding="utf-8")
+    # The audit enumeration description (Step 5 format-kit compose block) must reference Branch hygiene
+    assert "Branch hygiene" in text, (
+        "gate adapter SKILL.md must contain the literal string 'Branch hygiene'. "
+        "IVG-70 T-05 MIN-4 guard: check name must be identical in both the "
+        "Standard/Full gate checklist AND the ## Automated checks audit enumeration."
+    )
+    # Confirm the string appears near the ## Automated checks audit context
+    # (not only in the Standard/Full sections)
+    automated_checks_idx = text.find("## Automated checks")
+    branch_hygiene_near_audit = text.find("Branch hygiene", automated_checks_idx)
+    assert branch_hygiene_near_audit != -1, (
+        "gate adapter SKILL.md must contain 'Branch hygiene' in or after the "
+        "'## Automated checks' audit enumeration section. "
+        "IVG-70 T-05 MIN-4 audit-location guard failed."
+    )
+
+
+def test_gate_core_doc_has_branch_hygiene():
+    """IVG-70 T-08 AC-3: core gate.md must contain the portable branch hygiene rule."""
+    text = _core_doc("gate").read_text(encoding="utf-8")
+    assert "protected branch" in text, (
+        "core/skills/gate.md must mention 'protected branch' in the gate level rules. "
+        "IVG-70 T-05 core doc edit is missing or was reverted."
+    )
+    # Core must NOT contain branch_hygiene.py or __QUOIN_HOME__ (adapter-specific)
+    assert "branch_hygiene.py" not in text, (
+        "core/skills/gate.md must NOT contain 'branch_hygiene.py' "
+        "(adapter-specific). IVG-70 adapter/core boundary violated."
+    )
+    assert "__QUOIN_HOME__" not in text, (
+        "core/skills/gate.md must NOT contain '__QUOIN_HOME__' "
+        "(adapter-specific). IVG-70 adapter/core boundary violated."
+    )
+
+
 def test_form_b_c_allowlist_lists_gate_at_adapter_path():
     """Guard that test_path_resolve_e2e.py lists gate at the adapter path.
 

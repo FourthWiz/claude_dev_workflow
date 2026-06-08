@@ -273,6 +273,131 @@ def test_install_fresh_clone_lists_implement_in_migrated_skills():
     )
 
 
+# ── IVG-70: Branch-hygiene precheck assertions ────────────────────────────
+
+
+def test_implement_adapter_has_section_0b():
+    """IVG-70 T-08: adapter SKILL.md must contain the §0b Branch-hygiene precheck heading."""
+    text = _adapter_skill("implement").read_text(encoding="utf-8")
+    assert "## §0b Branch-hygiene precheck" in text, (
+        "implement adapter SKILL.md must contain '## §0b Branch-hygiene precheck'. "
+        "The IVG-70 T-04 edit is missing or was reverted."
+    )
+
+
+def test_implement_adapter_references_branch_hygiene_script():
+    """IVG-70 T-08: §0b must reference branch_hygiene.py via __QUOIN_HOME__/scripts/."""
+    text = _adapter_skill("implement").read_text(encoding="utf-8")
+    assert "branch_hygiene.py" in text, (
+        "implement adapter SKILL.md must reference 'branch_hygiene.py'. "
+        "The IVG-70 T-04 script reference is missing."
+    )
+    assert "__QUOIN_HOME__/scripts/branch_hygiene.py" in text, (
+        "implement adapter SKILL.md must use '__QUOIN_HOME__/scripts/branch_hygiene.py' "
+        "(no literal ~/.claude/ path). IVG-70 T-04 edit is missing or regressed."
+    )
+
+
+def test_implement_adapter_section_0b_has_workflow_artifacts_walkup():
+    """IVG-70 T-08 AC-5: §0b must contain the .workflow_artifacts walk-up loop.
+
+    The walk-up is the worktree-safe root resolution (round-2 MAJ-1 fix):
+    under worktree-isolated dispatch $(pwd) is the worktree, not the project root.
+
+    Checks are scoped to the §0b block to avoid false positives from pre-existing
+    content in the §0 sidecar block (which legitimately contains path_resolve.py
+    invocations for other purposes).
+    """
+    import re
+    full_text = _adapter_skill("implement").read_text(encoding="utf-8")
+
+    # Extract the §0b block: from "## §0b " to the next "## " heading
+    section_0b_match = re.search(
+        r"(## §0b Branch-hygiene precheck.*?)(?=^## |\Z)",
+        full_text,
+        re.DOTALL | re.MULTILINE,
+    )
+    assert section_0b_match is not None, (
+        "implement adapter SKILL.md must contain '## §0b Branch-hygiene precheck'. "
+        "IVG-70 T-04 edit is missing or was reverted."
+    )
+    section_0b = section_0b_match.group(1)
+
+    # §0b must contain the .workflow_artifacts walk-up token
+    assert ".workflow_artifacts" in section_0b, (
+        "implement adapter SKILL.md §0b must contain '.workflow_artifacts' "
+        "(walk-up loop for worktree-safe root resolution). IVG-70 T-04 AC-5 failed."
+    )
+    # §0b must NOT pass bare $(pwd) directly to --project-root
+    bare_pwd_pattern = re.compile(r'--project-root\s+["\']?\$\(pwd\)["\']?')
+    assert not bare_pwd_pattern.search(section_0b), (
+        "implement adapter SKILL.md §0b must NOT pass bare $(pwd) directly to "
+        "branch_hygiene.py --project-root. Must use the walked-up $PROJECT_ROOT var. "
+        "IVG-70 T-04 AC-5 guard failed."
+    )
+    # §0b must NOT use path_resolve.py --project-root (CRIT-1 guard, scoped to §0b)
+    assert "path_resolve.py --project-root" not in section_0b, (
+        "implement adapter SKILL.md §0b must NOT use 'path_resolve.py --project-root' "
+        "(that flag has no print-root mode — exits 2 with empty stdout). "
+        "IVG-70 T-04 AC-4 CRIT-1 guard failed."
+    )
+
+
+def test_implement_adapter_section_0b_has_verbatim_option_labels():
+    """IVG-70 T-08 AC-3: the three AskUserQuestion option labels must appear verbatim."""
+    text = _adapter_skill("implement").read_text(encoding="utf-8")
+    labels = [
+        "Create feature branch from here",
+        "I'll pick the base branch",
+        "Proceed on protected branch anyway",
+    ]
+    for label in labels:
+        assert label in text, (
+            f"implement adapter SKILL.md §0b must contain verbatim option label: {label!r}. "
+            "IVG-70 T-08 AC-3 (drift test) failed — update label and test together."
+        )
+
+
+def test_implement_adapter_section_0b_fail_open_warning_present():
+    """IVG-70 T-08 AC-4: §0b must contain the fail-OPEN warning string."""
+    text = _adapter_skill("implement").read_text(encoding="utf-8")
+    assert "branch-hygiene precheck unavailable; proceeding" in text, (
+        "implement adapter SKILL.md §0b must contain the fail-OPEN warning string "
+        "'branch-hygiene precheck unavailable; proceeding'. IVG-70 T-08 AC-4 failed."
+    )
+
+
+def test_implement_adapter_section_0b_benchmark_dual_guard():
+    """IVG-70 T-08 AC-4: §0b must contain the benchmark dual-guard bypass string."""
+    text = _adapter_skill("implement").read_text(encoding="utf-8")
+    assert "branch-hygiene auto-branch for benchmark run" in text, (
+        "implement adapter SKILL.md §0b must contain the benchmark bypass string "
+        "'branch-hygiene auto-branch for benchmark run'. IVG-70 T-08 AC-4 failed."
+    )
+
+
+def test_implement_core_doc_has_branch_hygiene_section():
+    """IVG-70 T-08: core implement.md must contain the portable Branch hygiene section."""
+    text = _core_doc("implement").read_text(encoding="utf-8")
+    assert "## Branch hygiene" in text, (
+        "core/skills/implement.md must contain '## Branch hygiene' section. "
+        "IVG-70 T-04 core doc edit is missing or was reverted."
+    )
+
+
+def test_implement_core_doc_no_branch_hygiene_script_refs():
+    """IVG-70 T-08: core implement.md must NOT reference branch_hygiene.py or __QUOIN_HOME__."""
+    text = _core_doc("implement").read_text(encoding="utf-8")
+    assert "branch_hygiene.py" not in text, (
+        "core/skills/implement.md must NOT contain 'branch_hygiene.py' "
+        "(adapter-specific; keep core portable). IVG-70 adapter/core boundary violated."
+    )
+    assert "__QUOIN_HOME__" not in text, (
+        "core/skills/implement.md must NOT contain '__QUOIN_HOME__' "
+        "(adapter-specific; keep core portable). IVG-70 adapter/core boundary violated."
+    )
+
+
 def test_scope_cap_warnings_lists_implement_at_adapter_path():
     """Guard that test_scope_cap_warnings_present.py reads implement from the adapter path (T-12 edit).
 

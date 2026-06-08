@@ -65,6 +65,10 @@ Verdict is one of three closed values: `APPROVED`, `CHANGES_REQUESTED`,
   summary of the step's outcome to the user as its final message, independent
   of any gate rendering; the summary restates the artifact's substance in
   plain language because the stored artifact may be in a compressed format.
+- The review MUST flag, as at least a MAJOR issue, any task commits found on a
+  protected branch (a placement backstop computed independently of the review
+  diff basis — earlier phases should have caught it; if they didn't, this is the
+  last line of defense).
 
 ## Out of scope
 

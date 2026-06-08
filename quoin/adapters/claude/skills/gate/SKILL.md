@@ -180,6 +180,7 @@ Based on what exists and what's next, run the appropriate checks:
 - [ ] No debug code (console.log, debugger, print, TODO: remove)
 - [ ] No secrets in diff
 - [ ] No uncommitted changes
+- [ ] Branch hygiene — run `PROJECT_ROOT="$(pwd)"; python3 __QUOIN_HOME__/scripts/branch_hygiene.py --project-root "$PROJECT_ROOT"`. Exit 1 means a repo has commits ahead of its upstream while on a protected branch (`has_task_commits: true`) — this is a **blocking FAIL** (verdict FAIL); the work is mis-placed and must be recovered before review. Exit 0 (no task commits on a protected branch, including a clean repo legitimately on main with zero ahead commits) → PASS. Exit 3 or script missing → non-blocking ⚠️ WARN ("branch hygiene undeterminable"), do not fail (fail-OPEN).
 - [ ] Read the `## For human` summary block from `architecture.md` if it exists on disk AND contains a `## For human` block within the first 50 lines after frontmatter (per Step 3a below). Display as part of "Summary of what was produced" alongside the implementation deliverables. If `architecture.md` is v2-legacy or does not exist, skip silently.
 
 *Full gate (Large tasks) — includes everything in Standard, plus:*
@@ -187,6 +188,7 @@ Based on what exists and what's next, run the appropriate checks:
 - [ ] Run full test suite
 - [ ] Run type checker if applicable
 - [ ] Verify no unrelated file changes
+- [ ] Branch hygiene — run `PROJECT_ROOT="$(pwd)"; python3 __QUOIN_HOME__/scripts/branch_hygiene.py --project-root "$PROJECT_ROOT"`. Exit 1 means a repo has commits ahead of its upstream while on a protected branch (`has_task_commits: true`) — this is a **blocking FAIL** (verdict FAIL); the work is mis-placed and must be recovered before review. Exit 0 (no task commits on a protected branch, including a clean repo legitimately on main with zero ahead commits) → PASS. Exit 3 or script missing → non-blocking ⚠️ WARN ("branch hygiene undeterminable"), do not fail (fail-OPEN).
 - [ ] Read the `## For human` summary block from `architecture.md` if it exists AND was modified this task (per Step 3a below). Display as part of "Summary of what was produced". If `architecture.md` is v2-legacy or does not exist, skip silently.
 
 **After /review → before /end_of_task (Full gate — always, all task sizes):**
@@ -327,7 +329,7 @@ Reference files (apply HERE at the body-generation write-site, per format-kit.md
 # V-05 reminder: T-NN/D-NN/R-NN/F-NN/Q-NN/S-NN are FILE-LOCAL.
 # When referring to a sibling artifact's task or risk, use plain English (e.g., "the parent plan's T-04"), NOT a bare T-NN token. See format-kit.md §1 / glossary.md.
 Compose the format-aware body per format-kit.md §2 `gate-{phase}-{date}.md` enumeration:
-- `## Automated checks` — REQUIRED — terse numbered list with status glyphs ✓/✗ per check, brief detail per row.
+- `## Automated checks` — REQUIRED — terse numbered list with status glyphs ✓/✗ per check, brief detail per row. For post-implement gates this list MUST include a `Branch hygiene` entry (the check name is the literal string `Branch hygiene` — identical in both the Standard/Full checklist above and here in the audit enumeration; these must not drift).
 - `## Verdict` — REQUIRED — single word `PASS` or `FAIL`.
 - `## Failures requiring attention` — OPTIONAL — terse numbered list of blocking failures with remediation.
 - `## Warnings (non-blocking)` — OPTIONAL — terse numbered list of non-blocking issues.
