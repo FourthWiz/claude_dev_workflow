@@ -693,6 +693,11 @@ def regenerate_preambles(source_dir: pathlib.Path, *, allow_writes: bool) -> Non
     try:
         sys.argv = [str(script)]
         runpy.run_path(str(script), run_name="__main__")
+    except SystemExit as exc:
+        # Scripts end with sys.exit(main()); catch the successful exit (code 0) so it
+        # doesn't propagate and abort the caller.  Re-raise on any non-zero code.
+        if exc.code != 0:
+            raise
     finally:
         sys.argv = old_argv
     print(f"Regenerated subagent preambles in {source_dir}/skills/*/preamble.md")
@@ -715,6 +720,11 @@ def regenerate_pollution_dispatch(source_dir: pathlib.Path, *, allow_writes: boo
     try:
         sys.argv = [str(script)]
         runpy.run_path(str(script), run_name="__main__")
+    except SystemExit as exc:
+        # Scripts end with sys.exit(main()); catch the successful exit (code 0) so it
+        # doesn't propagate and abort the caller.  Re-raise on any non-zero code.
+        if exc.code != 0:
+            raise
     finally:
         sys.argv = old_argv
     print(f"Regenerated §0' Pollution dispatch in {source_dir}/adapters/claude/skills/*/SKILL.md")
