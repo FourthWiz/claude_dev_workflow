@@ -764,6 +764,7 @@ def install_dev_deps() -> None:
         )
         return
     pip_cmd = shutil.which("pip3") or shutil.which("pip")
+    assert pip_cmd is not None  # guaranteed: early return above covers the both-None case
     result = subprocess.run(
         [pip_cmd, "install", "--user", "--upgrade", "quoin[dev]"],
     )

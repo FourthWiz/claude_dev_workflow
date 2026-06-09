@@ -23,6 +23,8 @@ Exit codes:
   7  --check: drift detected (one or more adapter files missing §0' or token mismatch)
 """
 
+from __future__ import annotations
+
 import argparse
 import os
 import pathlib
