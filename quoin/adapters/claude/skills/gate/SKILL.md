@@ -104,7 +104,7 @@ Lightweight checks for plan completeness. Used after planning phases.
 ### Standard gate
 Moderate checks for implementation correctness. Used after `/implement` for Small and Medium tasks.
 - Run linter if configured
-- Run only tests affected by the changes (use git diff to identify changed files, then run tests that import/reference those files)
+- Run the affected-area test suite (BLOCKING hard precondition — see the `Affected-area test suite` checklist item in the post-implement Standard gate block below for invocation details and result mapping)
 - No debug code (console.log, debugger, print, TODO: remove)
 - No secrets in diff
 - No uncommitted changes
@@ -176,7 +176,17 @@ Based on what exists and what's next, run the appropriate checks:
 
 *Standard gate (Small and Medium tasks):*
 - [ ] Run linter if configured
-- [ ] Run affected tests only (identify from git diff)
+- [ ] Affected-area test suite (BLOCKING hard precondition for APPROVED): run:
+  ```
+  PROJECT_ROOT="$(pwd)"
+  python3 __QUOIN_HOME__/scripts/affected_tests.py --project-root "$PROJECT_ROOT" --format text
+  ```
+  The helper resolves the git repo from `--project-root` itself (CRIT-1 fix: the outer project root is NOT a git repo; the caller does NOT run `git` directly). Result mapping:
+  - exit 0 + `ran_pytest=true` → ✓ PASS: affected-area suite GREEN.
+  - exit 0 + `ran_pytest=false` → ✓ PASS / N/A: no affected tests to run (docs-only changeset or clean tree — no affected tests ran). Report "N/A — no affected tests" (not "tests green").
+  - exit 1 → ✗ BLOCKING FAIL: affected tests RED; verdict MUST be FAIL; gate MUST NOT pass.
+  - exit 3 or 4 → ⚠️ BLOCKING-SURFACE: affected-area suite undeterminable / no affected tests found for changed `.py` sources. Surface to the user; do NOT auto-pass. The user must explicitly acknowledge before the gate can proceed (fail-CLOSED rule: detection failure does not silently green-light).
+  - script missing (FileNotFoundError / not installed) → ⚠️ WARN non-blocking (fail-OPEN on absent binary only — a brand-new install lacking the script must not hard-block legacy tasks). This is the ONLY fail-OPEN carve-out; it is scoped strictly to "script binary absent", never to "script ran and could not confirm green".
 - [ ] No debug code (console.log, debugger, print, TODO: remove)
 - [ ] No secrets in diff
 - [ ] No uncommitted changes
@@ -185,7 +195,8 @@ Based on what exists and what's next, run the appropriate checks:
 
 *Full gate (Large tasks) — includes everything in Standard, plus:*
 - [ ] All planned tasks are implemented (cross-reference plan task list)
-- [ ] Run full test suite
+- [ ] Affected-area test suite (BLOCKING hard precondition — same invocation and result mapping as the Standard gate item above). The full repo suite (`pytest` whole tree) MAY carry pre-existing failures (e.g., `test_quoin_pollution_preamble.py`, `test_install_fresh_clone.py[bash]`) and is REPORTED but NON-BLOCKING for those known-baseline entries; the AFFECTED-AREA suite MUST be green and IS blocking. A red affected-area suite blocks even if the full suite is also red from known baselines.
+- [ ] Run full test suite (non-blocking for known pre-existing baseline failures per IVG-66/IVG-69 — report but do not auto-fail on those specific tests; a red affected-area suite is the hard block)
 - [ ] Run type checker if applicable
 - [ ] Verify no unrelated file changes
 - [ ] Branch hygiene — run `PROJECT_ROOT="$(pwd)"; python3 __QUOIN_HOME__/scripts/branch_hygiene.py --project-root "$PROJECT_ROOT"`. Exit 1 means a repo has commits ahead of its upstream while on a protected branch (`has_task_commits: true`) — this is a **blocking FAIL** (verdict FAIL); the work is mis-placed and must be recovered before review. Exit 0 (no task commits on a protected branch, including a clean repo legitimately on main with zero ahead commits) → PASS. Exit 3 or script missing → non-blocking ⚠️ WARN ("branch hygiene undeterminable"), do not fail (fail-OPEN).
@@ -196,6 +207,7 @@ Based on what exists and what's next, run the appropriate checks:
 - [ ] Read the `## For human` summary block from `review-<latest-round>.md` (per Step 3a below). Display as part of "Summary of what was produced" alongside the verdict. If `review-<round>.md` is v2-legacy, fall back to first 2 KB display.
 - [ ] All CRITICAL and MAJOR issues are resolved
 - [ ] Run full test suite (re-run — code may have changed during review fixes)
+- [ ] Affected-area test suite (re-run — review fixes may have changed code): run `python3 __QUOIN_HOME__/scripts/affected_tests.py --project-root "$(pwd)" --format text`; exit 0 with `ran_pytest=true` → PASS (affected suite green); exit 0 with `ran_pytest=false` → PASS / N/A (docs-only or clean tree — no affected tests to run); exit 1 → BLOCKING FAIL; exit 3 or 4 → BLOCKING-SURFACE (undeterminable / no affected tests for CHANGED `.py` sources — user must acknowledge, do NOT auto-pass); script missing → WARN non-blocking.
 - [ ] Run type checker if applicable
 - [ ] Branch is up to date with base branch
 - [ ] No merge conflicts
@@ -329,7 +341,7 @@ Reference files (apply HERE at the body-generation write-site, per format-kit.md
 # V-05 reminder: T-NN/D-NN/R-NN/F-NN/Q-NN/S-NN are FILE-LOCAL.
 # When referring to a sibling artifact's task or risk, use plain English (e.g., "the parent plan's T-04"), NOT a bare T-NN token. See format-kit.md §1 / glossary.md.
 Compose the format-aware body per format-kit.md §2 `gate-{phase}-{date}.md` enumeration:
-- `## Automated checks` — REQUIRED — terse numbered list with status glyphs ✓/✗ per check, brief detail per row. For post-implement gates this list MUST include a `Branch hygiene` entry (the check name is the literal string `Branch hygiene` — identical in both the Standard/Full checklist above and here in the audit enumeration; these must not drift).
+- `## Automated checks` — REQUIRED — terse numbered list with status glyphs ✓/✗/⚠️ per check, brief detail per row. For post-implement gates this list MUST include a `Branch hygiene` entry (the check name is the literal string `Branch hygiene` — identical in both the Standard/Full checklist above and here in the audit enumeration; these must not drift). For post-implement AND post-review gates this list MUST include an `Affected-area test suite` entry (the check name is the literal string `Affected-area test suite` — identical in the Standard gate checklist, Full gate checklist, post-review checklist, and here in the audit enumeration; these must not drift). The `Affected-area test suite` row is ALWAYS emitted (never silently dropped) regardless of exit code, including in the post-review gate audit log. Glyph mapping for the `Affected-area test suite` row: ✓ on exit 0 with `ran_pytest=true` (affected suite green); ✓ (annotate "N/A — no affected tests") on exit 0 with `ran_pytest=false` (docs-only or clean tree — still a PASS, but the row text MUST say "N/A — no affected tests" not "green", per MAJ-1); ✗ on exit 1 (red, blocking); ⚠️ on exit 3 or 4 (undeterminable / no affected tests for changed `.py` sources — blocking-surface); ⚠️ on script-missing (non-blocking warn).
 - `## Verdict` — REQUIRED — single word `PASS` or `FAIL`.
 - `## Failures requiring attention` — OPTIONAL — terse numbered list of blocking failures with remediation.
 - `## Warnings (non-blocking)` — OPTIONAL — terse numbered list of non-blocking issues.
