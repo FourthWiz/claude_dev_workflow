@@ -676,3 +676,145 @@ def test_open_dashboard_missing_server_noop(tmp_path: Path) -> None:
     )
     marker = tmp_path / "open_called.txt"
     assert not marker.exists(), "Browser opener should NOT be called when server is absent"
+
+
+# ============================================================
+# T-05 / T-06: _agentdesk_next_session_name tests (IVG-81)
+# ============================================================
+
+def _make_mock_env_with_sessions(tmp_path: Path, sessions: list) -> dict:
+    """Build a mock env with a controllable zellij list-sessions stub.
+
+    Writes the shared bare stubs for claude/codex/ccr FIRST, then overwrites
+    the zellij stub with a list-sessions-aware version AFTER.  This ordering
+    ensures the shared loop cannot clobber the controllable stub (ORDERING TRAP
+    guard per MAJ-2 in the plan).
+
+    Each session in `sessions` is emitted as a realistic decorated line, e.g.:
+      foo-agents [Created 3m ago] (EXITED - attach to resume)
+    This proves the sed-strip + awk first-column parse isolates the bare name
+    from real zellij output decoration (T-05/T-06(f) MIN-3 requirement).
+
+    The default _make_mock_env path keeps the bare exit-0 zellij stub so
+    existing tests are unaffected.
+    """
+    mock_bin = tmp_path / "mock_bin"
+    mock_bin.mkdir(exist_ok=True)
+
+    # Step 1: write bare stubs for non-zellij tools (loop does NOT include zellij)
+    for name in ("claude", "codex", "ccr"):
+        stub = mock_bin / name
+        stub.write_text("#!/bin/zsh\nexit 0\n")
+        stub.chmod(0o755)
+
+    # Step 2: write the controllable zellij stub AFTER the loop — ordering trap safe
+    # Emit one printf line per session so each decorated line is a separate output line.
+    # Using single-quoted strings in the stub to avoid shell expansion of special chars.
+    printf_lines = "".join(
+        f"  printf '%s\\n' '{s} [Created 3m ago] (EXITED - attach to resume)'\n"
+        for s in sessions
+    )
+    zellij_stub = mock_bin / "zellij"
+    zellij_stub.write_text(
+        "#!/bin/zsh\n"
+        'if [ "$1" = "list-sessions" ]; then\n'
+        + printf_lines +
+        "  exit 0\n"
+        "fi\n"
+        "exit 0\n"
+    )
+    zellij_stub.chmod(0o755)
+
+    env = {**os.environ, "PATH": f"{mock_bin}:{os.environ['PATH']}"}
+    env["PROJECT_ROOT"] = str(tmp_path)
+    env.pop("ZELLIJ", None)
+    env.pop("ZELLIJ_SESSION_NAME", None)
+    return env
+
+
+def _run_next_session_name(base: str, sessions: list, tmp_path: Path) -> subprocess.CompletedProcess:
+    """Source agentdesk.zsh and call _agentdesk_next_session_name BASE with controllable sessions."""
+    env = _make_mock_env_with_sessions(tmp_path, sessions)
+    script = f'source "{AGENTDESK_ZSH}"\n_agentdesk_next_session_name {base}'
+    return subprocess.run(
+        ["zsh", "-c", script],
+        env=env,
+        input="",
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=15,
+    )
+
+
+# T-06 (a): base free → no suffix
+def test_next_session_name_base_free(tmp_path: Path) -> None:
+    """_agentdesk_next_session_name returns base unchanged when no sessions exist."""
+    result = _run_next_session_name("foo-agents", [], tmp_path)
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    assert result.stdout.strip() == "foo-agents", (
+        f"Expected 'foo-agents', got: {result.stdout.strip()!r}"
+    )
+
+
+# T-06 (b): base taken → _1 (REACH-PROVING: if the ordering trap fires, sessions list is
+# empty, helper returns 'foo-agents' instead of 'foo-agents_1', and this test FAILS)
+def test_next_session_name_base_taken_returns_1(tmp_path: Path) -> None:
+    """_agentdesk_next_session_name returns BASE_1 when base is already taken.
+
+    This is the reach-proving assertion (MAJ-2): a passing result here proves the
+    controllable zellij stub's list-sessions output actually reaches the function.
+    If the ordering trap silently emptied the stub, this test would wrongly return
+    'foo-agents' and FAIL, catching the false-green.
+    """
+    result = _run_next_session_name("foo-agents", ["foo-agents"], tmp_path)
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    assert result.stdout.strip() == "foo-agents_1", (
+        f"Expected 'foo-agents_1' (reach-proving), got: {result.stdout.strip()!r}"
+    )
+
+
+# T-06 (c): base + _1 taken → _2
+def test_next_session_name_base_and_1_taken_returns_2(tmp_path: Path) -> None:
+    """_agentdesk_next_session_name returns BASE_2 when base and base_1 are both taken."""
+    result = _run_next_session_name("foo-agents", ["foo-agents", "foo-agents_1"], tmp_path)
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    assert result.stdout.strip() == "foo-agents_2", (
+        f"Expected 'foo-agents_2', got: {result.stdout.strip()!r}"
+    )
+
+
+# T-06 (d): custom --name collision
+def test_next_session_name_custom_name_collision(tmp_path: Path) -> None:
+    """_agentdesk_next_session_name returns myname_1 when myname is taken."""
+    result = _run_next_session_name("myname", ["myname"], tmp_path)
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    assert result.stdout.strip() == "myname_1", (
+        f"Expected 'myname_1', got: {result.stdout.strip()!r}"
+    )
+
+
+# T-06 (e): gap case — returns lowest free, not next after max
+def test_next_session_name_gap_case(tmp_path: Path) -> None:
+    """_agentdesk_next_session_name returns foo_1 (lowest free) when foo and foo_2 exist."""
+    result = _run_next_session_name("foo", ["foo", "foo_2"], tmp_path)
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    assert result.stdout.strip() == "foo_1", (
+        f"Expected 'foo_1' (lowest free), got: {result.stdout.strip()!r}"
+    )
+
+
+# T-06 (f): decorated-line parse (MIN-3) — realistic ANSI + suffix decoration
+def test_next_session_name_decorated_line_parse(tmp_path: Path) -> None:
+    """_agentdesk_next_session_name isolates bare name from realistic decorated zellij output.
+
+    The stub emits lines like 'foo-agents [Created 3m ago] (EXITED - attach to resume)'
+    proving the sed-strip + awk first-column parse correctly extracts 'foo-agents'
+    from real-shape zellij output decoration.
+    """
+    # With one decorated session line for 'foo-agents', helper should return 'foo-agents_1'
+    result = _run_next_session_name("foo-agents", ["foo-agents"], tmp_path)
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    assert result.stdout.strip() == "foo-agents_1", (
+        f"Expected 'foo-agents_1' (decorated-line parse), got: {result.stdout.strip()!r}"
+    )

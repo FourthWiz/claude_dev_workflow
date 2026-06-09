@@ -54,6 +54,25 @@ _zellij_session_exists() {
     | grep -Fxq "$session_name"
 }
 
+_agentdesk_next_session_name() {
+  local base="$1"
+  local existing
+  existing="$(zellij list-sessions 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | awk '{print $1}')"
+  if ! printf '%s\n' "$existing" | grep -Fxq "$base"; then
+    echo "$base"; return 0
+  fi
+  local n=1 candidate
+  while [ "$n" -le 9999 ]; do
+    candidate="${base}_${n}"
+    if ! printf '%s\n' "$existing" | grep -Fxq "$candidate"; then
+      echo "$candidate"; return 0
+    fi
+    n=$((n+1))
+  done
+  # bound exhausted — fall back to base_EPOCH so we never collide/hang
+  echo "${base}_$(date +%s)"; return 0
+}
+
 _detect_repos() {
   if [ -z "${PROJECT_ROOT:-}" ]; then
     export PROJECT_ROOT="$PWD"
@@ -463,6 +482,9 @@ Window types (positional):
   status   show workflow pipeline status graph
   ccr      start ccr code (OpenRouter via CCR) in pane
 
+Behavior:
+  Re-running in a folder with a live same-named session starts a NEW suffixed session (_1, _2, …); it never attaches.
+
 Examples:
   agentdesk
   agentdesk pricing
@@ -470,6 +492,9 @@ Examples:
   agentdesk claude codex shell
   agentdesk claude ccr shell
   agentdesk claude claude
+
+Resume:
+  agentdesk-attach SESSION-NAME   resume an existing session
 HELP
         return 0
         ;;
@@ -523,6 +548,15 @@ HELP
   if [ -z "$session_name" ]; then
     echo "Error: empty session name after sanitization."
     return 1
+  fi
+
+  # ── Resolve session name suffix (never auto-attach) ───────────────────────
+  local resolved_name
+  resolved_name="$(_agentdesk_next_session_name "$session_name")"
+  if [ "$resolved_name" != "$session_name" ]; then
+    echo "Session '$session_name' already exists; starting new session '$resolved_name' instead."
+    echo "(To resume the existing session: agentdesk-attach $session_name)"
+    session_name="$resolved_name"
   fi
 
   # ── Prepare workflow artifacts ─────────────────────────────────────────────
@@ -619,11 +653,7 @@ HELP
   # _agentdesk_open_dashboard self-skips on non-TTY and always returns 0.
   _agentdesk_open_dashboard
 
-  if _zellij_session_exists "$session_name"; then
-    PROJECT_ROOT="$project_root" zellij attach "$session_name"
-  else
-    PROJECT_ROOT="$project_root" zellij --new-session-with-layout "$layout_path" --session "$session_name"
-  fi
+  PROJECT_ROOT="$project_root" zellij --new-session-with-layout "$layout_path" --session "$session_name"
 }
 
 agentdesk-attach() {
