@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import textwrap
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 import pytest
 
@@ -124,7 +124,7 @@ def test_agentdesk_zsh_exists() -> None:
     assert AGENTDESK_ZSH.exists(), f"agentdesk.zsh not found at {AGENTDESK_ZSH}"
 
 
-def test_agentdesk_zsh_syntax(tmp_path: Path) -> None:
+def test_agentdesk_zsh_syntax() -> None:
     """zsh -n agentdesk.zsh passes (no syntax errors)."""
     result = subprocess.run(
         ["zsh", "-n", str(AGENTDESK_ZSH)],
