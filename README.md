@@ -411,8 +411,10 @@ agentdesk claude codex       # custom two-pane layout
 agentdesk claude claude      # two Claude panes side-by-side
 ```
 
-If Zellij is not running, agentdesk starts a new session. If the named session
-already exists, it reattaches.
+If Zellij is not running, agentdesk starts a new session. agentdesk never
+re-attaches: if a session with the chosen name already exists, it starts a
+fresh session with a numeric suffix (foo_1, foo_2, …). To resume an existing
+session, use `agentdesk-attach SESSION-NAME`.
 
 ## Architecture
 
