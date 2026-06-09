@@ -11,6 +11,43 @@ model: opus
 
 You scan all repositories in the project folder and produce a structured inventory that gets saved to memory. This is the "onboarding" step — run it once when you set up the workflow, and again whenever the repo landscape changes.
 
+## §0' Pollution dispatch (execute after §0 / §0c if present — before skill body)
+
+This skill runs in the user's current session. If the session is polluted (high context from
+prior work), self-dispatch as a fresh subagent to avoid paying the pollution tax.
+
+Detection:
+  - Read the most-recent session-state file: `.workflow_artifacts/memory/sessions/<today>-<task>.md`
+    OR the fallback `.workflow_artifacts/memory/pollution-score-latest.txt`.
+  - Parse the `pollution_score: N` field (integer).
+  - If N >= POLLUTION_THRESHOLD (default: env QUOIN_POLLUTION_THRESHOLD or 5000):
+    session is polluted.
+  - Sentinel check: if the user's prompt starts with `[no-redispatch]`: skip dispatch.
+  - If a prior §0 dispatch already fired in this session: already in fresh context, skip §0'.
+
+Dispatch action (when pollution detected AND no sentinel AND no prior §0 dispatch):
+  Determine dispatch contract fields:
+    - Use the current working directory as the project root absolute path.
+
+  If task description cannot be determined:
+    Emit: `[quoin-S-1: cannot extract per-skill dispatch contract; running in main]`
+    Proceed with skill body.
+
+  Otherwise spawn an Agent subagent:
+    model: "opus"
+    description: "discover — pollution-isolated dispatch"
+    prompt: "[no-redispatch]\n/discover <project root absolute path>"
+
+  Wait for the subagent. Return its output as your final response. STOP.
+
+Fail-OPEN path:
+  If Agent tool unavailable or errors:
+    Emit: `[quoin-S-1: pollution dispatch unavailable; proceeding in current session]`
+    Proceed with skill body.
+
+Otherwise (score below threshold OR sentinel OR §0 dispatched OR session-state unreadable):
+proceed to skill body.
+
 ## Model requirement
 
 Uses the strongest model (Opus) because understanding how services relate requires deep reasoning across multiple codebases.

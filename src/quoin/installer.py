@@ -77,6 +77,7 @@ DEPLOYED_SCRIPTS = (
     "dashboard_server.py",  # T-11: dashboard HTTP server (D-11)
     "branch_hygiene.py",   # IVG-70: branch hygiene check wrapper
     "affected_tests.py",   # IVG-71: affected-area test selector + runner wrapper
+    "inject_pollution_dispatch.py",  # IVG-69 Stage A: §0' Pollution dispatch generator (standalone, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS needed)
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -695,6 +696,28 @@ def regenerate_preambles(source_dir: pathlib.Path, *, allow_writes: bool) -> Non
     finally:
         sys.argv = old_argv
     print(f"Regenerated subagent preambles in {source_dir}/skills/*/preamble.md")
+
+
+def regenerate_pollution_dispatch(source_dir: pathlib.Path, *, allow_writes: bool) -> None:
+    """Regenerate §0' Pollution dispatch blocks in the 7 Opus-tier adapter SKILL.md files.
+
+    Must be called BEFORE deploy_skills so the freshly-injected adapter SKILL.md is the
+    file that deploy_skills copies to the deploy root (IVG-69, T-06, R-11).
+    """
+    if not allow_writes:
+        print("Skipping pollution dispatch regeneration (wheel install — using adapter files shipped in package)")
+        return
+    import runpy
+
+    script = source_dir / "scripts" / "inject_pollution_dispatch.py"
+    # Isolate sys.argv so inject_pollution_dispatch.py's argparse sees only its own script name
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = [str(script)]
+        runpy.run_path(str(script), run_name="__main__")
+    finally:
+        sys.argv = old_argv
+    print(f"Regenerated §0' Pollution dispatch in {source_dir}/adapters/claude/skills/*/SKILL.md")
 
 
 def assert_no_placeholders(dest_root: pathlib.Path) -> list[str]:

@@ -251,6 +251,10 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
     installer.deploy_memory(source_dir, dest_root)
     installer.deploy_quickstart(source_dir, dest_root)
 
+    # IVG-69 Stage A: regenerate §0' Pollution dispatch BEFORE deploy_skills so the
+    # freshly-injected adapter SKILL.md is what deploy_skills copies (T-06, R-11).
+    installer.regenerate_pollution_dispatch(source_dir, allow_writes=allow_writes)
+
     # T-05
     installer.deploy_skills(source_dir, dest_root)
     installer.deploy_scripts(source_dir, dest_root)

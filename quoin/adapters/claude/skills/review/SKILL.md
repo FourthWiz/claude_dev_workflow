@@ -11,6 +11,68 @@ model: opus
 
 You are a senior code reviewer using the strongest available model. Your job is to verify that the implementation is flawless, matches the plan, handles all edge cases, and is safe for production. You are thorough, precise, and constructive.
 
+## §0c Pidfile lifecycle
+
+This skill is Opus-tier (no §0 dispatch block). §0c is the only §0-class block in this file — it is both first and last.
+
+At entry — immediately after reading this block:
+
+```
+. __QUOIN_HOME__/scripts/pidfile_helpers.sh && pidfile_acquire review
+```
+
+If the script is missing or fails: emit one-line warning `[quoin-S-2: pidfile helpers unavailable; proceeding without lifecycle protection]` and continue without abort (fail-OPEN).
+
+At exit — call from every completion path AND every error/abort path:
+```
+pidfile_release review
+```
+
+Use a trap when the skill body involves bash-driven subagents:
+```
+trap 'pidfile_release review' EXIT
+```
+
+Purpose: lets `precompact.sh` hook know a `/review` session is active (for escalation from "block with warning" to "block with confidence").
+
+## §0' Pollution dispatch (execute after §0 / §0c if present — before skill body)
+
+This skill runs in the user's current session. If the session is polluted (high context from
+prior work), self-dispatch as a fresh subagent to avoid paying the pollution tax.
+
+Detection:
+  - Read the most-recent session-state file: `.workflow_artifacts/memory/sessions/<today>-<task>.md`
+    OR the fallback `.workflow_artifacts/memory/pollution-score-latest.txt`.
+  - Parse the `pollution_score: N` field (integer).
+  - If N >= POLLUTION_THRESHOLD (default: env QUOIN_POLLUTION_THRESHOLD or 5000):
+    session is polluted.
+  - Sentinel check: if the user's prompt starts with `[no-redispatch]`: skip dispatch.
+  - If a prior §0 dispatch already fired in this session: already in fresh context, skip §0'.
+
+Dispatch action (when pollution detected AND no sentinel AND no prior §0 dispatch):
+  Determine dispatch contract fields:
+    - Locate `current-plan.md` in the task directory (resolve via path_resolve.py).
+    - Get the current git branch (`git rev-parse --abbrev-ref HEAD`).
+
+  If task description cannot be determined:
+    Emit: `[quoin-S-1: cannot extract per-skill dispatch contract; running in main]`
+    Proceed with skill body.
+
+  Otherwise spawn an Agent subagent:
+    model: "opus"
+    description: "review — pollution-isolated dispatch"
+    prompt: "[no-redispatch]\n/review\nPlan path: <absolute path to current-plan.md>\nBranch: <current git branch>"
+
+  Wait for the subagent. Return its output as your final response. STOP.
+
+Fail-OPEN path:
+  If Agent tool unavailable or errors:
+    Emit: `[quoin-S-1: pollution dispatch unavailable; proceeding in current session]`
+    Proceed with skill body.
+
+Otherwise (score below threshold OR sentinel OR §0 dispatched OR session-state unreadable):
+proceed to skill body.
+
 ## Session bootstrap
 
 This skill should run in a fresh session for unbiased review (similar to /critic — fresh eyes catch more). On start:
