@@ -84,9 +84,11 @@ def test_install_sh_deploys_quickstart():
             "Deployed QUICKSTART.md is NOT byte-identical to quoin/QUICKSTART.md"
         )
 
-        # Success summary line asserted (MIN-4)
-        assert "QUICKSTART deployed to ~/.claude/QUICKSTART.md" in result.stdout, (
-            "install.sh stdout does not contain 'QUICKSTART deployed to ~/.claude/QUICKSTART.md'"
+        # Success summary line asserted (MIN-4); Python installer prints absolute dest path
+        # (IVG-69 Stage B retarget: was "~/.claude/QUICKSTART.md", now absolute path).
+        assert f"QUICKSTART deployed to {tmp_home}/.claude/QUICKSTART.md" in result.stdout, (
+            f"install.sh stdout does not contain 'QUICKSTART deployed to {tmp_home}/.claude/QUICKSTART.md'\n"
+            f"Actual stdout: {result.stdout[:800]}"
         )
 
 

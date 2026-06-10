@@ -1,4 +1,5 @@
 from pathlib import Path
+import _adapter_pilot_helpers
 
 THIS_FILE = Path(__file__).resolve()
 TESTS_DIR = THIS_FILE.parent
@@ -6,7 +7,6 @@ PKG_DIR = TESTS_DIR.parent.parent              # quoin/quoin/
 CORE_SKILL_DOC = PKG_DIR / "core" / "skills" / "review.md"
 ADAPTER_SKILL_MD = PKG_DIR / "adapters" / "claude" / "skills" / "review" / "SKILL.md"
 LEGACY_SKILL_MD = PKG_DIR / "skills" / "review" / "SKILL.md"
-INSTALL_SH = PKG_DIR / "install.sh"
 
 # review is Opus-tier — forbidden tokens mirror the existing pilot tests plus gh CLI.
 FORBIDDEN_TOKENS = ("~/.claude", "/review", "Haiku", "Sonnet", "Opus", "Agent", "gh CLI")
@@ -55,20 +55,9 @@ def test_adapter_skill_md_references_core_doc():
 
 
 def test_install_sh_has_review_override():
-    text = INSTALL_SH.read_text(encoding="utf-8")
-    assert "ADAPTER_REVIEW_SRC" in text, (
-        "install.sh missing ADAPTER_REVIEW_SRC variable"
-    )
-    assert 'elif [ "$skill_name" = "review" ]' in text, (
-        "install.sh missing per-skill override branch for review"
-    )
-    # Pre-flight check must appear before the skills loop.
-    preflight_idx = text.find("ADAPTER_REVIEW_SRC=")
-    loop_idx = text.find('for skill_dir in "$SCRIPT_DIR/skills"/*/')
-    assert preflight_idx != -1 and loop_idx != -1
-    assert preflight_idx < loop_idx, (
-        "Pre-flight existence check must appear BEFORE the skills loop"
-    )
+    # IVG-69 Stage B retarget: install.sh no longer carries ADAPTER_*_SRC vars.
+    # Assert the equivalent contract against installer.py logic instead.
+    _adapter_pilot_helpers.assert_installer_selects_adapter("review")
 
 
 def test_legacy_and_adapter_skill_md_differ():
@@ -97,13 +86,19 @@ def test_legacy_stub_frontmatter_byte_equals_adapter():
 
 
 def test_adapter_skill_md_does_not_have_section_0_dispatch():
-    """review is Opus-tier — MUST NOT carry the §0 Model dispatch block."""
+    """review is Opus-tier — MUST NOT carry the §0 Model dispatch block.
+
+    §0' Pollution + §0c Pidfile are valid on Opus-tier; only §0 Model dispatch
+    is forbidden (IVG-69 Stage B retarget).
+    """
     text = ADAPTER_SKILL_MD.read_text(encoding="utf-8")
     assert "§0 Model dispatch" not in text, (
         "review adapter SKILL.md must not carry §0 dispatch block (Opus-tier skill)"
     )
-    assert "## §0" not in text, (
-        "review adapter SKILL.md must not have a ## §0 heading (Opus-tier skill)"
+    # Narrow to §0 Model dispatch heading only — §0' Pollution + §0c Pidfile are
+    # legitimately present on Opus-tier skills (IVG-69 Stage B retarget).
+    assert "## §0 Model dispatch" not in text, (
+        "review adapter SKILL.md must not have a ## §0 Model dispatch heading (Opus-tier skill)"
     )
 
 
