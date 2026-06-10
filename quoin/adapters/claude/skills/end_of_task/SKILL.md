@@ -186,7 +186,7 @@ project root):
    and flag any file matching these patterns:
    - `*.tmp`, `*.bak`, `*.orig`, `*.swp`, `*.swo`
    - `* 2.*`, `* 3.*` (macOS/iCloud duplicates, e.g., "README 2.md")
-   - `.planner-trace.md` (Tier-3 ephemeral — CLAUDE.md says "deleted by /end_of_task before archive")
+   - `.planner-trace.md` (Tier-3 ephemeral — CLAUDE.md says "deleted by /end_of_task before archive"; run `rm -f .planner-trace.md` to clean up)
    - `.expanded-*.md` (expand --save scratch output)
    - `.DS_Store` (if not gitignored)
    - `__pycache__/` directories or `*.pyc` files (if not gitignored)
@@ -419,7 +419,10 @@ Spawn an Agent subagent:
     Steps:
     1. Read `cost-summary.json` from the task dir (BEFORE any mv).
     2. Read `eot-preflights.json` for `archive_type` and `task_name`.
-    3. Archive based on `archive_type`:
+    3. Delete planner trace breadcrumb (if present):
+       Run: rm -f "<task_dir>/.planner-trace.md" 2>/dev/null || true
+       Tier-3 ephemeral — must not persist in the finalized archive; runs BEFORE the archive mv.
+    4. Archive based on `archive_type`:
        - `"subtask"`: mv task folder into `.workflow_artifacts/<parent>/finalized/<subtask>/`
        - `"feature"`: mv task folder into `.workflow_artifacts/finalized/<task_name>/`
        - `"none"`: skip the mv entirely.

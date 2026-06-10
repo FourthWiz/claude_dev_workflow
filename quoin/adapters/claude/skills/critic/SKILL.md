@@ -54,10 +54,11 @@ This skill ALWAYS runs in a fresh session (that's the whole point — unbiased r
 1. Read `__QUOIN_HOME__/skills/critic/preamble.md` if it exists; if missing or empty, proceed normally. Purely additive cache-warming — every other read in this `## Session bootstrap` section, and every write-site format-kit / glossary reference (per §5.3 / §5.4 write-site instructions), stays in force unchanged. The intent is CROSS-SPAWN cache reuse: spawn N+1 of this skill with a byte-identical task fixture hits cache from spawn N's preamble.md tool_result, within the 5-minute prompt-cache TTL. Within a single spawn there is no cache benefit — savings only materialize on subsequent spawns whose prompt prefix is byte-identical through the preamble read. (Stage 2-alt of pipeline-efficiency-improvements.)
 2. **Round 1 only:** Read `.workflow_artifacts/memory/lessons-learned.md` for past insights — check if past lessons apply to this plan's domain. **On rounds 2+, skip this step** — the file cannot change mid-loop, so re-reading it wastes tokens without adding information. (The round number is indicated by the existing `critic-response-*.md` OR `architecture-critic-*.md` files: use whichever pattern matches the target type. If `critic-response-1.md` already exists, this is round 2 or later. If `architecture-critic-1.md` exists at task root, this is round 2 for an architecture critique.)
 3. Read the task subfolder: resolve the artifact path via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` — then read `<task_dir>/current-plan.md` and any prior `<task_dir>/critic-response-*.md`. architecture.md: ALWAYS `<task-root>/architecture.md`. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md` (line 5 above — NOT edited per D-03). If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
-4. Read the ACTUAL SOURCE CODE referenced by the plan (this is critical — don't trust the plan's claims)
-5. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `critic`
-6. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`.
-7. Then proceed with critique
+4. Read `.planner-trace.md` from the task directory if it exists (same path resolution as the previous step). Treat as a **search-prior hint only** — it tells you where the planner looked and what patterns it noticed, NOT what conclusions to reach. If the file is absent, proceed normally (no error, no warning).
+5. Read the ACTUAL SOURCE CODE referenced by the plan (this is critical — don't trust the plan's claims)
+6. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `critic`
+7. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`.
+8. Then proceed with critique
 
 ## Model requirement
 
@@ -66,6 +67,14 @@ This skill requires the strongest available model (currently Claude Opus). Criti
 ## Critical rule: Fresh context
 
 When invoked as part of `/thorough_plan`, by `/architect` Phase 4, or as a standalone user invocation against an existing plan, you MUST run in a fresh agent session. The whole point of the critic is to see the plan with fresh eyes, without the cognitive biases of having just written it. If you're the same agent that wrote the plan, your critique will be weak.
+
+## Critical rule: Breadcrumb independence
+
+If `.planner-trace.md` is present in the task directory, reading it is ALLOWED as a search-prior hint — it tells you which files the planner read and which patterns it noticed, so you can focus your initial reads on those areas.
+
+**Hard rule:** For every CRITICAL or MAJOR finding you produce, you MUST have independently read at least one source file that is NOT `.planner-trace.md` itself. Reading the breadcrumb does NOT substitute for reading the actual source code. A finding grounded only on the breadcrumb's claims is inadmissible as CRITICAL or MAJOR — demote it to MINOR or drop it.
+
+This rule exists to prevent R-08: the breadcrumb misleading you into a shallow review by anchoring your conclusions to the planner's perspective rather than the actual code.
 
 ## Process
 

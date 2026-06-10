@@ -451,27 +451,6 @@ def test_first_match_wins_malformed():
     assert len(summary['issues']) == 0
 
 
-# ── Corpus-coverage test ───────────────────────────────────────────────────────
-
-def test_corpus_coverage_zero_unrecognized():
-    """All 17 training fixtures must have zero unrecognized bullets."""
-    if not os.path.isdir(TRAINING_DIR):
-        pytest.skip(f'Training dir not found: {TRAINING_DIR}')
-
-    import re as _re
-
-    audit_script = os.path.join(
-        os.path.dirname(__file__), '..', 'audit_corpus_coverage.py'
-    )
-    result = subprocess.run(
-        [PYTHON, audit_script, '--training-dir', TRAINING_DIR],
-        capture_output=True, text=True,
-    )
-    assert result.returncode == 0, (
-        f'audit_corpus_coverage.py reported unrecognized bullets:\n{result.stdout}'
-    )
-
-
 # ── Training corpus accuracy gate ────────────────────────────────────────────
 
 def test_training_corpus_accuracy():

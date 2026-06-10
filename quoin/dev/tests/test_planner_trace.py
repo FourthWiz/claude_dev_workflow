@@ -27,7 +27,8 @@ import sys
 from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent  # Claude_workflow/
-SKILLS_DIR = _PROJECT_ROOT / "quoin" / "skills"
+TESTS_DIR = Path(__file__).parent
+SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
 CLAUDE_MD = _PROJECT_ROOT / "quoin" / "CLAUDE.md"
 
 PLAN_SKILL = SKILLS_DIR / "plan" / "SKILL.md"

@@ -181,6 +181,33 @@ Before finishing, write or update `.workflow_artifacts/memory/sessions/<date>-<t
 
 This is what `/end_of_day` reads to consolidate the day's work. Without it, this session is invisible to the daily rollup.
 
+## Write planner trace breadcrumb
+
+After writing session state and before finishing, write `.planner-trace.md` to the task directory (same directory as `current-plan.md`). This is a Tier 3 ephemeral file — no Haiku summary, no validator, no Class B mechanism.
+
+Resolve the task directory via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N>]` (same path used for `current-plan.md`).
+
+Write the file using the Write tool. Schema (≤20 lines):
+
+```markdown
+# Planner trace — <task-name> stage <N> — <ISO date>
+
+## Files read
+- <absolute-or-repo-relative path>: <one-line purpose>
+- ...
+
+## Patterns observed
+- <pattern>: <one-line description>
+- ...
+
+## Gotchas (optional)
+- <gotcha>: <why it matters>
+```
+
+Required fields: `## Files read`, `## Patterns observed`. The `## Gotchas` section is optional — omit if none noticed. Do NOT include a heading-line `## For human` or any frontmatter YAML. Keep entries terse (one line per item). Maximum 20 lines total.
+
+If the task directory cannot be resolved: skip writing the trace file silently (emit no error). The trace is a best-effort hint.
+
 ## Important behaviors
 
 - **Be concrete.** File paths, function signatures, data shapes. "Add a new service" is not a task. "Create `src/services/payment.service.ts` implementing `processRefund(orderId: string): Promise<RefundResult>`" is a task.
