@@ -43,7 +43,7 @@ def assert_installer_selects_adapter(skill_name: str) -> None:
 
     Raises AssertionError with a descriptive message on any failure.
     """
-    from quoin import installer  # imported here to keep top-level import light
+    from quoin import installer  # noqa: PLC0415  # imported here to keep top-level import light
 
     # (a) skill must be in CANONICAL_SKILLS
     assert skill_name in installer.CANONICAL_SKILLS, (
@@ -67,30 +67,28 @@ def assert_installer_selects_adapter(skill_name: str) -> None:
         f"Active Claude adapter skill for {skill_name}.\n"
     )
 
-    with (
-        tempfile.TemporaryDirectory() as src_d,
-        tempfile.TemporaryDirectory() as dst_d,
-    ):
-        src = pathlib.Path(src_d)
-        stub_dir = src / "skills" / skill_name
-        adapter_dir = src / "adapters" / "claude" / "skills" / skill_name
-        stub_dir.mkdir(parents=True)
-        adapter_dir.mkdir(parents=True)
+    with tempfile.TemporaryDirectory() as src_d:
+        with tempfile.TemporaryDirectory() as dst_d:
+            src = pathlib.Path(src_d)
+            stub_dir = src / "skills" / skill_name
+            adapter_dir = src / "adapters" / "claude" / "skills" / skill_name
+            stub_dir.mkdir(parents=True)
+            adapter_dir.mkdir(parents=True)
 
-        (stub_dir / "SKILL.md").write_text(stub_content, encoding="utf-8")
-        (adapter_dir / "SKILL.md").write_text(active_content, encoding="utf-8")
+            (stub_dir / "SKILL.md").write_text(stub_content, encoding="utf-8")
+            (adapter_dir / "SKILL.md").write_text(active_content, encoding="utf-8")
 
-        dest = pathlib.Path(dst_d) / ".claude"
-        installer.deploy_skills(src, dest)
+            dest = pathlib.Path(dst_d) / ".claude"
+            installer.deploy_skills(src, dest)
 
-        deployed_path = dest / "skills" / skill_name / "SKILL.md"
-        assert deployed_path.exists(), (
-            f"deploy_skills() did not create {deployed_path} for skill {skill_name!r}"
-        )
-        deployed = deployed_path.read_text(encoding="utf-8")
-        assert deployed == active_content, (
-            f"deploy_skills() deployed stub content instead of adapter content "
-            f"for skill {skill_name!r}.\n"
-            f"  Expected: {active_content!r}\n"
-            f"  Got:      {deployed!r}"
-        )
+            deployed_path = dest / "skills" / skill_name / "SKILL.md"
+            assert deployed_path.exists(), (
+                f"deploy_skills() did not create {deployed_path} for skill {skill_name!r}"
+            )
+            deployed = deployed_path.read_text(encoding="utf-8")
+            assert deployed == active_content, (
+                f"deploy_skills() deployed stub content instead of adapter content "
+                f"for skill {skill_name!r}.\n"
+                f"  Expected: {active_content!r}\n"
+                f"  Got:      {deployed!r}"
+            )
