@@ -6,13 +6,6 @@
     "tasks_path": ".workflow_artifacts",
     "workflow_artifacts_path": ".workflow_artifacts"
   },
-  "freshness": {
-    "example-repo": {
-      "cache_updated_at": "2026-05-12T20:00:00Z",
-      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "recorded_at": "2026-05-13T00:00:00Z"
-    }
-  },
   "generated_at": "2026-05-13T00:00:00Z",
   "memory": {
     "daily_dir": ".workflow_artifacts/memory/daily",
@@ -25,21 +18,13 @@
   },
   "project": {
     "name": "typical-project",
-    "root_path": "/Users/ivgo/Library/CloudStorage/GoogleDrive-ivan.gorban@gmail.com/My Drive/Storage/Codex_workflow/quoin/quoin/dev/tests/fixtures/generate_discovery_map/typical-project",
+    "root_path": "__masked__",
     "runtime_adapters": [
       "claude",
       "codex"
     ]
   },
-  "repos": [
-    {
-      "cache_index_path": ".workflow_artifacts/cache/example-repo/_index.md",
-      "head_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "head_short": "aaaaaaa",
-      "name": "example-repo",
-      "path": "example-repo"
-    }
-  ],
+  "repos": [],
   "schema_version": 1,
   "tasks": {
     "active": [
