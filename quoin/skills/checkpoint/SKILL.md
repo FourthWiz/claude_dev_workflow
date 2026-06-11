@@ -462,7 +462,7 @@ Continue; do NOT abort.
 (Conditional: run ONLY for SELECTED_MODE="restore". In "load-as-reference" mode, SKIP Step 3 and proceed to Step 4b. In "mid-agent" mode, Steps 1, 2, and 3 are all skipped.)
 
 Write the checkpoint file path (single line) to:
-`.workflow_artifacts/memory/pending-restore-${session_id}.txt`
+`${_PROJECT_ROOT}/.workflow_artifacts/memory/pending-restore-${session_id}.txt`
 
 Where `session_id` is the current session's UUID (read from the session-state `## Cost` block → `Session UUID:` line, or from the harness system context if available).
 
@@ -500,7 +500,7 @@ Step 5 report mentions:
 (Run only when SELECTED_MODE="load-as-reference")
 
 Write a reference sentinel file at:
-`.workflow_artifacts/memory/pending-resume-ref-${session_id}.txt`
+`${_PROJECT_ROOT}/.workflow_artifacts/memory/pending-resume-ref-${session_id}.txt`
 
 Content (two lines):
 ```
@@ -525,7 +525,7 @@ The user's prior session content is available as background reference in the for
 (Run only when SELECTED_MODE="mid-agent". Steps 1, 2, 3, 4b are all skipped.)
 
 Write a minimal handoff sentinel at:
-`.workflow_artifacts/memory/mid-agent-handoff-${session_id}.txt`
+`${_PROJECT_ROOT}/.workflow_artifacts/memory/mid-agent-handoff-${session_id}.txt`
 
 Content:
 ```
@@ -594,10 +594,18 @@ Note: `${_PROJECT_ROOT}` is the resolved project root from the resolve-once step
 
 Detect mode: if the user's invocation includes `--defer`, run defer mode.
 
+**Project-root resolution (resolve ONCE, reuse everywhere):** At the very start of defer mode, before any path derivations, acquire `_cwd` from stdin `.cwd` and resolve it to the true project root:
+```sh
+_cwd=$(from stdin JSON .cwd field, or $PWD if absent)
+. __QUOIN_HOME__/hooks/_lib.sh 2>/dev/null || true
+_PROJECT_ROOT=$(resolve_project_root "$_cwd")
+```
+ALL subsequent path derivations in defer mode MUST use `${_PROJECT_ROOT}`.
+
 **session_id acquisition** (same procedure as Save mode Step 1.1): priority is harness-provided system context UUID; else most recently modified `~/.claude/projects/<project-hash>/<uuid>.jsonl` filename stem. Case is preserved verbatim.
 
 **Write a defer marker file:**
-`.workflow_artifacts/memory/checkpoint-defer-${session_id}.txt`
+`${_PROJECT_ROOT}/.workflow_artifacts/memory/checkpoint-defer-${session_id}.txt`
 containing a single line — the ISO-8601 UTC timestamp of when defer was set.
 
 This marker is consumed by `userpromptsubmit.sh` STEP 3 advisory branch: when the marker is present for the current session_id, the advisory is suppressed (no "context at X%" advisory emitted).
@@ -726,7 +734,7 @@ consumed_sentinel_path=""
    - **All sentinels (B1 — mtime-filtered):** Use `find` with the `QUOIN_RESTORE_SENTINEL_WINDOW` env knob (default **7** days — narrows the long tail of orphaned sentinels; asymmetric with checkpoint-enum's 30d is INTENTIONAL: sentinels are transient pointers, not durable artifacts):
      ```sh
      _window="${QUOIN_RESTORE_SENTINEL_WINDOW:-7}"
-     _sentinel_dir=".workflow_artifacts/memory"
+     _sentinel_dir="${_mem_dir}"
      _total=$(find "$_sentinel_dir" -maxdepth 1 -name 'pending-restore-*.txt' | wc -l | tr -d ' ')
      find "$_sentinel_dir" -maxdepth 1 -name 'pending-restore-*.txt' \
        -mtime -"${_window}" -print0 \
@@ -845,7 +853,7 @@ consumed_sentinel_path=""
    Enumerate recent session-state files:
    ```sh
    _fb_window="${QUOIN_SESSION_FALLBACK_WINDOW:-7}"
-   _sessions_dir=".workflow_artifacts/memory/sessions"
+   _sessions_dir="${_mem_dir}/sessions"
    ```
    Use portable mtime (Python first, then `stat` fallbacks — mirrors `sessionstart.sh:39-41`):
    ```sh

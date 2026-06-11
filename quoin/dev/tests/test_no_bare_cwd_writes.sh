@@ -185,6 +185,38 @@ if [ -r "$SKILL_MD" ]; then
   fi
 fi
 
+# ─── 11. SKILL.md: no bare-relative .workflow_artifacts/memory token ─────────
+# Detects any line where `.workflow_artifacts/memory` appears WITHOUT a `$` variable
+# prefix. Allowlist (grep -v): shell comments (#), resolve_project_root calls,
+# lines with the word "prefix", lines with the prose placeholder <path>, and
+# lines containing a backtick example.
+# Pattern: `.workflow_artifacts/memory` NOT preceded by `}` or `$` on that token.
+if [ -r "$SKILL_MD" ]; then
+  _bare_hits=$(grep -n '\.workflow_artifacts/memory' "$SKILL_MD" 2>/dev/null \
+    | grep -v '^[^:]*:[[:space:]]*#' \
+    | grep -v 'resolve_project_root' \
+    | grep -v '\bprefix\b' \
+    | grep -v '<path>' \
+    | grep -v '`[^`]*\.workflow_artifacts/memory' \
+    | grep -v '\$[{(]' \
+    | grep -v '}\.workflow_artifacts/memory' \
+    | wc -l | awk '{print $1}')
+  if [ "$_bare_hits" -eq 0 ]; then
+    ok "checkpoint SKILL.md: no bare-relative .workflow_artifacts/memory token (all prefixed with \${variable})"
+  else
+    fail "checkpoint SKILL.md: found $_bare_hits bare-relative .workflow_artifacts/memory token(s) — prefix each with \${_PROJECT_ROOT} or a resolved variable"
+    grep -n '\.workflow_artifacts/memory' "$SKILL_MD" 2>/dev/null \
+      | grep -v '^[^:]*:[[:space:]]*#' \
+      | grep -v 'resolve_project_root' \
+      | grep -v '\bprefix\b' \
+      | grep -v '<path>' \
+      | grep -v '`[^`]*\.workflow_artifacts/memory' \
+      | grep -v '\$[{(]' \
+      | grep -v '}\.workflow_artifacts/memory' \
+      | head -10 >&2 || true
+  fi
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 printf '\n---\n'
 if [ "$FAIL" -eq 0 ]; then
