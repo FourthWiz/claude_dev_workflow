@@ -148,6 +148,31 @@ if [ -r "$_pc" ]; then
   fi
 fi
 
+# ─── 9. SKILL.md: no ${_cwd}/.workflow_artifacts or ${_rs_cwd}/.workflow_artifacts ──
+# These are the save-mode variable names (with underscore prefix) that CRITICAL-1
+# fixed. Bare ${cwd} is legitimately used in restore mode (no _PROJECT_ROOT there)
+# so we only check the save-mode-specific patterns.
+# The project-hash exception is safe: it uses `printf '%s' "$_cwd" | tr '/' '-'`,
+# never "${_cwd}/.workflow_artifacts", so it won't match this grep.
+if [ -r "$SKILL_MD" ]; then
+  _cwd_hits=$(grep -E '\$\{_cwd\}/\.workflow_artifacts|\$\{_rs_cwd\}/\.workflow_artifacts' "$SKILL_MD" 2>/dev/null | wc -l | awk '{print $1}')
+  if [ "$_cwd_hits" -eq 0 ]; then
+    ok "checkpoint SKILL.md: no save-mode un-resolved _cwd/.workflow_artifacts path sites"
+  else
+    fail "checkpoint SKILL.md: found $_cwd_hits save-mode un-resolved _cwd/.workflow_artifacts site(s) — convert to \${_PROJECT_ROOT}"
+    grep -nE '\$\{_cwd\}/\.workflow_artifacts|\$\{_rs_cwd\}/\.workflow_artifacts' "$SKILL_MD" 2>/dev/null | head -5 >&2 || true
+  fi
+fi
+
+# ─── 10. SKILL.md: Step 2 write path uses ${_PROJECT_ROOT} prefix ─────────────
+if [ -r "$SKILL_MD" ]; then
+  if grep -qE '_PROJECT_ROOT.*\.workflow_artifacts/memory/checkpoints' "$SKILL_MD" 2>/dev/null; then
+    ok "checkpoint SKILL.md: Step 2 write path references _PROJECT_ROOT/.workflow_artifacts/memory/checkpoints"
+  else
+    fail "checkpoint SKILL.md: Step 2 write path does not reference _PROJECT_ROOT — bare relative path may still be present"
+  fi
+fi
+
 # ─── Summary ─────────────────────────────────────────────────────────────────
 printf '\n---\n'
 if [ "$FAIL" -eq 0 ]; then
