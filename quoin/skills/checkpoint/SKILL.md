@@ -212,11 +212,11 @@ The hook forced-save (userpromptsubmit.sh STEP C2) is the independent backstop w
 **If `util_bps >= PANIC_BPS`:** Skip ALL of: Step 1 deep gathering, mid-agent check, AskUserQuestion mode selection. Write a minimal skeleton checkpoint and pending-restore sentinel using only cheap operations:
 
 1. **Session ID:** harness-provided context UUID; else newest `~/.claude/projects/<project-hash>/<uuid>.jsonl` filename stem (Step 1.1 acquisition — cheap stem only, no grep across session files).
-2. **Task:** filename-derived from newest `<cwd>/.workflow_artifacts/memory/sessions/*.md` (strip `YYYY-MM-DD-` date prefix, strip `.md` suffix).
-3. **Branch:** `git -C "$cwd" rev-parse --abbrev-ref HEAD` (|| `unknown`).
+2. **Task:** filename-derived from newest `${_PROJECT_ROOT}/.workflow_artifacts/memory/sessions/*.md` (strip `YYYY-MM-DD-` date prefix, strip `.md` suffix).
+3. **Branch:** `git -C "${_PROJECT_ROOT}" rev-parse --abbrev-ref HEAD` (|| `unknown`).
 4. **In-flight paths:** `find "${_PROJECT_ROOT}/.workflow_artifacts" -name current-plan.md -exec ls -t {} + 2>/dev/null | head -1` (same for `architecture.md`).
-5. Write skeleton checkpoint to `<cwd>/.workflow_artifacts/memory/checkpoints/<YYYY-MM-DD>T<HHMM>-<task>.md` (standard timestamped form). Use the same section set as the STEP C2 hook skeleton: `## Status`, `## Current stage`, `## Active task`, `## Branch`, `## Session ID`, `## Saved at`, `## In-flight artifacts`, `## Restore hint`.
-6. Write `<cwd>/.workflow_artifacts/memory/pending-restore-<sid>.txt` containing the skeleton path on line 1.
+5. Write skeleton checkpoint to `${_PROJECT_ROOT}/.workflow_artifacts/memory/checkpoints/<YYYY-MM-DD>T<HHMM>-<task>.md` (standard timestamped form). Use the same section set as the STEP C2 hook skeleton: `## Status`, `## Current stage`, `## Active task`, `## Branch`, `## Session ID`, `## Saved at`, `## In-flight artifacts`, `## Restore hint`.
+6. Write `${_PROJECT_ROOT}/.workflow_artifacts/memory/pending-restore-<sid>.txt` containing the skeleton path on line 1.
 7. Append cost-ledger row: `<uuid> | <date> | checkpoint | haiku | task | "save (panic mode)" | 0`
 8. Release pidfile: `pidfile_release checkpoint`
 9. Report:
@@ -256,7 +256,7 @@ fi
 On skip: emit one-line `[checkpoint] cleanup skipped (<reason>)` and proceed to sub-step A. Reason tokens: `--no-cleanup`, `mid-agent`, `high-util`, `panic`.
 
 **Else (cleanup runs):** Execute the `/cleanup` Core procedure (steps 1–7) inline:
-1. Resolve `MEMORY_DIR = <cwd>/.workflow_artifacts/memory`. If absent, skip.
+1. Resolve `MEMORY_DIR = ${_PROJECT_ROOT}/.workflow_artifacts/memory`. If absent, skip.
 2. Source `. __QUOIN_HOME__/hooks/_lib.sh` (fail-OPEN: skip if missing).
 3. Acquire current UUID (same Step 1.1 procedure — reuse value if already computed). UUID unavailable → skip sentinel sweep (fail-safe: skip sentinels, proceed to checkpoint sweep).
 4. Sentinel sweep: for each of the 8 families (see `/cleanup` SKILL.md for the hardcoded allow-list), find under MEMORY_DIR `-maxdepth 1 -name '<family-glob>' -mtime +${QUOIN_CLEANUP_SENTINEL_WINDOW:-1} -print0`. For each: SKIP if suffix matches `-<current_uuid>.txt` (UUID check BEFORE age check). Else `trash_move "<path>" "$MEMORY_DIR"`.
@@ -614,6 +614,16 @@ The marker is automatically expired on:
 
 Detect mode: if the user's invocation includes `--restore`, run restore mode.
 
+**Project-root resolution (resolve ONCE, reuse everywhere):** At the very start of restore mode, before any path derivations, acquire `_cwd` from stdin `.cwd` and resolve it to the true project root:
+```sh
+_cwd=$(from stdin JSON .cwd field, or $PWD if absent)
+. __QUOIN_HOME__/hooks/_lib.sh 2>/dev/null || true
+_PROJECT_ROOT=$(resolve_project_root "$_cwd")
+```
+ALL subsequent path derivations in restore mode MUST use `${_PROJECT_ROOT}` — do NOT use raw `$cwd` or bare relative paths for `.workflow_artifacts/...`. This ensures that restoring from a nested subdirectory finds sentinels and checkpoints that save mode wrote at the true project root.
+
+**EXCEPTION — project-hash for JSONL lookup:** The project-hash used to locate `~/.claude/projects/<project-hash>/` MUST derive from the raw launch cwd (stdin `.cwd`), NOT `${_PROJECT_ROOT}`. Claude Code keys JSONL directories to the actual launch directory, so two project-hash directories can coexist.
+
 ### Step 1: Locate checkpoint
 
 Use a unified picker that covers both pending-restore sentinels and recent checkpoint files on disk.
@@ -628,7 +638,7 @@ Before enumerating disk checkpoints, attempt to resolve a restore anchor from hi
 
 ```sh
 _w="${QUOIN_RESTORE_SENTINEL_WINDOW:-7}"
-_mem_dir="${cwd}/.workflow_artifacts/memory"   # cwd-from-stdin, NOT bare 'memory'
+_mem_dir="${_PROJECT_ROOT}/.workflow_artifacts/memory"   # resolved root, NOT raw cwd
 _anchor=""
 _anchor_task=""
 # Iterate in mtime-descending order so the freshest pending-prompt is tried first
@@ -1003,7 +1013,7 @@ Use the `trash_move` helper from `__QUOIN_HOME__/hooks/_lib.sh` (fail-OPEN — i
 
 **Cleanup logic (B2 — two-call pattern):**
 ```sh
-_base=".workflow_artifacts/memory"
+_base="${_PROJECT_ROOT}/.workflow_artifacts/memory"
 
 # 1. Existing current-session cleanup (unchanged):
 if [ -f "${_base}/pending-restore-${current_session_id}.txt" ]; then

@@ -148,12 +148,16 @@ if [ -r "$_pc" ]; then
   fi
 fi
 
-# ─── 9. SKILL.md: no ${_cwd}/.workflow_artifacts or ${_rs_cwd}/.workflow_artifacts ──
-# These are the save-mode variable names (with underscore prefix) that CRITICAL-1
-# fixed. Bare ${cwd} is legitimately used in restore mode (no _PROJECT_ROOT there)
-# so we only check the save-mode-specific patterns.
-# The project-hash exception is safe: it uses `printf '%s' "$_cwd" | tr '/' '-'`,
-# never "${_cwd}/.workflow_artifacts", so it won't match this grep.
+# ─── 9. SKILL.md: no ${_cwd}/.workflow_artifacts, ${_rs_cwd}/.workflow_artifacts,
+#         or <cwd>/.workflow_artifacts prose placeholder in the save-mode region ──
+# Check A: shell-variable forms (save-mode underscore-prefixed names). The project-hash
+#   exception uses `printf '%s' "$_cwd" | tr '/' '-'` and never produces
+#   "${_cwd}/.workflow_artifacts", so it won't match.
+# Check B: prose-placeholder form `<cwd>/.workflow_artifacts` in the save-mode region.
+#   Restore mode now also uses ${_PROJECT_ROOT}, so ALL occurrences in both save-mode
+#   and restore-mode should be zero after the IVG-61 fix.
+#   Exception: the resolve-once instruction itself uses the literal string
+#   "from stdin JSON .cwd field" (not "<cwd>/.workflow_artifacts"), so it won't match.
 if [ -r "$SKILL_MD" ]; then
   _cwd_hits=$(grep -E '\$\{_cwd\}/\.workflow_artifacts|\$\{_rs_cwd\}/\.workflow_artifacts' "$SKILL_MD" 2>/dev/null | wc -l | awk '{print $1}')
   if [ "$_cwd_hits" -eq 0 ]; then
@@ -161,6 +165,14 @@ if [ -r "$SKILL_MD" ]; then
   else
     fail "checkpoint SKILL.md: found $_cwd_hits save-mode un-resolved _cwd/.workflow_artifacts site(s) — convert to \${_PROJECT_ROOT}"
     grep -nE '\$\{_cwd\}/\.workflow_artifacts|\$\{_rs_cwd\}/\.workflow_artifacts' "$SKILL_MD" 2>/dev/null | head -5 >&2 || true
+  fi
+  # Check B: prose placeholder form — should be zero in both save-mode and restore-mode
+  _prose_hits=$(grep -n '<cwd>/\.workflow_artifacts' "$SKILL_MD" 2>/dev/null | wc -l | awk '{print $1}')
+  if [ "$_prose_hits" -eq 0 ]; then
+    ok "checkpoint SKILL.md: no <cwd>/.workflow_artifacts prose placeholder sites"
+  else
+    fail "checkpoint SKILL.md: found $_prose_hits <cwd>/.workflow_artifacts prose placeholder site(s) — convert to \${_PROJECT_ROOT}"
+    grep -n '<cwd>/\.workflow_artifacts' "$SKILL_MD" 2>/dev/null | head -5 >&2 || true
   fi
 fi
 
