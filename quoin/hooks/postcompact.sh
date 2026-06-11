@@ -10,6 +10,7 @@
 
 # STEP -1: Capture stdin before any parsing (stdin can only be read once)
 STDIN=$(cat)
+. "$(dirname "$0")/_lib.sh" 2>/dev/null || true
 
 # Parse fields from JSON (same pattern as precompact.sh lines 17-38)
 session_id=$(printf '%s' "$STDIN" | jq -r '.session_id // empty' 2>/dev/null) || exit 0
@@ -19,6 +20,7 @@ transcript_path=$(printf '%s' "$STDIN" | jq -r '.transcript_path // empty' 2>/de
 # Guard: session_id required for a usable sentinel filename
 [ -z "$session_id" ] && exit 0
 [ -z "$cwd" ] && cwd="$PWD"
+cwd=$(resolve_project_root "$cwd")
 
 MEMORY_DIR="${cwd}/.workflow_artifacts/memory"
 [ -d "$MEMORY_DIR" ] || exit 0

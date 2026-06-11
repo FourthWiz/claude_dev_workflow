@@ -142,3 +142,38 @@ safe_jq_or_passthrough() {
     fi
     jq "$@"
 }
+
+# resolve_project_root <start_dir> — echo effective project root; always return 0.
+# Precedence: OUTERMOST .workflow_artifacts/ (strictly < $HOME) > NEAREST .git (strictly < $HOME) > start_dir.
+# EXCLUSIVE ceiling: $HOME and / bound the walk but are NEVER inspected as owners, NEVER returned.
+resolve_project_root() {
+    _rpr_start="$1"
+    [ -n "$_rpr_start" ] || { printf '%s\n' "$_rpr_start"; return 0; }
+    _rpr_ceiling="${HOME:-/}"
+    # Pass 1: OUTERMOST artifacts owner STRICTLY BELOW ceiling.
+    # Walk the FULL eligible chain, remembering the HIGHEST eligible hit.
+    _rpr_best=""
+    _rpr_cur="$_rpr_start"
+    while [ -n "$_rpr_cur" ]; do
+        [ "$_rpr_cur" = "$_rpr_ceiling" ] && break       # EXCLUSIVE: stop BEFORE inspecting $HOME
+        [ "$_rpr_cur" = "/" ] && break                   # EXCLUSIVE: never inspect /
+        [ -d "$_rpr_cur/.workflow_artifacts" ] && _rpr_best="$_rpr_cur"
+        _rpr_parent=$(dirname "$_rpr_cur")
+        [ "$_rpr_parent" = "$_rpr_cur" ] && break        # fixedpoint loop guard
+        _rpr_cur="$_rpr_parent"
+    done
+    [ -n "$_rpr_best" ] && { printf '%s\n' "$_rpr_best"; return 0; }
+    # Pass 2: NEAREST .git (dir OR file) STRICTLY BELOW ceiling.
+    _rpr_cur="$_rpr_start"
+    while [ -n "$_rpr_cur" ]; do
+        [ "$_rpr_cur" = "$_rpr_ceiling" ] && break       # EXCLUSIVE: $HOME's .git never returned (CRIT-4)
+        [ "$_rpr_cur" = "/" ] && break
+        [ -e "$_rpr_cur/.git" ] && { printf '%s\n' "$_rpr_cur"; return 0; }
+        _rpr_parent=$(dirname "$_rpr_cur")
+        [ "$_rpr_parent" = "$_rpr_cur" ] && break
+        _rpr_cur="$_rpr_parent"
+    done
+    # Pass 3: fall back to start (today's behavior; NEVER $HOME, NEVER /).
+    printf '%s\n' "$_rpr_start"
+    return 0
+}

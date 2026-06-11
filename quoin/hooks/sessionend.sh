@@ -21,6 +21,7 @@ STDIN=$(cat)
 # STEP 1: Parse cwd from stdin
 cwd=$(printf '%s' "$STDIN" | jq -r '.cwd // empty' 2>/dev/null) || exit 0
 [ -z "$cwd" ] && cwd="$PWD"
+cwd=$(resolve_project_root "$cwd")
 
 SESSIONS_DIR="${cwd}/.workflow_artifacts/memory/sessions"
 

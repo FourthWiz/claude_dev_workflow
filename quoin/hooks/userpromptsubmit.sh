@@ -26,6 +26,7 @@ STDIN=$(cat)
         if [ -n "$_ups_score" ]; then
             _ups_cwd=$(printf '%s' "$STDIN" | jq -r '.cwd // empty' 2>/dev/null) || true
             [ -z "$_ups_cwd" ] && _ups_cwd="$PWD"
+            _ups_cwd=$(resolve_project_root "$_ups_cwd")
             _ups_mem="${_ups_cwd}/.workflow_artifacts/memory"
             _ups_session=$(find "${_ups_mem}/sessions/" -name "$(date +%Y-%m-%d)-*.md" -type f -print0 2>/dev/null | xargs -0 ls -t 2>/dev/null | head -1)
             if [ -n "$_ups_session" ] && [ -f "$_ups_session" ]; then
@@ -59,6 +60,7 @@ STDIN=$(cat)
     _rs_sid=$(printf '%s' "$STDIN" | jq -r '.session_id // empty' 2>/dev/null) || true
     _rs_cwd=$(printf '%s' "$STDIN" | jq -r '.cwd // empty' 2>/dev/null) || true
     [ -z "$_rs_cwd" ] && _rs_cwd="$PWD"
+    _rs_cwd=$(resolve_project_root "$_rs_cwd")
     [ -z "$_rs_sid" ] && exit 0
 
     _rs_mem="${_rs_cwd}/.workflow_artifacts/memory"
@@ -134,6 +136,7 @@ esac
 # STEP 0.9: Idle-session advisory (parent shell, after STEP 0 exemption check)
 _idle_cwd=$(printf '%s' "$STDIN" | jq -r '.cwd // empty' 2>/dev/null)
 [ -z "$_idle_cwd" ] && _idle_cwd="$PWD"
+_idle_cwd=$(resolve_project_root "$_idle_cwd")
 _idle_sid=$(printf '%s' "$STDIN" | jq -r '.session_id // empty' 2>/dev/null)
 if [ -n "$_idle_sid" ]; then
     _idle_flag="${_idle_cwd}/.workflow_artifacts/memory/idle-advisory-pending-${_idle_sid}.txt"
@@ -162,6 +165,7 @@ elif [ "$util" -ge "$STOP_BPS" ] && [ "$util" -lt "$BLOCK_BPS" ]; then
   # These variables are NOT yet acquired — they are only parsed inside the BLOCK branch (lines below).
   _adv_cwd=$(printf '%s' "$STDIN" | jq -r '.cwd // empty' 2>/dev/null)
   [ -z "$_adv_cwd" ] && _adv_cwd="$PWD"
+  _adv_cwd=$(resolve_project_root "$_adv_cwd")
   _adv_sid=$(printf '%s' "$STDIN" | jq -r '.session_id // empty' 2>/dev/null)
   if [ -n "$_adv_sid" ]; then
     _adv_defer="${_adv_cwd}/.workflow_artifacts/memory/checkpoint-defer-${_adv_sid}.txt"
@@ -187,6 +191,7 @@ else
   # STEP B: Compute pending-prompt path
   cwd=$(printf '%s' "$STDIN" | jq -r '.cwd // empty' 2>/dev/null) || exit 0
   [ -z "$cwd" ] && cwd="$PWD"
+  cwd=$(resolve_project_root "$cwd")
   pending_prompt_file="${cwd}/.workflow_artifacts/memory/pending-prompt-${session_id}.txt"
 
   # Ensure directory exists
