@@ -228,8 +228,10 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
                 "  (b) Run with --allow-hook-merge to proceed anyway (documents the double-fire)."
             )
 
-    # allow_writes: project mode never regenerates preambles into the source tree
-    allow_writes = _derive_allow_writes(source_dir, source_dir_explicit)
+    # allow_writes: only in --dev mode with a writable source tree.
+    # This is the single dev/user division: user installs (pip or bash, with or without
+    # --source-dir) never regenerate; dev installs (--dev + writable working tree) do.
+    allow_writes = args.dev and _derive_allow_writes(source_dir, source_dir_explicit)
     if is_project_mode:
         allow_writes = False  # T-07 MAJ-6: project installs never write to source tree
 
@@ -250,6 +252,10 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
     # T-04
     installer.deploy_memory(source_dir, dest_root)
     installer.deploy_quickstart(source_dir, dest_root)
+
+    # IVG-69 Stage A: regenerate §0' Pollution dispatch BEFORE deploy_skills so the
+    # freshly-injected adapter SKILL.md is what deploy_skills copies (T-06, R-11).
+    installer.regenerate_pollution_dispatch(source_dir, allow_writes=allow_writes)
 
     # T-05
     installer.deploy_skills(source_dir, dest_root)

@@ -1,2 +1,8 @@
-caveman-token-optimization | present-without-decomp | present | (none)
-v3-stage-3-smoke | present-with-decomp | present | (none)
+# In-flight task snapshot for test_resolver_grandfathers_each_inflight_task_per_production_shape
+# Format: task_name | arch_state | plan_state | stage_subfolder
+# arch_state: absent | present-without-decomp | present-with-decomp
+# stage_subfolder: folder name (e.g. stage-5) or (none)
+#
+# Re-baselined 2026-06-10: quoin/.workflow_artifacts/ currently has no legacy
+# root-level task folders — all prior in-flight tasks were finalized or moved.
+# The canary remains active: add a row here when a new in-flight task is present.

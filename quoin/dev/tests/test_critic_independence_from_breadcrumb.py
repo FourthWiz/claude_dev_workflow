@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent  # Claude_workflow/
-CRITIC_SKILL = _PROJECT_ROOT / "quoin" / "skills" / "critic" / "SKILL.md"
+CRITIC_SKILL = _PROJECT_ROOT / "quoin" / "adapters" / "claude" / "skills" / "critic" / "SKILL.md"
 
 
 def _extract_independence_section(text: str) -> str:

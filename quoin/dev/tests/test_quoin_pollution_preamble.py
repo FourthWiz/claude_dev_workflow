@@ -16,7 +16,10 @@ from pathlib import Path
 import pytest
 
 TESTS_DIR = Path(__file__).parent
-SKILLS_DIR = TESTS_DIR.parent.parent / "skills"
+# Phase-10 adapter migration moved active SKILL.md content from quoin/skills/ (stubs)
+# to quoin/adapters/claude/skills/ (active adapter files). §0' was restored into the
+# adapter dir by inject_pollution_dispatch.py (IVG-69 Stage A). Tests must read adapters.
+SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
 
 POLLUTION_HEADING = "## §0' Pollution dispatch (execute after §0 / §0c if present — before skill body)"
 SESSION_BOOTSTRAP_HEADING = "## Session bootstrap"

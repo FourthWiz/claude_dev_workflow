@@ -1,4 +1,5 @@
 from pathlib import Path
+import _adapter_pilot_helpers
 
 THIS_FILE = Path(__file__).resolve()
 TESTS_DIR = THIS_FILE.parent
@@ -6,7 +7,6 @@ PKG_DIR = TESTS_DIR.parent.parent              # quoin/quoin/
 CORE_SKILL_DOC = PKG_DIR / "core" / "skills" / "capture_insight.md"
 ADAPTER_SKILL_MD = PKG_DIR / "adapters" / "claude" / "skills" / "capture_insight" / "SKILL.md"
 LEGACY_SKILL_MD = PKG_DIR / "skills" / "capture_insight" / "SKILL.md"
-INSTALL_SH = PKG_DIR / "install.sh"
 
 FORBIDDEN_TOKENS = ("~/.claude", "/capture_insight", "Haiku", "Sonnet", "Opus", "Agent")
 REQUIRED_MENTION = ".workflow_artifacts/memory/daily/insights-<YYYY-MM-DD>.md"
@@ -56,20 +56,9 @@ def test_adapter_skill_md_references_core_doc():
 
 
 def test_install_sh_has_capture_insight_override():
-    text = INSTALL_SH.read_text(encoding="utf-8")
-    assert "ADAPTER_CAPTURE_INSIGHT_SRC" in text, (
-        "install.sh missing ADAPTER_CAPTURE_INSIGHT_SRC variable"
-    )
-    assert 'if [ "$skill_name" = "capture_insight" ]' in text, (
-        "install.sh missing per-skill override branch for capture_insight"
-    )
-    # Pre-flight check must appear before the skills loop.
-    preflight_idx = text.find("ADAPTER_CAPTURE_INSIGHT_SRC=")
-    loop_idx = text.find('for skill_dir in "$SCRIPT_DIR/skills"/*/')
-    assert preflight_idx != -1 and loop_idx != -1
-    assert preflight_idx < loop_idx, (
-        "Pre-flight existence check must appear BEFORE the skills loop"
-    )
+    # IVG-69 Stage B retarget: install.sh no longer carries ADAPTER_*_SRC vars.
+    # Assert the equivalent contract against installer.py logic instead.
+    _adapter_pilot_helpers.assert_installer_selects_adapter("capture_insight")
 
 
 def test_legacy_and_adapter_skill_md_differ():

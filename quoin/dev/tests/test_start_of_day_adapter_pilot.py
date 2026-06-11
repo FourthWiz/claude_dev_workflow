@@ -1,4 +1,5 @@
 from pathlib import Path
+import _adapter_pilot_helpers
 
 THIS_FILE = Path(__file__).resolve()
 TESTS_DIR = THIS_FILE.parent
@@ -6,7 +7,6 @@ PKG_DIR = TESTS_DIR.parent.parent              # quoin/quoin/
 CORE_SKILL_DOC = PKG_DIR / "core" / "skills" / "start_of_day.md"
 ADAPTER_SKILL_MD = PKG_DIR / "adapters" / "claude" / "skills" / "start_of_day" / "SKILL.md"
 LEGACY_SKILL_MD = PKG_DIR / "skills" / "start_of_day" / "SKILL.md"
-INSTALL_SH = PKG_DIR / "install.sh"
 
 # Per architecture R-2: start_of_day core doc forbids the slash token /start_of_day,
 # the deploy path ~/.claude, Claude-specific model/dispatch tokens, and the
@@ -62,20 +62,9 @@ def test_adapter_skill_md_references_core_doc():
 
 
 def test_install_sh_has_start_of_day_override():
-    text = INSTALL_SH.read_text(encoding="utf-8")
-    assert "ADAPTER_START_OF_DAY_SRC" in text, (
-        "install.sh missing ADAPTER_START_OF_DAY_SRC variable"
-    )
-    assert 'elif [ "$skill_name" = "start_of_day" ]' in text, (
-        "install.sh missing per-skill override branch for start_of_day"
-    )
-    # Pre-flight check must appear before the skills loop.
-    preflight_idx = text.find("ADAPTER_START_OF_DAY_SRC=")
-    loop_idx = text.find('for skill_dir in "$SCRIPT_DIR/skills"/*/')
-    assert preflight_idx != -1 and loop_idx != -1
-    assert preflight_idx < loop_idx, (
-        "Pre-flight existence check must appear BEFORE the skills loop"
-    )
+    # IVG-69 Stage B retarget: install.sh no longer carries ADAPTER_*_SRC vars.
+    # Assert the equivalent contract against installer.py logic instead.
+    _adapter_pilot_helpers.assert_installer_selects_adapter("start_of_day")
 
 
 def test_legacy_and_adapter_skill_md_differ():

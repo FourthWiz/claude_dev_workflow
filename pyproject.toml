@@ -83,3 +83,7 @@ python_functions = "test_*"
 python_classes = "Test*"
 addopts = "-q"
 pythonpath = ["src", "."]
+
+[tool.pyright]
+pythonVersion = "3.10"
+extraPaths = ["src", "quoin/dev/tests"]

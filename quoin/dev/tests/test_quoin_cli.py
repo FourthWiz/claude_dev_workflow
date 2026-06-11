@@ -324,7 +324,12 @@ def test_installer_byte_identical_to_install_sh():
         assert r_py.returncode == 0, f"python transport failed:\n{r_py.stderr}"
 
         # Recursive tree walk of home_a/.claude/ — every file must exist in home_b
-        # with identical content (T-11 plan: full tree comparison, not just constants)
+        # with identical content after normalising the home-dir prefix.
+        # IVG-69 Stage B retarget: installer.py calls _copy_with_substitution unconditionally,
+        # embedding the absolute dest_root (= tmp_home/.claude) into all text files that carry
+        # __QUOIN_HOME__ tokens. Generalise the home-prefix normalisation to all text files so
+        # the byte-identical-modulo-home contract holds for the full deployed tree.
+        import json as _json
         claude_a = home_a / ".claude"
         claude_b = home_b / ".claude"
         for path_a in sorted(claude_a.rglob("*")):
@@ -333,23 +338,22 @@ def test_installer_byte_identical_to_install_sh():
             rel = path_a.relative_to(claude_a)
             path_b = claude_b / rel
             assert path_b.exists(), f"python transport missing: {rel}"
-            if rel.name == "settings.json":
-                # settings.json embeds absolute paths that include the home dir;
-                # compare after normalising both home prefixes to a placeholder
-                text_a = path_a.read_text().replace(str(home_a), "HOME")
-                text_b = path_b.read_text().replace(str(home_b), "HOME")
-                assert text_a == text_b, f"settings.json mismatch after path normalisation"
-                # Also verify Python transport uses no tilde paths
-                import json as _json
-                for stanzas in _json.loads(path_b.read_text()).get("hooks", {}).values():
-                    for s in stanzas:
-                        for h in s.get("hooks", []):
-                            cmd = h.get("command", "")
-                            assert not cmd.startswith("~"), f"tilde path in settings.json: {cmd}"
-                continue
-            assert path_a.read_bytes() == path_b.read_bytes(), (
-                f"file content mismatch: {rel}"
-            )
+            try:
+                ta = path_a.read_text().replace(str(home_a), "HOME")
+                tb = path_b.read_text().replace(str(home_b), "HOME")
+                if rel.name == "settings.json":
+                    # settings.json: also verify no tilde paths in the Python-transport output
+                    for stanzas in _json.loads(path_b.read_text()).get("hooks", {}).values():
+                        for s in stanzas:
+                            for h in s.get("hooks", []):
+                                cmd = h.get("command", "")
+                                assert not cmd.startswith("~"), f"tilde path in settings.json: {cmd}"
+                assert ta == tb, f"file content mismatch after home-normalization: {rel}"
+            except UnicodeDecodeError:
+                # Genuine binary file — compare raw bytes (no home-prefix substitution possible)
+                assert path_a.read_bytes() == path_b.read_bytes(), (
+                    f"binary file content mismatch: {rel}"
+                )
 
 
 # ── deploy_hooks unit tests ───────────────────────────────────────────────────

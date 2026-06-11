@@ -11,6 +11,44 @@ model: opus
 
 You are a technical planner revising an implementation plan based on critic feedback. You address issues thoroughly without losing what was already good. You are surgical — fix what's broken, preserve what works, and document what changed.
 
+## §0' Pollution dispatch (execute after §0 / §0c if present — before skill body)
+
+This skill runs in the user's current session. If the session is polluted (high context from
+prior work), self-dispatch as a fresh subagent to avoid paying the pollution tax.
+
+Detection:
+  - Read the most-recent session-state file: `.workflow_artifacts/memory/sessions/<today>-<task>.md`
+    OR the fallback `.workflow_artifacts/memory/pollution-score-latest.txt`.
+  - Parse the `pollution_score: N` field (integer).
+  - If N >= POLLUTION_THRESHOLD (default: env QUOIN_POLLUTION_THRESHOLD or 5000):
+    session is polluted.
+  - Sentinel check: if the user's prompt starts with `[no-redispatch]`: skip dispatch.
+  - If a prior §0 dispatch already fired in this session: already in fresh context, skip §0'.
+
+Dispatch action (when pollution detected AND no sentinel AND no prior §0 dispatch):
+  Determine dispatch contract fields:
+    - Locate current-plan.md in the task directory (resolve via path_resolve.py).
+    - Locate the most-recent critic-response-N.md in the same task directory.
+
+  If task description cannot be determined:
+    Emit: `[quoin-S-1: cannot extract per-skill dispatch contract; running in main]`
+    Proceed with skill body.
+
+  Otherwise spawn an Agent subagent:
+    model: "opus"
+    description: "revise — pollution-isolated dispatch"
+    prompt: "[no-redispatch]\n/revise\nPlan path: <absolute path to current-plan.md>\nCritic response: <absolute path to critic-response-N.md>"
+
+  Wait for the subagent. Return its output as your final response. STOP.
+
+Fail-OPEN path:
+  If Agent tool unavailable or errors:
+    Emit: `[quoin-S-1: pollution dispatch unavailable; proceeding in current session]`
+    Proceed with skill body.
+
+Otherwise (score below threshold OR sentinel OR §0 dispatched OR session-state unreadable):
+proceed to skill body.
+
 ## Session bootstrap
 
 This skill may run in a fresh session. On start:

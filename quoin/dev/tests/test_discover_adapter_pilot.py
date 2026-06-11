@@ -30,11 +30,11 @@ from pathlib import Path
 
 import pytest
 import yaml
+import _adapter_pilot_helpers
 
 THIS_FILE = Path(__file__).resolve()
 TESTS_DIR = THIS_FILE.parent
 PKG_DIR = TESTS_DIR.parent.parent
-INSTALL_SH = PKG_DIR / "install.sh"
 
 FORBIDDEN_TOKENS = ("~/.claude", "Haiku", "Sonnet", "Opus", "Agent", "gh CLI")
 REQUIRED_MENTION = ".workflow_artifacts/<task-name>/"
@@ -83,9 +83,6 @@ def _legacy_stub(skill_name: str) -> Path:
     return PKG_DIR / "skills" / skill_name / "SKILL.md"
 
 
-def _adapter_var(skill_name: str) -> str:
-    """Return the expected ADAPTER_*_SRC variable name for a skill."""
-    return "ADAPTER_" + skill_name.upper().replace("-", "_") + "_SRC"
 
 
 # ── Parametrized tests (run over the discover skill) ──────────────────────────
@@ -154,20 +151,10 @@ def test_adapter_skill_md_references_core_doc(skill_name, expected_model, has_se
 
 @pytest.mark.parametrize("skill_name,expected_model,has_section_0", SKILLS, ids=SKILL_IDS)
 def test_install_sh_has_adapter_override(skill_name, expected_model, has_section_0):
-    text = INSTALL_SH.read_text(encoding="utf-8")
-    var_name = _adapter_var(skill_name)
-    assert var_name in text, f"install.sh missing {var_name} variable"
-    branch = f'elif [ "$skill_name" = "{skill_name}" ]'
-    assert branch in text, (
-        f"install.sh missing per-skill override branch: {branch}"
-    )
-    # Pre-flight check must appear before the skills loop.
-    preflight_idx = text.find(f"{var_name}=")
-    loop_idx = text.find('for skill_dir in "$SCRIPT_DIR/skills"/*/')
-    assert preflight_idx != -1 and loop_idx != -1
-    assert preflight_idx < loop_idx, (
-        f"Pre-flight existence check for {var_name} must appear BEFORE the skills loop"
-    )
+    # IVG-69 Stage B retarget: install.sh no longer carries ADAPTER_*_SRC vars.
+    # Assert the equivalent contract against installer.py logic instead.
+    _adapter_pilot_helpers.assert_installer_selects_adapter(skill_name)
+
 
 
 @pytest.mark.parametrize("skill_name,expected_model,has_section_0", SKILLS, ids=SKILL_IDS)
@@ -270,7 +257,7 @@ def test_phase_19_skills_still_covered():
     - its adapter at quoin/adapters/claude/skills/<skill>/SKILL.md
     - its install.sh override variable and elif branch
     """
-    install_text = INSTALL_SH.read_text(encoding="utf-8")
+    from quoin import installer
     for skill in PRIOR_PHASE_SKILLS:
         core_doc = _core_doc(skill)
         assert core_doc.is_file(), (
@@ -280,9 +267,8 @@ def test_phase_19_skills_still_covered():
         assert adapter.is_file(), (
             f"Regression: adapter SKILL.md for prior-phase skill {skill!r} is missing: {adapter}"
         )
-        var_name = _adapter_var(skill)
-        assert var_name in install_text, (
-            f"Regression: install.sh missing {var_name} for prior-phase skill {skill!r}"
+        assert skill in installer.CANONICAL_SKILLS, (
+            f"Regression: installer.CANONICAL_SKILLS missing {skill!r} for prior-phase skill"
         )
 
 

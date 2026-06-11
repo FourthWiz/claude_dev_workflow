@@ -5,12 +5,6 @@
     "tasks_path": ".workflow_artifacts",
     "workflow_artifacts_path": ".workflow_artifacts"
   },
-  "freshness": {
-    "solo": {
-      "head_sha": "cccccccccccccccccccccccccccccccccccccccc",
-      "recorded_at": "2026-05-13T00:00:00Z"
-    }
-  },
   "generated_at": "2026-05-13T00:00:00Z",
   "memory": {
     "daily_dir": ".workflow_artifacts/memory/daily",
@@ -20,17 +14,10 @@
   },
   "project": {
     "name": "missing-optional-artifacts-project",
-    "root_path": "/Users/ivgo/Library/CloudStorage/GoogleDrive-ivan.gorban@gmail.com/My Drive/Storage/Codex_workflow/quoin/quoin/dev/tests/fixtures/generate_discovery_map/missing-optional-artifacts-project",
+    "root_path": "__masked__",
     "runtime_adapters": []
   },
-  "repos": [
-    {
-      "head_sha": "cccccccccccccccccccccccccccccccccccccccc",
-      "head_short": "ccccccc",
-      "name": "solo",
-      "path": "solo"
-    }
-  ],
+  "repos": [],
   "schema_version": 1,
   "tasks": {
     "active": [],

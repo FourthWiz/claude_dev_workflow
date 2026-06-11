@@ -27,7 +27,10 @@ POLLUTION_HEADING = "## §0' Pollution dispatch (execute after §0 / §0c if pre
 TARGET_SKILLS = [
     "architect", "plan", "critic", "revise", "review", "init_workflow", "discover",
 ]
-SKILLS_DIR = TESTS_DIR.parent.parent / "skills"
+# Phase-10 adapter migration moved active SKILL.md content from quoin/skills/ (stubs)
+# to quoin/adapters/claude/skills/ (active adapter files). §0' was restored into the
+# adapter dir by inject_pollution_dispatch.py (IVG-69 Stage A). Tests must read adapters.
+SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
 
 
 def _run_score(transcript_path: str, extra_env: dict | None = None) -> subprocess.CompletedProcess:

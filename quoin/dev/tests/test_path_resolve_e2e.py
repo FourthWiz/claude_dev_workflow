@@ -47,14 +47,15 @@ def test_claude_md_has_multi_stage_section():
     text = CLAUDE_MD.read_text()
     lines = text.splitlines()
 
-    # Find the heading between line 30 and 60 (1-indexed)
+    # Find the heading anywhere in the file (line-window constraint dropped — heading
+    # position drifts as CLAUDE.md grows; presence + content assertions are sufficient)
     heading_line = None
-    for i, line in enumerate(lines[29:59], start=30):  # lines 30-59 (0-indexed 29-58)
+    for i, line in enumerate(lines, start=1):
         if "### Multi-stage tasks" in line:
             heading_line = i
             break
     assert heading_line is not None, (
-        f"### Multi-stage tasks heading not found between lines 30-60 of {CLAUDE_MD}. "
+        f"### Multi-stage tasks heading not found in {CLAUDE_MD}. "
         f"T-03 must add this section."
     )
 
@@ -94,9 +95,9 @@ HARDCODED_RE = re.compile(
 # D-09b: Explicit allow-list for 3 Form-B/C files whose references
 # the Form-A alternation cannot match (round-5 CRIT-1).
 EXPLICIT_FORM_B_C_FILES = [
-    str(PROJECT_ROOT / "quoin" / "skills" / "plan" / "SKILL.md"),
+    str(ADAPTER_SKILLS_DIR / "plan" / "SKILL.md"),
     str(ADAPTER_SKILLS_DIR / "gate" / "SKILL.md"),
-    str(PROJECT_ROOT / "quoin" / "skills" / "architect" / "SKILL.md"),
+    str(ADAPTER_SKILLS_DIR / "architect" / "SKILL.md"),
 ]
 
 
@@ -106,7 +107,8 @@ def test_skill_files_reference_resolver_dynamic_glob_plus_form_b_c_allow_list():
     also reference path_resolve.py. Plus explicit Form-B/C allow-list.
     (round-3 MAJ-B dynamic-glob; round-5 CRIT-1 Form-B/C extension)
     """
-    skill_files = sorted(glob.glob(SKILLS_GLOB))
+    skill_files = sorted(glob.glob(SKILLS_GLOB)
+                         + glob.glob(str(ADAPTER_SKILLS_DIR / "*" / "SKILL.md")))
     assert len(skill_files) >= 11, (
         f"glob returned {len(skill_files)} SKILL.md files; expected >= 11 "
         f"(informational lower bound dated 2026-04-26 per D-07; actual count "
@@ -170,7 +172,8 @@ def test_skill_files_have_no_residual_hardcoded_path_dynamic_glob_plus_form_b_c(
     planning-artifact paths.
     (round-3 MAJ-B dynamic-glob; round-5 CRIT-1 Form-B/C residual-prose check)
     """
-    skill_files = sorted(glob.glob(SKILLS_GLOB))
+    skill_files = sorted(glob.glob(SKILLS_GLOB)
+                         + glob.glob(str(ADAPTER_SKILLS_DIR / "*" / "SKILL.md")))
     assert len(skill_files) >= 11, (
         f"glob returned {len(skill_files)} SKILL.md files; expected >= 11. "
         f"Check PROJECT_ROOT: {PROJECT_ROOT}"
