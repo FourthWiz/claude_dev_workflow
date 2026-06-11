@@ -185,36 +185,35 @@ if [ -r "$SKILL_MD" ]; then
   fi
 fi
 
-# ─── 11. SKILL.md: no bare-relative .workflow_artifacts/memory token ─────────
-# Detects any line where `.workflow_artifacts/memory` appears WITHOUT a `$` variable
-# prefix. Allowlist (grep -v): shell comments (#), resolve_project_root calls,
-# lines with the word "prefix", lines with the prose placeholder <path>, and
-# lines containing a backtick example.
-# Pattern: `.workflow_artifacts/memory` NOT preceded by `}` or `$` on that token.
+# ─── 11. SKILL.md: no bare-relative .workflow_artifacts/memory — token-anchored ─
+# For each occurrence of .workflow_artifacts/memory, the character immediately before
+# it must be / (meaning it is part of a resolved ${VAR}/.workflow... path).
+# Allowlist (line-level grep -v): shell comments (#), resolve_project_root calls,
+# lines with the word "prefix", lines with the prose placeholder <path>.
+# Any unlisted occurrence where the preceding char is NOT / → fail.
+# Uses perl for per-occurrence lookahead (POSIX grep cannot do lookbehind).
 if [ -r "$SKILL_MD" ]; then
   _bare_hits=$(grep -n '\.workflow_artifacts/memory' "$SKILL_MD" 2>/dev/null \
     | grep -v '^[^:]*:[[:space:]]*#' \
     | grep -v 'resolve_project_root' \
-    | grep -v '\bprefix\b' \
     | grep -v '<path>' \
-    | grep -v '`[^`]*\.workflow_artifacts/memory' \
-    | grep -v '\$[{(]' \
-    | grep -v '}\.workflow_artifacts/memory' \
+    | grep -v '\bprefix\b' \
+    | perl -ne 'while (/(.?)\.workflow_artifacts\/memory/g) { print "$_" if $1 ne "/" }' \
     | wc -l | awk '{print $1}')
   if [ "$_bare_hits" -eq 0 ]; then
-    ok "checkpoint SKILL.md: no bare-relative .workflow_artifacts/memory token (all prefixed with \${variable})"
+    ok "checkpoint SKILL.md: no bare-relative .workflow_artifacts/memory token (token-anchored check)"
   else
-    fail "checkpoint SKILL.md: found $_bare_hits bare-relative .workflow_artifacts/memory token(s) — prefix each with \${_PROJECT_ROOT} or a resolved variable"
+    fail "checkpoint SKILL.md: found $_bare_hits bare-relative .workflow_artifacts/memory occurrence(s) — each must be preceded by / (i.e. part of \${VAR}/.workflow...)"
     grep -n '\.workflow_artifacts/memory' "$SKILL_MD" 2>/dev/null \
       | grep -v '^[^:]*:[[:space:]]*#' \
       | grep -v 'resolve_project_root' \
-      | grep -v '\bprefix\b' \
       | grep -v '<path>' \
-      | grep -v '`[^`]*\.workflow_artifacts/memory' \
-      | grep -v '\$[{(]' \
-      | grep -v '}\.workflow_artifacts/memory' \
+      | grep -v '\bprefix\b' \
+      | perl -ne 'while (/(.?)\.workflow_artifacts\/memory/g) { print if $1 ne "/" }' \
       | head -10 >&2 || true
   fi
+else
+  fail "checkpoint SKILL.md (check 11): not readable"
 fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
