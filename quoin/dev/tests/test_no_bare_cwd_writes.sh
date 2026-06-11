@@ -196,8 +196,6 @@ if [ -r "$SKILL_MD" ]; then
   _bare_hits=$(grep -n '\.workflow_artifacts/memory' "$SKILL_MD" 2>/dev/null \
     | grep -v '^[^:]*:[[:space:]]*#' \
     | grep -v 'resolve_project_root' \
-    | grep -v '<path>' \
-    | grep -v '\bprefix\b' \
     | perl -ne 'while (/(.?)\.workflow_artifacts\/memory/g) { print "$_" if $1 ne "/" }' \
     | wc -l | awk '{print $1}')
   if [ "$_bare_hits" -eq 0 ]; then
@@ -207,8 +205,6 @@ if [ -r "$SKILL_MD" ]; then
     grep -n '\.workflow_artifacts/memory' "$SKILL_MD" 2>/dev/null \
       | grep -v '^[^:]*:[[:space:]]*#' \
       | grep -v 'resolve_project_root' \
-      | grep -v '<path>' \
-      | grep -v '\bprefix\b' \
       | perl -ne 'while (/(.?)\.workflow_artifacts\/memory/g) { print if $1 ne "/" }' \
       | head -10 >&2 || true
   fi
