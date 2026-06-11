@@ -114,6 +114,14 @@ Purpose: lets `precompact.sh` hook know a `/checkpoint` session is active (for e
 
 Detect mode: if the user's invocation does NOT include `--restore`, run save mode.
 
+**Project-root resolution (resolve ONCE, reuse everywhere):** At the very start of save mode, before any path derivations, acquire `_cwd` from stdin `.cwd` and resolve it to the true project root:
+```sh
+_cwd=$(from stdin JSON .cwd field, or $PWD if absent)
+. __QUOIN_HOME__/hooks/_lib.sh 2>/dev/null || true
+_PROJECT_ROOT=$(resolve_project_root "$_cwd")
+```
+ALL subsequent path derivations in this skill (checkpoints, pending-restore, sessions, recent-sessions, MEMORY_DIR, project-hash) MUST use `${_PROJECT_ROOT}` — do NOT re-read stdin `.cwd` at later sites; reuse the resolved variable. This ensures that launching from a nested subdirectory (e.g. `quoin/quoin/`) still writes sentinels and checkpoints at the true project root where a fresh restore session can find them.
+
 **Arg parsing (first in save mode):** Scan the user's prompt for these flags:
 - `--mode restore` | `--mode load-as-reference` | `--mode mid-agent` → sets SELECTED_MODE
 - `--after-compact` → sets AFTER_COMPACT_FLAG_PRESENT=true (deprecated — see Step 0.5)
@@ -992,7 +1000,7 @@ Trash-move consumed sentinels to `.workflow_artifacts/memory/trash/<YYYY-MM-DD>/
 
 Use the `trash_move` helper from `__QUOIN_HOME__/hooks/_lib.sh` (fail-OPEN — if the move fails, warn and leave in place):
 ```bash
-. __QUOIN_HOME__/hooks/_lib.sh && trash_move "<sentinel-path>" "$(pwd)/.workflow_artifacts/memory"
+. __QUOIN_HOME__/hooks/_lib.sh && trash_move "<sentinel-path>" "${_PROJECT_ROOT}/.workflow_artifacts/memory"
 ```
 
 **Cleanup logic (B2 — two-call pattern):**
