@@ -683,7 +683,7 @@ def deploy_agentdesk(source_dir: pathlib.Path, dest_agentdesk_dir: pathlib.Path)
 def regenerate_preambles(source_dir: pathlib.Path, *, allow_writes: bool) -> None:
     """Regenerate subagent preambles if running from a writable working tree."""
     if not allow_writes:
-        print("Skipping preamble regeneration (wheel install — using preambles shipped in package)")
+        print("Skipping preamble regeneration (user mode — pass --dev to regenerate from source)")
         return
     import runpy
 
@@ -710,7 +710,7 @@ def regenerate_pollution_dispatch(source_dir: pathlib.Path, *, allow_writes: boo
     file that deploy_skills copies to the deploy root (IVG-69, T-06, R-11).
     """
     if not allow_writes:
-        print("Skipping pollution dispatch regeneration (wheel install — using adapter files shipped in package)")
+        print("Skipping pollution dispatch regeneration (user mode — pass --dev to regenerate from source)")
         return
     import runpy
 
