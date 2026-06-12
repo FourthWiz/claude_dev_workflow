@@ -135,6 +135,9 @@ _agentdesk_pane_cmd() {
     status)
       printf '%s' 'source \"$HOME/.config/agentdesk/agentdesk.zsh\" 2>/dev/null || true; cd \"$PROJECT_ROOT\" && python3 \"$HOME/.claude/scripts/status_graph.py\" --compact --watch'
       ;;
+    spend)
+      printf '%s' 'source \"$HOME/.config/agentdesk/agentdesk.zsh\" 2>/dev/null || true; cd \"$PROJECT_ROOT\" && python3 \"$HOME/.claude/scripts/spend_monitor.py\" --compact --watch'
+      ;;
     ccr)
       printf '%s' 'source \"$HOME/.config/agentdesk/agentdesk.zsh\" 2>/dev/null || true; cd \"$PROJECT_ROOT\" && echo '\''CCR (OpenRouter) - project root:'\'' \"$PWD\" && if command -v ccr >/dev/null 2>&1; then ccr code; else echo '\''ccr not found'\''; fi; zsh'
       ;;
@@ -152,6 +155,7 @@ _agentdesk_pane_name() {
     codex)  printf '%s' 'Codex' ;;
     shell)  printf '%s' 'Shell' ;;
     status) printf '%s' 'Status' ;;
+    spend)  printf '%s' 'Token Spend' ;;
     ccr)    printf '%s' 'CCR (OpenRouter)' ;;
   esac
 }
@@ -325,11 +329,11 @@ _agentdesk_parse_custom_tokens() {
     [ -z "$tok" ] && continue
 
     case "$tok" in
-      claude|codex|shell|status|ccr)
+      claude|codex|shell|status|ccr|spend)
         parsed+=("$tok")
         ;;
       *)
-        printf 'Unknown token: "%s". Valid tokens: claude, codex, shell, status, ccr\n' "$tok" >&2
+        printf 'Unknown token: "%s". Valid tokens: claude, codex, shell, status, ccr, spend\n' "$tok" >&2
         printf 'Re-enter comma-separated tokens (or press Enter to cancel): ' >&2
         local retry
         read -r retry
@@ -481,6 +485,7 @@ Window types (positional):
   shell    plain zsh shell
   status   show workflow pipeline status graph
   ccr      start ccr code (OpenRouter via CCR) in pane
+  spend    realtime token-spend monitor
 
 Behavior:
   Re-running in a folder with a live same-named session starts a NEW suffixed session (_1, _2, …); it never attaches.
@@ -498,7 +503,7 @@ Resume:
 HELP
         return 0
         ;;
-      claude|codex|shell|status|ccr)
+      claude|codex|shell|status|ccr|spend)
         tokens+=("$1")
         ;;
       *)

@@ -497,6 +497,88 @@ def test_agentdesk_picker_option5_claude_ccr_shell(tmp_path: Path) -> None:
 
 
 # ============================================================
+# T-09: spend token tests (IVG-62)
+# ============================================================
+
+def test_agentdesk_spend_pane_cmd(tmp_path: Path) -> None:
+    """_agentdesk_pane_cmd spend → contains spend_monitor.py, --compact, --watch."""
+    result = _run_zsh_fn("_agentdesk_pane_cmd spend", tmp_path)
+    assert result.returncode == 0
+    cmd = result.stdout
+    assert "spend_monitor.py" in cmd, f"pane cmd missing spend_monitor.py: {cmd!r}"
+    assert "--compact" in cmd, f"pane cmd missing --compact: {cmd!r}"
+    assert "--watch" in cmd, f"pane cmd missing --watch: {cmd!r}"
+
+
+def test_agentdesk_spend_pane_name(tmp_path: Path) -> None:
+    """_agentdesk_pane_name spend → prints exactly 'Token Spend'."""
+    result = _run_zsh_fn("_agentdesk_pane_name spend", tmp_path)
+    assert result.returncode == 0
+    assert result.stdout.strip() == "Token Spend", (
+        f"Expected pane name 'Token Spend', got: {result.stdout.strip()!r}"
+    )
+
+
+def test_agentdesk_spend_token_valid(tmp_path: Path) -> None:
+    """spend token → generates valid KDL with spend_monitor.py command and correct pane name."""
+    kdl = _gen_layout("spend", tmp_path)
+    assert "spend_monitor.py" in kdl, f"KDL missing 'spend_monitor.py': {kdl[:400]}"
+    assert "--compact" in kdl, f"KDL missing '--compact': {kdl[:400]}"
+    assert "--watch" in kdl, f"KDL missing '--watch': {kdl[:400]}"
+    assert 'pane name="Token Spend"' in kdl, (
+        f"KDL missing pane name 'Token Spend': {kdl[:400]}"
+    )
+    _assert_kdl_valid(kdl)
+
+
+def test_agentdesk_parse_custom_tokens_with_spend(tmp_path: Path) -> None:
+    """_agentdesk_parse_custom_tokens 'claude, spend' → outputs both tokens."""
+    result = _run_zsh_fn("_agentdesk_parse_custom_tokens 'claude, spend'", tmp_path)
+    assert result.returncode == 0
+    output = result.stdout
+    assert "spend" in output, f"spend token not in output: {output!r}"
+    assert "claude" in output, f"claude token not in output: {output!r}"
+
+
+def test_agentdesk_unknown_token_error_includes_spend(tmp_path: Path) -> None:
+    """_agentdesk_parse_custom_tokens with unknown token → error mentions 'spend'."""
+    result = _run_zsh_fn("_agentdesk_parse_custom_tokens 'emacs'", tmp_path, stdin_input="\n")
+    assert "spend" in result.stderr, (
+        f"Valid-tokens error message missing 'spend': {result.stderr!r}"
+    )
+
+
+def test_agentdesk_unknown_token_error_includes_ccr_and_spend(tmp_path: Path) -> None:
+    """Unknown-token error message still contains 'status, ccr' ordered tail (R-03 guard)
+    and also mentions 'spend' appended after ccr."""
+    result = _run_zsh_fn("_agentdesk_parse_custom_tokens 'emacs'", tmp_path, stdin_input="\n")
+    assert "status, ccr" in result.stderr, (
+        f"Valid-tokens error message missing ordered tail 'status, ccr': {result.stderr!r}"
+    )
+    assert "spend" in result.stderr, (
+        f"Valid-tokens error message missing 'spend': {result.stderr!r}"
+    )
+
+
+def test_agentdesk_help_includes_spend(tmp_path: Path) -> None:
+    """agentdesk --help output contains 'spend' in Window types section."""
+    result = _run_agentdesk("--help", tmp_path)
+    assert result.returncode == 0
+    assert "spend" in result.stdout, (
+        f"--help output missing 'spend' window type: {result.stdout!r}"
+    )
+
+
+def test_agentdesk_spend_as_positional_token(tmp_path: Path) -> None:
+    """agentdesk claude spend routes 'spend' as a window token (rc=0, not 'unexpected argument')."""
+    result = _run_agentdesk("claude spend", tmp_path)
+    assert result.returncode == 0, (
+        f"'agentdesk claude spend' should succeed (rc={result.returncode})\n"
+        f"stderr: {result.stderr}"
+    )
+
+
+# ============================================================
 # S-3: _agentdesk_open_dashboard tests (IVG-63 stage-3)
 # ============================================================
 
