@@ -865,8 +865,9 @@ def test_agentdesk_spend_separated_from_multi_main(tmp_path: Path) -> None:
     assert 'pane name="Codex"' in kdl
     assert 'pane name="Shell"' in kdl
     # 3 main panes + 1 spend pane = 4 total command panes
-    assert kdl.count('command "zsh"') == 4, (
-        f"Expected 4 command panes (3 main + 1 spend), got {kdl.count('command \"zsh\"')}"
+    count = kdl.count('command "zsh"')
+    assert count == 4, (
+        f"Expected 4 command panes (3 main + 1 spend), got {count}"
     )
     # Token Spend pane must NOT be inside the main tab's split
     main_tab_end = kdl.find('tab name="Spend"')
@@ -996,7 +997,7 @@ def _make_state_env(tmp_path: Path) -> dict:
 
 
 def _run_agentdesk_state(
-    args: str, tmp_path: Path, stdin: str | None = None
+    args: str, tmp_path: Path, stdin: "Optional[str]" = None
 ) -> subprocess.CompletedProcess:
     """Source agentdesk.zsh and call agentdesk with the given args, using _make_state_env."""
     script = textwrap.dedent(f"""
