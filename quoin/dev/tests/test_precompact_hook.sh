@@ -500,6 +500,65 @@ rm -rf "$SPACE_DIR" 2>/dev/null || true
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-space.txt"
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
 
+# ─── IVG-61 Nested-cwd regression (resolve_project_root wiring) ──────────────
+# Feed a genuinely nested non-owning cwd.
+# Without the fix: hook writes checkpoint to <root>/sub/.workflow_artifacts/.
+# With the fix:    hook writes checkpoint to <root>/.workflow_artifacts/.
+#
+# Also hardens against CRIT-3: fake HOME itself owns .workflow_artifacts/ but
+# the checkpoint must still land at <root>, NOT fake HOME.
+#
+# LOAD-BEARING: "no subdir leaked" assertion — precompact mkdir -p on a wrong
+# cwd CREATES the nested dir, so absence of the nested dir proves resolve fired.
+
+NESTED_HOME="${TMPDIR:-/tmp}/test_precompact_nested_home_$$"
+NESTED_ROOT="$NESTED_HOME/project"
+NESTED_SUB="$NESTED_ROOT/sub"
+# Give fake HOME its own .workflow_artifacts/ (CRIT-3 hardening)
+mkdir -p "$NESTED_HOME/.workflow_artifacts/memory"
+mkdir -p "$NESTED_ROOT/.workflow_artifacts/memory/checkpoints"
+mkdir -p "$NESTED_ROOT/.workflow_artifacts/memory/sessions"
+mkdir -p "$NESTED_SUB"
+touch "$NESTED_SUB/dummy.jsonl"
+
+stdin_nested=$(printf '{"trigger":"auto","session_id":"sess-nested-ivg61","cwd":"%s","transcript_path":"%s/dummy.jsonl"}' \
+  "$NESTED_SUB" "$NESTED_SUB")
+
+# Run hook with fake HOME so resolve_project_root ceiling is deterministic
+out_nested=$(printf '%s' "$stdin_nested" | HOME="$NESTED_HOME" sh "$HOOK" 2>/dev/null) || true
+
+# Hook should emit {"decision":"allow"} (no pidfiles → direct-conversation path)
+if printf '%s' "$out_nested" | grep -q '"allow"'; then
+  ok "(IVG-61-nested) hook emits allow decision"
+else
+  fail "(IVG-61-nested) hook did not emit allow decision: $out_nested"
+fi
+
+# LOAD-BEARING: checkpoint written at project root, NOT at nested sub
+_found_cp=$(ls "$NESTED_ROOT/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null | head -1)
+if [ -n "$_found_cp" ]; then
+  ok "(IVG-61-nested) checkpoint created at project root"
+else
+  fail "(IVG-61-nested) no checkpoint at project root — resolve_project_root may not be wired"
+fi
+
+# LOAD-BEARING: nested sub must NOT have a .workflow_artifacts/ leaked into it
+if [ -d "$NESTED_SUB/.workflow_artifacts" ]; then
+  fail "(IVG-61-nested) .workflow_artifacts/ leaked into nested sub — resolve did not fire"
+else
+  ok "(IVG-61-nested) no .workflow_artifacts/ leaked into nested sub"
+fi
+
+# CRIT-3: no checkpoint leaked into fake HOME's .workflow_artifacts/
+_home_cp=$(ls "$NESTED_HOME/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null | head -1)
+if [ -n "$_home_cp" ]; then
+  fail "(IVG-61-CRIT3) checkpoint leaked into fake HOME — exclusive ceiling broken"
+else
+  ok "(IVG-61-CRIT3) no checkpoint leaked into fake HOME"
+fi
+
+rm -rf "$NESTED_HOME" 2>/dev/null || true
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 
 printf '\n'

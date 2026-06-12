@@ -23,6 +23,7 @@ src=$(printf '%s' "$STDIN" | jq -r '.source // empty' 2>/dev/null) || exit 0
 session_id=$(printf '%s' "$STDIN" | jq -r '.session_id // empty' 2>/dev/null) || exit 0
 cwd=$(printf '%s' "$STDIN" | jq -r '.cwd // empty' 2>/dev/null) || exit 0
 [ -z "$cwd" ] && cwd="$PWD"
+cwd=$(resolve_project_root "$cwd")
 
 MEMORY_DIR="${cwd}/.workflow_artifacts/memory"
 

@@ -32,6 +32,7 @@ fi
 session_id=$(printf '%s' "$STDIN" | jq -r '.session_id // empty' 2>/dev/null) || exit 0
 cwd=$(printf '%s' "$STDIN" | jq -r '.cwd // empty' 2>/dev/null) || exit 0
 [ -z "$cwd" ] && cwd="$PWD"
+cwd=$(resolve_project_root "$cwd")
 
 # STEP 1b: Recent-session record (append before compaction wipes context)
 (
