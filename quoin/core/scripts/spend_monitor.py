@@ -135,7 +135,7 @@ def parse_session_today(
 
     try:
         with open(path, "r", encoding="utf-8") as fh:
-            for line_no, raw_line in enumerate(fh, start=1):
+            for raw_line in fh:
                 raw_line = raw_line.strip()
                 if not raw_line:
                     continue

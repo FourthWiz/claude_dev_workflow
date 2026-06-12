@@ -8,8 +8,9 @@ from pathlib import Path
 
 _CORE_PATH = Path(__file__).resolve().parents[1] / "core" / "scripts" / "spend_monitor.py"
 _SPEC = importlib.util.spec_from_file_location("_quoin_core_spend_monitor", _CORE_PATH)
+assert _SPEC is not None, f"Cannot create importlib spec for {_CORE_PATH}"
 _CORE = importlib.util.module_from_spec(_SPEC)
-assert _SPEC.loader is not None
+assert _SPEC.loader is not None, f"ModuleSpec has no loader for {_CORE_PATH}"
 # Register in sys.modules before exec so @dataclass can resolve cls.__module__
 # (required for Python 3.8+ compatibility with dynamic module loading).
 sys.modules["_quoin_core_spend_monitor"] = _CORE

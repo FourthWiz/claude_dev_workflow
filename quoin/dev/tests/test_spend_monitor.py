@@ -14,7 +14,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
-import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -26,7 +25,6 @@ import pytest
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-_WRAPPER_PATH = REPO_ROOT / "quoin" / "scripts" / "spend_monitor.py"
 _CORE_PATH = REPO_ROOT / "quoin" / "core" / "scripts" / "spend_monitor.py"
 
 
@@ -36,6 +34,8 @@ def _load_spend_monitor():
     if key in sys.modules:
         return sys.modules[key]
     spec = importlib.util.spec_from_file_location(key, _CORE_PATH)
+    assert spec is not None, f"Cannot create spec for {_CORE_PATH}"
+    assert spec.loader is not None, f"Spec has no loader for {_CORE_PATH}"
     mod = importlib.util.module_from_spec(spec)
     sys.modules[key] = mod
     spec.loader.exec_module(mod)
@@ -489,13 +489,11 @@ def test_memo_cache_forces_reparse_on_mtime_change(sm, fixture_home):
 # T-08: --watch/--interval precedence tests
 # ---------------------------------------------------------------------------
 
-def test_watch_interval_precedence(sm, fixture_home):
+def test_watch_interval_precedence(fixture_home):
     """--watch 5 --interval 2 → effective_interval is 2 (--interval wins, D-03)."""
-    import argparse
-
     # Replicate the resolution logic from main()
     argv = ["--watch", "5", "--interval", "2", "--once", "--json", "--home", str(fixture_home["home"])]
-    parser = _build_parser(sm)
+    parser = _build_parser()
     args = parser.parse_args(argv)
     effective_interval = (
         args.interval if args.interval is not None
@@ -506,12 +504,8 @@ def test_watch_interval_precedence(sm, fixture_home):
     )
 
 
-def _build_parser(sm):
-    """Build the argparse parser by calling main with --help to extract parser state.
-
-    Alternative: directly replicate the parser from main() for testing.
-    We replicate the key args here.
-    """
+def _build_parser():
+    """Replicate the argparse parser from spend_monitor.main() for testing."""
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--watch", nargs="?", const=3, type=int)

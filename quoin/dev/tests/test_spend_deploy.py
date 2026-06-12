@@ -6,7 +6,6 @@ Verifies:
 2. deploy_scripts + deploy_core_scripts copy both files to a temp dest without sys.exit(1)
 3. Both dest/scripts/spend_monitor.py and dest/core/scripts/spend_monitor.py exist after deploy.
 """
-import shutil
 import sys
 from pathlib import Path
 
@@ -15,7 +14,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 sys.path.insert(0, str(REPO_ROOT / "src"))
-from quoin.installer import CORE_SCRIPTS, DEPLOYED_SCRIPTS, deploy_core_scripts, deploy_scripts  # noqa: E402
+from quoin.installer import CORE_SCRIPTS, DEPLOYED_SCRIPTS, deploy_core_scripts, deploy_scripts  # noqa: E402  # type: ignore[import]
 
 
 # ---------------------------------------------------------------------------
