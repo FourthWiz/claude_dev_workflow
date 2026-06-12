@@ -953,6 +953,7 @@ echo "  agentdesk --name my-session"
 echo "  agentdesk --mode solo|duo|trio"
 echo "  agentdesk claude codex shell"
 echo "  agentdesk claude ccr shell"
+echo "  agentdesk --pick                  (force layout picker, even if a layout is saved)"
 echo
 echo "Useful commands:"
 echo "  repos"
