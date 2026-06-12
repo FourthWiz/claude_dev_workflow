@@ -829,6 +829,65 @@ def _run_next_session_name(base: str, sessions: list, tmp_path: Path) -> subproc
     )
 
 
+# ============================================================
+# Spend tab tests (agentdesk-spend-tab)
+# ============================================================
+
+def test_agentdesk_spend_own_tab_with_main(tmp_path: Path) -> None:
+    """_agentdesk_gen_layout claude spend → main tab + separate Spend tab."""
+    kdl = _gen_layout("claude spend", tmp_path)
+    assert 'tab name="main"' in kdl, f"Expected main tab: {kdl[:400]}"
+    assert 'tab name="Spend"' in kdl, f"Expected Spend tab: {kdl[:400]}"
+    assert 'pane name="Token Spend"' in kdl, f"Expected Token Spend pane: {kdl[:400]}"
+    assert "spend_monitor.py" in kdl, f"Expected spend_monitor.py in KDL: {kdl[:400]}"
+    assert kdl.count('tab name=') == 2, (
+        f"Expected exactly 2 tabs (main + Spend), got: {kdl.count('tab name=')}"
+    )
+    _assert_kdl_valid(kdl)
+
+
+def test_agentdesk_spend_only_token_just_spend_tab(tmp_path: Path) -> None:
+    """_agentdesk_gen_layout spend → only a Spend tab, no main tab."""
+    kdl = _gen_layout("spend", tmp_path)
+    assert 'tab name="Spend"' in kdl, f"Expected Spend tab: {kdl[:400]}"
+    assert 'tab name="main"' not in kdl, f"main tab must be absent when spend is only token: {kdl[:400]}"
+    _assert_kdl_valid(kdl)
+
+
+def test_agentdesk_spend_separated_from_multi_main(tmp_path: Path) -> None:
+    """_agentdesk_gen_layout claude codex spend shell → main has vertical split + separate Spend tab."""
+    kdl = _gen_layout("claude codex spend shell", tmp_path)
+    assert 'split_direction="vertical"' in kdl, (
+        f"3 main tokens (claude/codex/shell) should produce vertical split: {kdl[:400]}"
+    )
+    assert 'tab name="Spend"' in kdl, f"Expected separate Spend tab: {kdl[:400]}"
+    assert 'pane name="Claude Code"' in kdl
+    assert 'pane name="Codex"' in kdl
+    assert 'pane name="Shell"' in kdl
+    # 3 main panes + 1 spend pane = 4 total command panes
+    assert kdl.count('command "zsh"') == 4, (
+        f"Expected 4 command panes (3 main + 1 spend), got {kdl.count('command \"zsh\"')}"
+    )
+    # Token Spend pane must NOT be inside the main tab's split
+    main_tab_end = kdl.find('tab name="Spend"')
+    assert main_tab_end > 0, "Spend tab must follow main tab"
+    main_section = kdl[:main_tab_end]
+    assert 'pane name="Token Spend"' not in main_section, (
+        "Token Spend pane must not appear inside the main tab"
+    )
+    _assert_kdl_valid(kdl)
+
+
+def test_agentdesk_no_spend_unchanged(tmp_path: Path) -> None:
+    """_agentdesk_gen_layout claude codex shell → no Spend tab (regression guard)."""
+    kdl = _gen_layout("claude codex shell", tmp_path)
+    assert 'tab name="Spend"' not in kdl, (
+        f"Spend tab must be absent when spend token not given: {kdl[:400]}"
+    )
+    assert 'tab name="main"' in kdl, f"main tab must be present: {kdl[:400]}"
+    _assert_kdl_valid(kdl)
+
+
 # T-06 (a): base free → no suffix
 def test_next_session_name_base_free(tmp_path: Path) -> None:
     """_agentdesk_next_session_name returns base unchanged when no sessions exist."""

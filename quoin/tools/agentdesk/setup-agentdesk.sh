@@ -816,6 +816,13 @@ layout {
             args "-lc" "source \"$HOME/.config/agentdesk/agentdesk.zsh\" 2>/dev/null || true; cd \"$PROJECT_ROOT\" && zsh"
         }
     }
+
+    tab name="Spend" {
+        pane name="Token Spend" {
+            command "zsh"
+            args "-lc" "source \"$HOME/.config/agentdesk/agentdesk.zsh\" 2>/dev/null || true; cd \"$PROJECT_ROOT\" && python3 \"$HOME/.claude/scripts/spend_monitor.py\" --compact --watch"
+        }
+    }
 }
 EOF
 
