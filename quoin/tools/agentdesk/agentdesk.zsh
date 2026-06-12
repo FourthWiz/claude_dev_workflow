@@ -186,13 +186,11 @@ _agentdesk_gen_layout() {
   local t name cmd i main_count has_spend
   local -a main_tokens=()
 
-  # Partition: collect non-spend tokens into main_tokens; flag if spend present.
-  # Multiple spend tokens collapse to a single Spend tab.
-  has_spend=0
+  # Spend tab is always included. Filter any explicit spend tokens from main_tokens
+  # (deduplication — passing spend explicitly still works).
+  has_spend=1
   for t in "$@"; do
-    if [ "$t" = "spend" ]; then
-      has_spend=1
-    else
+    if [ "$t" != "spend" ]; then
       main_tokens+=("$t")
     fi
   done
@@ -287,10 +285,10 @@ KDLHEADER
 _agentdesk_pick_layout() {
   printf 'Select a layout:\n' >&2
   printf '  1) Standard (5 tabs: main / review / repos / shell / spend)  [default]\n' >&2
-  printf '  2) claude + shell\n' >&2
-  printf '  3) claude + claude + shell\n' >&2
-  printf '  4) claude + codex + shell\n' >&2
-  printf '  5) claude + ccr + shell\n' >&2
+  printf '  2) claude + shell + spend\n' >&2
+  printf '  3) claude + claude + shell + spend\n' >&2
+  printf '  4) claude + codex + shell + spend\n' >&2
+  printf '  5) claude + ccr + shell + spend\n' >&2
   printf '  6) Custom — type comma-separated: e.g. claude, codex, shell, ccr\n' >&2
   printf 'Choice [1]: ' >&2
 

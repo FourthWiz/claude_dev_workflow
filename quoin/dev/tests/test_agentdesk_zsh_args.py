@@ -335,8 +335,8 @@ def test_kdl_trio_valid_no_leaks(tmp_path: Path) -> None:
     assert 'pane name="Claude Code"' in kdl
     assert 'pane name="Codex"' in kdl
     assert 'pane name="Shell"' in kdl
-    # Exactly 3 panes inside the split (plus the 0 from solo path)
-    assert kdl.count('command "zsh"') == 3, "Trio must have exactly 3 command panes"
+    # 3 main panes + 1 Spend tab (always included)
+    assert kdl.count('command "zsh"') == 4, "Trio must have 3 main panes + 1 Spend pane"
 
 
 def test_kdl_four_panes_stack_horizontal(tmp_path: Path) -> None:
@@ -344,7 +344,7 @@ def test_kdl_four_panes_stack_horizontal(tmp_path: Path) -> None:
     kdl = _gen_layout("claude claude codex shell", tmp_path)
     _assert_kdl_valid(kdl)
     assert 'split_direction="horizontal"' in kdl, ">3 panes should stack vertically"
-    assert kdl.count('command "zsh"') == 4
+    assert kdl.count('command "zsh"') == 5  # 4 main panes + 1 Spend tab (always included)
 
 
 def test_kdl_escaping_matches_fixed_layout(tmp_path: Path) -> None:
@@ -878,11 +878,11 @@ def test_agentdesk_spend_separated_from_multi_main(tmp_path: Path) -> None:
     _assert_kdl_valid(kdl)
 
 
-def test_agentdesk_no_spend_unchanged(tmp_path: Path) -> None:
-    """_agentdesk_gen_layout claude codex shell → no Spend tab (regression guard)."""
+def test_agentdesk_spend_always_present(tmp_path: Path) -> None:
+    """_agentdesk_gen_layout claude codex shell → Spend tab always present even without spend token."""
     kdl = _gen_layout("claude codex shell", tmp_path)
-    assert 'tab name="Spend"' not in kdl, (
-        f"Spend tab must be absent when spend token not given: {kdl[:400]}"
+    assert 'tab name="Spend"' in kdl, (
+        f"Spend tab must always be present in generated layouts: {kdl[:400]}"
     )
     assert 'tab name="main"' in kdl, f"main tab must be present: {kdl[:400]}"
     _assert_kdl_valid(kdl)
