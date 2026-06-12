@@ -167,8 +167,6 @@ _agentdesk_pane_name() {
 # (use trap "rm -f $layout_tmp" EXIT INT TERM in the caller).
 # ============================================================
 _agentdesk_gen_layout() {
-  local tokens=("$@")
-  local count="${#tokens[@]}"
   local layout_tmp
   # mktemp only randomizes *trailing* X's on macOS (BSD mktemp). A suffix after
   # the X's prevents randomisation, creating the same literal path every time and
@@ -185,7 +183,20 @@ _agentdesk_gen_layout() {
   # echoes `name=value` to stdout when re-declaring an existing local, which
   # would leak into the KDL file if `local` were used inside the `{ } > file`
   # block. Hoisting the declarations here avoids that.
-  local t name cmd i
+  local t name cmd i main_count has_spend
+  local -a main_tokens=()
+
+  # Partition: collect non-spend tokens into main_tokens; flag if spend present.
+  # Multiple spend tokens collapse to a single Spend tab.
+  has_spend=0
+  for t in "$@"; do
+    if [ "$t" = "spend" ]; then
+      has_spend=1
+    else
+      main_tokens+=("$t")
+    fi
+  done
+  main_count="${#main_tokens[@]}"
 
   # Write the KDL with single-quoted heredoc so $PROJECT_ROOT/$HOME are NOT
   # expanded at write time — they remain shell variable refs for zsh at runtime.
@@ -206,44 +217,57 @@ layout {
 
 KDLHEADER
 
-    if [ "$count" -eq 1 ]; then
-      t="${tokens[1]}"
-      name="$(_agentdesk_pane_name "$t")"
-      cmd="$(_agentdesk_pane_cmd "$t")"
-      printf '    tab name="main" {\n'
+    if [ "$main_count" -gt 0 ]; then
+      if [ "$main_count" -eq 1 ]; then
+        t="${main_tokens[1]}"
+        name="$(_agentdesk_pane_name "$t")"
+        cmd="$(_agentdesk_pane_cmd "$t")"
+        printf '    tab name="main" {\n'
+        printf '        pane name="%s" {\n' "$name"
+        printf '            command "zsh"\n'
+        printf '            args "-lc" "%s"\n' "$cmd"
+        printf '        }\n'
+        printf '    }\n'
+      elif [ "$main_count" -le 3 ]; then
+        # side-by-side: split_direction="vertical" = vertical divider = side-by-side
+        printf '    tab name="main" {\n'
+        printf '        pane split_direction="vertical" {\n'
+        for (( i=1; i<=main_count; i++ )); do
+          t="${main_tokens[$i]}"
+          name="$(_agentdesk_pane_name "$t")"
+          cmd="$(_agentdesk_pane_cmd "$t")"
+          printf '            pane name="%s" {\n' "$name"
+          printf '                command "zsh"\n'
+          printf '                args "-lc" "%s"\n' "$cmd"
+          printf '            }\n'
+        done
+        printf '        }\n'
+        printf '    }\n'
+      else
+        # >3 panes: stack horizontally
+        printf '    tab name="main" {\n'
+        printf '        pane split_direction="horizontal" {\n'
+        for (( i=1; i<=main_count; i++ )); do
+          t="${main_tokens[$i]}"
+          name="$(_agentdesk_pane_name "$t")"
+          cmd="$(_agentdesk_pane_cmd "$t")"
+          printf '            pane name="%s" {\n' "$name"
+          printf '                command "zsh"\n'
+          printf '                args "-lc" "%s"\n' "$cmd"
+          printf '            }\n'
+        done
+        printf '        }\n'
+        printf '    }\n'
+      fi
+    fi
+
+    if [ "$has_spend" -eq 1 ]; then
+      name="$(_agentdesk_pane_name spend)"
+      cmd="$(_agentdesk_pane_cmd spend)"
+      printf '    tab name="Spend" {\n'
       printf '        pane name="%s" {\n' "$name"
       printf '            command "zsh"\n'
       printf '            args "-lc" "%s"\n' "$cmd"
-      printf '        }\n'
-      printf '    }\n'
-    elif [ "$count" -le 3 ]; then
-      # side-by-side: split_direction="vertical" = vertical divider = side-by-side
-      printf '    tab name="main" {\n'
-      printf '        pane split_direction="vertical" {\n'
-      for (( i=1; i<=count; i++ )); do
-        t="${tokens[$i]}"
-        name="$(_agentdesk_pane_name "$t")"
-        cmd="$(_agentdesk_pane_cmd "$t")"
-        printf '            pane name="%s" {\n' "$name"
-        printf '                command "zsh"\n'
-        printf '                args "-lc" "%s"\n' "$cmd"
-        printf '            }\n'
-      done
-      printf '        }\n'
-      printf '    }\n'
-    else
-      # >3 panes: stack horizontally
-      printf '    tab name="main" {\n'
-      printf '        pane split_direction="horizontal" {\n'
-      for (( i=1; i<=count; i++ )); do
-        t="${tokens[$i]}"
-        name="$(_agentdesk_pane_name "$t")"
-        cmd="$(_agentdesk_pane_cmd "$t")"
-        printf '            pane name="%s" {\n' "$name"
-        printf '                command "zsh"\n'
-        printf '                args "-lc" "%s"\n' "$cmd"
-        printf '            }\n'
-      done
       printf '        }\n'
       printf '    }\n'
     fi
@@ -262,7 +286,7 @@ KDLHEADER
 # ============================================================
 _agentdesk_pick_layout() {
   printf 'Select a layout:\n' >&2
-  printf '  1) Standard (4 tabs: main / review / repos / shell)  [default]\n' >&2
+  printf '  1) Standard (5 tabs: main / review / repos / shell / spend)  [default]\n' >&2
   printf '  2) claude + shell\n' >&2
   printf '  3) claude + claude + shell\n' >&2
   printf '  4) claude + codex + shell\n' >&2
