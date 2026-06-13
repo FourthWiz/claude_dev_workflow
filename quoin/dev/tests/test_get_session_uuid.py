@@ -16,8 +16,6 @@ import sys
 import time
 from pathlib import Path
 
-import pytest
-
 # ---------------------------------------------------------------------------
 # Loader
 # ---------------------------------------------------------------------------
@@ -30,6 +28,8 @@ ADAPTER_SCRIPT = REPO_ROOT / "quoin" / "scripts" / "cost_from_jsonl.py"
 def _load_core():
     """Load get_session_uuid core module via importlib (no sys.path mutation)."""
     spec = importlib.util.spec_from_file_location("_test_get_session_uuid_core", CORE_SCRIPT)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load core from {CORE_SCRIPT}")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -38,6 +38,8 @@ def _load_core():
 def _load_cost_from_jsonl():
     """Load cost_from_jsonl adapter for parity testing (intentional adapter import)."""
     spec = importlib.util.spec_from_file_location("_test_cost_from_jsonl", ADAPTER_SCRIPT)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load cost_from_jsonl from {ADAPTER_SCRIPT}")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

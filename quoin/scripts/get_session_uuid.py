@@ -8,8 +8,9 @@ from pathlib import Path
 
 _CORE_PATH = Path(__file__).resolve().parents[1] / "core" / "scripts" / "get_session_uuid.py"
 _SPEC = importlib.util.spec_from_file_location("_quoin_core_get_session_uuid", _CORE_PATH)
+if _SPEC is None or _SPEC.loader is None:
+    raise ImportError(f"Cannot load core get_session_uuid from {_CORE_PATH}")
 _CORE = importlib.util.module_from_spec(_SPEC)
-assert _SPEC.loader is not None
 # Register in sys.modules before exec so module resolution works correctly on re-import
 sys.modules[_SPEC.name] = _CORE
 _SPEC.loader.exec_module(_CORE)

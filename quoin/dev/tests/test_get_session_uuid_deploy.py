@@ -14,8 +14,6 @@ Two-tier test:
 import importlib.util
 from pathlib import Path
 
-import pytest
-
 # Paths
 REPO_ROOT = Path(__file__).resolve().parents[3]  # quoin/ repo root
 WRAPPER_SRC = REPO_ROOT / "quoin" / "scripts" / "get_session_uuid.py"
@@ -32,6 +30,8 @@ INSTALLER_PY = REPO_ROOT / "src" / "quoin" / "installer.py"
 
 def _load_installer():
     spec = importlib.util.spec_from_file_location("installer_get_uuid", INSTALLER_PY)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load installer from {INSTALLER_PY}")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -82,6 +82,8 @@ def test_source_files_exist():
 def test_wrapper_imports_core_via_parents_loader():
     """Wrapper must import the core impl via parents[1] loader and export get_session_uuid."""
     spec = importlib.util.spec_from_file_location("get_session_uuid_wrapper", WRAPPER_SRC)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load wrapper from {WRAPPER_SRC}")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
