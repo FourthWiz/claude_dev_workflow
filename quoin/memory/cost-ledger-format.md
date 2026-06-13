@@ -7,7 +7,7 @@
 **Row format — executable one-liner (7-column form):**
 
 ```bash
-uuid=$(uuidgen) && printf '%s | %s | %s | %s | task | %s | %s\n' \
+uuid=$(python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$(pwd)" --phase "PHASE" 2>/dev/null || echo "unknown-PHASE-$(date -u +%Y%m%dT%H%M%SZ)") && printf '%s | %s | %s | %s | task | %s | %s\n' \
   "$uuid" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" "NOTE" "FALLBACK_FIRES" \
   >> "$LEDGER"
 ```
@@ -17,7 +17,7 @@ Substitute the bareword placeholders `PHASE`, `MODEL`, `NOTE`, `FALLBACK_FIRES` 
 **6-column form** (for Conditional skills `/discover`, `/triage` that omit `fallback_fires`):
 
 ```bash
-uuid=$(uuidgen) && printf '%s | %s | %s | %s | task | %s\n' \
+uuid=$(python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$(pwd)" --phase "PHASE" 2>/dev/null || echo "unknown-PHASE-$(date -u +%Y%m%dT%H%M%SZ)") && printf '%s | %s | %s | %s | task | %s\n' \
   "$uuid" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" "NOTE" \
   >> "$LEDGER"
 ```
@@ -26,7 +26,7 @@ The 7th column (`fallback_fires`) is OPTIONAL. Existing 6-column rows are valid 
 
 **Writer guidance:** Skills emitting a new ledger row SHOULD include the 7th column when they have a session-state `fallback_fires` value available (typically at session-end emits, not session-open). Skills MAY emit a 6-column row when no session-state exists (e.g., `/discover`, `/triage`) or when `fallback_fires` is 0; readers tolerate both shapes per the row-format spec.
 
-**UUID acquisition:** Most recently modified `<uuid>.jsonl` under `~/.claude/projects/<project-hash>/` (project-hash = project path with `/` replaced by `-`). Fall back to `unknown-<ISO-timestamp>` if none found.
+**UUID acquisition:** Use `python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$(pwd)" --phase "PHASE"` to obtain the session UUID. The script finds the most-recently-modified `<uuid>.jsonl` under `~/.claude/projects/<project-hash>/` (project-hash = project path with non-alphanumeric chars replaced by `-`) and returns its stem. Falls back to `unknown-<phase_slug>-<YYYYMMDD>T<HHMMSS>Z` if no JSONL is found or on any error (fail-open). The `unknown-*` prefix is recognized by the cost_snapshot skip filter — synthetic UUIDs are excluded from cost totals. Phase dashes are slugified to underscores in the fallback (e.g., `end-of-task` → `end_of_task`). The outer shell fallback in the one-liner (`|| echo "unknown-PHASE-$(date -u ...)"`) ensures a UUID is always set even if Python is unavailable. The script exits 0 always (fail-open design).
 
 ## Phase values
 
