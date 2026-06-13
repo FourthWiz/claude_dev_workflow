@@ -112,6 +112,140 @@ _repo_path() {
 }
 
 # ============================================================
+# IVG-82: Layout persistence helpers
+# State store: $HOME/.config/agentdesk/last-layout
+# Key format: name:<sanitized-name> or proj:<percent-encoded-root>
+# Value format: __FIXED__ (standard layout) or token1+token2+... (custom)
+# ============================================================
+
+_agentdesk_state_file() {
+  printf '%s\n' "$HOME/.config/agentdesk/last-layout"
+}
+
+# Percent-encode every byte NOT in [A-Za-z0-9].
+# Two-step: (1) urllib.parse.quote(safe="") encodes everything except alphanumerics;
+# (2) post-process .replace(".","%2E").replace("~","%7E") force-encodes . and ~
+# which Python's _ALWAYS_SAFE frozenset would otherwise leave unencoded regardless
+# of safe=. Resulting charset: [A-Za-z0-9%_-] — no raw dots, tildes, or backslashes.
+# Keys must be backslash-free (awk -v interprets C-escapes; this encoder guarantees it).
+_agentdesk_encode_key() {
+  local raw="$1"
+  python3 -c 'import sys,urllib.parse; s=urllib.parse.quote(sys.argv[1],safe=""); print(s.replace(".","%2E").replace("~","%7E"))' "$raw"
+}
+
+# Derive the persistence key for a layout lookup/save.
+# custom_name non-empty → name:<sanitized-name> namespace
+# else               → proj:<encoded-project-root> namespace
+# These are INDEPENDENT namespaces: a name: save never matches a proj: lookup.
+_agentdesk_layout_key() {
+  local custom_name="$1"
+  local project_root="$2"
+  if [ -n "$custom_name" ]; then
+    printf 'name:%s\n' "$(_sanitize_session_name "$custom_name")"
+  else
+    printf 'proj:%s\n' "$(_agentdesk_encode_key "$project_root")"
+  fi
+}
+
+# Save a layout value for a key to the state file.
+# Atomic write via temp file in same directory (same filesystem → atomic mv rename).
+# Fail-open: any error → return 0.
+# Keys must be backslash-free (guaranteed by encoder); awk -v interprets C-escapes.
+_agentdesk_save_layout() {
+  local key="$1"
+  local value="$2"
+  local state_file
+  state_file="$(_agentdesk_state_file)"
+  local state_dir
+  state_dir="$(dirname "$state_file")"
+
+  mkdir -p "$state_dir" 2>/dev/null || return 0
+
+  # Read existing content, filtering out any old line for this key (exact first-field match).
+  local existing=""
+  if [ -f "$state_file" ]; then
+    # key must be backslash-free (guaranteed by encoder); awk -v interprets C-escapes.
+    existing="$(awk -F'=' -v k="$key" '$1 != k' "$state_file" 2>/dev/null)" || existing=""
+  fi
+
+  # Write atomically: temp file in same dir so mv is atomic across same filesystem.
+  local tmp_file
+  tmp_file="$(mktemp "$state_dir/.last-layout.tmp.XXXXXX" 2>/dev/null)" || return 0
+
+  {
+    if [ -n "$existing" ]; then
+      printf '%s\n' "$existing"
+    fi
+    printf '%s=%s\n' "$key" "$value"
+  } > "$tmp_file" 2>/dev/null || { rm -f "$tmp_file" 2>/dev/null; return 0; }
+
+  mv "$tmp_file" "$state_file" 2>/dev/null || { rm -f "$tmp_file" 2>/dev/null; return 0; }
+  return 0
+}
+
+# Load a saved layout value for a key from the state file.
+# Fail-open: file missing or key absent → echo nothing, return 1.
+# key must be backslash-free (guaranteed by encoder); awk -v interprets C-escapes.
+# Values may contain '='; sub() strips only the first '=' so values round-trip correctly.
+_agentdesk_load_layout() {
+  local key="$1"
+  local state_file
+  state_file="$(_agentdesk_state_file)"
+
+  if [ ! -f "$state_file" ]; then
+    return 1
+  fi
+
+  local value
+  # key must be backslash-free (guaranteed by encoder); value may contain '=';
+  # sub(/^[^=]*=/,"") strips only up to the first '=', so a=b=c values round-trip correctly.
+  value="$(awk -F'=' -v k="$key" '$1==k{sub(/^[^=]*=/,""); print; exit}' "$state_file" 2>/dev/null)"
+
+  if [ -z "$value" ]; then
+    return 1
+  fi
+
+  printf '%s\n' "$value"
+  return 0
+}
+
+# Restore a saved layout value to a layout_path.
+# __FIXED__ → echoes fixed agent-desk.kdl path, rc=0; caller must NOT rm.
+# token+token+... → validates tokens against whitelist, generates temp KDL, echoes path, rc=0.
+# Invalid/empty → rc=1.
+_agentdesk_layout_from_value() {
+  local value="$1"
+
+  if [ "$value" = "__FIXED__" ]; then
+    printf '%s\n' "$HOME/.config/zellij/layouts/agent-desk.kdl"
+    return 0
+  fi
+
+  # Split on '+' using zsh parameter expansion (NOT read -rA which splits on whitespace).
+  # Token whitelist: claude|codex|shell|status|ccr|spend; '+' is a safe separator.
+  local -a arr=("${(@s:+:)value}")
+
+  if [ "${#arr[@]}" -eq 0 ]; then
+    return 1
+  fi
+
+  local tok
+  for tok in "${arr[@]}"; do
+    case "$tok" in
+      claude|codex|shell|status|ccr|spend) ;;
+      *)
+        return 1
+        ;;
+    esac
+  done
+
+  local gen_path
+  gen_path="$(_agentdesk_gen_layout "${arr[@]}")" || return 1
+  printf '%s\n' "$gen_path"
+  return 0
+}
+
+# ============================================================
 # _agentdesk_pane_cmd <token>
 # Returns the zsh -lc command string for the given window type token.
 # $PROJECT_ROOT and $HOME are NOT expanded here — they remain literal
@@ -458,6 +592,7 @@ _agentdesk_open_dashboard() {
 agentdesk() {
   local mode=""
   local custom_name=""
+  local force_pick=""
   local -a tokens=()
 
   # ── Arg parsing (BEFORE Zellij guard so --help always works) ──────────────
@@ -487,6 +622,9 @@ agentdesk() {
         fi
         custom_name="$1"
         ;;
+      --pick)
+        force_pick=1
+        ;;
       -h|--help)
         cat <<'HELP'
 Usage:
@@ -495,6 +633,7 @@ Usage:
   agentdesk --name <session-name>
   agentdesk --mode solo|duo|trio
   agentdesk claude [codex] [shell] [...]
+  agentdesk --pick
 
 Modes:
   solo   — one Claude pane full-width
@@ -509,6 +648,16 @@ Window types (positional):
   ccr      start ccr code (OpenRouter via CCR) in pane
   spend    realtime token-spend monitor
 
+Layout memory:
+  agentdesk remembers your layout choice per project (or per session name).
+  On subsequent runs it reuses your last layout silently.
+  Use --pick to force the interactive picker and change the layout.
+  The layout is stored in: ~/.config/agentdesk/last-layout
+  To reset: delete that file, or delete the line for your project key.
+  Project key namespace (proj:) and named-session namespace (name:) are
+  independent — a named session save never affects a bare project launch.
+  Set AGENTDESK_PICK=1 to force the picker via environment variable.
+
 Behavior:
   Re-running in a folder with a live same-named session starts a NEW suffixed session (_1, _2, …); it never attaches.
 
@@ -519,6 +668,7 @@ Examples:
   agentdesk claude codex shell
   agentdesk claude ccr shell
   agentdesk claude claude
+  agentdesk --pick
 
 Resume:
   agentdesk-attach SESSION-NAME   resume an existing session
@@ -540,6 +690,11 @@ HELP
     esac
     shift
   done
+
+  # Apply AGENTDESK_PICK env override (force picker via environment variable).
+  if [ -n "${AGENTDESK_PICK:-}" ]; then
+    force_pick=1
+  fi
 
   # ── Conflict checks (BEFORE Zellij guard) ─────────────────────────────────
   if [ -n "$mode" ] && [ "${#tokens[@]}" -gt 0 ]; then
@@ -576,6 +731,12 @@ HELP
     echo "Error: empty session name after sanitization."
     return 1
   fi
+
+  # ── Compute layout persistence key BEFORE session-name suffixing ──────────
+  # Key uses ORIGINAL custom_name (not suffixed), so _1/_2 suffixed sessions
+  # still share the same reuse key as the base session name.
+  local layout_key
+  layout_key="$(_agentdesk_layout_key "$custom_name" "$project_root")"
 
   # ── Resolve session name suffix (never auto-attach) ───────────────────────
   local resolved_name
@@ -616,13 +777,15 @@ HELP
     return 1
   fi
 
-  # ── Resolve layout ─────────────────────────────────────────────────────────
-  local layout_path=""
-  local layout_tmp=""
+  # ── Resolve layout (D-08 branch order) ────────────────────────────────────
+  # Declare ALL locals before the if/elif chain, outside any redirection block.
+  # (zsh typeset echoes name=value to stdout when re-declaring inside { } > file)
+  local layout_path="" layout_tmp=""
+  local saved_value="" saved_value_loaded=""
+  local -a effective_tokens=() picked_tokens=()
 
   if [ -n "$mode" ] || [ "${#tokens[@]}" -gt 0 ]; then
-    # Explicit mode or tokens — generate KDL at runtime
-    local -a effective_tokens=()
+    # Branch 1: explicit mode or tokens — generate KDL at runtime
     if [ -n "$mode" ]; then
       case "$mode" in
         solo)  effective_tokens=(claude) ;;
@@ -634,11 +797,88 @@ HELP
     fi
     layout_tmp="$(_agentdesk_gen_layout "${effective_tokens[@]}")"
     layout_path="$layout_tmp"
+    # join OUTSIDE any redirection to avoid typeset-echo leak
+    saved_value="${(j:+:)effective_tokens}"
     # Clean up temp file on exit, return, interrupt, or termination
     # shellcheck disable=SC2064
     trap "rm -f $layout_tmp" EXIT INT TERM
+
+  elif [ -n "$force_pick" ]; then
+    # Branch 2: --pick or AGENTDESK_PICK=1 — force interactive picker
+    # --pick is inert when --mode/tokens are given (branch 1 wins above).
+    if [ -t 0 ]; then
+      # TTY: show picker
+      local picked
+      picked="$(_agentdesk_pick_layout)"
+      local picker_rc=$?
+      if [ $picker_rc -ne 0 ]; then
+        printf 'Layout selection cancelled.\n' >&2
+        return 1
+      fi
+      if [ -n "$picked" ]; then
+        # Non-empty pick (options 2-6): split space-separated output into array
+        read -rA picked_tokens <<< "$picked"
+        layout_tmp="$(_agentdesk_gen_layout "${picked_tokens[@]}")"
+        layout_path="$layout_tmp"
+        # join OUTSIDE any redirection to avoid typeset-echo leak
+        saved_value="${(j:+:)picked_tokens}"
+        # shellcheck disable=SC2064
+        trap "rm -f $layout_tmp" EXIT INT TERM
+      else
+        # Empty pick (option 1 / default): use fixed layout
+        layout_path="$HOME/.config/zellij/layouts/agent-desk.kdl"
+        saved_value="__FIXED__"
+      fi
+    else
+      # Non-TTY + --pick: skip reuse, go directly to fixed layout (D-07)
+      layout_path="$HOME/.config/zellij/layouts/agent-desk.kdl"
+      saved_value="__FIXED__"
+    fi
+
+  elif saved_value_loaded="$(_agentdesk_load_layout "$layout_key" 2>/dev/null)" && [ -n "$saved_value_loaded" ]; then
+    # Branch 3: saved layout exists — try to restore it
+    local restored_path
+    restored_path="$(_agentdesk_layout_from_value "$saved_value_loaded" 2>/dev/null)"
+    local restore_rc=$?
+    if [ $restore_rc -eq 0 ] && [ -n "$restored_path" ]; then
+      layout_path="$restored_path"
+      printf 'Reusing last layout (use --pick to change)\n' >&2
+      saved_value="$saved_value_loaded"
+      # If the restored path is a generated temp file (not the fixed kdl), register trap
+      if [ "$restored_path" != "$HOME/.config/zellij/layouts/agent-desk.kdl" ]; then
+        layout_tmp="$restored_path"
+        # shellcheck disable=SC2064
+        trap "rm -f $layout_tmp" EXIT INT TERM
+      fi
+    else
+      # Corrupt saved value — fall through to branch 4/5
+      if [ -t 0 ]; then
+        local picked
+        picked="$(_agentdesk_pick_layout)"
+        local picker_rc=$?
+        if [ $picker_rc -ne 0 ]; then
+          printf 'Layout selection cancelled.\n' >&2
+          return 1
+        fi
+        if [ -n "$picked" ]; then
+          read -rA picked_tokens <<< "$picked"
+          layout_tmp="$(_agentdesk_gen_layout "${picked_tokens[@]}")"
+          layout_path="$layout_tmp"
+          saved_value="${(j:+:)picked_tokens}"
+          # shellcheck disable=SC2064
+          trap "rm -f $layout_tmp" EXIT INT TERM
+        else
+          layout_path="$HOME/.config/zellij/layouts/agent-desk.kdl"
+          saved_value="__FIXED__"
+        fi
+      else
+        layout_path="$HOME/.config/zellij/layouts/agent-desk.kdl"
+        saved_value="__FIXED__"
+      fi
+    fi
+
   elif [ -t 0 ]; then
-    # Interactive TTY with no explicit layout — show picker
+    # Branch 4: no saved layout + TTY — first-run interactive picker
     local picked
     picked="$(_agentdesk_pick_layout)"
     local picker_rc=$?
@@ -647,20 +887,22 @@ HELP
       return 1
     fi
     if [ -n "$picked" ]; then
-      # Convert space-separated string to array and generate layout
-      local -a picked_tokens=()
       read -rA picked_tokens <<< "$picked"
       layout_tmp="$(_agentdesk_gen_layout "${picked_tokens[@]}")"
       layout_path="$layout_tmp"
+      saved_value="${(j:+:)picked_tokens}"
       # shellcheck disable=SC2064
       trap "rm -f $layout_tmp" EXIT INT TERM
     else
       # Option 1 or empty — use fixed layout
       layout_path="$HOME/.config/zellij/layouts/agent-desk.kdl"
+      saved_value="__FIXED__"
     fi
+
   else
-    # Non-TTY (scripted/piped) — use fixed layout silently
+    # Branch 5: non-TTY + no saved layout — use fixed layout silently
     layout_path="$HOME/.config/zellij/layouts/agent-desk.kdl"
+    saved_value="__FIXED__"
   fi
 
   if [ ! -f "$layout_path" ]; then
@@ -668,6 +910,10 @@ HELP
     echo "  $layout_path"
     return 1
   fi
+
+  # Save layout AFTER existence check passes (D-05): never persist a value
+  # whose layout file is missing (would fail every subsequent launch).
+  _agentdesk_save_layout "$layout_key" "$saved_value" 2>/dev/null || true
 
   echo "Starting agent desk:"
   echo "  PROJECT_ROOT=$PROJECT_ROOT"

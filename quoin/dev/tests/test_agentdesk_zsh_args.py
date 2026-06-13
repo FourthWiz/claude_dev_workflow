@@ -35,7 +35,7 @@ def _make_mock_env(tmp_path: Path) -> dict:
     Also adds mock claude/codex so 'command -v' checks inside pane cmds pass.
     """
     mock_bin = tmp_path / "mock_bin"
-    mock_bin.mkdir()
+    mock_bin.mkdir(exist_ok=True)
 
     for name in ("zellij", "claude", "codex", "ccr"):
         stub = mock_bin / name
@@ -865,8 +865,9 @@ def test_agentdesk_spend_separated_from_multi_main(tmp_path: Path) -> None:
     assert 'pane name="Codex"' in kdl
     assert 'pane name="Shell"' in kdl
     # 3 main panes + 1 spend pane = 4 total command panes
-    assert kdl.count('command "zsh"') == 4, (
-        f"Expected 4 command panes (3 main + 1 spend), got {kdl.count('command \"zsh\"')}"
+    count = kdl.count('command "zsh"')
+    assert count == 4, (
+        f"Expected 4 command panes (3 main + 1 spend), got {count}"
     )
     # Token Spend pane must NOT be inside the main tab's split
     main_tab_end = kdl.find('tab name="Spend"')
@@ -958,4 +959,514 @@ def test_next_session_name_decorated_line_parse(tmp_path: Path) -> None:
     assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
     assert result.stdout.strip() == "foo-agents_1", (
         f"Expected 'foo-agents_1' (decorated-line parse), got: {result.stdout.strip()!r}"
+    )
+
+
+# ============================================================
+# IVG-82 last-layout persistence tests
+# ============================================================
+# HARD REQUIREMENT: every test that drives a full agentdesk() launch (not a
+# helper-level unit test) MUST use _make_state_env / _run_agentdesk_state.
+# Using bare _make_mock_env for a launch test means the fixed Zellij layout
+# is absent → rc=1 and "Starting agent desk" assertions fail.
+
+
+def _make_state_env(tmp_path: Path) -> dict:
+    """Extend _make_mock_env with a fake $HOME that has the stub fixed-layout file.
+
+    Creates:
+      tmp_path/fake_home/.config/zellij/layouts/agent-desk.kdl  (stub file)
+      tmp_path/fake_home/.config/agentdesk/                      (created on save)
+
+    All persistence tests that drive a full agentdesk() launch MUST use this
+    helper so the fixed layout file exists and the "Zellij layout not found"
+    guard does not fire (which would give rc=1 before saving the layout).
+    """
+    env = _make_mock_env(tmp_path)
+
+    fake_home = tmp_path / "fake_home"
+    fake_home.mkdir(exist_ok=True)
+    env["HOME"] = str(fake_home)
+
+    # Create stub fixed-layout file so layout-not-found guard passes
+    zellij_layout_dir = fake_home / ".config" / "zellij" / "layouts"
+    zellij_layout_dir.mkdir(parents=True, exist_ok=True)
+    (zellij_layout_dir / "agent-desk.kdl").write_text("# stub layout\n")
+
+    return env
+
+
+def _run_agentdesk_state(
+    args: str, tmp_path: Path, stdin: "Optional[str]" = None
+) -> subprocess.CompletedProcess:
+    """Source agentdesk.zsh and call agentdesk with the given args, using _make_state_env."""
+    script = textwrap.dedent(f"""
+        source "{AGENTDESK_ZSH}"
+        agentdesk {args}
+    """).strip()
+    return subprocess.run(
+        ["zsh", "-c", script],
+        env=_make_state_env(tmp_path),
+        input=stdin if stdin is not None else "",
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=15,
+    )
+
+
+def _run_zsh_fn_state(
+    fn_call: str, tmp_path: Path, stdin_input: str = ""
+) -> subprocess.CompletedProcess:
+    """Source agentdesk.zsh and call an arbitrary zsh expression using _make_state_env."""
+    script = f'source "{AGENTDESK_ZSH}"\n{fn_call}'
+    return subprocess.run(
+        ["zsh", "-c", script],
+        env=_make_state_env(tmp_path),
+        input=stdin_input,
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=15,
+    )
+
+
+def test_state_file_path(tmp_path: Path) -> None:
+    """_agentdesk_state_file echoes a path ending with /.config/agentdesk/last-layout."""
+    result = _run_zsh_fn_state("_agentdesk_state_file", tmp_path)
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    path = result.stdout.strip()
+    assert path.endswith("/.config/agentdesk/last-layout"), (
+        f"State file path unexpected: {path!r}"
+    )
+    # Must be under the fake HOME set by _make_state_env
+    env = _make_state_env(tmp_path)
+    assert path.startswith(env["HOME"]), (
+        f"State file not under fake HOME {env['HOME']!r}: {path!r}"
+    )
+
+
+def test_encode_key_no_raw_dots_slashes_spaces(tmp_path: Path) -> None:
+    """_agentdesk_encode_key encodes /, spaces, and . (critical for awk exact-match safety)."""
+    # /a b/c.d → no raw space, no raw /, no raw .
+    result = _run_zsh_fn_state("_agentdesk_encode_key '/a b/c.d'", tmp_path)
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    encoded = result.stdout.strip()
+    assert " " not in encoded, f"Encoded key must not contain spaces: {encoded!r}"
+    # Raw / must be encoded (not a literal slash in output)
+    # The encoded form has no literal / because %2F is produced
+    assert "/" not in encoded, f"Encoded key must not contain raw /: {encoded!r}"
+    # Raw . must be encoded as %2E (not left as literal .)
+    assert "%2E" in encoded, f"Encoded key must contain %2E for '.': {encoded!r}"
+    assert "." not in encoded, f"Encoded key must not contain raw '.': {encoded!r}"
+
+    # my.project → my%2Eproject (dot encoded, no raw dot)
+    result2 = _run_zsh_fn_state("_agentdesk_encode_key 'my.project'", tmp_path)
+    assert result2.returncode == 0
+    encoded2 = result2.stdout.strip()
+    assert encoded2 == "my%2Eproject", (
+        f"Expected 'my%2Eproject', got: {encoded2!r}"
+    )
+
+
+def test_layout_key_named(tmp_path: Path) -> None:
+    """_agentdesk_layout_key with non-empty custom_name returns name:<sanitized>."""
+    result = _run_zsh_fn_state("_agentdesk_layout_key 'my sess' '/some/path'", tmp_path)
+    assert result.returncode == 0
+    key = result.stdout.strip()
+    assert key.startswith("name:"), f"Named key must start with 'name:': {key!r}"
+    # Sanitized: spaces → dashes
+    assert key == "name:my-sess", f"Expected 'name:my-sess', got: {key!r}"
+
+
+def test_layout_key_project(tmp_path: Path) -> None:
+    """_agentdesk_layout_key with empty custom_name returns proj:<encoded-root>."""
+    result = _run_zsh_fn_state("_agentdesk_layout_key '' '/p r'", tmp_path)
+    assert result.returncode == 0
+    key = result.stdout.strip()
+    assert key.startswith("proj:"), f"Project key must start with 'proj:': {key!r}"
+    # Space in path must be encoded
+    assert " " not in key, f"Encoded project key must not contain spaces: {key!r}"
+
+
+def test_save_load_roundtrip(tmp_path: Path) -> None:
+    """_agentdesk_save_layout + _agentdesk_load_layout round-trips a value under fake HOME."""
+    script = textwrap.dedent(f"""
+        source "{AGENTDESK_ZSH}"
+        _agentdesk_save_layout 'proj:myproject' 'claude+shell'
+        _agentdesk_load_layout 'proj:myproject'
+    """).strip()
+    result = subprocess.run(
+        ["zsh", "-c", script],
+        env=_make_state_env(tmp_path),
+        input="",
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=15,
+    )
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    assert result.stdout.strip() == "claude+shell", (
+        f"Expected 'claude+shell' from load, got: {result.stdout.strip()!r}"
+    )
+
+
+def test_save_load_dotted_path(tmp_path: Path) -> None:
+    """Dotted project path key encodes to %2E; awk exact-match loads correct value; myXproject returns its own distinct value."""
+    script = textwrap.dedent(f"""
+        source "{AGENTDESK_ZSH}"
+        key_dot="$(_agentdesk_layout_key '' '/home/user/my.project')"
+        key_x="$(_agentdesk_layout_key '' '/home/user/myXproject')"
+        _agentdesk_save_layout "$key_dot" 'dot-value'
+        _agentdesk_save_layout "$key_x" 'x-value'
+        echo "dot:$(_agentdesk_load_layout "$key_dot")"
+        echo "x:$(_agentdesk_load_layout "$key_x")"
+    """).strip()
+    result = subprocess.run(
+        ["zsh", "-c", script],
+        env=_make_state_env(tmp_path),
+        input="",
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=15,
+    )
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    lines = result.stdout.strip().splitlines()
+    dot_line = next((l for l in lines if l.startswith("dot:")), "")
+    x_line = next((l for l in lines if l.startswith("x:")), "")
+    assert dot_line == "dot:dot-value", f"Dotted-path key load wrong: {dot_line!r}"
+    assert x_line == "x:x-value", f"X-path key load wrong: {x_line!r}"
+
+
+def test_load_absent_key_rc1(tmp_path: Path) -> None:
+    """_agentdesk_load_layout for unknown key → rc=1, empty stdout."""
+    # First save something so the file exists
+    script = textwrap.dedent(f"""
+        source "{AGENTDESK_ZSH}"
+        _agentdesk_save_layout 'proj:something' '__FIXED__'
+        _agentdesk_load_layout 'proj:does-not-exist'
+    """).strip()
+    result = subprocess.run(
+        ["zsh", "-c", script],
+        env=_make_state_env(tmp_path),
+        input="",
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=15,
+    )
+    assert result.returncode != 0, (
+        f"Loading absent key should return rc!=0 (rc={result.returncode})"
+    )
+    assert result.stdout.strip() == "", (
+        f"Absent-key load must produce empty stdout: {result.stdout!r}"
+    )
+
+
+def test_load_missing_file_failopen(tmp_path: Path) -> None:
+    """_agentdesk_load_layout with no state file → rc=1, no stderr."""
+    result = _run_zsh_fn_state("_agentdesk_load_layout 'proj:anything'", tmp_path)
+    assert result.returncode != 0, (
+        f"Missing-file load should return rc!=0 (rc={result.returncode})"
+    )
+    assert result.stdout.strip() == "", f"Missing-file load must produce empty stdout: {result.stdout!r}"
+    assert result.stderr.strip() == "", f"Missing-file load must produce no stderr: {result.stderr!r}"
+
+
+def test_layout_from_value_fixed(tmp_path: Path) -> None:
+    """_agentdesk_layout_from_value __FIXED__ → agent-desk.kdl path, rc=0."""
+    result = _run_zsh_fn_state("_agentdesk_layout_from_value '__FIXED__'", tmp_path)
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    path = result.stdout.strip()
+    assert path.endswith("/agent-desk.kdl"), (
+        f"__FIXED__ must return agent-desk.kdl path, got: {path!r}"
+    )
+
+
+def test_layout_from_value_tokens(tmp_path: Path) -> None:
+    """_agentdesk_layout_from_value claude+shell → generates KDL with both panes, rc=0."""
+    script = textwrap.dedent(f"""
+        source "{AGENTDESK_ZSH}"
+        out="$(_agentdesk_layout_from_value 'claude+shell')"
+        rc=$?
+        if [ $rc -eq 0 ] && [ -n "$out" ]; then
+            cat "$out"
+            rm -f "$out"
+        fi
+        exit $rc
+    """).strip()
+    result = subprocess.run(
+        ["zsh", "-c", script],
+        env=_make_state_env(tmp_path),
+        input="",
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=15,
+    )
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    kdl = result.stdout
+    assert 'pane name="Claude Code"' in kdl, f"Claude Code pane missing: {kdl[:300]}"
+    assert 'pane name="Shell"' in kdl, f"Shell pane missing: {kdl[:300]}"
+
+
+def test_layout_from_value_corrupt_rc1(tmp_path: Path) -> None:
+    """_agentdesk_layout_from_value claude+bogus → rc=1 (invalid token)."""
+    result = _run_zsh_fn_state("_agentdesk_layout_from_value 'claude+bogus'", tmp_path)
+    assert result.returncode != 0, (
+        f"Corrupt value must return rc!=0 (rc={result.returncode})"
+    )
+
+
+def test_bare_launch_saves_after_tokens(tmp_path: Path) -> None:
+    """agentdesk claude shell → state file contains =claude+shell under fake HOME.
+
+    Uses _make_state_env so the fixed Zellij layout stub exists and zellij mock exits 0.
+    """
+    result = _run_agentdesk_state("claude shell", tmp_path)
+    assert result.returncode == 0, (
+        f"agentdesk claude shell must succeed (rc={result.returncode})\nstderr: {result.stderr}"
+    )
+    env = _make_state_env(tmp_path)
+    state_file = Path(env["HOME"]) / ".config" / "agentdesk" / "last-layout"
+    assert state_file.exists(), f"State file must exist after token launch: {state_file}"
+    content = state_file.read_text()
+    assert "=claude+shell" in content, (
+        f"State file must contain '=claude+shell': {content!r}"
+    )
+
+
+def test_bare_launch_reuses_saved(tmp_path: Path) -> None:
+    """Pre-seeded state file → stderr has 'Reusing last layout' + 'Starting agent desk'; no picker menu."""
+    env = _make_state_env(tmp_path)
+    fake_home = Path(env["HOME"])
+
+    # Pre-seed state file with fixed layout for this project key
+    # agentdesk uses proj:<encoded-cwd> as key in bare launch from tmp_path
+    state_dir = fake_home / ".config" / "agentdesk"
+    state_dir.mkdir(parents=True, exist_ok=True)
+
+    # Derive the key by running _agentdesk_layout_key
+    key_script = textwrap.dedent(f"""
+        source "{AGENTDESK_ZSH}"
+        project_root="$(_agentdesk_realpath "{tmp_path}")"
+        _agentdesk_layout_key '' "$project_root"
+    """).strip()
+    key_result = subprocess.run(
+        ["zsh", "-c", key_script],
+        env=env,
+        input="",
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=15,
+    )
+    assert key_result.returncode == 0, f"key derivation failed: {key_result.stderr}"
+    key = key_result.stdout.strip()
+    assert key, "derived key must not be empty"
+
+    # Write pre-seeded state
+    (state_dir / "last-layout").write_text(f"{key}=__FIXED__\n")
+
+    result = _run_agentdesk_state("", tmp_path)
+    combined = result.stdout + result.stderr
+    assert "Reusing last layout" in combined, (
+        f"Expected 'Reusing last layout' in output:\n{combined}"
+    )
+    assert "Starting agent desk" in combined, (
+        f"Expected 'Starting agent desk' in output:\n{combined}"
+    )
+    assert "Select a layout" not in combined, (
+        f"Picker menu must NOT appear on reuse path:\n{combined}"
+    )
+
+
+def test_pick_flag_parses(tmp_path: Path) -> None:
+    """agentdesk --pick rc=0, does not trigger 'unexpected argument', non-TTY → fixed branch; state=__FIXED__."""
+    result = _run_agentdesk_state("--pick", tmp_path)
+    assert result.returncode == 0, (
+        f"agentdesk --pick must return 0 (rc={result.returncode})\nstderr: {result.stderr}"
+    )
+    combined = result.stdout + result.stderr
+    assert "unexpected argument" not in combined.lower(), (
+        f"--pick must not trigger 'unexpected argument': {combined}"
+    )
+    # Non-TTY + --pick → fixed branch (D-07); state saved as __FIXED__
+    env = _make_state_env(tmp_path)
+    state_file = Path(env["HOME"]) / ".config" / "agentdesk" / "last-layout"
+    assert state_file.exists(), f"State file must exist after --pick launch: {state_file}"
+    content = state_file.read_text()
+    assert "=__FIXED__" in content, (
+        f"Non-TTY --pick must save '__FIXED__' (not empty string): {content!r}"
+    )
+
+
+def _run_agentdesk_with_pty(
+    args: str,
+    tmp_path: Path,
+    input_text: str,
+    timeout: int = 20,
+) -> subprocess.CompletedProcess:
+    """Run agentdesk with a real PTY as stdin so [ -t 0 ] is true (picker tests)."""
+    env = _make_state_env(tmp_path)
+    script = textwrap.dedent(f"""
+        source "{AGENTDESK_ZSH}"
+        agentdesk {args}
+    """).strip()
+    master_fd, slave_fd = pty.openpty()
+    stdout_b: bytes = b""
+    stderr_b: bytes = b""
+    rc: int = -1
+    try:
+        try:
+            proc = subprocess.Popen(
+                ["zsh", "-c", script],
+                stdin=slave_fd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                cwd=str(tmp_path),
+                close_fds=True,
+            )
+        finally:
+            os.close(slave_fd)
+        try:
+            os.write(master_fd, input_text.encode())
+        except OSError:
+            pass
+        try:
+            stdout_b, stderr_b = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout_b, stderr_b = proc.communicate()
+        rc = proc.returncode
+    finally:
+        try:
+            os.close(master_fd)
+        except OSError:
+            pass
+    return subprocess.CompletedProcess(
+        args=["zsh", "-c", script],
+        returncode=rc,
+        stdout=stdout_b.decode(errors="replace"),
+        stderr=stderr_b.decode(errors="replace"),
+    )
+
+
+def test_picker_option1_saves_fixed_sentinel(tmp_path: Path) -> None:
+    """TTY picker run with option 1 (empty/default) → state file line is =__FIXED__, NOT empty string."""
+    # Send newline (empty input = option 1 = standard layout)
+    # Then 'n\n' to decline the dashboard prompt
+    result = _run_agentdesk_with_pty("", tmp_path, "\nn\n", timeout=20)
+    env = _make_state_env(tmp_path)
+    state_file = Path(env["HOME"]) / ".config" / "agentdesk" / "last-layout"
+    assert state_file.exists(), (
+        f"State file must exist after picker option 1\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    content = state_file.read_text()
+    assert "=__FIXED__" in content, (
+        f"Option-1 (empty pick) must save '__FIXED__', NOT empty string: {content!r}"
+    )
+    assert "=" + "\n" not in content and not any(
+        line.endswith("=") for line in content.splitlines()
+    ), f"State file must not have empty value (empty-save bug): {content!r}"
+
+
+def test_picker_token_saves_joined_string(tmp_path: Path) -> None:
+    """TTY picker run with option 2 (claude shell) → state file contains =claude+shell."""
+    # Send '2\n' to select option 2 (claude + shell + spend), then 'n\n' for dashboard
+    result = _run_agentdesk_with_pty("", tmp_path, "2\nn\n", timeout=20)
+    env = _make_state_env(tmp_path)
+    state_file = Path(env["HOME"]) / ".config" / "agentdesk" / "last-layout"
+    assert state_file.exists(), (
+        f"State file must exist after picker option 2\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    content = state_file.read_text()
+    assert "=claude+shell" in content, (
+        f"Option-2 pick must save 'claude+shell' as joined string: {content!r}"
+    )
+
+
+def test_corrupt_saved_failopen_nontty(tmp_path: Path) -> None:
+    """Pre-seeded corrupt value claude+bogus → rc=0, falls open to fixed, no 'Reusing' message."""
+    env = _make_state_env(tmp_path)
+    fake_home = Path(env["HOME"])
+    state_dir = fake_home / ".config" / "agentdesk"
+    state_dir.mkdir(parents=True, exist_ok=True)
+
+    # Derive the key
+    key_script = textwrap.dedent(f"""
+        source "{AGENTDESK_ZSH}"
+        project_root="$(_agentdesk_realpath "{tmp_path}")"
+        _agentdesk_layout_key '' "$project_root"
+    """).strip()
+    key_result = subprocess.run(
+        ["zsh", "-c", key_script],
+        env=env,
+        input="",
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=15,
+    )
+    key = key_result.stdout.strip()
+    (state_dir / "last-layout").write_text(f"{key}=claude+bogus\n")
+
+    result = _run_agentdesk_state("", tmp_path)
+    assert result.returncode == 0, (
+        f"Corrupt saved value must fail-open (rc=0): rc={result.returncode}\nstderr: {result.stderr}"
+    )
+    combined = result.stdout + result.stderr
+    assert "Reusing last layout" not in combined, (
+        f"Corrupt saved value must NOT print 'Reusing last layout': {combined}"
+    )
+    assert "Starting agent desk" in combined, (
+        f"Corrupt saved value must still start agent desk: {combined}"
+    )
+
+
+def test_name_proj_namespace_isolation(tmp_path: Path) -> None:
+    """Named launch save does NOT trigger reuse on bare same-project launch.
+
+    name: and proj: are independent namespaces — a save via agentdesk --name myname
+    must not match a bare agentdesk (proj: key) lookup.
+
+    Strategy: directly pre-seed a name: key into the state file, then verify a
+    bare (proj:) launch does not pick it up.
+    """
+    env = _make_state_env(tmp_path)
+    fake_home = Path(env["HOME"])
+
+    # Derive the proj: key for the bare launch
+    key_script = textwrap.dedent(f"""
+        source "{AGENTDESK_ZSH}"
+        project_root="$(_agentdesk_realpath "{tmp_path}")"
+        _agentdesk_layout_key '' "$project_root"
+    """).strip()
+    key_result = subprocess.run(
+        ["zsh", "-c", key_script],
+        env=env,
+        input="",
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=15,
+    )
+    proj_key = key_result.stdout.strip()
+    assert proj_key.startswith("proj:"), f"Expected proj: key, got: {proj_key!r}"
+
+    # Pre-seed a name: key (different namespace) into the state file
+    state_dir = fake_home / ".config" / "agentdesk"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / "last-layout").write_text("name:myname=claude+shell\n")
+
+    # Bare launch (non-TTY, no saved proj: key) → must NOT reuse the name: save
+    result_bare = _run_agentdesk_state("", tmp_path)
+    assert result_bare.returncode == 0, (
+        f"Bare launch must succeed (rc={result_bare.returncode})\nstderr: {result_bare.stderr}"
+    )
+    combined = result_bare.stdout + result_bare.stderr
+    assert "Reusing last layout" not in combined, (
+        f"Bare launch must not reuse name: namespace save (namespace isolation):\n{combined}"
     )
