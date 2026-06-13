@@ -376,7 +376,7 @@ At session start (after Step 0 passes), append a row to the task cost ledger:
 
 ```bash
 LEDGER=".workflow_artifacts/<task-name>/cost-ledger.md"
-uuid=$(uuidgen) && printf '%s | %s | %s | %s | task | %s | %s\n' \
+uuid=$(python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$(pwd)" --phase "sleep" 2>/dev/null || echo "unknown-sleep-$(date -u +%Y%m%dT%H%M%SZ)") && printf '%s | %s | %s | %s | task | %s | %s\n' \
   "$uuid" "$(date -u +%Y-%m-%d)" "sleep" "haiku" "sleep-session" "0" \
   >> "$LEDGER"
 ```
