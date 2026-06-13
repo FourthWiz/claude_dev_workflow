@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SessionManager } from '../sessionManager';
-import { PersistedSession, QuoinSession } from '../types';
+import { PersistedSession } from '../types';
 
 // Minimal Memento stub
 function makeMemento(): import('vscode').Memento {

@@ -37,6 +37,9 @@ jobs:
       - name: Compile
         run: npm run compile
 
+      - name: Test
+        run: npm test
+
       - name: Package (.vsix)
         run: npm run package
 

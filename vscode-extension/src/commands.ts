@@ -7,10 +7,15 @@ const LAST_ROOT_KEY = 'quoin.lastProjectRoot';
 async function resolveProjectRoot(context: vscode.ExtensionContext): Promise<string | undefined> {
   const folders = vscode.workspace.workspaceFolders;
   if (folders && folders.length === 1) {
-    return folders[0].uri.fsPath;
+    const root = folders[0].uri.fsPath;
+    await context.globalState.update(LAST_ROOT_KEY, root);
+    return root;
   }
   if (folders && folders.length > 1) {
     const pick = await vscode.window.showWorkspaceFolderPick({ placeHolder: 'Select Quoin project root' });
+    if (pick) {
+      await context.globalState.update(LAST_ROOT_KEY, pick.uri.fsPath);
+    }
     return pick?.uri.fsPath;
   }
   // No workspace — prompt with persisted default

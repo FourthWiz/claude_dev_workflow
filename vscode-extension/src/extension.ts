@@ -18,12 +18,17 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerTreeDataProvider('quoin.sessions', treeProvider)
   );
 
-  // Load any persisted sessions from a prior window (T-04 reload behavior)
-  // We don't know projectRoot until the user opens a session, but we can
-  // attempt to load from the last known root stored in globalState.
+  // Load persisted sessions from prior window (T-04 reload behavior).
+  // Collect roots from workspace folders (common case) plus the stored fallback
+  // for no-workspace scenarios, then dedup and load each.
+  const rootsToLoad = new Set<string>();
+  vscode.workspace.workspaceFolders?.forEach(f => rootsToLoad.add(f.uri.fsPath));
   const lastRoot = context.globalState.get<string>('quoin.lastProjectRoot');
   if (lastRoot) {
-    manager.loadPersisted(lastRoot);
+    rootsToLoad.add(lastRoot);
+  }
+  for (const root of rootsToLoad) {
+    manager.loadPersisted(root);
   }
 
   context.subscriptions.push({ dispose: () => manager.dispose() });

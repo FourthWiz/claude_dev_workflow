@@ -39,7 +39,7 @@ export const window = {
 
 export const commands = {
   executeCommand: async (_cmd: string, ..._args: unknown[]) => undefined,
-  registerCommand: (_cmd: string, handler: (...args: unknown[]) => unknown) => ({ dispose: () => {} }),
+  registerCommand: (_cmd: string, _handler: (...args: unknown[]) => unknown) => ({ dispose: () => {} }),
 };
 
 export const workspace = {
