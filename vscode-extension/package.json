@@ -1,0 +1,86 @@
+{
+  "name": "quoin-vscode",
+  "displayName": "Quoin for VSCode",
+  "description": "Quoin workflow control surface inside the editor",
+  "version": "0.1.0",
+  "publisher": "quoin-placeholder",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FourthWiz/quoin.git"
+  },
+  "categories": ["Other"],
+  "engines": {
+    "vscode": "^1.90.0",
+    "node": ">=18"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onView:quoin.sessions",
+    "onView:quoin.controlPanel"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "quoin",
+          "title": "Quoin",
+          "icon": "media/quoin.svg"
+        }
+      ]
+    },
+    "views": {
+      "quoin": [
+        {
+          "id": "quoin.sessions",
+          "name": "Sessions",
+          "type": "tree"
+        },
+        {
+          "id": "quoin.controlPanel",
+          "name": "Control Panel",
+          "type": "webview"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "quoin.sessions",
+        "contents": "No sessions yet.\n[New Session](command:quoin.newSession)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "quoin.newSession",
+        "title": "Quoin: New Session"
+      },
+      {
+        "command": "quoin.revealSession",
+        "title": "Quoin: Reveal Session Terminal"
+      },
+      {
+        "command": "quoin.relaunchSession",
+        "title": "Quoin: Relaunch Session"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "node esbuild.js --production && vsce package",
+    "vscode:prepublish": "node esbuild.js --production",
+    "lint": "eslint src --ext ts",
+    "typecheck": "tsc --noEmit",
+    "test:compile": "tsc --project tsconfig.test.json",
+    "test": "npm run test:compile && node --require ./src/test/test-setup.js --test dist-test/test/*.test.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "@types/node": "^18",
+    "typescript": "^5.4.0",
+    "esbuild": "^0.21.0",
+    "@vscode/vsce": "^3.0.0",
+    "eslint": "^9.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0"
+  }
+}
