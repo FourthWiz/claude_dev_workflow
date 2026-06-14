@@ -5,6 +5,8 @@ import { registerCommands } from './commands';
 import { checkScriptRoots } from './scriptRootCheck';
 import { CommandRunner } from './commandRunner';
 import { ControlPanelViewProvider } from './controlPanel';
+import { DataService } from './dataService';
+import { WorkflowTreeViewProvider } from './workflowTree';
 
 export function activate(context: vscode.ExtensionContext): void {
   // T-05 activation ordering: commands BEFORE TreeDataProvider so the viewsWelcome
@@ -30,6 +32,19 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('quoin.controlPanel', controlPanelProvider)
   );
+
+  // Register the Workflow Tree webview view (S-3)
+  const dataService = new DataService();
+  const workflowProvider = new WorkflowTreeViewProvider(
+    context.extensionUri,
+    dataService,
+    manager,
+    controlPanelProvider,
+  );
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider('quoin.workflowTree', workflowProvider)
+  );
+  context.subscriptions.push(dataService);
 
   // Load persisted sessions from prior window (T-04 reload behavior).
   // Collect roots from workspace folders (common case) plus the stored fallback

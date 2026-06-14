@@ -77,6 +77,7 @@ function generateNonce(): string {
  */
 export class ControlPanelViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
+  private _lastHighlight: string | null | undefined = undefined;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -106,6 +107,10 @@ export class ControlPanelViewProvider implements vscode.WebviewViewProvider {
     // Push initial data to the webview once it's ready
     this._postSessionList(webviewView.webview);
     this._postSkillGroups(webviewView.webview);
+    // Replay last highlight so the webview shows the correct next-step button
+    if (this._lastHighlight !== undefined) {
+      this.postHighlight(this._lastHighlight);
+    }
 
     // Re-push session list whenever sessions change
     const listener = this.sessionManager.onDidChange(() => {
@@ -182,6 +187,14 @@ export class ControlPanelViewProvider implements vscode.WebviewViewProvider {
     const names = enumerateSkills();
     const groups = groupSkills(names);
     void webview.postMessage({ cmd: 'skills', groups });
+  }
+
+  /** Highlight the next-step skill button. Called by WorkflowTreeViewProvider. */
+  postHighlight(nextSkill: string | null): void {
+    this._lastHighlight = nextSkill;
+    if (this._view?.visible) {
+      void this._view.webview.postMessage({ cmd: 'highlight', nextSkill });
+    }
   }
 
   // ── HTML builder ───────────────────────────────────────────────────────────

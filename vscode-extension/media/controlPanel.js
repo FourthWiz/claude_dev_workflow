@@ -12,6 +12,7 @@
   let selectedSkill = null;       // string | null
   let selectedSessionId = null;   // string | null (UUID)
   let currentRuntime = 'claude';  // 'claude' | 'codex'
+  let nextSkill = null;           // string | null — next-step highlight from WorkflowTree
 
   // ── DOM refs ───────────────────────────────────────────────────────────────
 
@@ -81,6 +82,10 @@
         break;
       case 'skills':
         renderSkillGroups(msg.groups);
+        break;
+      case 'highlight':
+        nextSkill = msg.nextSkill;
+        applyHighlight();
         break;
     }
   });
@@ -200,6 +205,21 @@
       }
 
       skillGroups.appendChild(row);
+    }
+
+    applyHighlight();
+  }
+
+  /**
+   * Apply the next-step highlight outline to the matching skill button.
+   * Removes .next-btn from all buttons, then adds it to the one matching nextSkill.
+   */
+  function applyHighlight() {
+    document.querySelectorAll('.skill-btn.next-btn').forEach(b => b.classList.remove('next-btn'));
+    if (!nextSkill) return;
+    const btn = skillGroups.querySelector('[data-skill="' + nextSkill + '"]');
+    if (btn) {
+      btn.classList.add('next-btn');
     }
   }
 
