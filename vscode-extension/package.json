@@ -4,6 +4,10 @@
   "description": "Quoin workflow control surface inside the editor",
   "version": "0.1.0",
   "publisher": "quoin-placeholder",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FourthWiz/quoin.git"
+  },
   "categories": ["Other"],
   "engines": {
     "vscode": "^1.90.0",
