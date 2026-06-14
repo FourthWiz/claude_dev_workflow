@@ -205,6 +205,30 @@ _PHASE_TO_NODE = {
     "done":            "end_of_task",
 }
 
+def build_nodes(result: PhaseResult) -> list[dict]:
+    """Build the pipeline node list with per-node state for --emit-nodes output."""
+    active_node = _PHASE_TO_NODE.get(result.phase, "discover")
+    node_names = [n for _, n in _PIPELINE]
+    active_idx = node_names.index(active_node)
+    nodes = []
+    for i, (_, node) in enumerate(_PIPELINE):
+        if result.phase == "done":
+            state = "done"
+        elif i < active_idx:
+            state = "done"
+        elif i == active_idx:
+            state = "active"
+        else:
+            state = "future"
+        obj: dict = {"node": node, "state": state}
+        if node == "thorough_plan" and result.critic_rounds > 0:
+            obj["critic_rounds"] = result.critic_rounds
+        if node == "review" and result.review_rounds > 0:
+            obj["review_rounds"] = result.review_rounds
+        nodes.append(obj)
+    return nodes
+
+
 # Map detect_phase output → display label used in "you are here" annotation
 _PHASE_LABELS = {
     "discover":        "discover",
@@ -336,6 +360,8 @@ def main(argv=None) -> int:  # type: ignore[assignment]  # argv: list[str] | Non
                         help="stage number or name for multi-stage tasks")
     parser.add_argument("--json", action="store_true",
                         help="emit JSON object instead of ASCII graph")
+    parser.add_argument("--emit-nodes", action="store_true",
+                        help="include pipeline node list in --json output (implies --json)")
     parser.add_argument("--watch", nargs="?", const=5, type=int, metavar="SECONDS",
                         help="refresh mode: clear+redraw every N seconds (default 5)")
     parser.add_argument("--compact", action="store_true",
@@ -414,7 +440,7 @@ def _run_once(args: argparse.Namespace, project_root: Path) -> tuple[str, int]:
     result = detect_phase(task_dir, probe_git=args.probe_git)
     task_name = task_dir.name
 
-    if args.json:
+    if args.json or args.emit_nodes:
         data = {
             "task": task_name,
             "phase": result.phase,
@@ -423,6 +449,8 @@ def _run_once(args: argparse.Namespace, project_root: Path) -> tuple[str, int]:
             "stage": args.stage,
             "task_dir": str(task_dir),
         }
+        if args.emit_nodes:
+            data["nodes"] = build_nodes(result)
         return json.dumps(data, indent=2), 0
 
     graph = render_graph(result, task_name, compact=args.compact)

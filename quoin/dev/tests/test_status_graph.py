@@ -351,3 +351,91 @@ class TestCLI:
         empty.mkdir()
         rc = main(["--project-root", str(empty)])
         assert rc == 1
+
+
+# ---------------------------------------------------------------------------
+# --emit-nodes output
+# ---------------------------------------------------------------------------
+
+build_nodes = _SG.build_nodes
+
+class TestEmitNodes:
+    def _nodes(self, task_dir: Path, **kwargs) -> list[dict]:
+        result = detect_phase(task_dir, **kwargs)
+        return build_nodes(result)
+
+    def test_planning_phase_active_node_is_thorough_plan(self, tmp_path):
+        task_dir = make_task(tmp_path, "t", ["current-plan.md"])
+        nodes = self._nodes(task_dir)
+        by_name = {n["node"]: n for n in nodes}
+        assert by_name["discover"]["state"] == "done"
+        assert by_name["architect"]["state"] == "done"
+        assert by_name["thorough_plan"]["state"] == "active"
+        assert by_name["implement"]["state"] == "future"
+        assert by_name["review"]["state"] == "future"
+        assert by_name["end_of_task"]["state"] == "future"
+
+    def test_discover_phase_all_future_except_active(self, tmp_path):
+        task_dir = tmp_path / ".workflow_artifacts" / "empty-task"
+        task_dir.mkdir(parents=True)
+        nodes = self._nodes(task_dir)
+        by_name = {n["node"]: n for n in nodes}
+        assert by_name["discover"]["state"] == "active"
+        assert by_name["architect"]["state"] == "future"
+
+    def test_done_phase_all_nodes_done(self, tmp_path):
+        finalized = tmp_path / ".workflow_artifacts" / "finalized" / "old-task"
+        finalized.mkdir(parents=True)
+        (finalized / "current-plan.md").write_text("# done\n")
+        result = detect_phase(finalized)
+        assert result.phase == "done"
+        nodes = build_nodes(result)
+        assert all(n["state"] == "done" for n in nodes)
+
+    def test_critic_rounds_adornment(self, tmp_path):
+        task_dir = make_task(tmp_path, "t", [
+            "current-plan.md", "critic-response-1.md", "critic-response-2.md",
+        ])
+        nodes = self._nodes(task_dir)
+        by_name = {n["node"]: n for n in nodes}
+        assert by_name["thorough_plan"]["state"] == "active"
+        assert by_name["thorough_plan"]["critic_rounds"] == 2
+
+    def test_critic_rounds_zero_not_in_output(self, tmp_path):
+        task_dir = make_task(tmp_path, "t", ["current-plan.md"])
+        nodes = self._nodes(task_dir)
+        by_name = {n["node"]: n for n in nodes}
+        assert "critic_rounds" not in by_name["thorough_plan"]
+
+    def test_review_rounds_adornment(self, tmp_path):
+        task_dir = make_task(tmp_path, "t", [
+            "current-plan.md", "critic-response-1.md", "review-1.md", "review-2.md",
+        ])
+        nodes = self._nodes(task_dir)
+        by_name = {n["node"]: n for n in nodes}
+        assert by_name["review"]["state"] == "active"
+        assert by_name["review"]["review_rounds"] == 2
+
+    def test_json_without_emit_nodes_has_no_nodes_key(self, tmp_path, capsys):
+        make_task(tmp_path, "t", ["current-plan.md"])
+        rc = main(["--project-root", str(tmp_path), "--task", "t", "--json"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        data = json.loads(out)
+        assert "nodes" not in data
+
+    def test_emit_nodes_adds_nodes_key(self, tmp_path, capsys):
+        make_task(tmp_path, "t", ["current-plan.md"])
+        rc = main(["--project-root", str(tmp_path), "--task", "t", "--emit-nodes"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        data = json.loads(out)
+        assert "nodes" in data
+        assert len(data["nodes"]) == 6
+        assert all("node" in n and "state" in n for n in data["nodes"])
+
+    def test_pipeline_length_and_names(self, tmp_path):
+        task_dir = make_task(tmp_path, "t", ["current-plan.md"])
+        nodes = self._nodes(task_dir)
+        expected = ["discover", "architect", "thorough_plan", "implement", "review", "end_of_task"]
+        assert [n["node"] for n in nodes] == expected
