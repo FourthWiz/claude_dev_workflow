@@ -108,3 +108,39 @@ describe('SessionManager persistence', () => {
     assert.equal(s3.label, 'codex-1');
   });
 });
+
+describe('SessionManager.relaunch', () => {
+  it('reuses the same UUID and attaches a new terminal in-place', () => {
+    const ctx = makeContext();
+    const noop = (_h: unknown) => ({ dispose: () => {} });
+    const m = new SessionManager(ctx, noop as import('vscode').Event<import('vscode').Terminal>);
+
+    const s = m.create('claude', '/p', (_opts) => makeTerminal('claude-1'));
+    const originalId = s.id;
+
+    // Simulate the terminal closing → session becomes relaunchable with no live handle
+    s.terminal = undefined;
+    s.relaunchable = true;
+
+    const newTerminal = makeTerminal('claude-1-relaunched');
+    const relaunched = m.relaunch(originalId, (_opts) => newTerminal);
+
+    assert.ok(relaunched, 'relaunch returns the session');
+    assert.equal(relaunched!.id, originalId, 'UUID is preserved (no new session)');
+    assert.equal(relaunched!.terminal, newTerminal, 'terminal handle replaced in-place');
+    assert.equal(relaunched!.relaunchable, false, 'session is live again');
+    // Registry still holds exactly one session for this id — no duplicate
+    assert.equal(m.getAll().length, 1);
+    assert.equal(m.get(originalId), relaunched);
+  });
+
+  it('returns undefined for an unknown id (no throw, no phantom session)', () => {
+    const ctx = makeContext();
+    const noop = (_h: unknown) => ({ dispose: () => {} });
+    const m = new SessionManager(ctx, noop as import('vscode').Event<import('vscode').Terminal>);
+
+    const result = m.relaunch('does-not-exist', (_opts) => makeTerminal('x'));
+    assert.equal(result, undefined);
+    assert.equal(m.getAll().length, 0, 'no session created for an unknown id');
+  });
+});

@@ -20,8 +20,6 @@ interface SelectSessionMessage {
   sessionId: string;
 }
 
-type WebviewMessage = RunMessage | SelectSessionMessage;
-
 function isRunMessage(msg: unknown): msg is RunMessage {
   if (!msg || typeof msg !== 'object') return false;
   const m = msg as Record<string, unknown>;

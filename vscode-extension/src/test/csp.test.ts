@@ -1,5 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { ControlPanelViewProvider } from '../controlPanel';
 import { CommandRunner } from '../commandRunner';
 import { SessionManager } from '../sessionManager';
@@ -103,8 +105,6 @@ describe('ControlPanelViewProvider HTML builder — CSP (R-05)', () => {
   });
 
   it('.vscodeignore packaging check: media/ is NOT in .vscodeignore (MIN-2)', () => {
-    const fs = require('fs');
-    const path = require('path');
     const vscodeignorePath = path.join(__dirname, '../../../.vscodeignore');
     if (!fs.existsSync(vscodeignorePath)) {
       // .vscodeignore not present — media ships by default; skip
