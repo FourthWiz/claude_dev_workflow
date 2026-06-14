@@ -53,10 +53,8 @@ export function registerCommands(
       session?.terminal?.show();
     }),
 
-    vscode.commands.registerCommand('quoin.relaunchSession', async (id: string) => {
-      const session = manager.get(id);
-      if (!session) return;
-      manager.create(session.runtime, session.projectRoot);
+    vscode.commands.registerCommand('quoin.relaunchSession', (id: string) => {
+      manager.relaunch(id);
     })
   );
 }

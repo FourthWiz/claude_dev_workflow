@@ -85,6 +85,28 @@ export class SessionManager {
     return [...this.registry.values()];
   }
 
+  /**
+   * Relaunch an existing session in-place, reusing its UUID so the webview
+   * selection stays accurate after the terminal closes and is relaunched.
+   */
+  relaunch(
+    id: string,
+    terminalFactory: TerminalFactory = vscode.window.createTerminal
+  ): QuoinSession | undefined {
+    const session = this.registry.get(id);
+    if (!session) return undefined;
+
+    session.terminal = terminalFactory({ name: session.label, cwd: session.projectRoot });
+    session.terminal.sendText(session.runtime, true);
+    session.terminal.show();
+    session.relaunchable = false;
+    session.createdAt = Date.now();
+
+    void this.savePersisted(session.projectRoot);
+    this._onDidChange.fire();
+    return session;
+  }
+
   private onTerminalClose(terminal: vscode.Terminal): void {
     for (const session of this.registry.values()) {
       if (session.terminal === terminal) {
