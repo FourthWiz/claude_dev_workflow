@@ -2,7 +2,7 @@
   "name": "quoin-vscode",
   "displayName": "Quoin for VSCode",
   "description": "Quoin workflow control surface inside the editor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "quoin-placeholder",
   "repository": {
     "type": "git",
@@ -16,7 +16,8 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onView:quoin.sessions",
-    "onView:quoin.controlPanel"
+    "onView:quoin.controlPanel",
+    "onView:quoin.workflowTree"
   ],
   "contributes": {
     "viewsContainers": {
@@ -34,6 +35,11 @@
           "id": "quoin.sessions",
           "name": "Sessions",
           "type": "tree"
+        },
+        {
+          "id": "quoin.workflowTree",
+          "name": "Workflow",
+          "type": "webview"
         },
         {
           "id": "quoin.controlPanel",

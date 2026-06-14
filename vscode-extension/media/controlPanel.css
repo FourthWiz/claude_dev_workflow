@@ -121,6 +121,11 @@ body {
   opacity: 0.5;
 }
 
+.skill-btn.next-btn {
+  outline: 2px solid var(--vscode-focusBorder, #007fd4);
+  font-weight: 600;
+}
+
 /* Prompt area */
 .prompt-row {
   margin-bottom: 8px;
