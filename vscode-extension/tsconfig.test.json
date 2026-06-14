@@ -25,6 +25,8 @@
     "src/workflowMapping.ts",
     "src/dataService.ts",
     "src/workflowTree.ts",
+    "src/archiveScanner.ts",
+    "src/sessionsArchive.ts",
     "src/test/**/*.ts"
   ]
 }

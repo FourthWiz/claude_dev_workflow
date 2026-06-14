@@ -75,6 +75,17 @@ export const clipboardSpy = {
   reset() { _clipboardContent = ''; },
 };
 
+// ── executeCommand spy (mirrors clipboardSpy pattern) ─────────────────────
+// Module-level recorder; tests call executeCommandSpy.reset() at the start of
+// each test that checks executeCommand. Do NOT do per-test reassignment of
+// commands.executeCommand on the singleton — that risks global-state bleed.
+
+const _executedCommands: Array<{ cmd: string; args: unknown[] }> = [];
+export const executeCommandSpy = {
+  get calls() { return [..._executedCommands]; },
+  reset() { _executedCommands.length = 0; },
+};
+
 // ── Window + env stubs ─────────────────────────────────────────────────────
 
 export const window = {
@@ -82,6 +93,7 @@ export const window = {
   onDidCloseTerminal: (_h: unknown) => ({ dispose: () => {} }),
   showErrorMessage: async (_msg: string, ..._items: string[]) => undefined as string | undefined,
   showInformationMessage: async (_msg: string) => undefined,
+  showTextDocument: async (_doc: unknown, _opts?: unknown) => undefined,
   createOutputChannel: (_name: string) => ({ appendLine: () => {}, show: () => {} }),
   registerWebviewViewProvider: (_id: string, _provider: unknown) => ({ dispose: () => {} }),
 };
@@ -96,7 +108,10 @@ export const env = {
 };
 
 export const commands = {
-  executeCommand: async (_cmd: string, ..._args: unknown[]) => undefined,
+  executeCommand: async (cmd: string, ...args: unknown[]) => {
+    _executedCommands.push({ cmd, args });
+    return undefined;
+  },
   registerCommand: (_cmd: string, _handler: (...args: unknown[]) => unknown) => ({ dispose: () => {} }),
 };
 
@@ -150,6 +165,7 @@ export const workspace = {
   get _lastWatcherEmitters() {
     return _lastWatcherStub?._emitters;
   },
+  openTextDocument: async (_uri: unknown) => ({ uri: _uri }),
 };
 
 // ── Webview stub (minimal surface for ControlPanelViewProvider) ────────────

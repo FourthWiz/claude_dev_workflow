@@ -55,6 +55,20 @@ export function registerCommands(
 
     vscode.commands.registerCommand('quoin.relaunchSession', (id: string) => {
       manager.relaunch(id);
+    }),
+
+    // quoin.openArchivedSession: opens an archived .md file in an editor tab.
+    // The active-row click path reuses the existing quoin.revealSession command.
+    // Note (D-02): the archive view's active-row click maps to revealSession (live terminal)
+    // and does NOT relaunch; relaunch remains available from the S-1 quoin.sessions tree.
+    vscode.commands.registerCommand('quoin.openArchivedSession', async (filePath: string) => {
+      if (typeof filePath !== 'string' || !filePath) { return; }
+      try {
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+        await vscode.window.showTextDocument(doc, { preview: true });
+      } catch {
+        void vscode.window.showErrorMessage(`Quoin: could not open session file: ${filePath}`);
+      }
     })
   );
 }

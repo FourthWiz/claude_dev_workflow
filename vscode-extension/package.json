@@ -2,7 +2,7 @@
   "name": "quoin-vscode",
   "displayName": "Quoin for VSCode",
   "description": "Quoin workflow control surface inside the editor",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "quoin-placeholder",
   "repository": {
     "type": "git",
@@ -17,7 +17,8 @@
   "activationEvents": [
     "onView:quoin.sessions",
     "onView:quoin.controlPanel",
-    "onView:quoin.workflowTree"
+    "onView:quoin.workflowTree",
+    "onView:quoin.sessionsArchive"
   ],
   "contributes": {
     "viewsContainers": {
@@ -45,6 +46,11 @@
           "id": "quoin.controlPanel",
           "name": "Control Panel",
           "type": "webview"
+        },
+        {
+          "id": "quoin.sessionsArchive",
+          "name": "Sessions Archive",
+          "type": "webview"
         }
       ]
     },
@@ -66,6 +72,10 @@
       {
         "command": "quoin.relaunchSession",
         "title": "Quoin: Relaunch Session"
+      },
+      {
+        "command": "quoin.openArchivedSession",
+        "title": "Quoin: Open Archived Session File"
       }
     ]
   },
