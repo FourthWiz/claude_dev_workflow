@@ -7,6 +7,7 @@ import { CommandRunner } from './commandRunner';
 import { ControlPanelViewProvider } from './controlPanel';
 import { DataService } from './dataService';
 import { WorkflowTreeViewProvider } from './workflowTree';
+import { SessionsArchiveViewProvider } from './sessionsArchive';
 
 export function activate(context: vscode.ExtensionContext): void {
   // T-05 activation ordering: commands BEFORE TreeDataProvider so the viewsWelcome
@@ -45,6 +46,15 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerWebviewViewProvider('quoin.workflowTree', workflowProvider)
   );
   context.subscriptions.push(dataService);
+
+  // Register the Sessions Archive webview view (S-4)
+  // Reuses the same dataService instance (shared watcher + onDidChange emitter; see S4-3).
+  const archiveProvider = new SessionsArchiveViewProvider(
+    context.extensionUri, manager, dataService,
+  );
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider('quoin.sessionsArchive', archiveProvider)
+  );
 
   // Load persisted sessions from prior window (T-04 reload behavior).
   // Collect roots from workspace folders (common case) plus the stored fallback
