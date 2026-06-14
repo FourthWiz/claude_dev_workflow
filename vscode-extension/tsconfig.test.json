@@ -18,6 +18,10 @@
     "src/types.ts",
     "src/sessionManager.ts",
     "src/scriptRootCheck.ts",
+    "src/injectionRecipe.ts",
+    "src/commandRunner.ts",
+    "src/skillCatalog.ts",
+    "src/controlPanel.ts",
     "src/test/**/*.ts"
   ]
 }

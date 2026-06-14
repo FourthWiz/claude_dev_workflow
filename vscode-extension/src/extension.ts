@@ -3,6 +3,8 @@ import { SessionManager } from './sessionManager';
 import { SessionsTreeProvider } from './sessionsTree';
 import { registerCommands } from './commands';
 import { checkScriptRoots } from './scriptRootCheck';
+import { CommandRunner } from './commandRunner';
+import { ControlPanelViewProvider } from './controlPanel';
 
 export function activate(context: vscode.ExtensionContext): void {
   // T-05 activation ordering: commands BEFORE TreeDataProvider so the viewsWelcome
@@ -16,6 +18,17 @@ export function activate(context: vscode.ExtensionContext): void {
   const treeProvider = new SessionsTreeProvider(manager);
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('quoin.sessions', treeProvider)
+  );
+
+  // Register the Control Panel webview view (S-2)
+  const commandRunner = new CommandRunner();
+  const controlPanelProvider = new ControlPanelViewProvider(
+    context.extensionUri,
+    manager,
+    commandRunner
+  );
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider('quoin.controlPanel', controlPanelProvider)
   );
 
   // Load persisted sessions from prior window (T-04 reload behavior).

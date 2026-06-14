@@ -11,7 +11,8 @@
   },
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onView:quoin.sessions"
+    "onView:quoin.sessions",
+    "onView:quoin.controlPanel"
   ],
   "contributes": {
     "viewsContainers": {
@@ -29,6 +30,11 @@
           "id": "quoin.sessions",
           "name": "Sessions",
           "type": "tree"
+        },
+        {
+          "id": "quoin.controlPanel",
+          "name": "Control Panel",
+          "type": "webview"
         }
       ]
     },
