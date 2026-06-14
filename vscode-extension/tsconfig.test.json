@@ -27,6 +27,8 @@
     "src/workflowTree.ts",
     "src/archiveScanner.ts",
     "src/sessionsArchive.ts",
+    "src/costService.ts",
+    "src/costView.ts",
     "src/test/**/*.ts"
   ]
 }

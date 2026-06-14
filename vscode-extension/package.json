@@ -18,7 +18,8 @@
     "onView:quoin.sessions",
     "onView:quoin.controlPanel",
     "onView:quoin.workflowTree",
-    "onView:quoin.sessionsArchive"
+    "onView:quoin.sessionsArchive",
+    "onView:quoin.cost"
   ],
   "contributes": {
     "viewsContainers": {
@@ -50,6 +51,11 @@
         {
           "id": "quoin.sessionsArchive",
           "name": "Sessions Archive",
+          "type": "webview"
+        },
+        {
+          "id": "quoin.cost",
+          "name": "Cost",
           "type": "webview"
         }
       ]

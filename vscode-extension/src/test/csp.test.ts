@@ -5,7 +5,9 @@ import * as path from 'node:path';
 import { ControlPanelViewProvider } from '../controlPanel';
 import { CommandRunner } from '../commandRunner';
 import { SessionManager } from '../sessionManager';
-import { Uri, StubWebview } from './__mocks__/vscode';
+import { CostViewProvider } from '../costView';
+import { DataService } from '../dataService';
+import { Uri, StubWebview, EventEmitter } from './__mocks__/vscode';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -115,5 +117,82 @@ describe('ControlPanelViewProvider HTML builder — CSP (R-05)', () => {
     const mediaExcluded = lines.some((l: string) => l === 'media/' || l === 'media/**');
     assert.ok(!mediaExcluded,
       '.vscodeignore must NOT exclude media/ — controlPanel.js and .css must ship in the .vsix');
+  });
+});
+
+// ── CostViewProvider CSP assertion (R-05) ──────────────────────────────────
+
+/** The locked 5-directive CSP string (byte-identical to sessionsArchive.ts:174-178). */
+const COST_CSP_LOCKED = [
+  "default-src 'none'",
+  'style-src',
+  "script-src 'nonce-",
+  'img-src',
+  'font-src',
+];
+
+describe('CostViewProvider HTML builder — CSP (R-05)', () => {
+  function makeDataServiceStub(): DataService {
+    const emitter = new EventEmitter<void>();
+    return {
+      onDidChange: emitter.event,
+      getProjectRoot: () => undefined,
+      getActiveTask: async () => undefined,
+      getWorkflowNodes: async () => ({ status: 'no-task' }),
+      watch: () => ({ dispose: () => {} }),
+      getCostView: async () => ({
+        live: null,
+        tasks: [],
+        finalizedGrandTotal: null,
+        finalizedGrandTotalState: 'unavailable',
+        scopeNote: '',
+      }),
+      readCostSummaries: () => [],
+      liveSpend: async () => null,
+      taskCounts: async () => [],
+      dispose: () => {},
+    } as unknown as DataService;
+  }
+
+  function setup(): { provider: CostViewProvider; webview: StubWebview; html: string } {
+    const ds = makeDataServiceStub();
+    const p = new CostViewProvider(Uri.file('/ext') as unknown as import('vscode').Uri, ds);
+    const w = new StubWebview();
+    const h = p._buildHtml(w as unknown as import('vscode').Webview);
+    return { provider: p, webview: w, html: h };
+  }
+
+  it('cost view CSP byte-equals the locked 5-directive string (R-05)', () => {
+    const { html } = setup();
+    for (const directive of COST_CSP_LOCKED) {
+      assert.ok(html.includes(directive), `cost view CSP must contain "${directive}"`);
+    }
+  });
+
+  it("cost view has default-src 'none'", () => {
+    const { html } = setup();
+    assert.ok(html.includes("default-src 'none'"));
+  });
+
+  it('cost view has no unsafe-inline', () => {
+    const { html } = setup();
+    assert.ok(!html.includes("'unsafe-inline'"), "CSP must NOT contain 'unsafe-inline'");
+  });
+
+  it('cost view references costView.js and costView.css (not sessionsArchive)', () => {
+    const { html } = setup();
+    assert.ok(html.includes('costView.js'), 'must reference costView.js');
+    assert.ok(html.includes('costView.css'), 'must reference costView.css');
+    assert.ok(!html.includes('sessionsArchive.js'), 'must NOT reference sessionsArchive.js');
+    assert.ok(!html.includes('sessionsArchive.css'), 'must NOT reference sessionsArchive.css');
+  });
+
+  it('cost view CSP has no http:// or https:// remote origins', () => {
+    const { html } = setup();
+    const cspMatch = html.match(/Content-Security-Policy" content="([^"]*)"/);
+    assert.ok(cspMatch, 'CSP meta tag must exist');
+    const cspValue = cspMatch![1];
+    assert.ok(!cspValue.includes('http://'), 'CSP must not allow http:// origins');
+    assert.ok(!cspValue.includes('https://'), 'CSP must not allow https:// origins');
   });
 });
