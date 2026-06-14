@@ -100,8 +100,56 @@ export const commands = {
   registerCommand: (_cmd: string, _handler: (...args: unknown[]) => unknown) => ({ dispose: () => {} }),
 };
 
+export interface WorkspaceFolder {
+  uri: { fsPath: string };
+  name: string;
+  index: number;
+}
+
+export class RelativePattern {
+  constructor(public readonly base: string, public readonly pattern: string) {}
+}
+
+/** Watcher stub with fireable events for debounce tests. */
+export function makeWatcherStub(): {
+  watcher: {
+    onDidCreate: (h: () => void) => { dispose(): void };
+    onDidChange: (h: () => void) => { dispose(): void };
+    onDidDelete: (h: () => void) => { dispose(): void };
+    dispose(): void;
+  };
+  _emitters: { create: EventEmitter<void>; change: EventEmitter<void>; delete: EventEmitter<void> };
+} {
+  const _emitters = {
+    create: new EventEmitter<void>(),
+    change: new EventEmitter<void>(),
+    delete: new EventEmitter<void>(),
+  };
+  const watcher = {
+    onDidCreate: _emitters.create.event,
+    onDidChange: _emitters.change.event,
+    onDidDelete: _emitters.delete.event,
+    dispose: () => {
+      _emitters.create.dispose();
+      _emitters.change.dispose();
+      _emitters.delete.dispose();
+    },
+  };
+  return { watcher, _emitters };
+}
+
+let _lastWatcherStub: ReturnType<typeof makeWatcherStub> | undefined;
+
 export const workspace = {
-  workspaceFolders: undefined as undefined,
+  workspaceFolders: undefined as readonly WorkspaceFolder[] | undefined,
+  createFileSystemWatcher: (_pattern: RelativePattern) => {
+    _lastWatcherStub = makeWatcherStub();
+    return _lastWatcherStub.watcher;
+  },
+  /** Exposed for tests to get the last created watcher's emitters. */
+  get _lastWatcherEmitters() {
+    return _lastWatcherStub?._emitters;
+  },
 };
 
 // ── Webview stub (minimal surface for ControlPanelViewProvider) ────────────
