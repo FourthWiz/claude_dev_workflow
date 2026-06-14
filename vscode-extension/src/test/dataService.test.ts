@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseNodesPayload, DataService, WATCH_DEBOUNCE_MS } from '../dataService';
-import { workspace, EventEmitter } from './__mocks__/vscode';
+import { workspace } from './__mocks__/vscode';
 
 // ---------------------------------------------------------------------------
 // parseNodesPayload — pure function tests (no live Python)
