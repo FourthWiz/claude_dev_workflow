@@ -12,8 +12,7 @@
  *
  * Both CommandRunner (production) and tests (T-07) import these constants — no second copy.
  *
- * STATUS: PENDING — defaults set to 'sendText' / '' (no pre-clear) until the spike is run.
- * Update after completing the manual test in Extension Development Host.
+ * STATUS: VERIFIED — spike completed 2026-06-14. See docs/spike-r01-sendtext.md.
  */
 
 /** Enumerated allowed pre-clear sequences (widen only with a matching findings-doc entry). */
@@ -35,4 +34,4 @@ export const INJECTION_MODE: 'sendText' | 'clipboard' = 'sendText';
  * Set to '' if no pre-clear is needed (empty input case is reliable).
  * Set to '\x15' (Ctrl-U) if the spike shows unsent-text concatenation is a problem.
  */
-export const CLEAR_PREFIX: string = '';
+export const CLEAR_PREFIX: string = '\x15';
