@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { execFile } from 'node:child_process';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { WorkflowNode, PIPELINE, PHASE_TO_NODE } from './workflowMapping';
@@ -15,6 +16,12 @@ import {
 import { FsLike } from './archiveScanner';
 
 export const WATCH_DEBOUNCE_MS = 500;
+
+export interface DataServiceOptions {
+  adapterRoot?: string;
+  coreRoot?: string;
+  watcherDebounceMs?: number;
+}
 
 export interface DataResult {
   status: 'ok' | 'no-task' | 'no-scripts' | 'error';
@@ -82,6 +89,17 @@ export class DataService implements vscode.Disposable {
   private _watcher: vscode.FileSystemWatcher | undefined;
   private _debounceTimer: ReturnType<typeof setTimeout> | undefined;
 
+  private readonly _adapterRoot: string;
+  private readonly _coreRoot: string;
+  private readonly _debounceMs: number;
+
+  constructor(opts: DataServiceOptions = {}) {
+    const home = os.homedir();
+    this._adapterRoot = opts.adapterRoot ?? path.join(home, '.claude', 'scripts');
+    this._coreRoot = opts.coreRoot ?? path.join(home, '.claude', 'core', 'scripts');
+    this._debounceMs = opts.watcherDebounceMs ?? WATCH_DEBOUNCE_MS;
+  }
+
   dispose(): void {
     this._watcher?.dispose();
     this._watcher = undefined;
@@ -108,7 +126,7 @@ export class DataService implements vscode.Disposable {
       this._debounceTimer = setTimeout(() => {
         this._debounceTimer = undefined;
         this._onDidChange.fire();
-      }, WATCH_DEBOUNCE_MS);
+      }, this._debounceMs);
     };
 
     watcher.onDidCreate(fire);
@@ -137,10 +155,9 @@ export class DataService implements vscode.Disposable {
 
   /** Resolve the path to status_graph.py; prefer core copy over adapter wrapper. */
   private _resolveScriptPath(): string | null {
-    const home = process.env['HOME'] ?? '';
-    const corePath = path.join(home, '.claude', 'core', 'scripts', 'status_graph.py');
+    const corePath = path.join(this._coreRoot, 'status_graph.py');
     if (fs.existsSync(corePath)) { return corePath; }
-    const adapterPath = path.join(home, '.claude', 'scripts', 'status_graph.py');
+    const adapterPath = path.join(this._adapterRoot, 'status_graph.py');
     if (fs.existsSync(adapterPath)) { return adapterPath; }
     return null;
   }
@@ -181,10 +198,9 @@ export class DataService implements vscode.Disposable {
    * also has an adapter wrapper (MIN-1).
    */
   _resolveCostScript(name: string): string | null {
-    const home = process.env['HOME'] ?? '';
-    const corePath = path.join(home, '.claude', 'core', 'scripts', name);
+    const corePath = path.join(this._coreRoot, name);
     if (fs.existsSync(corePath)) { return corePath; }
-    const adapterPath = path.join(home, '.claude', 'scripts', name);
+    const adapterPath = path.join(this._adapterRoot, name);
     if (fs.existsSync(adapterPath)) { return adapterPath; }
     return null;
   }

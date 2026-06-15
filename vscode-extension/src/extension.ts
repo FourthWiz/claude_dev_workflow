@@ -1,3 +1,5 @@
+import * as os from 'node:os';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { SessionManager } from './sessionManager';
 import { SessionsTreeProvider } from './sessionsTree';
@@ -5,10 +7,28 @@ import { registerCommands } from './commands';
 import { checkScriptRoots } from './scriptRootCheck';
 import { CommandRunner } from './commandRunner';
 import { ControlPanelViewProvider } from './controlPanel';
-import { DataService } from './dataService';
+import { DataService, DataServiceOptions } from './dataService';
 import { WorkflowTreeViewProvider } from './workflowTree';
 import { SessionsArchiveViewProvider } from './sessionsArchive';
 import { CostViewProvider } from './costView';
+
+function expandTilde(p: string): string {
+  if (p.startsWith('~/') || p === '~') {
+    return path.join(os.homedir(), p.slice(2));
+  }
+  return p;
+}
+
+function readQuoinSettings(): DataServiceOptions & { projectRoot: string } {
+  const cfg = vscode.workspace.getConfiguration('quoin');
+  const scriptRoots = cfg.get<{ adapter?: string; core?: string }>('scriptRoots') ?? {};
+  return {
+    adapterRoot: expandTilde(scriptRoots.adapter ?? '~/.claude/scripts'),
+    coreRoot: expandTilde(scriptRoots.core ?? '~/.claude/core/scripts'),
+    watcherDebounceMs: cfg.get<number>('watcherDebounceMs') ?? 500,
+    projectRoot: cfg.get<string>('projectRoot') ?? '',
+  };
+}
 
 export function activate(context: vscode.ExtensionContext): void {
   // T-05 activation ordering: commands BEFORE TreeDataProvider so the viewsWelcome
@@ -36,7 +56,12 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // Register the Workflow Tree webview view (S-3)
-  const dataService = new DataService();
+  const settings = readQuoinSettings();
+  const dataService = new DataService({
+    adapterRoot: settings.adapterRoot,
+    coreRoot: settings.coreRoot,
+    watcherDebounceMs: settings.watcherDebounceMs,
+  });
   const workflowProvider = new WorkflowTreeViewProvider(
     context.extensionUri,
     dataService,

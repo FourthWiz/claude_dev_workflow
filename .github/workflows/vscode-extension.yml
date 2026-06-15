@@ -4,21 +4,25 @@ on:
   push:
     paths:
       - 'vscode-extension/**'
+      - '.github/workflows/vscode-extension.yml'
   pull_request:
     paths:
       - 'vscode-extension/**'
+      - '.github/workflows/vscode-extension.yml'
 
 jobs:
   build:
+    name: Build & Package
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: vscode-extension
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -28,14 +32,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type check
+      - name: Compile
+        run: npm run compile
+
+      - name: Typecheck
         run: npm run typecheck
 
       - name: Lint
         run: npm run lint
-
-      - name: Compile
-        run: npm run compile
 
       - name: Test
         run: npm test
@@ -43,9 +47,10 @@ jobs:
       - name: Package (.vsix)
         run: npm run package
 
-      - name: Upload vsix artifact
+      - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
         with:
           name: quoin-vscode-extension
           path: vscode-extension/*.vsix
+          retention-days: 14
           if-no-files-found: warn
