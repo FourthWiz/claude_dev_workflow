@@ -1,4 +1,4 @@
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseNodesPayload, DataService, WATCH_DEBOUNCE_MS } from '../dataService';
 import { workspace, _clearConfig } from './__mocks__/vscode';
