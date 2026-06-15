@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ControlPanelViewProvider } from '../controlPanel';
 import { CommandRunner } from '../commandRunner';
 import { SessionManager } from '../sessionManager';
-import { Uri, makeStubWebviewView, makeMemento, makeContext, EventEmitter } from './__mocks__/vscode';
+import { Uri, makeStubWebviewView, makeContext, EventEmitter } from './__mocks__/vscode';
 import type { ProjectContext } from '../projectContext';
 
 function makeTerminal(name: string): import('vscode').Terminal {

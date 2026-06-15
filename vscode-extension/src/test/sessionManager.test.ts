@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SessionManager } from '../sessionManager';
 import { PersistedSession } from '../types';
-import { makeMemento, makeContext } from './__mocks__/vscode';
+import { makeContext } from './__mocks__/vscode';
 
 // Minimal vscode.Terminal stub
 function makeTerminal(name: string): import('vscode').Terminal {

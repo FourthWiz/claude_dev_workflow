@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SessionsTreeProvider } from '../sessionsTree';
 import { SessionManager } from '../sessionManager';
-import { EventEmitter, makeMemento, makeContext } from './__mocks__/vscode';
+import { EventEmitter, makeContext } from './__mocks__/vscode';
 import type { ProjectContext } from '../projectContext';
 
 function makeManager() {
