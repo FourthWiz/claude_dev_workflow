@@ -1,13 +1,18 @@
 import * as vscode from 'vscode';
+import * as fs from 'node:fs';
 import { SessionManager } from './sessionManager';
 import { Runtime } from './types';
+import { findArtifactsRoot } from './artifactsRoot';
 
 const LAST_ROOT_KEY = 'quoin.lastProjectRoot';
 
 async function resolveProjectRoot(context: vscode.ExtensionContext): Promise<string | undefined> {
   const folders = vscode.workspace.workspaceFolders;
   if (folders && folders.length === 1) {
-    const root = folders[0].uri.fsPath;
+    // CRIT-1 fix: walk up to the artifacts root so session.projectRoot is always
+    // the .workflow_artifacts/ ancestor, never the raw workspace folder path.
+    const root = findArtifactsRoot(folders[0].uri.fsPath, { existsSync: fs.existsSync })
+      ?? folders[0].uri.fsPath;
     await context.globalState.update(LAST_ROOT_KEY, root);
     return root;
   }

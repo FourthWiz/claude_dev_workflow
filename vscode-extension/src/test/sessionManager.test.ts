@@ -2,34 +2,11 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { SessionManager } from '../sessionManager';
 import { PersistedSession } from '../types';
-
-// Minimal Memento stub
-function makeMemento(): import('vscode').Memento {
-  const store = new Map<string, unknown>();
-  return {
-    keys: () => [...store.keys()],
-    get<T>(key: string, defaultValue?: T): T {
-      return (store.has(key) ? store.get(key) : defaultValue) as T;
-    },
-    update(key: string, value: unknown): Thenable<void> {
-      store.set(key, value);
-      return Promise.resolve();
-    },
-  };
-}
+import { makeMemento, makeContext } from './__mocks__/vscode';
 
 // Minimal vscode.Terminal stub
 function makeTerminal(name: string): import('vscode').Terminal {
   return { name, show: () => {}, sendText: () => {}, dispose: () => {} } as unknown as import('vscode').Terminal;
-}
-
-// Minimal ExtensionContext stub
-function makeContext(): import('vscode').ExtensionContext {
-  const gs = makeMemento();
-  return {
-    globalState: gs,
-    subscriptions: [] as { dispose(): unknown }[],
-  } as unknown as import('vscode').ExtensionContext;
 }
 
 describe('SessionManager.rehydrate', () => {

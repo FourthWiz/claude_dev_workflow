@@ -86,6 +86,31 @@ export const executeCommandSpy = {
   reset() { _executedCommands.length = 0; },
 };
 
+// ── StatusBar stubs ────────────────────────────────────────────────────────
+
+export enum StatusBarAlignment { Left = 1, Right = 2 }
+
+export class StatusBarItemStub {
+  text = '';
+  tooltip = '';
+  command: string | undefined = undefined;
+  show(): void {}
+  dispose(): void {}
+}
+
+let _lastStatusBarItem: StatusBarItemStub | undefined;
+export function _getLastStatusBarItem(): StatusBarItemStub | undefined { return _lastStatusBarItem; }
+
+// ── showQuickPick spy ──────────────────────────────────────────────────────
+
+const _quickPickCalls: Array<unknown[]> = [];
+let _quickPickReturn: unknown = undefined;
+export const showQuickPickSpy = {
+  get calls() { return [..._quickPickCalls]; },
+  reset() { _quickPickCalls.length = 0; _quickPickReturn = undefined; },
+};
+export function _setShowQuickPickReturn(val: unknown): void { _quickPickReturn = val; }
+
 // ── Window + env stubs ─────────────────────────────────────────────────────
 
 export const window = {
@@ -96,6 +121,16 @@ export const window = {
   showTextDocument: async (_doc: unknown, _opts?: unknown) => undefined,
   createOutputChannel: (_name: string) => ({ appendLine: () => {}, show: () => {} }),
   registerWebviewViewProvider: (_id: string, _provider: unknown) => ({ dispose: () => {} }),
+  createStatusBarItem: (_alignment?: StatusBarAlignment, _priority?: number): StatusBarItemStub => {
+    _lastStatusBarItem = new StatusBarItemStub();
+    return _lastStatusBarItem;
+  },
+  showQuickPick: async (items: unknown, _opts?: unknown): Promise<unknown> => {
+    _quickPickCalls.push([items, _opts]);
+    return _quickPickReturn;
+  },
+  showWorkspaceFolderPick: async (_opts?: unknown) => undefined,
+  showInputBox: async (_opts?: unknown) => undefined,
 };
 
 export const env = {
@@ -217,6 +252,31 @@ export class StubWebview {
   clearPostedMessages(): void {
     this.postedMessages = [];
   }
+}
+
+// ── Shared test helpers (makeMemento / makeContext) ────────────────────────
+
+export function makeMemento(): import('vscode').Memento {
+  const store = new Map<string, unknown>();
+  return {
+    keys: () => [...store.keys()],
+    get<T>(key: string, defaultValue?: T): T {
+      return (store.has(key) ? store.get(key) : defaultValue) as T;
+    },
+    update(key: string, value: unknown): Thenable<void> {
+      store.set(key, value);
+      return Promise.resolve();
+    },
+  };
+}
+
+export function makeContext(): import('vscode').ExtensionContext {
+  const gs = makeMemento();
+  return {
+    globalState: gs,
+    subscriptions: [],
+    extensionUri: Uri.file('/stub-extension'),
+  } as unknown as import('vscode').ExtensionContext;
 }
 
 /** Build a minimal WebviewView stub that delegates to a StubWebview */

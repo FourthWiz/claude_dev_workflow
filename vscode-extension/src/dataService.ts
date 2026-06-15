@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import { findArtifactsRoot } from './artifactsRoot';
 import { WorkflowNode, PIPELINE, PHASE_TO_NODE } from './workflowMapping';
 import {
   LiveSpend,
@@ -141,16 +142,13 @@ export class DataService implements vscode.Disposable {
     folders: readonly { uri: { fsPath: string } }[] | undefined,
   ): string | undefined {
     if (!folders || folders.length === 0) { return undefined; }
-    let dir = folders[0].uri.fsPath;
-    for (let i = 0; i < 20; i++) {
-      if (fs.existsSync(path.join(dir, '.workflow_artifacts'))) {
-        return dir;
-      }
-      const parent = path.dirname(dir);
-      if (parent === dir) { break; }
-      dir = parent;
-    }
-    return undefined;
+    return findArtifactsRoot(folders[0].uri.fsPath, { existsSync: fs.existsSync });
+  }
+
+  /** Dispose the current watcher without starting a new one (used when switching to no-root). */
+  unwatch(): void {
+    this._watcher?.dispose();
+    this._watcher = undefined;
   }
 
   /** Resolve the path to status_graph.py; prefer core copy over adapter wrapper. */

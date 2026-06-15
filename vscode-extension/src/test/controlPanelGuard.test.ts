@@ -3,32 +3,7 @@ import assert from 'node:assert/strict';
 import { ControlPanelViewProvider } from '../controlPanel';
 import { CommandRunner } from '../commandRunner';
 import { SessionManager } from '../sessionManager';
-import { Uri, makeStubWebviewView } from './__mocks__/vscode';
-
-// ── Stub helpers ──────────────────────────────────────────────────────────────
-
-function makeMemento(): import('vscode').Memento {
-  const store = new Map<string, unknown>();
-  return {
-    keys: () => [...store.keys()],
-    get<T>(key: string, defaultValue?: T): T {
-      return (store.has(key) ? store.get(key) : defaultValue) as T;
-    },
-    update(key: string, value: unknown): Thenable<void> {
-      store.set(key, value);
-      return Promise.resolve();
-    },
-  };
-}
-
-function makeContext(): import('vscode').ExtensionContext {
-  const gs = makeMemento();
-  return {
-    globalState: gs,
-    subscriptions: [] as { dispose(): unknown }[],
-    extensionUri: Uri.file('/ext'),
-  } as unknown as import('vscode').ExtensionContext;
-}
+import { Uri, makeStubWebviewView, makeMemento, makeContext } from './__mocks__/vscode';
 
 function makeTerminal(name: string): import('vscode').Terminal {
   const calls: { text: string; addNewLine: boolean }[] = [];
