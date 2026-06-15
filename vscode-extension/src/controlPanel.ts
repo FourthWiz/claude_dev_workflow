@@ -120,7 +120,20 @@ export class ControlPanelViewProvider implements vscode.WebviewViewProvider {
         this._postSessionList(this._view.webview);
       }
     });
-    webviewView.onDidDispose(() => listener.dispose());
+    // Re-push all data when the view becomes visible (catches hidden→visible transitions)
+    const visDisposable = webviewView.onDidChangeVisibility(() => {
+      if (this._view?.visible) {
+        this._postSessionList(this._view.webview);
+        this._postSkillGroups(this._view.webview);
+        if (this._lastHighlight !== undefined) {
+          this.postHighlight(this._lastHighlight);
+        }
+      }
+    });
+    webviewView.onDidDispose(() => {
+      listener.dispose();
+      visDisposable.dispose();
+    });
   }
 
   // ── Message handling ───────────────────────────────────────────────────────

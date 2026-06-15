@@ -241,6 +241,29 @@ describe('CostViewProvider — resolveWebviewView', () => {
     });
   });
 
+  it('does not render when initially hidden, then renders on first show (visibility listener)', async () => {
+    const { provider } = buildProvider();
+    const { view, webview, setVisible } = makeStubWebviewView(false);  // start hidden
+
+    provider.resolveWebviewView(
+      view as unknown as import('vscode').WebviewView,
+      {} as import('vscode').WebviewViewResolveContext,
+      { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => {} }) } as unknown as import('vscode').CancellationToken,
+    );
+
+    // Settle — _refresh() is async; guard must block any postMessage
+    await new Promise((r) => setTimeout(r, 30));
+    const rendersBefore = webview.getPostedMessages().filter((m) => (m as { cmd: string }).cmd === 'render').length;
+    assert.strictEqual(rendersBefore, 0, 'no render should be posted while view is hidden');
+
+    // Now make visible — visibility listener must fire _refresh()
+    setVisible(true);
+    await new Promise((r) => setTimeout(r, 30));
+
+    const rendersAfter = webview.getPostedMessages().filter((m) => (m as { cmd: string }).cmd === 'render').length;
+    assert.strictEqual(rendersAfter, 1, 'exactly one render should be posted after becoming visible');
+  });
+
   it('fires a second render when dataService.onDidChange fires', async () => {
     const onDidChangeEmitter = new EventEmitter<void>();
     const { provider } = buildProvider({
