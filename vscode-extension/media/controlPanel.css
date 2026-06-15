@@ -183,6 +183,52 @@ body {
   cursor: not-allowed;
 }
 
+/* Collapsible Other group (native <details>/<summary>, CSP-safe) */
+
+/* Remove browser default disclosure marker */
+details.skill-group-other > summary.group-summary::-webkit-details-marker {
+  display: none;
+}
+details.skill-group-other > summary.group-summary {
+  list-style: none; /* Firefox */
+}
+
+/* Style the summary to match .group-header */
+details.skill-group-other > summary.group-summary {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--group-header-color);
+  margin: 8px 0 4px 0;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  user-select: none;
+  /* disclosure triangle via ::before, keyed on parent [open] state */
+}
+
+/* Closed state: right-pointing triangle */
+details.skill-group-other > summary.group-summary::before {
+  content: '▸ ';
+}
+
+/* Open state: down-pointing triangle */
+details.skill-group-other[open] > summary.group-summary::before {
+  content: '▾ ';
+}
+
+/* focus-visible ring for keyboard accessibility */
+details.skill-group-other > summary.group-summary:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: 1px;
+}
+
+/* .skill-buttons inside <details> keeps existing flex-wrap layout */
+details.skill-group-other > .skill-buttons {
+  margin-top: 4px;
+}
+
 /* No sessions placeholder */
 .no-sessions {
   font-size: 12px;

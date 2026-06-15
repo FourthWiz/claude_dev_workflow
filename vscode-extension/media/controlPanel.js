@@ -171,7 +171,18 @@
   /**
    * Render grouped skill buttons.
    *
-   * @param {Array<{group: string, skills: string[]}>} groups
+   * Curated groups (Planning, Execution, Lifecycle) render as a header div +
+   * skill-buttons row, always expanded.
+   *
+   * The 'Other' group renders inside a native <details> element (collapsed by
+   * default) with a <summary> acting as the toggle header. This is CSP-safe
+   * (no inline handlers, no JS toggle logic needed).
+   *
+   * Each button uses entry.label for display and entry.command for injection
+   * (data-skill attribute). The click delegation and applyHighlight logic are
+   * unchanged — both work correctly inside <details>.
+   *
+   * @param {Array<{group: string, entries: Array<{command: string, label: string}>}>} groups
    */
   function renderSkillGroups(groups) {
     skillGroups.innerHTML = '';
@@ -185,26 +196,57 @@
       return;
     }
 
-    for (const { group, skills } of groups) {
-      const header = document.createElement('div');
-      header.className = 'group-header';
-      header.textContent = group;
-      skillGroups.appendChild(header);
+    for (const { group, entries } of groups) {
+      const safeEntries = entries || []; // R-03: defensive against stale-shape message
 
-      const row = document.createElement('div');
-      row.className = 'skill-buttons';
+      if (group === 'Other') {
+        // Collapsible Other group using native <details> (CSP-safe, no JS toggle)
+        const details = document.createElement('details');
+        details.className = 'skill-group-other';
+        // No 'open' attribute → collapsed by default
 
-      for (const skill of skills) {
-        const btn = document.createElement('button');
-        btn.className = 'skill-btn';
-        btn.dataset.skill = skill;
-        btn.textContent = skill;
-        btn.disabled = (currentRuntime === 'codex');
-        btn.setAttribute('title', '/' + skill);
-        row.appendChild(btn);
+        const summary = document.createElement('summary');
+        summary.className = 'group-summary';
+        summary.textContent = group;
+        details.appendChild(summary);
+
+        const row = document.createElement('div');
+        row.className = 'skill-buttons';
+
+        for (const entry of safeEntries) {
+          const btn = document.createElement('button');
+          btn.className = 'skill-btn';
+          btn.dataset.skill = entry.command; // command used for injection + highlight matching
+          btn.textContent = entry.label;     // pretty label shown to user
+          btn.disabled = (currentRuntime === 'codex');
+          btn.setAttribute('title', '/' + entry.command);
+          row.appendChild(btn);
+        }
+
+        details.appendChild(row);
+        skillGroups.appendChild(details);
+      } else {
+        // Curated group: always-expanded header + button row
+        const header = document.createElement('div');
+        header.className = 'group-header';
+        header.textContent = group;
+        skillGroups.appendChild(header);
+
+        const row = document.createElement('div');
+        row.className = 'skill-buttons';
+
+        for (const entry of safeEntries) {
+          const btn = document.createElement('button');
+          btn.className = 'skill-btn';
+          btn.dataset.skill = entry.command; // command used for injection + highlight matching
+          btn.textContent = entry.label;     // pretty label shown to user
+          btn.disabled = (currentRuntime === 'codex');
+          btn.setAttribute('title', '/' + entry.command);
+          row.appendChild(btn);
+        }
+
+        skillGroups.appendChild(row);
       }
-
-      skillGroups.appendChild(row);
     }
 
     applyHighlight();

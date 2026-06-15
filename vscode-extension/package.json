@@ -41,22 +41,26 @@
         {
           "id": "quoin.workflowTree",
           "name": "Workflow",
-          "type": "webview"
+          "type": "webview",
+          "visibility": "collapsed"
         },
         {
           "id": "quoin.sessions",
           "name": "Sessions",
-          "type": "tree"
+          "type": "tree",
+          "visibility": "collapsed"
         },
         {
           "id": "quoin.sessionsArchive",
           "name": "Sessions Archive",
-          "type": "webview"
+          "type": "webview",
+          "visibility": "collapsed"
         },
         {
           "id": "quoin.cost",
           "name": "Cost",
-          "type": "webview"
+          "type": "webview",
+          "visibility": "collapsed"
         }
       ]
     },
