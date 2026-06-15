@@ -3,7 +3,7 @@
   "displayName": "Quoin for VSCode",
   "description": "Quoin workflow control surface inside the editor",
   "version": "0.1.2",
-  "publisher": "quoin-placeholder",
+  "publisher": "igorban",
   "repository": {
     "type": "git",
     "url": "https://github.com/FourthWiz/quoin.git"
