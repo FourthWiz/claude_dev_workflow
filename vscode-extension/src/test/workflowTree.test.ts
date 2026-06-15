@@ -140,6 +140,37 @@ const cp = makeControlPanelStub();
     assert.strictEqual(render!.status, 'no-task');
   });
 
+  it('does not render when initially hidden, then renders on first show (visibility listener)', async () => {
+    const ds = makeDataServiceStub();
+    const cp = makeControlPanelStub();
+    const { view, webview, setVisible } = makeStubWebviewView(false);  // start hidden
+
+    const provider = new WorkflowTreeViewProvider(
+      Uri.file('/ext'),
+      ds,
+      makeProjectContextStub('/fake/root'),
+      cp,
+    );
+
+    provider.resolveWebviewView(
+      view as unknown as import('vscode').WebviewView,
+      {} as import('vscode').WebviewViewResolveContext,
+      { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => {} }) } as unknown as import('vscode').CancellationToken,
+    );
+
+    // Settle — with visible:false, _refresh() guard must fire and post nothing
+    await new Promise((r) => setTimeout(r, 20));
+    const rendersBefore = webview.getPostedMessages().filter((m) => (m as { cmd: string }).cmd === 'render').length;
+    assert.strictEqual(rendersBefore, 0, 'no render should be posted while view is hidden');
+
+    // Now make visible — visibility listener must fire _refresh()
+    setVisible(true);
+    await new Promise((r) => setTimeout(r, 20));
+
+    const rendersAfter = webview.getPostedMessages().filter((m) => (m as { cmd: string }).cmd === 'render').length;
+    assert.strictEqual(rendersAfter, 1, 'exactly one render should be posted after becoming visible');
+  });
+
   it('triggers _refresh when dataService.onDidChange fires', async () => {
     const onDidChangeEmitter = new EventEmitter<void>();
     let refreshCount = 0;

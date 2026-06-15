@@ -65,10 +65,13 @@ export class CostViewProvider implements vscode.WebviewViewProvider {
     // Subscribe to data changes and active-root changes for debounced refresh
     const dsDisposable = this.dataService.onDidChange(() => { void this._refresh(); });
     const pcDisposable = this.projectContext.onDidChangeActiveRoot(() => { void this._refresh(); });
+    // Re-render when the view becomes visible (guard lives inside _refresh)
+    const visDisposable = webviewView.onDidChangeVisibility(() => { void this._refresh(); });
 
     webviewView.onDidDispose(() => {
       dsDisposable.dispose();
       pcDisposable.dispose();
+      visDisposable.dispose();
     });
 
     void this._refresh();

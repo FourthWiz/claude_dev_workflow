@@ -25,31 +25,24 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "quoin-workflow",
-          "title": "Quoin Workflow",
-          "icon": "media/quoin.svg"
-        },
-        {
-          "id": "quoin-sessions",
-          "title": "Quoin Sessions",
+          "id": "quoin",
+          "title": "Quoin",
           "icon": "media/quoin.svg"
         }
       ]
     },
     "views": {
-      "quoin-workflow": [
+      "quoin": [
+        {
+          "id": "quoin.controlPanel",
+          "name": "Control Panel",
+          "type": "webview"
+        },
         {
           "id": "quoin.workflowTree",
           "name": "Workflow",
           "type": "webview"
         },
-        {
-          "id": "quoin.controlPanel",
-          "name": "Control Panel",
-          "type": "webview"
-        }
-      ],
-      "quoin-sessions": [
         {
           "id": "quoin.sessions",
           "name": "Sessions",

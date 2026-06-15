@@ -22,6 +22,10 @@ function generateNonce(): string {
   return randomBytes(24).toString('base64');
 }
 
+// UX NOTE (vscode-ext-ux-bugs): combining Control Panel + Workflow into one
+// tabbed webview was evaluated and deferred (plan D-05). The main coupling to
+// untangle is the controlPanel.postHighlight cross-call. Escalate to /architect
+// if the merge is wanted — it changes provider topology and extension.ts wiring.
 export class WorkflowTreeViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
 
@@ -49,10 +53,13 @@ export class WorkflowTreeViewProvider implements vscode.WebviewViewProvider {
     // Subscribe to data changes and active-root changes
     const dsDisposable = this.dataService.onDidChange(() => { void this._refresh(); });
     const pcDisposable = this.projectContext.onDidChangeActiveRoot(() => { void this._refresh(); });
+    // Re-render when the view becomes visible (guard lives inside _refresh)
+    const visDisposable = webviewView.onDidChangeVisibility(() => { void this._refresh(); });
 
     webviewView.onDidDispose(() => {
       dsDisposable.dispose();
       pcDisposable.dispose();
+      visDisposable.dispose();
     });
 
     void this._refresh();

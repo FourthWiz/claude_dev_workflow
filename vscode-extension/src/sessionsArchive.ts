@@ -114,11 +114,14 @@ export class SessionsArchiveViewProvider implements vscode.WebviewViewProvider {
     const dsDisposable = this.dataService.onDidChange(() => { void this._refresh(); });
     const smDisposable = this.sessionManager.onDidChange(() => { void this._refresh(); });
     const pcDisposable = this.projectContext.onDidChangeActiveRoot(() => { void this._refresh(); });
+    // Re-render when the view becomes visible (guard lives inside _refresh)
+    const visDisposable = webviewView.onDidChangeVisibility(() => { void this._refresh(); });
 
     webviewView.onDidDispose(() => {
       dsDisposable.dispose();
       smDisposable.dispose();
       pcDisposable.dispose();
+      visDisposable.dispose();
     });
 
     void this._refresh();

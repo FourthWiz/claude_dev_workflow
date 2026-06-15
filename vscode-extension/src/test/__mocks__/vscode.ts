@@ -291,12 +291,31 @@ export function makeContext(): import('vscode').ExtensionContext {
 }
 
 /** Build a minimal WebviewView stub that delegates to a StubWebview */
-export function makeStubWebviewView(): { view: { webview: StubWebview; visible: boolean; onDidDispose: (h: () => void) => { dispose(): void } }; webview: StubWebview } {
+export function makeStubWebviewView(initialVisible = true): {
+  view: {
+    webview: StubWebview;
+    visible: boolean;
+    onDidDispose: (h: () => void) => { dispose(): void };
+    onDidChangeVisibility: (h: () => void) => { dispose(): void };
+  };
+  webview: StubWebview;
+  /** Test helper: set visible FIRST, then fire the visibility emitter. Ordering invariant. */
+  setVisible(v: boolean): void;
+} {
   const webview = new StubWebview();
+  const visibilityEmitter = new EventEmitter<void>();
   const view = {
     webview,
-    visible: true,
+    visible: initialVisible,
     onDidDispose: (_h: () => void) => ({ dispose: () => {} }),
+    onDidChangeVisibility: visibilityEmitter.event,
   };
-  return { view, webview };
+  return {
+    view,
+    webview,
+    setVisible(v: boolean): void {
+      view.visible = v;   // set BEFORE firing — providers read visible inside the handler
+      visibilityEmitter.fire();
+    },
+  };
 }

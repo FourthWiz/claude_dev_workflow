@@ -180,6 +180,29 @@ describe('SessionsArchiveViewProvider', () => {
     assert.strictEqual(render!.hasRoot, false);
   });
 
+  it('does not render when initially hidden, then renders on first show (visibility listener)', async () => {
+    const { provider } = buildProvider({});
+    const { view, webview, setVisible } = makeStubWebviewView(false);  // start hidden
+
+    provider.resolveWebviewView(
+      view as unknown as import('vscode').WebviewView,
+      {} as import('vscode').WebviewViewResolveContext,
+      { isCancellationRequested: false, onCancellationRequested: () => ({ dispose: () => {} }) } as unknown as import('vscode').CancellationToken,
+    );
+
+    // Settle — _refresh() is synchronous, but await for uniformity; guard must block
+    await new Promise((r) => setTimeout(r, 20));
+    const rendersBefore = webview.getPostedMessages().filter((m: unknown) => (m as { cmd: string }).cmd === 'render').length;
+    assert.strictEqual(rendersBefore, 0, 'no render should be posted while view is hidden');
+
+    // Now make visible — visibility listener must fire _refresh()
+    setVisible(true);
+    await new Promise((r) => setTimeout(r, 20));
+
+    const rendersAfter = webview.getPostedMessages().filter((m: unknown) => (m as { cmd: string }).cmd === 'render').length;
+    assert.strictEqual(rendersAfter, 1, 'exactly one render should be posted after becoming visible');
+  });
+
   it('fires second render when sessionManager.onDidChange fires', async () => {
     const { provider, sm } = buildProvider({});
     const { view, webview } = makeStubWebviewView();
