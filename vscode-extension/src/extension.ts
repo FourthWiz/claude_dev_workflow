@@ -103,15 +103,15 @@ export function activate(context: vscode.ExtensionContext): void {
   if (activeRoot) {
     context.subscriptions.push(dataService.watch(activeRoot));
   }
-  context.subscriptions.push({
-    dispose: projectContext.onDidChangeActiveRoot((newRoot) => {
+  context.subscriptions.push(
+    projectContext.onDidChangeActiveRoot((newRoot) => {
       if (newRoot) {
         context.subscriptions.push(dataService.watch(newRoot));
       } else {
         dataService.unwatch();
       }
-    }),
-  });
+    })
+  );
 
   // Load persisted sessions from prior window (MAJ-1 fix: canonicalize via findArtifactsRoot
   // so reload keys match creation keys for nested-folder workspaces).
