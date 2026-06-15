@@ -9,6 +9,18 @@ Run `bash quoin/install.sh` from the quoin repo root before activating this exte
 - `~/.claude/scripts/` (quoin adapter scripts)
 - `~/.claude/core/scripts/` (quoin core scripts, including `dashboard_model.py`)
 
+## Settings
+
+Configure via VSCode Settings (File > Preferences > Settings, search "Quoin"):
+
+| Setting | Default | Description |
+|---|---|---|
+| `quoin.pythonPath` | `python3` | Python executable for running quoin scripts |
+| `quoin.projectRoot` | _(auto)_ | Override project root when auto-detection fails |
+| `quoin.scriptRoots.adapter` | `~/.claude/scripts` | Adapter script directory |
+| `quoin.scriptRoots.core` | `~/.claude/core/scripts` | Core script directory |
+| `quoin.watcherDebounceMs` | `500` | File-watcher debounce in milliseconds |
+
 ## Development
 
 ```bash

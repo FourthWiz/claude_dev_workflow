@@ -166,6 +166,9 @@ export const workspace = {
     return _lastWatcherStub?._emitters;
   },
   openTextDocument: async (_uri: unknown) => ({ uri: _uri }),
+  getConfiguration: (_section: string) => ({
+    get: <T>(_key: string, defaultValue?: T): T | undefined => defaultValue,
+  }),
 };
 
 // ── Webview stub (minimal surface for ControlPanelViewProvider) ────────────

@@ -83,7 +83,39 @@
         "command": "quoin.openArchivedSession",
         "title": "Quoin: Open Archived Session File"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Quoin",
+      "properties": {
+        "quoin.pythonPath": {
+          "type": "string",
+          "default": "python3",
+          "description": "Python executable used to run quoin scripts. Override when python3 is not on PATH."
+        },
+        "quoin.projectRoot": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the project root containing .workflow_artifacts/. Leave empty to auto-detect from workspace folders."
+        },
+        "quoin.scriptRoots": {
+          "type": "object",
+          "default": {
+            "adapter": "~/.claude/scripts",
+            "core": "~/.claude/core/scripts"
+          },
+          "properties": {
+            "adapter": { "type": "string" },
+            "core": { "type": "string" }
+          },
+          "description": "Override the two quoin script root directories. Tildes are expanded automatically."
+        },
+        "quoin.watcherDebounceMs": {
+          "type": "number",
+          "default": 500,
+          "description": "Debounce delay in milliseconds for the .workflow_artifacts file watcher."
+        }
+      }
+    }
   },
   "scripts": {
     "compile": "node esbuild.js",

@@ -4,27 +4,30 @@ import * as fs from 'fs';
 import { execFile } from 'child_process';
 import * as vscode from 'vscode';
 
-let pythonPath = 'python3';
-
-/** Call once from activate(); reads quoin.pythonPath setting (placeholder for S-6) */
-export function setPythonPath(p: string): void {
-  pythonPath = p;
+function expandTilde(p: string): string {
+  if (p.startsWith('~/') || p === '~') {
+    return path.join(os.homedir(), p.slice(2));
+  }
+  return p;
 }
 
-function canRunPython(): Promise<boolean> {
+function canRunPython(exe: string): Promise<boolean> {
   return new Promise((resolve) => {
-    execFile(pythonPath, ['--version'], { timeout: 5000 }, (err) => resolve(!err));
+    execFile(exe, ['--version'], { timeout: 5000 }, (err) => resolve(!err));
   });
 }
 
-export async function checkScriptRoots(homeBase = os.homedir()): Promise<boolean> {
-  const adapterRoot = path.join(homeBase, '.claude', 'scripts');
-  const coreRoot = path.join(homeBase, '.claude', 'core', 'scripts');
+export async function checkScriptRoots(): Promise<boolean> {
+  const cfg = vscode.workspace.getConfiguration('quoin');
+  const pythonPath = cfg.get<string>('quoin.pythonPath') ?? 'python3';
+  const scriptRoots = cfg.get<{ adapter?: string; core?: string }>('quoin.scriptRoots') ?? {};
+  const adapterRoot = expandTilde(scriptRoots.adapter ?? '~/.claude/scripts');
+  const coreRoot = expandTilde(scriptRoots.core ?? '~/.claude/core/scripts');
   const coreMarker = path.join(coreRoot, 'dashboard_model.py');
 
   const failures: string[] = [];
 
-  if (!(await canRunPython())) {
+  if (!(await canRunPython(pythonPath))) {
     failures.push(`python3 not found on PATH (tried: ${pythonPath})`);
   }
   if (!fs.existsSync(adapterRoot)) {
