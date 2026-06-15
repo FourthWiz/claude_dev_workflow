@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { ControlPanelViewProvider } from '../controlPanel';
 import { CommandRunner } from '../commandRunner';
 import { SessionManager } from '../sessionManager';
-import { Uri, makeStubWebviewView, makeMemento, makeContext } from './__mocks__/vscode';
+import { Uri, makeStubWebviewView, makeMemento, makeContext, EventEmitter } from './__mocks__/vscode';
+import type { ProjectContext } from '../projectContext';
 
 function makeTerminal(name: string): import('vscode').Terminal {
   const calls: { text: string; addNewLine: boolean }[] = [];
@@ -23,6 +24,16 @@ function makeManager() {
   const ctx = makeContext();
   const noop = (_h: unknown) => ({ dispose: () => {} });
   return new SessionManager(ctx, noop as import('vscode').Event<import('vscode').Terminal>);
+}
+
+function makeProjectContext(activeRoot: string | undefined): ProjectContext {
+  const emitter = new EventEmitter<string | undefined>();
+  return {
+    getActiveRoot: () => activeRoot,
+    setActiveRoot: async (_root: string) => {},
+    listKnownRoots: () => [],
+    onDidChangeActiveRoot: emitter.event,
+  } as unknown as ProjectContext;
 }
 
 function simulateRun(
@@ -45,6 +56,7 @@ describe('ControlPanelViewProvider — Codex guard (T-04)', () => {
     const provider = new ControlPanelViewProvider(
       Uri.file('/ext') as unknown as import('vscode').Uri,
       manager,
+      makeProjectContext('/tmp/proj'),
       commandRunner
     );
 
@@ -79,6 +91,7 @@ describe('ControlPanelViewProvider — Codex guard (T-04)', () => {
     const provider = new ControlPanelViewProvider(
       Uri.file('/ext') as unknown as import('vscode').Uri,
       manager,
+      makeProjectContext('/tmp/proj'),
       new CommandRunner()
     );
 
@@ -106,6 +119,7 @@ describe('ControlPanelViewProvider — Codex guard (T-04)', () => {
     const provider = new ControlPanelViewProvider(
       Uri.file('/ext') as unknown as import('vscode').Uri,
       manager,
+      makeProjectContext(undefined),
       new CommandRunner()
     );
 

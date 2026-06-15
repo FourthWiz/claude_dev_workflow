@@ -18,6 +18,7 @@ import {
   StubWebview,
 } from './__mocks__/vscode';
 import type { CostView } from '../costService';
+import type { ProjectContext } from '../projectContext';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -54,14 +55,26 @@ function makeDataServiceStub(overrides: Partial<DataService> = {}): DataService 
   } as unknown as DataService;
 }
 
-function buildProvider(overrides: Partial<DataService> = {}): {
+function makeProjectContextStub(activeRoot: string | undefined): ProjectContext {
+  const emitter = new EventEmitter<string | undefined>();
+  return {
+    getActiveRoot: () => activeRoot,
+    setActiveRoot: async (_root: string) => {},
+    listKnownRoots: () => [],
+    onDidChangeActiveRoot: emitter.event,
+  } as unknown as ProjectContext;
+}
+
+function buildProvider(overrides: Partial<DataService> = {}, activeRoot: string | undefined = '/fake/root'): {
   provider: CostViewProvider;
   ds: DataService;
 } {
   const ds = makeDataServiceStub(overrides);
+  const pc = makeProjectContextStub(activeRoot);
   const provider = new CostViewProvider(
     Uri.file('/ext') as unknown as import('vscode').Uri,
     ds,
+    pc,
   );
   return { provider, ds };
 }
@@ -182,9 +195,11 @@ describe('CostViewProvider — resolveWebviewView', () => {
   });
 
   it('render message has hasRoot:false when no project root', async () => {
-    const { provider } = buildProvider({
-      getProjectRoot: () => undefined,
-    } as Partial<DataService>);
+    const ds = makeDataServiceStub({});
+    const pc = makeProjectContextStub(undefined);
+    const provider = new CostViewProvider(
+      Uri.file('/ext') as unknown as import('vscode').Uri, ds, pc,
+    );
     const { view, webview } = makeStubWebviewView();
 
     provider.resolveWebviewView(

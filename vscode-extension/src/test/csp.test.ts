@@ -8,6 +8,7 @@ import { SessionManager } from '../sessionManager';
 import { CostViewProvider } from '../costView';
 import { DataService } from '../dataService';
 import { Uri, StubWebview, EventEmitter } from './__mocks__/vscode';
+import type { ProjectContext } from '../projectContext';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,16 @@ function makeManager(): SessionManager {
   return new SessionManager(ctx, noop as import('vscode').Event<import('vscode').Terminal>);
 }
 
+function makeProjectContextStub(activeRoot: string | undefined = undefined): ProjectContext {
+  const emitter = new EventEmitter<string | undefined>();
+  return {
+    getActiveRoot: () => activeRoot,
+    setActiveRoot: async (_root: string) => {},
+    listKnownRoots: () => [],
+    onDidChangeActiveRoot: emitter.event,
+  } as unknown as ProjectContext;
+}
+
 function buildHtml(provider: ControlPanelViewProvider, webview: StubWebview): string {
   return provider._buildHtml(webview as unknown as import('vscode').Webview);
 }
@@ -44,7 +55,7 @@ describe('ControlPanelViewProvider HTML builder — CSP (R-05)', () => {
   function setup(): { provider: ControlPanelViewProvider; webview: StubWebview; html: string } {
     const manager = makeManager();
     const runner = new CommandRunner();
-    const p = new ControlPanelViewProvider(Uri.file('/ext') as unknown as import('vscode').Uri, manager, runner);
+    const p = new ControlPanelViewProvider(Uri.file('/ext') as unknown as import('vscode').Uri, manager, makeProjectContextStub(), runner);
     const w = new StubWebview();
     const h = buildHtml(p, w);
     return { provider: p, webview: w, html: h };
@@ -156,7 +167,7 @@ describe('CostViewProvider HTML builder — CSP (R-05)', () => {
 
   function setup(): { provider: CostViewProvider; webview: StubWebview; html: string } {
     const ds = makeDataServiceStub();
-    const p = new CostViewProvider(Uri.file('/ext') as unknown as import('vscode').Uri, ds);
+    const p = new CostViewProvider(Uri.file('/ext') as unknown as import('vscode').Uri, ds, makeProjectContextStub());
     const w = new StubWebview();
     const h = p._buildHtml(w as unknown as import('vscode').Webview);
     return { provider: p, webview: w, html: h };

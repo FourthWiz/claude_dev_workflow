@@ -12,6 +12,7 @@ import {
 import { DataService } from '../dataService';
 import { SessionManager } from '../sessionManager';
 import { QuoinSession } from '../types';
+import type { ProjectContext } from '../projectContext';
 
 // ── Stubs ─────────────────────────────────────────────────────────────────────
 
@@ -35,7 +36,19 @@ function makeSessionManagerStub(sessions: Partial<QuoinSession>[] = []) {
     onDidChange: onDidChangeEmitter.event,
     _emitter: onDidChangeEmitter,
     getAll: () => sessions as QuoinSession[],
+    getForRoot: (root: string) => (sessions as QuoinSession[]).filter(s => s.projectRoot === root),
   };
+}
+
+function makeProjectContextStub(activeRoot: string | undefined): ProjectContext {
+  const emitter = new EventEmitter<string | undefined>();
+  return {
+    getActiveRoot: () => activeRoot,
+    setActiveRoot: async (_root: string) => {},
+    listKnownRoots: () => [],
+    onDidChangeActiveRoot: emitter.event,
+    _emitter: emitter,
+  } as unknown as ProjectContext;
 }
 
 function makeFakeFs(archived: ArchivedSession[]): FsLike {
@@ -97,6 +110,7 @@ function buildProvider(opts: {
   sessions?: Partial<QuoinSession>[];
   archived?: ArchivedSession[];
   dsOverrides?: Partial<DataService>;
+  activeRoot?: string | undefined;
 }): {
   provider: SessionsArchiveViewProvider;
   ds: DataService;
@@ -107,9 +121,12 @@ function buildProvider(opts: {
   const fakeFs = makeFakeFs(archived);
   const ds = makeDataServiceStub(opts.dsOverrides ?? {});
   const sm = makeSessionManagerStub(opts.sessions ?? []);
+  const activeRoot = 'activeRoot' in opts ? opts.activeRoot : '/fake/root';
+  const pc = makeProjectContextStub(activeRoot);
   const provider = new SessionsArchiveViewProvider(
     Uri.file('/ext') as unknown as import('vscode').Uri,
     sm as unknown as SessionManager,
+    pc,
     ds,
     fakeFs,
   );
@@ -146,9 +163,7 @@ describe('SessionsArchiveViewProvider', () => {
   });
 
   it('posts render with hasRoot:false when no root found', async () => {
-    const { provider } = buildProvider({
-      dsOverrides: { getProjectRoot: () => undefined } as Partial<DataService>,
-    });
+    const { provider } = buildProvider({ activeRoot: undefined });
     const { view, webview } = makeStubWebviewView();
 
     provider.resolveWebviewView(

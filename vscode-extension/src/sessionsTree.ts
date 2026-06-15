@@ -1,13 +1,18 @@
 import * as vscode from 'vscode';
 import { SessionManager } from './sessionManager';
+import { ProjectContext } from './projectContext';
 import { QuoinSession } from './types';
 
 export class SessionsTreeProvider implements vscode.TreeDataProvider<QuoinSession> {
   private _onDidChangeTreeData = new vscode.EventEmitter<QuoinSession | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-  constructor(private readonly manager: SessionManager) {
+  constructor(
+    private readonly manager: SessionManager,
+    private readonly projectContext: ProjectContext,
+  ) {
     manager.onDidChange(() => this._onDidChangeTreeData.fire());
+    projectContext.onDidChangeActiveRoot(() => this._onDidChangeTreeData.fire());
   }
 
   getTreeItem(session: QuoinSession): vscode.TreeItem {
@@ -36,6 +41,6 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<QuoinSessio
   }
 
   getChildren(): QuoinSession[] {
-    return this.manager.getAll();
+    return this.manager.getForRoot(this.projectContext.getActiveRoot() ?? '');
   }
 }

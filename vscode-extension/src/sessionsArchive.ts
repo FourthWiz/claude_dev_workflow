@@ -20,6 +20,7 @@ import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs';
 import { SessionManager } from './sessionManager';
+import { ProjectContext } from './projectContext';
 import { DataService } from './dataService';
 import { scanArchive, FsLike } from './archiveScanner';
 
@@ -73,12 +74,12 @@ const defaultFs: FsLike = {
 
 export class SessionsArchiveViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
-  private _lastRoot: string | undefined;
   private readonly _fs: FsLike;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly sessionManager: SessionManager,
+    private readonly projectContext: ProjectContext,
     private readonly dataService: DataService,
     fsImpl?: FsLike,
   ) {
@@ -109,21 +110,16 @@ export class SessionsArchiveViewProvider implements vscode.WebviewViewProvider {
       // Any other shape is silently ignored
     });
 
-    // Subscribe to data + session changes
+    // Subscribe to data, session, and active-root changes
     const dsDisposable = this.dataService.onDidChange(() => { void this._refresh(); });
     const smDisposable = this.sessionManager.onDidChange(() => { void this._refresh(); });
+    const pcDisposable = this.projectContext.onDidChangeActiveRoot(() => { void this._refresh(); });
 
     webviewView.onDidDispose(() => {
       dsDisposable.dispose();
       smDisposable.dispose();
+      pcDisposable.dispose();
     });
-
-    // Resolve root and start watching
-    const root = this.dataService.getProjectRoot(vscode.workspace.workspaceFolders);
-    if (root) {
-      this._lastRoot = root;
-      this.dataService.watch(root);
-    }
 
     void this._refresh();
   }
@@ -131,8 +127,10 @@ export class SessionsArchiveViewProvider implements vscode.WebviewViewProvider {
   private _refresh(): void {
     if (!this._view?.visible) { return; }
 
-    // Map active sessions host-side; compute relaunchable glyph decision here
-    const active = this.sessionManager.getAll().map((s) => ({
+    const activeRoot = this.projectContext.getActiveRoot();
+
+    // Map active sessions for this project root only
+    const active = this.sessionManager.getForRoot(activeRoot ?? '').map((s) => ({
       id: s.id,
       label: s.label,
       runtime: s.runtime,
@@ -140,23 +138,13 @@ export class SessionsArchiveViewProvider implements vscode.WebviewViewProvider {
       projectRoot: s.projectRoot,
     }));
 
-    // Resolve project root: prefer active session root, else workspace walk-up
-    const root = active[0]?.projectRoot ?? this.dataService.getProjectRoot(vscode.workspace.workspaceFolders);
-
-    if (root !== this._lastRoot) {
-      this._lastRoot = root;
-      if (root) {
-        this.dataService.watch(root);
-      }
-    }
-
-    const archived = root ? scanArchive(root, this._fs) : [];
+    const archived = activeRoot ? scanArchive(activeRoot, this._fs) : [];
 
     void this._view.webview.postMessage({
       cmd: 'render',
       active,
       archived,
-      hasRoot: !!root,
+      hasRoot: !!activeRoot,
     });
   }
 

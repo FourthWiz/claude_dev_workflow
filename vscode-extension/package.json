@@ -25,19 +25,19 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "quoin",
-          "title": "Quoin",
+          "id": "quoin-workflow",
+          "title": "Quoin Workflow",
+          "icon": "media/quoin.svg"
+        },
+        {
+          "id": "quoin-sessions",
+          "title": "Quoin Sessions",
           "icon": "media/quoin.svg"
         }
       ]
     },
     "views": {
-      "quoin": [
-        {
-          "id": "quoin.sessions",
-          "name": "Sessions",
-          "type": "tree"
-        },
+      "quoin-workflow": [
         {
           "id": "quoin.workflowTree",
           "name": "Workflow",
@@ -47,6 +47,13 @@
           "id": "quoin.controlPanel",
           "name": "Control Panel",
           "type": "webview"
+        }
+      ],
+      "quoin-sessions": [
+        {
+          "id": "quoin.sessions",
+          "name": "Sessions",
+          "type": "tree"
         },
         {
           "id": "quoin.sessionsArchive",
@@ -82,6 +89,10 @@
       {
         "command": "quoin.openArchivedSession",
         "title": "Quoin: Open Archived Session File"
+      },
+      {
+        "command": "quoin.switchProject",
+        "title": "Quoin: Switch Project"
       }
     ],
     "configuration": {

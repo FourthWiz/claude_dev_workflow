@@ -1,9 +1,10 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 import { SessionManager } from './sessionManager';
 import { SessionsTreeProvider } from './sessionsTree';
-import { registerCommands } from './commands';
+import { registerCommands, registerStatusBar } from './commands';
 import { checkScriptRoots } from './scriptRootCheck';
 import { CommandRunner } from './commandRunner';
 import { ControlPanelViewProvider } from './controlPanel';
@@ -11,6 +12,8 @@ import { DataService, DataServiceOptions } from './dataService';
 import { WorkflowTreeViewProvider } from './workflowTree';
 import { SessionsArchiveViewProvider } from './sessionsArchive';
 import { CostViewProvider } from './costView';
+import { ProjectContext } from './projectContext';
+import { findArtifactsRoot } from './artifactsRoot';
 
 function expandTilde(p: string): string {
   if (p.startsWith('~/') || p === '~') {
@@ -35,27 +38,34 @@ export function activate(context: vscode.ExtensionContext): void {
   // button (quoin.newSession) is functional when the view is first revealed.
   const manager = new SessionManager(context, vscode.window.onDidCloseTerminal);
 
-  // Register commands first (T-05 ordering requirement from plan)
-  registerCommands(context, manager);
+  // ProjectContext — single source of truth for the active project root (T-11 D-01)
+  const projectContext = new ProjectContext(context);
 
-  // Register the Sessions tree view (T-06)
-  const treeProvider = new SessionsTreeProvider(manager);
+  // Register commands first (T-05 ordering requirement from plan)
+  registerCommands(context, manager, projectContext);
+
+  // Status bar indicator + project switcher (T-09)
+  registerStatusBar(context, projectContext);
+
+  // Register the Sessions tree view — scoped to active project root (T-03)
+  const treeProvider = new SessionsTreeProvider(manager, projectContext);
   context.subscriptions.push(
     vscode.window.registerTreeDataProvider('quoin.sessions', treeProvider)
   );
 
-  // Register the Control Panel webview view (S-2)
+  // Register the Control Panel webview view — session list scoped to active root (T-04)
   const commandRunner = new CommandRunner();
   const controlPanelProvider = new ControlPanelViewProvider(
     context.extensionUri,
     manager,
+    projectContext,
     commandRunner
   );
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('quoin.controlPanel', controlPanelProvider)
   );
 
-  // Register the Workflow Tree webview view (S-3)
+  // Register the Workflow Tree webview view — uses ProjectContext for root (T-05)
   const settings = readQuoinSettings();
   const dataService = new DataService({
     adapterRoot: settings.adapterRoot,
@@ -65,7 +75,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const workflowProvider = new WorkflowTreeViewProvider(
     context.extensionUri,
     dataService,
-    manager,
+    projectContext,
     controlPanelProvider,
   );
   context.subscriptions.push(
@@ -73,27 +83,43 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   context.subscriptions.push(dataService);
 
-  // Register the Sessions Archive webview view (S-4)
-  // Reuses the same dataService instance (shared watcher + onDidChange emitter; see S4-3).
+  // Register the Sessions Archive webview view — scoped to active root (T-06)
   const archiveProvider = new SessionsArchiveViewProvider(
-    context.extensionUri, manager, dataService,
+    context.extensionUri, manager, projectContext, dataService,
   );
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('quoin.sessionsArchive', archiveProvider)
   );
 
-  // Register the Cost webview view (S-5)
-  // Reuses the SAME dataService instance (shared watcher + onDidChange emitter).
-  const costProvider = new CostViewProvider(context.extensionUri, dataService);
+  // Register the Cost webview view — scoped to active root (T-07)
+  const costProvider = new CostViewProvider(context.extensionUri, dataService, projectContext);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('quoin.cost', costProvider)
   );
 
-  // Load persisted sessions from prior window (T-04 reload behavior).
-  // Collect roots from workspace folders (common case) plus the stored fallback
-  // for no-workspace scenarios, then dedup and load each.
+  // Central watcher (T-11 D-06): owned here; per-view self-watches removed.
+  // Start watching the active root; update on project switches.
+  const activeRoot = projectContext.getActiveRoot();
+  if (activeRoot) {
+    context.subscriptions.push(dataService.watch(activeRoot));
+  }
+  context.subscriptions.push({
+    dispose: projectContext.onDidChangeActiveRoot((newRoot) => {
+      if (newRoot) {
+        context.subscriptions.push(dataService.watch(newRoot));
+      } else {
+        dataService.unwatch();
+      }
+    }),
+  });
+
+  // Load persisted sessions from prior window (MAJ-1 fix: canonicalize via findArtifactsRoot
+  // so reload keys match creation keys for nested-folder workspaces).
   const rootsToLoad = new Set<string>();
-  vscode.workspace.workspaceFolders?.forEach(f => rootsToLoad.add(f.uri.fsPath));
+  vscode.workspace.workspaceFolders?.forEach(f => {
+    const canonicalRoot = findArtifactsRoot(f.uri.fsPath, { existsSync: fs.existsSync });
+    rootsToLoad.add(canonicalRoot ?? f.uri.fsPath);
+  });
   const lastRoot = context.globalState.get<string>('quoin.lastProjectRoot');
   if (lastRoot) {
     rootsToLoad.add(lastRoot);

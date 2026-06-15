@@ -16,6 +16,7 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { DataService } from './dataService';
+import { ProjectContext } from './projectContext';
 
 // ── HTML helpers (copied from workflowTree.ts / sessionsArchive.ts) ───────────
 
@@ -35,11 +36,11 @@ function generateNonce(): string {
 
 export class CostViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
-  private _lastRoot: string | undefined;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly dataService: DataService,
+    private readonly projectContext: ProjectContext,
   ) {}
 
   resolveWebviewView(
@@ -61,19 +62,14 @@ export class CostViewProvider implements vscode.WebviewViewProvider {
       // No inbound messages handled — silently ignore for pattern parity
     });
 
-    // Subscribe to data changes for debounced refresh
+    // Subscribe to data changes and active-root changes for debounced refresh
     const dsDisposable = this.dataService.onDidChange(() => { void this._refresh(); });
+    const pcDisposable = this.projectContext.onDidChangeActiveRoot(() => { void this._refresh(); });
 
     webviewView.onDidDispose(() => {
       dsDisposable.dispose();
+      pcDisposable.dispose();
     });
-
-    // Resolve root and start watching
-    const root = this.dataService.getProjectRoot(vscode.workspace.workspaceFolders);
-    if (root) {
-      this._lastRoot = root;
-      this.dataService.watch(root);
-    }
 
     void this._refresh();
   }
@@ -81,14 +77,7 @@ export class CostViewProvider implements vscode.WebviewViewProvider {
   private async _refresh(): Promise<void> {
     if (!this._view?.visible) { return; }
 
-    const root = this.dataService.getProjectRoot(vscode.workspace.workspaceFolders);
-
-    if (root !== this._lastRoot) {
-      this._lastRoot = root;
-      if (root) {
-        this.dataService.watch(root);
-      }
-    }
+    const root = this.projectContext.getActiveRoot();
 
     let view = null;
     if (root) {

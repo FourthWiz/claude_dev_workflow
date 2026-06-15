@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { WorkflowTreeViewProvider } from '../workflowTree';
 import { DataService, DataResult } from '../dataService';
 import { Uri, EventEmitter, makeStubWebviewView } from './__mocks__/vscode';
+import type { ProjectContext } from '../projectContext';
 
 // ---------------------------------------------------------------------------
 // Stubs
@@ -34,13 +35,15 @@ function makeDataServiceStub(overrides: Partial<DataService> = {}): DataService 
   } as unknown as DataService;
 }
 
-function makeSessionManagerStub() {
-  const onDidChangeEmitter = new EventEmitter<void>();
+function makeProjectContextStub(activeRoot: string | undefined): ProjectContext {
+  const emitter = new EventEmitter<string | undefined>();
   return {
-    onDidChange: onDidChangeEmitter.event,
-    _emitter: onDidChangeEmitter,
-    getAll: () => [{ id: '1', label: 'test', runtime: 'claude', projectRoot: '/fake/root', createdAt: 0, relaunchable: false }],
-  };
+    getActiveRoot: () => activeRoot,
+    setActiveRoot: async (_root: string) => {},
+    listKnownRoots: () => [],
+    onDidChangeActiveRoot: emitter.event,
+    _emitter: emitter,
+  } as unknown as ProjectContext;
 }
 
 function makeControlPanelStub(): { highlighted: (string | null)[]; postHighlight(n: string | null): void } {
@@ -58,14 +61,13 @@ function makeControlPanelStub(): { highlighted: (string | null)[]; postHighlight
 describe('WorkflowTreeViewProvider', () => {
   it('posts a render message on resolveWebviewView', async () => {
     const ds = makeDataServiceStub();
-    const sm = makeSessionManagerStub();
-    const cp = makeControlPanelStub();
+const cp = makeControlPanelStub();
     const { view, webview } = makeStubWebviewView();
 
     const provider = new WorkflowTreeViewProvider(
       Uri.file('/ext'),
       ds,
-      sm as unknown as import('../sessionManager').SessionManager,
+      makeProjectContextStub('/fake/root'),
       cp,
     );
 
@@ -88,14 +90,13 @@ describe('WorkflowTreeViewProvider', () => {
 
   it('posts highlight with next skill after render', async () => {
     const ds = makeDataServiceStub();
-    const sm = makeSessionManagerStub();
-    const cp = makeControlPanelStub();
+const cp = makeControlPanelStub();
     const { view } = makeStubWebviewView();
 
     const provider = new WorkflowTreeViewProvider(
       Uri.file('/ext'),
       ds,
-      sm as unknown as import('../sessionManager').SessionManager,
+      makeProjectContextStub('/fake/root'),
       cp,
     );
 
@@ -115,14 +116,13 @@ describe('WorkflowTreeViewProvider', () => {
     const ds = makeDataServiceStub({
       getActiveTask: async () => undefined,
     } as Partial<DataService>);
-    const sm = makeSessionManagerStub();
-    const cp = makeControlPanelStub();
+const cp = makeControlPanelStub();
     const { view, webview } = makeStubWebviewView();
 
     const provider = new WorkflowTreeViewProvider(
       Uri.file('/ext'),
       ds,
-      sm as unknown as import('../sessionManager').SessionManager,
+      makeProjectContextStub('/fake/root'),
       cp,
     );
 
@@ -150,14 +150,13 @@ describe('WorkflowTreeViewProvider', () => {
         return { status: 'no-task' };
       },
     } as Partial<DataService>);
-    const sm = makeSessionManagerStub();
     const cp = makeControlPanelStub();
     const { view } = makeStubWebviewView();
 
     const provider = new WorkflowTreeViewProvider(
       Uri.file('/ext'),
       ds,
-      sm as unknown as import('../sessionManager').SessionManager,
+      makeProjectContextStub('/fake/root'),
       cp,
     );
 

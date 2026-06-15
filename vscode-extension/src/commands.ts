@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { SessionManager } from './sessionManager';
+import { ProjectContext } from './projectContext';
 import { Runtime } from './types';
 import { findArtifactsRoot } from './artifactsRoot';
 
@@ -35,9 +37,36 @@ async function resolveProjectRoot(context: vscode.ExtensionContext): Promise<str
   return picked;
 }
 
+export function registerStatusBar(
+  context: vscode.ExtensionContext,
+  projectContext: ProjectContext,
+): vscode.StatusBarItem {
+  const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+  item.command = 'quoin.switchProject';
+  item.tooltip = 'Switch Quoin project root';
+
+  function update(root: string | undefined): void {
+    if (root) {
+      item.text = `$(folder) ${path.basename(root)}`;
+      item.show();
+    } else {
+      item.text = '$(folder) Quoin';
+      item.show();
+    }
+  }
+
+  update(projectContext.getActiveRoot());
+  context.subscriptions.push(
+    projectContext.onDidChangeActiveRoot((root) => update(root)),
+  );
+  context.subscriptions.push(item);
+  return item;
+}
+
 export function registerCommands(
   context: vscode.ExtensionContext,
-  manager: SessionManager
+  manager: SessionManager,
+  projectContext?: ProjectContext,
 ): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('quoin.newSession', async () => {
@@ -74,6 +103,32 @@ export function registerCommands(
       } catch {
         void vscode.window.showErrorMessage(`Quoin: could not open session file: ${filePath}`);
       }
-    })
+    }),
+
+    // quoin.switchProject: QuickPick project-switcher (T-09)
+    vscode.commands.registerCommand('quoin.switchProject', async () => {
+      if (!projectContext) { return; }
+
+      // Check if already on a known root — avoid double-prompt if only one root
+      const known = projectContext.listKnownRoots();
+      if (known.length === 0) {
+        void vscode.window.showInformationMessage('Quoin: No known project roots yet. Open a workspace folder containing .workflow_artifacts/.');
+        return;
+      }
+
+      const picks = known.map((r) => ({
+        label: path.basename(r),
+        detail: r,
+      }));
+
+      const selected = await vscode.window.showQuickPick(picks, {
+        placeHolder: 'Select Quoin project root',
+        matchOnDetail: true,
+      });
+
+      if (selected?.detail) {
+        await projectContext.setActiveRoot(selected.detail);
+      }
+    }),
   );
 }
