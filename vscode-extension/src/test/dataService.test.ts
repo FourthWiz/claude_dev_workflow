@@ -1,7 +1,7 @@
-import { describe, it } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseNodesPayload, DataService, WATCH_DEBOUNCE_MS } from '../dataService';
-import { workspace } from './__mocks__/vscode';
+import { workspace, _clearConfig } from './__mocks__/vscode';
 
 // ---------------------------------------------------------------------------
 // parseNodesPayload — pure function tests (no live Python)
@@ -128,6 +128,47 @@ describe('DataService watch debounce', () => {
     await new Promise((resolve) => setTimeout(resolve, WATCH_DEBOUNCE_MS + 50));
 
     assert.strictEqual(emitCount, 1, 'expected exactly 1 emit after debounce');
+
+    svc.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DataService config propagation — Part B (review-1 fix)
+// ---------------------------------------------------------------------------
+
+describe('DataService config propagation', () => {
+  afterEach(() => { _clearConfig(); });
+
+  it('constructs correctly with custom adapterRoot/coreRoot (non-existent paths → _resolveCostScript returns null)', () => {
+    const svc = new DataService({ adapterRoot: '/custom/adapter', coreRoot: '/custom/core' });
+    // Neither custom path exists on disk, so _resolveCostScript returns null for any name
+    const result = svc._resolveCostScript('spend_monitor.py');
+    assert.strictEqual(result, null);
+    svc.dispose();
+  });
+
+  it('uses injected watcherDebounceMs instead of the default', async () => {
+    const customDebounce = 1234;
+    const svc = new DataService({ watcherDebounceMs: customDebounce });
+    let emitCount = 0;
+    svc.onDidChange(() => { emitCount++; });
+
+    const dir = '/tmp/fake-debounce-project';
+    svc.watch(dir);
+
+    const emitters = workspace._lastWatcherEmitters;
+    assert.ok(emitters, 'watcher emitters should be set after watch()');
+
+    emitters!.change.fire();
+
+    // Should not have fired yet (debounce still running)
+    assert.strictEqual(emitCount, 0);
+
+    // Wait for the custom debounce interval to expire
+    await new Promise((resolve) => setTimeout(resolve, customDebounce + 100));
+
+    assert.strictEqual(emitCount, 1, 'expected exactly 1 emit after custom debounce interval');
 
     svc.dispose();
   });

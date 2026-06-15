@@ -1,5 +1,5 @@
-import * as os from 'os';
-import * as path from 'path';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { SessionManager } from './sessionManager';
 import { SessionsTreeProvider } from './sessionsTree';
@@ -21,12 +21,12 @@ function expandTilde(p: string): string {
 
 function readQuoinSettings(): DataServiceOptions & { projectRoot: string } {
   const cfg = vscode.workspace.getConfiguration('quoin');
-  const scriptRoots = cfg.get<{ adapter?: string; core?: string }>('quoin.scriptRoots') ?? {};
+  const scriptRoots = cfg.get<{ adapter?: string; core?: string }>('scriptRoots') ?? {};
   return {
     adapterRoot: expandTilde(scriptRoots.adapter ?? '~/.claude/scripts'),
     coreRoot: expandTilde(scriptRoots.core ?? '~/.claude/core/scripts'),
-    watcherDebounceMs: cfg.get<number>('quoin.watcherDebounceMs') ?? 500,
-    projectRoot: cfg.get<string>('quoin.projectRoot') ?? '',
+    watcherDebounceMs: cfg.get<number>('watcherDebounceMs') ?? 500,
+    projectRoot: cfg.get<string>('projectRoot') ?? '',
   };
 }
 

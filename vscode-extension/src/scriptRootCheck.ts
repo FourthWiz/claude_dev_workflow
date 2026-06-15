@@ -19,8 +19,8 @@ function canRunPython(exe: string): Promise<boolean> {
 
 export async function checkScriptRoots(): Promise<boolean> {
   const cfg = vscode.workspace.getConfiguration('quoin');
-  const pythonPath = cfg.get<string>('quoin.pythonPath') ?? 'python3';
-  const scriptRoots = cfg.get<{ adapter?: string; core?: string }>('quoin.scriptRoots') ?? {};
+  const pythonPath = cfg.get<string>('pythonPath') ?? 'python3';
+  const scriptRoots = cfg.get<{ adapter?: string; core?: string }>('scriptRoots') ?? {};
   const adapterRoot = expandTilde(scriptRoots.adapter ?? '~/.claude/scripts');
   const coreRoot = expandTilde(scriptRoots.core ?? '~/.claude/core/scripts');
   const coreMarker = path.join(coreRoot, 'dashboard_model.py');

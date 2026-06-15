@@ -1,8 +1,10 @@
-import { describe, it } from 'node:test';
+import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { _setConfig, _clearConfig } from './__mocks__/vscode.js';
+import { checkScriptRoots } from '../scriptRootCheck.js';
 
 // We test the core logic in isolation by extracting the check function.
 // The vscode module is mocked because tests run outside the extension host.
@@ -83,5 +85,29 @@ describe('checkScriptRoots logic', () => {
     const result = await checkScriptRootsLogic(home, async () => true);
     assert.equal(result.ok, false);
     assert.ok(result.failures.some((f) => f.includes('adapter scripts missing')));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// checkScriptRoots() config propagation — Part C (review-1 fix)
+// Tests that the REAL checkScriptRoots() reads config keys WITHOUT the double
+// 'quoin.' prefix. With the fix: cfg.get('pythonPath') looks up 'quoin.pythonPath'
+// → finds 'python-nonexistent-xyz123' → canRunPython fails → returns false.
+// With the bug: cfg.get('quoin.pythonPath') looks up 'quoin.quoin.pythonPath'
+// → not in store → undefined → defaults to 'python3' → may return true (test fails).
+// ---------------------------------------------------------------------------
+
+describe('checkScriptRoots config propagation (real function)', () => {
+  afterEach(() => { _clearConfig(); });
+
+  it('returns false when pythonPath is set to a non-existent executable', async () => {
+    // Set quoin.pythonPath in the config store to a guaranteed-invalid executable
+    _setConfig('quoin.pythonPath', 'python-nonexistent-xyz123');
+
+    // The real checkScriptRoots() will try to run 'python-nonexistent-xyz123 --version'
+    // which will fail, causing it to return false.
+    // (It may also check script roots and fail there, but the python failure is enough.)
+    const result = await checkScriptRoots();
+    assert.strictEqual(result, false, 'checkScriptRoots should return false when pythonPath is non-existent');
   });
 });

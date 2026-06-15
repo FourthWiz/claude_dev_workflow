@@ -155,6 +155,14 @@ export function makeWatcherStub(): {
 
 let _lastWatcherStub: ReturnType<typeof makeWatcherStub> | undefined;
 
+// ── Config store (settable by tests) ─────────────────────────────────────────
+// Keys are stored as full dotted paths, e.g. "quoin.pythonPath".
+// Tests call _setConfig('quoin.pythonPath', 'python-xyz') to override.
+// The getConfiguration stub looks up `${section}.${key}` in this store.
+const _configStore = new Map<string, unknown>();
+export const _setConfig = (key: string, value: unknown): void => { _configStore.set(key, value); };
+export const _clearConfig = (): void => { _configStore.clear(); };
+
 export const workspace = {
   workspaceFolders: undefined as readonly WorkspaceFolder[] | undefined,
   createFileSystemWatcher: (_pattern: RelativePattern) => {
@@ -166,8 +174,11 @@ export const workspace = {
     return _lastWatcherStub?._emitters;
   },
   openTextDocument: async (_uri: unknown) => ({ uri: _uri }),
-  getConfiguration: (_section: string) => ({
-    get: <T>(_key: string, defaultValue?: T): T | undefined => defaultValue,
+  getConfiguration: (section: string) => ({
+    get: <T>(key: string, defaultValue?: T): T | undefined => {
+      const full = `${section}.${key}`;
+      return (_configStore.has(full) ? _configStore.get(full) : defaultValue) as T | undefined;
+    },
   }),
 };
 
