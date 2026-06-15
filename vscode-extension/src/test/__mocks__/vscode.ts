@@ -142,12 +142,23 @@ export const env = {
   },
 };
 
+const _registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
+export function _getRegisteredCommand(cmd: string): ((...args: unknown[]) => unknown) | undefined {
+  return _registeredCommands.get(cmd);
+}
+export function _clearRegisteredCommands(): void {
+  _registeredCommands.clear();
+}
+
 export const commands = {
   executeCommand: async (cmd: string, ...args: unknown[]) => {
     _executedCommands.push({ cmd, args });
     return undefined;
   },
-  registerCommand: (_cmd: string, _handler: (...args: unknown[]) => unknown) => ({ dispose: () => {} }),
+  registerCommand: (cmd: string, handler: (...args: unknown[]) => unknown) => {
+    _registeredCommands.set(cmd, handler);
+    return { dispose: () => { _registeredCommands.delete(cmd); } };
+  },
 };
 
 export interface WorkspaceFolder {
