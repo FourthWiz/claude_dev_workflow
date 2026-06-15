@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { SessionManager } from './sessionManager';
+import { ProjectContext } from './projectContext';
 import { CommandRunner } from './commandRunner';
 import { enumerateSkills, groupSkills } from './skillCatalog';
 
@@ -82,6 +83,7 @@ export class ControlPanelViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly sessionManager: SessionManager,
+    private readonly projectContext: ProjectContext,
     private readonly commandRunner: CommandRunner
   ) {}
 
@@ -166,12 +168,13 @@ export class ControlPanelViewProvider implements vscode.WebviewViewProvider {
   // ── Data push helpers ──────────────────────────────────────────────────────
 
   private _postSessionList(webview: vscode.Webview): void {
-    const sessions = this.sessionManager.getAll().map(s => ({
+    const activeRoot = this.projectContext.getActiveRoot();
+    const sessions = this.sessionManager.getForRoot(activeRoot ?? '').map(s => ({
       id: s.id,
       label: s.label,
       runtime: s.runtime,
     }));
-    void webview.postMessage({ cmd: 'sessions', sessions });
+    void webview.postMessage({ cmd: 'sessions', sessions, projectRoot: activeRoot });
 
     // Push runtime for the first session (best-effort)
     if (sessions.length > 0) {

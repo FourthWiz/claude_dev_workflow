@@ -85,6 +85,11 @@ export class SessionManager {
     return [...this.registry.values()];
   }
 
+  /** Return only sessions belonging to the given project root. */
+  getForRoot(projectRoot: string): QuoinSession[] {
+    return [...this.registry.values()].filter(s => s.projectRoot === projectRoot);
+  }
+
   /**
    * Relaunch an existing session in-place, reusing its UUID so the webview
    * selection stays accurate after the terminal closes and is relaunched.

@@ -3,32 +3,8 @@ import assert from 'node:assert/strict';
 import { ControlPanelViewProvider } from '../controlPanel';
 import { CommandRunner } from '../commandRunner';
 import { SessionManager } from '../sessionManager';
-import { Uri, makeStubWebviewView } from './__mocks__/vscode';
-
-// ── Stub helpers ──────────────────────────────────────────────────────────────
-
-function makeMemento(): import('vscode').Memento {
-  const store = new Map<string, unknown>();
-  return {
-    keys: () => [...store.keys()],
-    get<T>(key: string, defaultValue?: T): T {
-      return (store.has(key) ? store.get(key) : defaultValue) as T;
-    },
-    update(key: string, value: unknown): Thenable<void> {
-      store.set(key, value);
-      return Promise.resolve();
-    },
-  };
-}
-
-function makeContext(): import('vscode').ExtensionContext {
-  const gs = makeMemento();
-  return {
-    globalState: gs,
-    subscriptions: [] as { dispose(): unknown }[],
-    extensionUri: Uri.file('/ext'),
-  } as unknown as import('vscode').ExtensionContext;
-}
+import { Uri, makeStubWebviewView, makeContext, EventEmitter } from './__mocks__/vscode';
+import type { ProjectContext } from '../projectContext';
 
 function makeTerminal(name: string): import('vscode').Terminal {
   const calls: { text: string; addNewLine: boolean }[] = [];
@@ -48,6 +24,16 @@ function makeManager() {
   const ctx = makeContext();
   const noop = (_h: unknown) => ({ dispose: () => {} });
   return new SessionManager(ctx, noop as import('vscode').Event<import('vscode').Terminal>);
+}
+
+function makeProjectContext(activeRoot: string | undefined): ProjectContext {
+  const emitter = new EventEmitter<string | undefined>();
+  return {
+    getActiveRoot: () => activeRoot,
+    setActiveRoot: async (_root: string) => {},
+    listKnownRoots: () => [],
+    onDidChangeActiveRoot: emitter.event,
+  } as unknown as ProjectContext;
 }
 
 function simulateRun(
@@ -70,6 +56,7 @@ describe('ControlPanelViewProvider — Codex guard (T-04)', () => {
     const provider = new ControlPanelViewProvider(
       Uri.file('/ext') as unknown as import('vscode').Uri,
       manager,
+      makeProjectContext('/tmp/proj'),
       commandRunner
     );
 
@@ -104,6 +91,7 @@ describe('ControlPanelViewProvider — Codex guard (T-04)', () => {
     const provider = new ControlPanelViewProvider(
       Uri.file('/ext') as unknown as import('vscode').Uri,
       manager,
+      makeProjectContext('/tmp/proj'),
       new CommandRunner()
     );
 
@@ -131,6 +119,7 @@ describe('ControlPanelViewProvider — Codex guard (T-04)', () => {
     const provider = new ControlPanelViewProvider(
       Uri.file('/ext') as unknown as import('vscode').Uri,
       manager,
+      makeProjectContext(undefined),
       new CommandRunner()
     );
 

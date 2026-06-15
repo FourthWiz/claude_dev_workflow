@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
+import * as path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { DataService } from './dataService';
-import { SessionManager } from './sessionManager';
+import { ProjectContext } from './projectContext';
 import { getNextSkill } from './workflowMapping';
 
 /** Minimal interface for the control panel — satisfied by ControlPanelViewProvider after T-06. */
@@ -23,12 +24,11 @@ function generateNonce(): string {
 
 export class WorkflowTreeViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
-  private _projectRoot: string | undefined;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly dataService: DataService,
-    private readonly sessionManager: SessionManager,
+    private readonly projectContext: ProjectContext,
     private readonly controlPanel: HighlightTarget,
   ) {}
 
@@ -46,13 +46,13 @@ export class WorkflowTreeViewProvider implements vscode.WebviewViewProvider {
 
     webviewView.webview.html = this._buildHtml(webviewView.webview);
 
-    // Subscribe to data + session changes
+    // Subscribe to data changes and active-root changes
     const dsDisposable = this.dataService.onDidChange(() => { void this._refresh(); });
-    const smDisposable = this.sessionManager.onDidChange(() => { void this._refresh(); });
+    const pcDisposable = this.projectContext.onDidChangeActiveRoot(() => { void this._refresh(); });
 
     webviewView.onDidDispose(() => {
       dsDisposable.dispose();
-      smDisposable.dispose();
+      pcDisposable.dispose();
     });
 
     void this._refresh();
@@ -62,39 +62,24 @@ export class WorkflowTreeViewProvider implements vscode.WebviewViewProvider {
     if (!this._view?.visible) { return; }
     const webview = this._view.webview;
 
-    // Resolve project root: prefer active session's root, then workspace walk-up
-    let newRoot: string | undefined;
-    const sessions = this.sessionManager.getAll();
-    if (sessions.length > 0 && sessions[0].projectRoot) {
-      newRoot = sessions[0].projectRoot;
-    }
-    if (!newRoot) {
-      newRoot = this.dataService.getProjectRoot(vscode.workspace.workspaceFolders);
-    }
+    const root = this.projectContext.getActiveRoot();
 
-    if (newRoot !== this._projectRoot) {
-      this._projectRoot = newRoot;
-      if (newRoot) {
-        this.dataService.watch(newRoot);
-      }
-    }
-
-    if (!newRoot) {
+    if (!root) {
       void webview.postMessage({ cmd: 'render', status: 'no-task', message: 'No quoin project found in workspace.' });
       this.controlPanel.postHighlight(null);
       return;
     }
 
     // Get active task name
-    const task = await this.dataService.getActiveTask(newRoot);
+    const task = await this.dataService.getActiveTask(root);
     if (!task) {
-      void webview.postMessage({ cmd: 'render', status: 'no-task', message: 'No active task found.' });
+      void webview.postMessage({ cmd: 'render', status: 'no-task', message: 'No active task found.', project: path.basename(root) });
       this.controlPanel.postHighlight(null);
       return;
     }
 
     // Get workflow nodes
-    const result = await this.dataService.getWorkflowNodes(task, newRoot);
+    const result = await this.dataService.getWorkflowNodes(task, root);
 
     void webview.postMessage({
       cmd: 'render',
@@ -103,6 +88,7 @@ export class WorkflowTreeViewProvider implements vscode.WebviewViewProvider {
       task: result.task ?? task,
       stage: result.stage,
       message: result.message,
+      project: path.basename(root),
     });
 
     // Compute next skill from active node
