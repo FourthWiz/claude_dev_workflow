@@ -2,64 +2,60 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-export type GroupName = 'Planning' | 'Execution' | 'Lifecycle' | 'Cost' | 'Other';
+export type GroupName = 'Planning' | 'Execution' | 'Lifecycle' | 'Other';
+
+export interface CatalogEntry {
+  command: string;
+  label: string;
+  group: GroupName;
+}
 
 export interface SkillGroup {
   group: GroupName;
-  skills: string[];
+  entries: CatalogEntry[];
 }
 
 /**
- * Complete, explicit name→group map for all skills currently on disk (2026-06-14).
- * Any enumerated skill NOT in this map routes to 'Other' — it surfaces immediately
- * rather than being silently dropped (D-02).
+ * Explicit ordered catalog of curated skill entries (D-01, D-07).
  *
- * To recategorize: change the group string. To add a new skill: add a line here
- * (or let it land in 'Other' until intentionally mapped).
+ * Order within this array IS the display order within each group.
+ * Curated entries are shown in the panel regardless of whether the
+ * corresponding skill directory exists on disk (R-02: panel is a fixed
+ * curated menu; missing skill → Claude shows "unknown command", non-fatal).
+ *
+ * The synthetic 'checkpoint --restore' entry (D-03) uses the full command
+ * string as its `command` field. Its `data-skill` attribute carries the
+ * space-containing value, which is safe because applyHighlight only ever
+ * targets the 6 bare pipeline-node ids (see workflowMapping.ts NEXT_SKILL).
+ * If highlight scope ever expands to include synthetic entries, switch
+ * applyHighlight to CSS.escape or use a separate `data-highlight` attribute.
  */
-const NAME_TO_GROUP: Record<string, GroupName> = {
+const CURATED: CatalogEntry[] = [
   // Planning
-  discover: 'Planning',
-  architect: 'Planning',
-  plan: 'Planning',
-  critic: 'Planning',
-  revise: 'Planning',
-  'revise-fast': 'Planning',  // CRIT-1: hyphen-bearing name must be in map (and regex must admit it)
-  thorough_plan: 'Planning',
+  { command: 'architect',      label: 'Architect',      group: 'Planning' },
+  { command: 'thorough_plan',  label: 'Thorough Plan',  group: 'Planning' },
 
   // Execution
-  implement: 'Execution',
-  review: 'Execution',
-  gate: 'Execution',
-  rollback: 'Execution',
-  run: 'Execution',  // end-to-end pipeline orchestrator (kept in Execution per critic)
-  pr: 'Execution',
-  end_of_task: 'Execution',
+  { command: 'implement',      label: 'Implement',      group: 'Execution' },
+  { command: 'review',         label: 'Review',         group: 'Execution' },
+  { command: 'end_of_task',    label: 'End of Task',    group: 'Execution' },
+  { command: 'pr',             label: 'PR',             group: 'Execution' },
 
-  // Lifecycle (includes between-phase helpers: triage, status, expand)
-  start_of_day: 'Lifecycle',
-  end_of_day: 'Lifecycle',
-  weekly_review: 'Lifecycle',
-  checkpoint: 'Lifecycle',
-  continue_work: 'Lifecycle',
-  sleep: 'Lifecycle',  // session-memory consolidation — lifecycle action like end_of_day
-  cleanup: 'Lifecycle',
-  capture_insight: 'Lifecycle',
-  next_steps: 'Lifecycle',
-  triage: 'Lifecycle',
-  init_workflow: 'Lifecycle',
-  status: 'Lifecycle',
-  expand: 'Lifecycle',
-
-  // Cost
-  cost_snapshot: 'Cost',
-};
+  // Lifecycle
+  { command: 'init_workflow',       label: 'Init Workflow',    group: 'Lifecycle' },
+  { command: 'checkpoint',          label: 'Checkpoint',       group: 'Lifecycle' },
+  { command: 'checkpoint --restore', label: 'Checkpoint Restore', group: 'Lifecycle' },
+  { command: 'end_of_day',          label: 'End of Day',       group: 'Lifecycle' },
+  { command: 'start_of_day',        label: 'Start of Day',     group: 'Lifecycle' },
+  { command: 'weekly_review',       label: 'Weekly Review',    group: 'Lifecycle' },
+  { command: 'discover',            label: 'Discover',         group: 'Lifecycle' },
+];
 
 /**
  * The stable display order for groups.
  * Empty groups are omitted from the returned array.
  */
-const GROUP_ORDER: GroupName[] = ['Planning', 'Execution', 'Lifecycle', 'Cost', 'Other'];
+const GROUP_ORDER: GroupName[] = ['Planning', 'Execution', 'Lifecycle', 'Other'];
 
 /**
  * Enumerate skill names from the given directory.
@@ -89,31 +85,52 @@ export function enumerateSkills(
 }
 
 /**
- * Group an array of skill names into ordered SkillGroup buckets.
+ * Group skill entries into ordered SkillGroup buckets.
  *
- * - Known names are placed in their mapped group.
- * - Unknown names (future skills not yet in NAME_TO_GROUP) route to 'Other'.
- * - Empty groups are omitted from the result.
- * - Groups are returned in stable order: Planning → Execution → Lifecycle → Cost → Other.
+ * Curated entries (from CURATED array) are always included in the output,
+ * in their defined display order, regardless of whether they appear in
+ * `skillNames` (enumeration-independent). This makes the panel a fixed
+ * curated menu, not a mirror of the skills directory.
+ *
+ * The 'Other' bucket is built from enumerated names NOT found in the curated
+ * command set (bare ids only; the synthetic 'checkpoint --restore' is excluded
+ * from curatedCommands since it contains a space). This satisfies D-02
+ * no-silent-drops: every enumerated name appears either as a curated command
+ * or in the Other bucket.
+ *
+ * Empty groups are omitted from the result.
+ * Groups are returned in stable order: Planning → Execution → Lifecycle → Other.
  *
  * @param skillNames - Skill names to group (typically from enumerateSkills())
  */
 export function groupSkills(skillNames: string[]): SkillGroup[] {
-  const buckets: Record<GroupName, string[]> = {
+  // Build set of bare curated command ids (excludes synthetic 'checkpoint --restore')
+  const curatedCommands = new Set(
+    CURATED.map(e => e.command).filter(c => !c.includes(' '))
+  );
+
+  // Build per-group ordered entry lists from CURATED (preserves intra-group order)
+  const buckets: Record<GroupName, CatalogEntry[]> = {
     Planning: [],
     Execution: [],
     Lifecycle: [],
-    Cost: [],
     Other: [],
   };
 
+  // Add curated entries in array order (enumeration-independent)
+  for (const entry of CURATED) {
+    buckets[entry.group].push(entry);
+  }
+
+  // Other bucket: enumerated names not in curated command set
   for (const name of skillNames) {
-    const group: GroupName = NAME_TO_GROUP[name] ?? 'Other';
-    buckets[group].push(name);
+    if (!curatedCommands.has(name)) {
+      buckets['Other'].push({ command: name, label: name, group: 'Other' });
+    }
   }
 
   // Return stable order, omitting empty groups
   return GROUP_ORDER
     .filter(g => buckets[g].length > 0)
-    .map(g => ({ group: g, skills: buckets[g] }));
+    .map(g => ({ group: g, entries: buckets[g] }));
 }
