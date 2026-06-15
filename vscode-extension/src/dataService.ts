@@ -3,6 +3,16 @@ import { execFile } from 'node:child_process';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { WorkflowNode, PIPELINE, PHASE_TO_NODE } from './workflowMapping';
+import {
+  LiveSpend,
+  CostView,
+  SummaryResult,
+  parseLiveSpend,
+  parseTaskCounts,
+  parseCostSummary,
+  mergeCostView,
+} from './costService';
+import { FsLike } from './archiveScanner';
 
 export const WATCH_DEBOUNCE_MS = 500;
 
@@ -160,6 +170,138 @@ export class DataService implements vscode.Disposable {
         },
       );
     });
+  }
+
+  // ── Cost script resolution (mirrors _resolveScriptPath; core-first/adapter-fallback) ──
+
+  /**
+   * Resolve the path to a cost-related script by name.
+   * Prefers core copy; falls back to adapter wrapper.
+   * Both spend_monitor.py and dashboard_model.py are in core; spend_monitor.py
+   * also has an adapter wrapper (MIN-1).
+   */
+  _resolveCostScript(name: string): string | null {
+    const home = process.env['HOME'] ?? '';
+    const corePath = path.join(home, '.claude', 'core', 'scripts', name);
+    if (fs.existsSync(corePath)) { return corePath; }
+    const adapterPath = path.join(home, '.claude', 'scripts', name);
+    if (fs.existsSync(adapterPath)) { return adapterPath; }
+    return null;
+  }
+
+  /**
+   * Invoke spend_monitor.py --json --scope project with cwd=projectRoot.
+   * D-03: spend_monitor derives root from cwd (no --project-root flag).
+   * D-05: --scope project ensures by_task is populated and aligns with today_usd.
+   */
+  async liveSpend(projectRoot: string): Promise<LiveSpend | null> {
+    const scriptPath = this._resolveCostScript('spend_monitor.py');
+    if (!scriptPath) { return null; }
+    return new Promise((resolve) => {
+      execFile(
+        'python3',
+        [scriptPath, '--json', '--scope', 'project'],
+        { cwd: projectRoot, timeout: 8000 },
+        (err, stdout, stderr) => {
+          resolve(parseLiveSpend(stdout, stderr, err));
+        },
+      );
+    });
+  }
+
+  /**
+   * Invoke dashboard_model.py --json (counts-mode) with --project-root.
+   * D-01: NO --with-cost flag; usd is always null in counts-mode.
+   */
+  async taskCounts(projectRoot: string): Promise<Array<{ task: string; usd: number | null }>> {
+    const scriptPath = this._resolveCostScript('dashboard_model.py');
+    if (!scriptPath) { return []; }
+    return new Promise((resolve) => {
+      execFile(
+        'python3',
+        [scriptPath, '--json', '--project-root', projectRoot],
+        { timeout: 8000 },
+        (err, stdout, stderr) => {
+          resolve(parseTaskCounts(stdout, stderr, err));
+        },
+      );
+    });
+  }
+
+  /**
+   * Scan all cost-summary.json files under .workflow_artifacts (top-level and finalized).
+   * Uses injectable FsLike seam. Skips unreadable / malformed files silently.
+   */
+  readCostSummaries(
+    projectRoot: string,
+    fsImpl: FsLike = {
+      existsSync: fs.existsSync,
+      readdirSync: (p: string) => fs.readdirSync(p) as string[],
+      readFileSync: (p: string, enc: 'utf8') => fs.readFileSync(p, enc),
+    },
+  ): SummaryResult[] {
+    const results: SummaryResult[] = [];
+    const artifactsDir = path.join(projectRoot, '.workflow_artifacts');
+
+    if (!fsImpl.existsSync(artifactsDir)) { return results; }
+
+    let topLevelEntries: string[] = [];
+    try {
+      topLevelEntries = fsImpl.readdirSync(artifactsDir);
+    } catch {
+      return results;
+    }
+
+    // Scan top-level task dirs
+    for (const entry of topLevelEntries) {
+      if (entry === 'finalized' || entry === 'memory' || entry === 'cache') { continue; }
+      const summaryPath = path.join(artifactsDir, entry, 'cost-summary.json');
+      if (fsImpl.existsSync(summaryPath)) {
+        try {
+          const text = fsImpl.readFileSync(summaryPath, 'utf8');
+          results.push(parseCostSummary(text, entry));
+        } catch {
+          // skip unreadable file
+        }
+      }
+    }
+
+    // Scan finalized/*/cost-summary.json
+    const finalizedDir = path.join(artifactsDir, 'finalized');
+    if (fsImpl.existsSync(finalizedDir)) {
+      let finalizedEntries: string[] = [];
+      try {
+        finalizedEntries = fsImpl.readdirSync(finalizedDir);
+      } catch {
+        // skip
+      }
+      for (const entry of finalizedEntries) {
+        const summaryPath = path.join(finalizedDir, entry, 'cost-summary.json');
+        if (fsImpl.existsSync(summaryPath)) {
+          try {
+            const text = fsImpl.readFileSync(summaryPath, 'utf8');
+            results.push(parseCostSummary(text, entry));
+          } catch {
+            // skip unreadable file
+          }
+        }
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Orchestrate all three cost fetches and return a merged CostView.
+   * Safe on no-scripts: returns an empty CostView with live:null and no tasks.
+   */
+  async getCostView(projectRoot: string): Promise<CostView> {
+    const [live, counts, summaries] = await Promise.all([
+      this.liveSpend(projectRoot),
+      this.taskCounts(projectRoot),
+      Promise.resolve(this.readCostSummaries(projectRoot)),
+    ]);
+    return mergeCostView(live, counts, summaries);
   }
 
   /**

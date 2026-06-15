@@ -8,6 +8,7 @@ import { ControlPanelViewProvider } from './controlPanel';
 import { DataService } from './dataService';
 import { WorkflowTreeViewProvider } from './workflowTree';
 import { SessionsArchiveViewProvider } from './sessionsArchive';
+import { CostViewProvider } from './costView';
 
 export function activate(context: vscode.ExtensionContext): void {
   // T-05 activation ordering: commands BEFORE TreeDataProvider so the viewsWelcome
@@ -54,6 +55,13 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('quoin.sessionsArchive', archiveProvider)
+  );
+
+  // Register the Cost webview view (S-5)
+  // Reuses the SAME dataService instance (shared watcher + onDidChange emitter).
+  const costProvider = new CostViewProvider(context.extensionUri, dataService);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider('quoin.cost', costProvider)
   );
 
   // Load persisted sessions from prior window (T-04 reload behavior).
