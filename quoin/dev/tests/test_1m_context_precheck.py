@@ -21,7 +21,6 @@ After this file is green, test_implement_1m_context_precheck.py is deleted (D-03
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
@@ -82,6 +81,12 @@ SECTION0_TARGETS = [
     ("checkpoint",     "haiku",  "§0c"),
     ("continue_work",  "sonnet", "§1"),
 ]
+
+# Lookup dicts derived from SECTION0_TARGETS (used by test methods that only take `skill`
+# as the parametrize argument but need per-skill metadata).
+SKILL_DECLARED_TIER: dict[str, str] = {t[0]: t[1] for t in SECTION0_TARGETS}
+SKILL_PROCEED_REF:   dict[str, str] = {t[0]: t[2] for t in SECTION0_TARGETS}
+SECTION0_SKILLS: list[str] = [t[0] for t in SECTION0_TARGETS]
 
 # §0' targets: just the skill name; tier is always opus; proceed = "skill body"
 SECTION0PRIME_TARGETS = [
@@ -167,7 +172,7 @@ def _normalize_ws(s: str) -> str:
 # §0 parametrized tests
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("skill,declared_tier,proceed_ref", SECTION0_TARGETS)
+@pytest.mark.parametrize("skill", SECTION0_SKILLS)
 class TestSection0Precheck:
     """All assertions from T-04 checks (a)–(f) + CRIT-1 proceed-ref + MINOR-2 dispatch-noun."""
 
@@ -176,7 +181,7 @@ class TestSection0Precheck:
         assert path.is_file(), f"SKILL.md not found: {path}"
         return path.read_text(encoding="utf-8")
 
-    def test_markers_present_once(self, skill, declared_tier, proceed_ref):
+    def test_markers_present_once(self, skill):
         """Both §0 markers appear exactly once (full literal, not §0prime-)."""
         text = self._read(skill)
         assert text.count(S0_BEGIN_MARKER) == 1, (
@@ -186,7 +191,7 @@ class TestSection0Precheck:
             f"[{skill}] Expected exactly 1 §0-end marker, got {text.count(S0_END_MARKER)}"
         )
 
-    def test_markers_inside_section_zero(self, skill, declared_tier, proceed_ref):
+    def test_markers_inside_section_zero(self, skill):
         """Both markers sit inside ## §0 Model dispatch (bounded by next ## H2)."""
         text = self._read(skill)
         sec_start, sec_end = _section_bounds(text, S0_SECTION_HEADING)
@@ -201,7 +206,7 @@ class TestSection0Precheck:
             f"(lines {sec_start}–{sec_end})"
         )
 
-    def test_begin_marker_before_dispatch_trigger(self, skill, declared_tier, proceed_ref):
+    def test_begin_marker_before_dispatch_trigger(self, skill):
         """§0-begin marker appears before the 'If current_tier > declared_tier' trigger."""
         text = self._read(skill)
         begin_line   = _line_number(text, S0_BEGIN_MARKER)
@@ -212,7 +217,7 @@ class TestSection0Precheck:
             f"(line {trigger_line})"
         )
 
-    def test_detection_substrings_present(self, skill, declared_tier, proceed_ref):
+    def test_detection_substrings_present(self, skill):
         """All 4 required 1M-detection substrings appear in the block."""
         text = self._read(skill)
         block = _extract_block(text, S0_BEGIN_MARKER, S0_END_MARKER)
@@ -221,7 +226,7 @@ class TestSection0Precheck:
                 f"[{skill}] Detection substring {substr!r} not found in precheck block"
             )
 
-    def test_option_labels_present(self, skill, declared_tier, proceed_ref):
+    def test_option_labels_present(self, skill):
         """Both AskUserQuestion option labels appear verbatim in the block."""
         text = self._read(skill)
         block = _extract_block(text, S0_BEGIN_MARKER, S0_END_MARKER)
@@ -232,7 +237,7 @@ class TestSection0Precheck:
             f"[{skill}] Option label not found in block: {OPTION_LABEL_PROCEED!r}"
         )
 
-    def test_no_redispatch_passthrough_present(self, skill, declared_tier, proceed_ref):
+    def test_no_redispatch_passthrough_present(self, skill):
         """[no-redispatch] passthrough is documented in the block."""
         text = self._read(skill)
         block = _extract_block(text, S0_BEGIN_MARKER, S0_END_MARKER)
@@ -240,7 +245,7 @@ class TestSection0Precheck:
             f"[{skill}] [no-redispatch] passthrough not found in block"
         )
 
-    def test_abort_no_spawn_phrase_present(self, skill, declared_tier, proceed_ref):
+    def test_abort_no_spawn_phrase_present(self, skill):
         """'Do NOT spawn any Agent' appears in the block (whitespace-normalized)."""
         text = self._read(skill)
         block = _extract_block(text, S0_BEGIN_MARKER, S0_END_MARKER)
@@ -249,7 +254,7 @@ class TestSection0Precheck:
             f"[{skill}] '{ABORT_NO_SPAWN_PHRASE}' not found in block (normalized)"
         )
 
-    def test_no_implement_token_in_block(self, skill, declared_tier, proceed_ref):
+    def test_no_implement_token_in_block(self, skill):
         """No literal '/implement' remains in the block (correct skill token substituted).
 
         Exception: the `implement` skill itself legitimately contains '/implement'
@@ -264,7 +269,7 @@ class TestSection0Precheck:
             f"[{skill}] '/implement' found in block — skill token substitution missing"
         )
 
-    def test_skill_token_present_in_block(self, skill, declared_tier, proceed_ref):
+    def test_skill_token_present_in_block(self, skill):
         """The skill's own /<skill> token appears in the block."""
         text = self._read(skill)
         block = _extract_block(text, S0_BEGIN_MARKER, S0_END_MARKER)
@@ -273,8 +278,9 @@ class TestSection0Precheck:
             f"[{skill}] Skill token {skill_token!r} not found in precheck block"
         )
 
-    def test_proceed_ref_correct(self, skill, declared_tier, proceed_ref):
+    def test_proceed_ref_correct(self, skill):
         """CRIT-1: proceed-ref assertion — §1 vs §0c per T-01 table."""
+        proceed_ref = SKILL_PROCEED_REF[skill]
         text = self._read(skill)
         block = _extract_block(text, S0_BEGIN_MARKER, S0_END_MARKER)
         if proceed_ref == "§0c":
@@ -289,7 +295,7 @@ class TestSection0Precheck:
                 f"[{skill}] §1-class skill must have '§1' in precheck block (proceed-to-body refs)"
             )
 
-    def test_dispatch_noun_correct(self, skill, declared_tier, proceed_ref):
+    def test_dispatch_noun_correct(self, skill):
         """MINOR-2: dispatch-tier noun assertion — haiku skills must not say Sonnet
         in user-facing Question/Option text.
 
@@ -298,6 +304,7 @@ class TestSection0Precheck:
         We check only the user-facing dispatch lines (the Question and Option descriptions),
         identified by the 'Dispatching /<skill> to' sentence.
         """
+        declared_tier = SKILL_DECLARED_TIER[skill]
         text = self._read(skill)
         block = _extract_block(text, S0_BEGIN_MARKER, S0_END_MARKER)
         # Extract user-facing dispatch lines: from 'Dispatching' through the option descriptions.
@@ -310,7 +317,6 @@ class TestSection0Precheck:
         # Take the user-facing portion from the Question through the end of the block.
         user_facing_text = block[dispatch_pos:]
 
-        tier_title = declared_tier.title()  # "Haiku", "Sonnet", "Opus"
         if declared_tier == "haiku":
             # The user-facing question/option text must not say Sonnet/sonnet.
             assert "Sonnet" not in user_facing_text and "sonnet" not in user_facing_text, (
