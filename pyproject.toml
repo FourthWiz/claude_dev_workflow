@@ -27,6 +27,7 @@ quoin = "quoin.cli:main"
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
+    "pytest-timeout",
     "build",
     "pyyaml>=6.0",
 ]
@@ -86,6 +87,12 @@ python_functions = "test_*"
 python_classes = "Test*"
 addopts = "-q"
 pythonpath = ["src", "."]
+timeout = 240
+timeout_method = "thread"
+markers = [
+    "smoke: fast smoke subset (pre-existing usage in test_quoin_stage1_recursion_abort.py and others; registered to resolve unregistered-marker warnings)",
+    "slow_fs: touches the working tree / Drive mount; allow a longer timeout",
+]
 
 [tool.pyright]
 pythonVersion = "3.10"
