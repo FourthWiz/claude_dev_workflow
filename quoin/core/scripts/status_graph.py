@@ -21,6 +21,19 @@ from typing import Optional
 
 
 # ---------------------------------------------------------------------------
+# Google Drive conflict-copy filter (IVG-75)
+# Conservative anchored regex — see find_drive_conflicts.py D-01 for rationale.
+# ---------------------------------------------------------------------------
+
+_DRIVE_CONFLICT_RE = re.compile(r" \d{1,3}(\.[^ ]*)?$")
+
+
+def _is_drive_conflict(name: str) -> bool:
+    """Return True iff *name* looks like a Google Drive sync-conflict copy."""
+    return _DRIVE_CONFLICT_RE.search(name) is not None
+
+
+# ---------------------------------------------------------------------------
 # Phase detection
 # ---------------------------------------------------------------------------
 
@@ -49,14 +62,14 @@ def _git_diff_nonempty(task_dir: Path) -> bool:
     try:
         root_result = subprocess.run(
             ["git", "-C", str(task_dir), "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=15,
         )
         if root_result.returncode != 0:
             return False
         git_root = root_result.stdout.strip()
         diff_result = subprocess.run(
             ["git", "-C", git_root, "diff", "--quiet", "HEAD"],
-            capture_output=True, timeout=5,
+            capture_output=True, timeout=15,
         )
         return diff_result.returncode != 0
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
@@ -93,9 +106,12 @@ def detect_phase(task_dir: Path, probe_git: bool = False) -> PhaseResult:
     except Exception:
         pass
 
-    # Gather filenames (top-level only)
+    # Gather filenames (top-level only), excluding Drive conflict copies.
     try:
-        filenames = [f.name for f in task_dir.iterdir() if f.is_file()]
+        filenames = [
+            f.name for f in task_dir.iterdir()
+            if f.is_file() and not _is_drive_conflict(f.name)
+        ]
     except (OSError, PermissionError):
         return PhaseResult(phase="discover", critic_rounds=0, review_rounds=0, task_dir=task_dir)
 
@@ -132,12 +148,16 @@ def _max_artifact_mtime(task_dir: Path) -> float:
     mtimes: list[float] = []
     try:
         for entry in task_dir.iterdir():
+            if _is_drive_conflict(entry.name):
+                continue  # skip Drive conflict-copy files/dirs at task root
             if entry.is_file() and entry.stat().st_size > 0:
                 mtimes.append(entry.stat().st_mtime)
             elif entry.is_dir() and re.match(r"^stage-\d+$", entry.name):
                 # Stage subfolder: check its artifact files too
                 try:
                     for sub in entry.iterdir():
+                        if _is_drive_conflict(sub.name):
+                            continue  # skip Drive conflict copies inside stage dirs
                         if sub.is_file() and sub.stat().st_size > 0:
                             mtimes.append(sub.stat().st_mtime)
                 except (OSError, PermissionError):
@@ -166,6 +186,8 @@ def pick_active_task(root: Path) -> Optional[Path]:
                 continue
             if entry.name in _EXCLUDED_NAMES:
                 continue
+            if _is_drive_conflict(entry.name):
+                continue  # skip Drive conflict-copy task dirs
             mtime = _max_artifact_mtime(entry)
             if mtime > 0.0:  # requires at least one non-empty artifact
                 candidates.append((mtime, entry))
