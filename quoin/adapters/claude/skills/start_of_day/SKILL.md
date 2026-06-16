@@ -23,6 +23,57 @@ Detection:
       * Bare `[no-redispatch]` (parent-emit form AND user manual override): skip dispatch, proceed to §1 at the current tier.
       * Counter form `[no-redispatch:N]` where N is a positive integer ≥ 2: ABORT (see "Abort rule" below).
       * Counter form `[no-redispatch:1]` is reserved and treated as bare `[no-redispatch]` for forward-compatibility; do not emit it.
+<!-- §0-1m-context-precheck-begin -->
+  - 1M-context precheck (parent-credit-mismatch guardrail):
+    BEFORE evaluating the tier comparison, inspect the parent model name read from system context.
+    If the model name string contains any of the substrings `1m`, `1M`, `(1M context)`, or
+    `context-1m` (case-insensitive match on the literal substring), the parent session is using
+    the 1M context beta. The Claude Code CLI propagates the `context-1m-2025-08-07` beta header
+    to ALL subagent API calls; if the user has parent-tier 1M credits but lacks declared-tier
+    1M credits, the Agent tool dispatch will fail with:
+      `API Error: Usage credits required for 1M context · run /usage-credits to turn them
+      on, or /model to switch to standard context`
+    quoin cannot drop the beta header from the Agent call — the Agent tool exposes only
+    `model: "sonnet"|"opus"|"haiku"`, not a context-window selector.
+    When the parent-on-1M signal fires AND the prompt does NOT start with any `[no-redispatch]`
+    form AND current_tier > declared_tier:
+      Issue an `AskUserQuestion` with these exact two options (label + description copied
+      verbatim — drift detection relies on string equality):
+
+        Question: "Parent session is on a 1M-context model. Dispatching /start_of_day to haiku
+        may fail if you don't have Haiku 1M credits. How would you like to proceed?"
+        Header:   "1M dispatch"
+        multiSelect: false
+
+        Option 1:
+          label: "Abort — I'll switch with /model first"
+          description: "Stop here. Run /model in your terminal to switch the parent session
+          to a standard-context model (e.g., /model haiku), then re-invoke /start_of_day.
+          The §0 dispatch will then land on standard Haiku successfully."
+        Option 2:
+          label: "Proceed in-session at parent tier"
+          description: "Skip the §0 dispatch this once. /start_of_day runs on the parent model
+          (more expensive per token than Haiku, but it works). Emits a one-line advisory
+          and treats the prompt as if [no-redispatch] were present."
+
+      Then:
+        - On Option 1 ("Abort — I'll switch with /model first"): print the single line
+          `[quoin: 1M-context parent detected; abort per user choice — switch with /model
+          and re-invoke /start_of_day]` and STOP. Do NOT proceed to §1. Do NOT spawn any
+          Agent. Do NOT call any other tool.
+        - On Option 2 ("Proceed in-session at parent tier"): print the single line
+          `[quoin: 1M-context parent detected; proceeding in-session at parent tier per
+          user choice]`, then treat the rest of §0 as if the prompt started with bare
+          `[no-redispatch]` (skip dispatch, proceed to §1 at the current tier). Do NOT
+          spawn any Agent.
+    When the parent-on-1M signal fires AND the prompt starts with any `[no-redispatch]`
+    form: skip this precheck entirely (user already opted out of dispatch; proceed to §1
+    at the current tier — no AskUserQuestion, no advisory line).
+    When the parent-on-1M signal fires AND current_tier <= declared_tier: skip this
+    precheck entirely (no dispatch would have happened anyway).
+    When the parent-on-1M signal does NOT fire: skip this precheck entirely and continue
+    to the existing dispatch logic below.
+<!-- §0-1m-context-precheck-end -->
   - If current_tier > declared_tier AND prompt does NOT start with any `[no-redispatch]` form:
       Dispatch reason: cost-guardrail handoff. dispatched-tier: haiku.
       Spawn an Agent subagent with the following arguments:
