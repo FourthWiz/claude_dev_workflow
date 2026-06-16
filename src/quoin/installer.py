@@ -710,10 +710,18 @@ def regenerate_preambles(source_dir: pathlib.Path, *, allow_writes: bool) -> Non
 
 
 def regenerate_pollution_dispatch(source_dir: pathlib.Path, *, allow_writes: bool) -> None:
-    """Regenerate §0' Pollution dispatch blocks in the 7 Opus-tier adapter SKILL.md files.
+    """Regenerate §0' Pollution dispatch AND §0″ Minimum-tier guard blocks.
+
+    Regenerates both §0' (7 Opus-tier leaf skills carry pollution dispatch) AND
+    §0″ (same 7 skills carry minimum-tier guard) in the adapter SKILL.md files at
+    quoin/adapters/claude/skills/*/SKILL.md.
 
     Must be called BEFORE deploy_skills so the freshly-injected adapter SKILL.md is the
     file that deploy_skills copies to the deploy root (IVG-69, T-06, R-11).
+
+    Note: allow_writes=False (user-mode installs) skips regeneration entirely — the
+    committed adapter SKILL.md output is the delivery vehicle for end users. The
+    --check flag (run in CI) is the guard against committed drift.
     """
     if not allow_writes:
         print("Skipping pollution dispatch regeneration (user mode — pass --dev to regenerate from source)")
