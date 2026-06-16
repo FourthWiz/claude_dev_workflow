@@ -39,6 +39,60 @@ Detection:
   - Sentinel check: if the user's prompt starts with `[no-redispatch]`: skip dispatch.
   - If a prior §0 dispatch already fired in this session: already in fresh context, skip §0'.
 
+<!-- §0prime-1m-context-precheck-begin -->
+  - 1M-context precheck (parent-credit-mismatch guardrail for §0' opus dispatch):
+    BEFORE spawning the §0' pollution-isolated subagent, inspect the parent model name read
+    from system context.
+    If the model name string contains any of the substrings `1m`, `1M`, `(1M context)`, or
+    `context-1m` (case-insensitive match on the literal substring), the parent session is using
+    the 1M context beta. The Claude Code CLI propagates the `context-1m-2025-08-07` beta header
+    to ALL subagent API calls; if the user has parent-tier 1M credits but lacks opus 1M credits,
+    the §0' Agent dispatch will fail with:
+      `API Error: Usage credits required for 1M context · run /usage-credits to turn them
+      on, or /model to switch to standard context`
+    quoin cannot drop the beta header from the Agent call — the Agent tool exposes only
+    `model: "sonnet"|"opus"|"haiku"`, not a context-window selector.
+    When the parent-on-1M signal fires AND pollution_score >= QUOIN_POLLUTION_THRESHOLD AND
+    the prompt does NOT start with any `[no-redispatch]` form AND no prior §0 dispatch fired:
+      Issue an `AskUserQuestion` with these exact two options (label + description copied
+      verbatim — drift detection relies on string equality):
+
+        Question: "Parent session is on a 1M-context model. Dispatching /architect to opus
+        may fail if you don't have Opus 1M credits. How would you like to proceed?"
+        Header:   "1M dispatch"
+        multiSelect: false
+
+        Option 1:
+          label: "Abort — I'll switch with /model first"
+          description: "Stop here. Run /model in your terminal to switch the parent session
+          to a standard-context model (e.g., /model opus), then re-invoke /architect.
+          The §0' dispatch will then land on standard Opus successfully."
+        Option 2:
+          label: "Proceed in-session at parent tier"
+          description: "Skip the §0' dispatch this once. /architect runs on the parent model
+          (more expensive per token than Opus, but it works). Emits a one-line advisory
+          and treats the prompt as if [no-redispatch] were present — skip the §0' Dispatch
+          action entirely and fall through to the skill body."
+
+      Then:
+        - On Option 1 ("Abort — I'll switch with /model first"): print the single line
+          `[quoin: 1M-context parent detected; abort per user choice — switch with /model
+          and re-invoke /architect]` and STOP. Do NOT proceed to skill body. Do NOT spawn any
+          Agent. Do NOT call any other tool.
+        - On Option 2 ("Proceed in-session at parent tier"): print the single line
+          `[quoin: 1M-context parent detected; proceeding in-session at parent tier per
+          user choice]`, then treat the rest of §0' as if the prompt started with bare
+          `[no-redispatch]`: SKIP the §0' Dispatch action entirely and fall through to the
+          skill body (NOT the Fail-OPEN path). Do NOT spawn any Agent.
+    When the parent-on-1M signal fires AND the prompt starts with any `[no-redispatch]`
+    form: skip this precheck entirely (user already opted out of dispatch; proceed to skill body).
+    When the parent-on-1M signal fires AND pollution_score < QUOIN_POLLUTION_THRESHOLD:
+    skip this precheck entirely (no §0' dispatch would have happened anyway).
+    When the parent-on-1M signal fires AND a prior §0 dispatch already fired: skip entirely.
+    When the parent-on-1M signal does NOT fire: skip this precheck entirely and continue
+    to the existing dispatch logic below.
+<!-- §0prime-1m-context-precheck-end -->
+
 Dispatch action (when pollution detected AND no sentinel AND no prior §0 dispatch):
   Determine dispatch contract fields:
     - Extract the task description from the user's invocation.
