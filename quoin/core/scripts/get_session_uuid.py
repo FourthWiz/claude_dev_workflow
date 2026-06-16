@@ -82,8 +82,13 @@ def get_session_uuid(
         proj_path = project_path or str(Path.cwd())
         home_path = Path(home) if home else Path.home()
         proj_dir = home_path / ".claude" / "projects" / project_hash(proj_path)
+        # Filter out Drive conflict copies (e.g. "UUID 2.jsonl") before sorting
+        # by mtime — a conflict copy newer than the real session file would
+        # otherwise be picked as the "most recent" UUID. IVG-75 T-06.
+        _conflict_re = re.compile(r" \d{1,3}(\.[^ ]*)?$")
         jsonl_files = sorted(
-            proj_dir.glob("*.jsonl"),
+            [p for p in proj_dir.glob("*.jsonl")
+             if not _conflict_re.search(p.name)],
             key=lambda p: p.stat().st_mtime,
             reverse=True,
         )
