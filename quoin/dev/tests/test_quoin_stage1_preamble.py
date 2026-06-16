@@ -46,6 +46,19 @@ def skill_md_path(skill_name: str) -> Path:
 SO_HEADING = "## §0 Model dispatch (FIRST STEP — execute before anything else)"
 MR_HEADING = "## Model requirement"
 POLLUTION_HEADING = "## §0' Pollution dispatch (execute after §0 / §0c if present — before skill body)"
+# MINTIER_HEADING added for test_revise_revise_fast_sync_contract (IVG-72 CRIT-1 fix):
+# revise/SKILL.md has §0″ (injected by IVG-72) but revise-fast/SKILL.md does NOT.
+# Without adding MINTIER_HEADING to allowed_sections, every §0″ diff line falls under
+# an unknown section and fails the sync-contract test. Mirrors exactly how POLLUTION_HEADING
+# was added when §0' shipped. Import from generator for byte-identity.
+import importlib.util as _ilu
+_ipd_spec = _ilu.spec_from_file_location(
+    "inject_pollution_dispatch",
+    Path(__file__).resolve().parent.parent.parent / "scripts" / "inject_pollution_dispatch.py",
+)
+_ipd = _ilu.module_from_spec(_ipd_spec)
+_ipd_spec.loader.exec_module(_ipd)
+MINTIER_HEADING: str = _ipd.MINTIER_HEADING
 
 # 18 cheap-tier skills — must carry §0.
 CHEAP_TIER_SKILLS = [
@@ -335,7 +348,7 @@ def test_revise_revise_fast_sync_contract():
                     return None
         return None
 
-    allowed_sections = {SO_HEADING, MR_HEADING, POLLUTION_HEADING}
+    allowed_sections = {SO_HEADING, MR_HEADING, POLLUTION_HEADING, MINTIER_HEADING}
     # Stage 2-alt (pipeline-efficiency-improvements): the preamble bootstrap step
     # contains the skill-specific path (~/.claude/skills/<skill>/preamble.md) which
     # differs between revise and revise-fast. This is an intentional, allowed diff
