@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-inject_pollution_dispatch.py — Generator for the §0' Pollution dispatch block.
+inject_pollution_dispatch.py — Generator for §0' Pollution dispatch AND §0″ Minimum-tier guard.
 
 Inserts/refreshes the §0' Pollution dispatch block (and §0c Pidfile lifecycle for
-architect + review) into the 7 Opus-tier Claude adapter SKILL.md files at:
+architect + review) AND the §0″ Minimum-tier guard block into the 7 Opus-tier
+Claude adapter SKILL.md files at:
   quoin/adapters/claude/skills/<skill>/SKILL.md
 
-This script is the SOURCE-OF-TRUTH owner for §0' content. The block was dropped
-during the Phase-10 adapter migration (commit e732677) and is restored here in a
-generator-owned form that prevents re-drift.
+This script is the SOURCE-OF-TRUTH owner for both §0' and §0″ content.
+§0' was dropped during the Phase-10 adapter migration (commit e732677) and
+restored here in a generator-owned form. §0″ was added in IVG-72.
 
 Note: This is a STANDALONE script (stdlib-only on the write path). It does NOT
 import from quoin/core/scripts/. Registering it in DEPLOYED_SCRIPTS only is
@@ -20,7 +21,7 @@ Exit codes:
   0  success
   1  write error (file not found or could not write)
   6  --dry-run and --check are mutually exclusive
-  7  --check: drift detected (one or more adapter files missing §0' or token mismatch)
+  7  --check: drift detected (one or more adapter files missing §0' or §0″, or token mismatch)
 """
 
 from __future__ import annotations
@@ -36,6 +37,10 @@ import sys
 POLLUTION_HEADING = "## §0' Pollution dispatch (execute after §0 / §0c if present — before skill body)"
 ZC_HEADING = "## §0c Pidfile lifecycle"
 
+# HEADING BYTE-IDENTITY: the ″ (U+2033 DOUBLE PRIME) must match exactly across
+# template, --check regex, and drift test. Copy-paste from here; do not retype.
+MINTIER_HEADING = "## §0″ Minimum-tier guard (execute after §0 / §0c / §0’ if present — before skill body)"
+
 # 7 Opus-tier target skills — must carry §0'.
 POLLUTION_TARGET_SKILLS = [
     "architect",
@@ -47,8 +52,94 @@ POLLUTION_TARGET_SKILLS = [
     "discover",
 ]
 
+# 7 Opus-tier target skills — must carry §0″ (same set as POLLUTION_TARGET_SKILLS).
+# Orchestrators /run and /thorough_plan are deliberately excluded (D-04):
+# orchestrators carry no §0/§0'/§0c today and route to correctly-tiered children.
+MINTIER_TARGET_SKILLS = [
+    "architect",
+    "plan",
+    "critic",
+    "revise",
+    "review",
+    "init_workflow",
+    "discover",
+]
+
 # Skills that also need §0c Pidfile lifecycle (inserted BEFORE §0').
 ZC_SKILLS = ["architect", "review"]
+
+# ─── §0″ Minimum-tier guard block template ────────────────────────────────────
+# Spike result 2026-06-16: up-dispatch not confirmed in this session (implement
+# session runs on Sonnet; spike requires live API + Sonnet parent session to observe
+# tier escalation). Using Option B (AskUserQuestion-only). If a future spike confirms
+# up-dispatch works, update to Option A by adding the Agent spawn Step 1 block.
+#
+# All required_tokens present in both Option A and Option B variants:
+#   [no-redispatch], model: "opus", current_tier < declared_tier,
+#   Abort — run from an Opus session, Proceed at current tier (under-powered),
+#   [quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]
+#
+# Note: QUOIN_DISABLE_MINTIER_GUARD silent-skip is intentional (explicit opt-out,
+# not a bug). No advisory is emitted — emitting a line would be noise for an
+# intentional bypass.
+
+# The template body does NOT include the heading line — render_mintier_block prepends
+# MINTIER_HEADING to guarantee byte-identity (heading in block == MINTIER_HEADING constant).
+# This avoids U+2033 vs other quote character mismatches when the heading is typed inline.
+#
+# Required tokens in this block (all present in both Option A and Option B variants):
+#   [no-redispatch]  — in sentinel detection line
+#   model: "opus"    — in declared tier descriptor line (Option B: descriptor only, no dispatch)
+#   current_tier < declared_tier  — in fire condition line
+#   Abort — run from an Opus session  — Option 1 label
+#   Proceed at current tier (under-powered)  — Option 2 label
+#   [quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]
+#     — in Option 2 advisory line
+_MINTIER_BLOCK_BODY = """\
+
+This skill is declared model: "opus". If the executing agent is running on a model
+strictly CHEAPER than opus, the quality rationale for opus is undermined.
+
+<!-- §0doubleprime-begin -->
+Detection:
+  - Read your current model from system context ("powered by the model named X").
+  - Tier order: haiku < sonnet < opus. declared_tier = opus.
+  - Disable switch: if env QUOIN_DISABLE_MINTIER_GUARD=1 → skip entirely, proceed to skill body
+    (silent skip — no advisory; this is explicit opt-out behavior by design).
+  - Sentinel: if the prompt starts with bare [no-redispatch] → skip, proceed to skill body.
+  - Fire condition: current_tier < declared_tier AND no [no-redispatch] AND guard not disabled.
+
+On fire:
+  Issue AskUserQuestion (labels verbatim — drift relies on equality):
+    Question: "/{skill} requires Opus but this session is below Opus. How would you like to proceed?"
+    Header: "Min-tier"
+    multiSelect: false
+    Option 1:
+      label: "Abort — run from an Opus session"
+      description: "Stop here. Switch the session to Opus (/model opus) and re-invoke /{skill}."
+    Option 2:
+      label: "Proceed at current tier (under-powered)"
+      description: "Run /{skill} on the current cheaper model. Quality may be reduced;
+      emits a one-line advisory."
+  Then:
+    - Option 1: print `[quoin-mintier: aborted; re-invoke /{skill} from an Opus session]` and STOP.
+    - Option 2: print `[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]`, then proceed to skill body (treat as bare [no-redispatch]).
+<!-- §0doubleprime-end -->
+
+"""
+
+
+def render_mintier_block(skill: str) -> str:
+    """Render the §0″ Minimum-tier guard block for a given skill.
+
+    Prepends MINTIER_HEADING to guarantee byte-identity between the block heading
+    and the constant used by _replace_existing_block and --check. This avoids
+    character encoding mismatches (U+2019 vs U+0027, U+2033 vs similar) when the
+    heading is written inline in the template string.
+    """
+    body = _MINTIER_BLOCK_BODY.replace("{skill}", skill)
+    return MINTIER_HEADING + body
+
 
 # ─── §0c block bodies (verbatim from f81b6ff, §0c path fixed to __QUOIN_HOME__) ─
 
@@ -369,6 +460,50 @@ def inject_blocks_into_file(skill: str, skill_md: pathlib.Path) -> str:
     return "".join(lines)
 
 
+def inject_mintier_block_into_file(skill: str, skill_md: pathlib.Path) -> None:
+    """Inject/refresh §0″ Minimum-tier guard into a single adapter SKILL.md file.
+
+    Handles §0″ injection independently of inject_blocks_into_file (which handles
+    §0'/§0c). This is a SEPARATE function to avoid the early-return correctness bug
+    in inject_blocks_into_file's refresh path (D-08 in plan).
+
+    Strategy (per proc:T-02-anchor):
+    - Refresh path: if MINTIER_HEADING already in text, replace in place (idempotent).
+    - Insert path: §0' block ends at the next '## ' heading after POLLUTION_HEADING.
+      Locate that heading and insert §0″ immediately before it.
+    - FAIL LOUD if no POLLUTION_HEADING found (§0' must be injected first).
+    - Atomic write: .tmp + os.replace(), mirror existing pattern.
+    """
+    text = skill_md.read_text(encoding="utf-8")
+    mintier_block = render_mintier_block(skill)
+
+    if MINTIER_HEADING in text:
+        # Refresh path (all re-runs after first injection)
+        text = _replace_existing_block(text, MINTIER_HEADING, mintier_block)
+    elif POLLUTION_HEADING in text:
+        # Insert path: all 7 skills have §0' (first run)
+        # §0' block ends at the next "## " heading STRICTLY AFTER POLLUTION_HEADING
+        p_idx = text.index(POLLUTION_HEADING)
+        next_h2_match = re.search(r"^## ", text[p_idx + len(POLLUTION_HEADING):], re.MULTILINE)
+        if not next_h2_match:
+            raise ValueError(
+                f"No heading found after §0' block in {skill_md} — FAIL LOUD. "
+                "Cannot determine insertion point for §0″ block."
+            )
+        insert_pos = p_idx + len(POLLUTION_HEADING) + next_h2_match.start()
+        text = text[:insert_pos] + mintier_block + text[insert_pos:]
+    else:
+        raise ValueError(
+            f"No §0' block found in {skill_md} (run §0' injection first) — FAIL LOUD. "
+            "inject_mintier_block_into_file requires §0' to already be present."
+        )
+
+    # Atomic write: .tmp + os.replace()
+    tmp_path = skill_md.with_suffix(".md.tmp")
+    tmp_path.write_text(text, encoding="utf-8")
+    os.replace(tmp_path, skill_md)
+
+
 # ─── Main processing ──────────────────────────────────────────────────────────
 
 def _get_adapter_dir() -> pathlib.Path:
@@ -380,13 +515,19 @@ def _get_adapter_dir() -> pathlib.Path:
 
 
 def run_inject(*, dry_run: bool = False) -> int:
-    """Inject/refresh §0' (and §0c) into all 7 target adapter SKILL.md files.
+    """Inject/refresh §0' (and §0c) AND §0″ into all 7 target adapter SKILL.md files.
+
+    Two loops:
+    1. Loop over POLLUTION_TARGET_SKILLS — injects §0'/§0c (inject_blocks_into_file).
+    2. Loop over MINTIER_TARGET_SKILLS — injects §0″ (inject_mintier_block_into_file).
+    §0″ injection must run AFTER §0' (it uses §0' as the insertion anchor).
 
     Returns 0 on success, 1 on any error.
     """
     adapter_dir = _get_adapter_dir()
     errors = []
 
+    # ── Loop 1: §0' (and §0c) injection ──
     for skill in POLLUTION_TARGET_SKILLS:
         skill_md = adapter_dir / skill / "SKILL.md"
         if not skill_md.exists():
@@ -396,11 +537,11 @@ def run_inject(*, dry_run: bool = False) -> int:
         try:
             new_content = inject_blocks_into_file(skill, skill_md)
         except (ValueError, OSError) as e:
-            errors.append(f"ERROR processing {skill}: {e}")
+            errors.append(f"ERROR processing §0' for {skill}: {e}")
             continue
 
         if dry_run:
-            print(f"=== {skill} ===")
+            print(f"=== {skill} §0' preview ===")
             # Show only the injected block(s) for brevity
             idx = new_content.find("## §0")
             preview = new_content[idx : new_content.find("\n## ", idx + 4) + 1] if idx != -1 else "(no §0 block found)"
@@ -413,11 +554,32 @@ def run_inject(*, dry_run: bool = False) -> int:
             tmp_path.write_text(new_content, encoding="utf-8")
             os.replace(tmp_path, skill_md)
         except OSError as e:
-            errors.append(f"WRITE ERROR for {skill}: {e}")
+            errors.append(f"WRITE ERROR for §0' in {skill}: {e}")
             if tmp_path.exists():
                 tmp_path.unlink(missing_ok=True)
             continue
         print(f"  injected §0' into {skill_md.relative_to(adapter_dir.parent.parent.parent.parent)}")
+
+    # ── Loop 2: §0″ (Minimum-tier guard) injection ──
+    for skill in MINTIER_TARGET_SKILLS:
+        skill_md = adapter_dir / skill / "SKILL.md"
+        if not skill_md.exists():
+            errors.append(f"MISSING (§0″): {skill_md}")
+            continue
+
+        if dry_run:
+            # For dry-run: show what §0″ would look like
+            print(f"=== {skill} §0″ preview ===")
+            block = render_mintier_block(skill)
+            print(block[:500])
+            continue
+
+        try:
+            inject_mintier_block_into_file(skill, skill_md)
+        except (ValueError, OSError) as e:
+            errors.append(f"ERROR processing §0″ for {skill}: {e}")
+            continue
+        print(f"  injected §0″ into {skill_md.relative_to(adapter_dir.parent.parent.parent.parent)}")
 
     if errors:
         for err in errors:
@@ -427,14 +589,22 @@ def run_inject(*, dry_run: bool = False) -> int:
 
 
 def run_check() -> int:
-    """--check mode: verify all 7 adapter SKILL.md files carry correct §0' (and §0c) blocks.
+    """--check mode: verify all 7 adapter SKILL.md files carry correct §0' (and §0c) AND §0″ blocks.
 
     Returns 0 if all files are fresh, 7 if any drift detected.
-    Also verifies the 6 REQUIRED_TOKENS from test_quoin_pollution_preamble.py
-    and the 3 file-wide strings from test_pollution_score_extraction.py are
-    present inside the rendered §0' block (MIN-A anti-drift cross-guard).
+    Also verifies:
+    - The 6 REQUIRED_TOKENS from test_quoin_pollution_preamble.py inside §0' block
+    - The 3 file-wide strings from test_pollution_score_extraction.py inside §0' block
+    - The 6 mintier_required_tokens inside §0″ block (MIN-1)
+    - The 2 mintier_required_markers as file-level presence checks (MIN-1)
+    - §0″ appears AFTER §0' (ordering guard)
 
     Note: The literal `5000` threshold value is also checked (MIN-A, per plan).
+
+    Token list discipline (MIN-1): mintier_required_tokens (6 content tokens) are checked
+    INSIDE the extracted §0″ block. mintier_required_markers (2 HTML markers) are checked
+    for presence in the full file text (outside block extraction).
+    All required_tokens present in both Option A and Option B variants.
     """
     adapter_dir = _get_adapter_dir()
 
@@ -455,6 +625,22 @@ def run_check() -> int:
     ]
     # MIN-A: literal default threshold value must be in block
     threshold_token = "5000"
+
+    # Required tokens inside §0″ block (MIN-1: 6 content tokens checked inside block)
+    # All required_tokens present in both Option A and Option B variants.
+    mintier_required_tokens = [
+        "[no-redispatch]",
+        'model: "opus"',
+        "current_tier < declared_tier",
+        "Abort — run from an Opus session",
+        "Proceed at current tier (under-powered)",
+        "[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]",
+    ]
+    # Required HTML markers for §0″ (MIN-1: 2 markers checked as file-level presence, NOT inside block extraction)
+    mintier_required_markers = [
+        "<!-- §0doubleprime-begin -->",
+        "<!-- §0doubleprime-end -->",
+    ]
 
     drifted = []
 
@@ -516,11 +702,59 @@ def run_check() -> int:
                         drifted.append(f"{skill}: §0c has literal ~/.claude/ in pidfile source line (must use __QUOIN_HOME__)")
                         break
 
+    # ── §0″ checks (MINTIER_TARGET_SKILLS) ──
+    # HEADING BYTE-IDENTITY: the ″ (U+2033) must match exactly — see MINTIER_HEADING constant.
+    # Extraction regex mirrors §0' extraction pattern for consistency.
+    mintier_heading_escaped = re.escape(MINTIER_HEADING)
+    for skill in MINTIER_TARGET_SKILLS:
+        skill_md = adapter_dir / skill / "SKILL.md"
+        if not skill_md.exists():
+            drifted.append(f"{skill}: adapter SKILL.md missing at {skill_md} (§0″ check)")
+            continue
+
+        text = skill_md.read_text(encoding="utf-8")
+
+        # Check §0″ heading present exactly once
+        count = text.count(MINTIER_HEADING)
+        if count == 0:
+            drifted.append(f"{skill}: §0″ heading missing")
+            continue
+        if count > 1:
+            drifted.append(f"{skill}: §0″ heading appears {count} times (expected exactly 1)")
+
+        # Check HTML markers at file level (MIN-1: markers outside block extraction)
+        for marker in mintier_required_markers:
+            if text.count(marker) != 1:
+                drifted.append(f"{skill}: §0″ marker {marker!r} missing or duplicated (count={text.count(marker)})")
+
+        # Extract §0″ block for token checks
+        mintier_block_match = re.search(
+            mintier_heading_escaped + r".+?(?=^## )",
+            text,
+            flags=re.DOTALL | re.MULTILINE,
+        )
+        if not mintier_block_match:
+            drifted.append(f"{skill}: §0″ block could not be extracted (no trailing ## heading?)")
+            continue
+        mintier_block = mintier_block_match.group(0)
+
+        # Check required tokens inside §0″ block (MIN-1: 6 content tokens)
+        for token in mintier_required_tokens:
+            if token not in mintier_block:
+                drifted.append(f"{skill}: missing mintier required token {token!r} in §0″ block")
+
+        # Ordering guard: §0″ must appear AFTER §0'
+        p_idx = text.find(POLLUTION_HEADING)
+        m_idx = text.find(MINTIER_HEADING)
+        if p_idx != -1 and m_idx != -1 and m_idx <= p_idx:
+            drifted.append(f"{skill}: §0″ appears BEFORE or AT §0' (ordering violation)")
+
     if drifted:
         for msg in drifted:
             print(f"DRIFT: {msg}", file=sys.stderr)
         return 7
     print("inject_pollution_dispatch --check: all 7 adapter files are fresh")
+    print("inject_pollution_dispatch --check: all 7 §0doubleprime files are fresh")
     return 0
 
 

@@ -102,6 +102,36 @@ Fail-OPEN path:
 Otherwise (score below threshold OR sentinel OR §0 dispatched OR session-state unreadable):
 proceed to skill body.
 
+## §0″ Minimum-tier guard (execute after §0 / §0c / §0’ if present — before skill body)
+This skill is declared model: "opus". If the executing agent is running on a model
+strictly CHEAPER than opus, the quality rationale for opus is undermined.
+
+<!-- §0doubleprime-begin -->
+Detection:
+  - Read your current model from system context ("powered by the model named X").
+  - Tier order: haiku < sonnet < opus. declared_tier = opus.
+  - Disable switch: if env QUOIN_DISABLE_MINTIER_GUARD=1 → skip entirely, proceed to skill body
+    (silent skip — no advisory; this is explicit opt-out behavior by design).
+  - Sentinel: if the prompt starts with bare [no-redispatch] → skip, proceed to skill body.
+  - Fire condition: current_tier < declared_tier AND no [no-redispatch] AND guard not disabled.
+
+On fire:
+  Issue AskUserQuestion (labels verbatim — drift relies on equality):
+    Question: "/discover requires Opus but this session is below Opus. How would you like to proceed?"
+    Header: "Min-tier"
+    multiSelect: false
+    Option 1:
+      label: "Abort — run from an Opus session"
+      description: "Stop here. Switch the session to Opus (/model opus) and re-invoke /discover."
+    Option 2:
+      label: "Proceed at current tier (under-powered)"
+      description: "Run /discover on the current cheaper model. Quality may be reduced;
+      emits a one-line advisory."
+  Then:
+    - Option 1: print `[quoin-mintier: aborted; re-invoke /discover from an Opus session]` and STOP.
+    - Option 2: print `[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]`, then proceed to skill body (treat as bare [no-redispatch]).
+<!-- §0doubleprime-end -->
+
 ## Model requirement
 
 Uses the strongest model (Opus) because understanding how services relate requires deep reasoning across multiple codebases.
