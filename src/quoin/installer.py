@@ -80,6 +80,7 @@ DEPLOYED_SCRIPTS = (
     "inject_pollution_dispatch.py",  # IVG-69 Stage A: §0' Pollution dispatch generator (standalone, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS needed)
     "spend_monitor.py",              # IVG-62: realtime token-spend monitor wrapper
     "get_session_uuid.py",           # IVG-74: reliable session-UUID capture for cost ledger
+    "find_drive_conflicts.py",       # IVG-75: Drive sync-conflict sweep wrapper
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -306,6 +307,7 @@ CORE_SCRIPTS = (
     "affected_tests.py",          # IVG-71: wrapped impl; required by ~/.claude/scripts/affected_tests.py parents[1] loader
     "spend_monitor.py",           # IVG-62: realtime token-spend monitor core impl
     "get_session_uuid.py",        # IVG-74: reliable session-UUID capture for cost ledger
+    "find_drive_conflicts.py",    # IVG-75: Drive sync-conflict sweep core impl
 )
 
 
