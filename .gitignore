@@ -53,3 +53,25 @@ htmlcov/
 /next-steps*.md
 /pipeline-spending-analysis*.md
 /openquoin/
+
+# Google Drive CloudStorage sync-conflict copies (IVG-75).
+# Drive appends " 2", " 3", ... (up to ~3 digits) before the extension
+# (or at end of a dir/extensionless name) when it makes a conflict copy.
+# These patterns are BEST-EFFORT: they cover the common single-digit and
+# multi-digit shapes. False negatives (a conflict copy not caught here)
+# are handled by the sweep script. Note: "*\ [0-9].*" technically matches
+# "version 2.0 release notes.md" via gitignore glob — this is a known
+# best-effort limitation; the sweep regex correctly rejects it via the
+# no-space-in-tail rule (D-01). See D-02 for the explicit parity contract.
+# Single-digit, with extension (e.g. "foo 2.md", also "notes 2.tar.gz"):
+*\ [0-9].*
+# Single-digit, extensionless/dir (e.g. "next_steps 2"):
+*\ [0-9]
+# Two-digit, with extension (e.g. "foo 10.md"):
+*\ [0-9][0-9].*
+# Two-digit, extensionless:
+*\ [0-9][0-9]
+# Three-digit, with extension (e.g. "log 100.md"):
+*\ [0-9][0-9][0-9].*
+# Three-digit, extensionless:
+*\ [0-9][0-9][0-9]
