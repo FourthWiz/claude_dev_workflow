@@ -45,7 +45,9 @@ _ipd_spec = importlib.util.spec_from_file_location(
     "inject_pollution_dispatch",
     SCRIPTS_DIR / "inject_pollution_dispatch.py",
 )
+assert _ipd_spec is not None
 _ipd = importlib.util.module_from_spec(_ipd_spec)
+assert _ipd_spec.loader is not None
 _ipd_spec.loader.exec_module(_ipd)
 
 MINTIER_HEADING: str = _ipd.MINTIER_HEADING
@@ -190,7 +192,7 @@ def test_mintier_injection_idempotent(skill):
 
     Uses a tmp file to avoid modifying the actual SKILL.md.
     """
-    import tempfile, os
+    import tempfile
 
     skill_md = ADAPTER_SKILLS_DIR / skill / "SKILL.md"
     original_text = skill_md.read_text(encoding="utf-8")

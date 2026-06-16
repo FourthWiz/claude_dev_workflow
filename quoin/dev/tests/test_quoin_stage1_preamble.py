@@ -56,7 +56,9 @@ _ipd_spec = _ilu.spec_from_file_location(
     "inject_pollution_dispatch",
     Path(__file__).resolve().parent.parent.parent / "scripts" / "inject_pollution_dispatch.py",
 )
+assert _ipd_spec is not None
 _ipd = _ilu.module_from_spec(_ipd_spec)
+assert _ipd_spec.loader is not None
 _ipd_spec.loader.exec_module(_ipd)
 MINTIER_HEADING: str = _ipd.MINTIER_HEADING
 
