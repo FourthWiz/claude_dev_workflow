@@ -8,9 +8,12 @@ dynamic = ["version"]
 description = "Workflow state for stateless coding agents — structured persistence for Claude Code sessions"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = { text = "PolyForm Noncommercial 1.0.0" }
 authors = [
     { name = "IvGor" },
+]
+classifiers = [
+    "License :: Other/Proprietary License",
 ]
 
 [project.urls]

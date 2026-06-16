@@ -486,4 +486,4 @@ is implemented versus planned.
 
 ## License
 
-MIT
+[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) — source-available, noncommercial use only.
