@@ -1,0 +1,185 @@
+"""IVG-77: Drift/wiring tests for the branch-recovery.md Tier-1 memory file.
+
+Asserts:
+  (a) The recipe file exists and contains the canonical git update-ref recipe.
+  (b) The recipe file does NOT expose git reset --hard as a standalone runnable
+      fenced command (only allows it inside the "Why not" rationale prose).
+  (c) Each referencing adapter SKILL.md (implement, gate, review, end_of_task)
+      contains the __QUOIN_HOME__/memory/branch-recovery.md path literal.
+  (d) branch-recovery.md is in TIER1_MEMORY_FILES (installer.py).
+  (e) CLAUDE.md contains the branch-recovery.md reference.
+  (f) pyproject.toml contains the exact force-include line (dual-list guard,
+      IVG-77 CRIT-1 fix — a missing line ships a short wheel and breaks
+      test_wheel_memory_inventory_matches_tier1_set).
+"""
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+# ---------------------------------------------------------------------------
+# Path constants (parents[3] form — matches test_install_branch_hygiene_deployed.py)
+# ---------------------------------------------------------------------------
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+PKG_DIR = REPO_ROOT / "quoin"  # quoin/quoin/ — the source package root
+
+# Sanity check: fail loudly if the path math is wrong (MIN-1)
+assert (PKG_DIR / "memory").is_dir(), (
+    f"path math wrong: PKG_DIR/memory does not exist at {PKG_DIR / 'memory'}. "
+    "Expected PKG_DIR = <repo_root>/quoin/quoin/ where 'memory' is a subdirectory."
+)
+
+RECIPE_FILE = PKG_DIR / "memory" / "branch-recovery.md"
+CLAUDE_MD = PKG_DIR / "CLAUDE.md"
+PYPROJECT_TOML = REPO_ROOT / "pyproject.toml"
+
+REFERENCING_SKILLS = ["implement", "gate", "review", "end_of_task"]
+
+RECIPE_ANCHOR = "update-ref refs/heads"
+EXPECTED_FORCE_INCLUDE_LINE = (
+    '"quoin/memory/branch-recovery.md" = "src/quoin/data/memory/branch-recovery.md"'
+)
+
+
+# ---------------------------------------------------------------------------
+# Helper
+# ---------------------------------------------------------------------------
+
+def _skill_path(name: str) -> Path:
+    return PKG_DIR / "adapters" / "claude" / "skills" / name / "SKILL.md"
+
+
+# ---------------------------------------------------------------------------
+# (a) Recipe file exists and contains the canonical anchor
+# ---------------------------------------------------------------------------
+
+def test_recipe_file_exists():
+    """branch-recovery.md must exist in the quoin/memory/ directory."""
+    assert RECIPE_FILE.exists(), (
+        f"Expected recipe file at {RECIPE_FILE} — file not found. "
+        "Run T-01 (create quoin/quoin/memory/branch-recovery.md)."
+    )
+
+
+def test_recipe_contains_update_ref_anchor():
+    """The recipe file must contain 'update-ref refs/heads' (the canonical anchor)."""
+    text = RECIPE_FILE.read_text(encoding="utf-8")
+    assert RECIPE_ANCHOR in text, (
+        f"branch-recovery.md must contain the literal '{RECIPE_ANCHOR}'. "
+        "The canonical recipe uses 'git update-ref refs/heads/<protected>' — "
+        "ensure the recipe file has not been accidentally changed."
+    )
+
+
+# ---------------------------------------------------------------------------
+# (b) No standalone runnable git reset --hard fenced command
+# ---------------------------------------------------------------------------
+
+def test_no_standalone_git_reset_hard_fenced():
+    """The recipe file must not present 'git reset --hard' as a standalone runnable
+    fenced command.
+
+    Strategy: find all fenced code blocks (``` ... ```) in the file and assert
+    that none of them contain a line that is purely a 'git reset --hard ...' invocation.
+    Allowing the substring inside prose/comments is fine — this guards only against
+    a runnable command block.
+    """
+    text = RECIPE_FILE.read_text(encoding="utf-8")
+
+    # Extract fenced code block contents
+    fenced_blocks = re.findall(r"```[a-zA-Z]*\n(.*?)```", text, re.DOTALL)
+
+    for block in fenced_blocks:
+        for line in block.splitlines():
+            stripped = line.strip()
+            # A line that IS a git reset --hard command
+            if re.match(r"^(git -C \S+\s+)?git reset --hard", stripped):
+                raise AssertionError(
+                    f"branch-recovery.md contains 'git reset --hard' as a standalone "
+                    f"runnable command in a fenced code block: {stripped!r}. "
+                    "This is the auto-denied form. Only use 'git update-ref' in "
+                    "runnable fences; the 'git reset --hard' form is allowed only "
+                    "inside prose ('Why not' rationale)."
+                )
+
+    # Also assert the canonical form IS present (belt-and-suspenders with test (a))
+    assert RECIPE_ANCHOR in text, (
+        f"Expected '{RECIPE_ANCHOR}' in branch-recovery.md after verifying no "
+        "forbidden fenced blocks — this is a belt-and-suspenders check."
+    )
+
+
+# ---------------------------------------------------------------------------
+# (c) Each referencing adapter SKILL.md contains the path literal
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("skill_name", REFERENCING_SKILLS)
+def test_skill_references_recipe(skill_name):
+    """Each referencing adapter SKILL.md must contain __QUOIN_HOME__/memory/branch-recovery.md."""
+    skill_file = _skill_path(skill_name)
+    assert skill_file.exists(), (
+        f"Adapter SKILL.md not found at {skill_file}"
+    )
+    text = skill_file.read_text(encoding="utf-8")
+    expected = "__QUOIN_HOME__/memory/branch-recovery.md"
+    assert expected in text, (
+        f"{skill_name}/SKILL.md must contain the literal '{expected}'. "
+        "This ensures the skill tells the user where to find the safe recovery recipe."
+    )
+
+
+# ---------------------------------------------------------------------------
+# (d) branch-recovery.md is in TIER1_MEMORY_FILES
+# ---------------------------------------------------------------------------
+
+def test_branch_recovery_in_tier1_memory_files():
+    """branch-recovery.md must appear in TIER1_MEMORY_FILES in installer.py."""
+    # pythonpath = ["src"] in pyproject.toml makes this importable directly.
+    from quoin.installer import TIER1_MEMORY_FILES  # noqa: PLC0415
+
+    assert "branch-recovery.md" in TIER1_MEMORY_FILES, (
+        "'branch-recovery.md' not found in TIER1_MEMORY_FILES in src/quoin/installer.py. "
+        "Add it to the tuple (see T-02 in IVG-77) so install.sh deploys it to "
+        "~/.claude/memory/branch-recovery.md."
+    )
+
+
+# ---------------------------------------------------------------------------
+# (e) CLAUDE.md contains the branch-recovery.md reference
+# ---------------------------------------------------------------------------
+
+def test_claude_md_references_branch_recovery():
+    """CLAUDE.md must reference branch-recovery.md (parity with the skill layer)."""
+    assert CLAUDE_MD.exists(), f"CLAUDE.md not found at {CLAUDE_MD}"
+    text = CLAUDE_MD.read_text(encoding="utf-8")
+    assert "branch-recovery.md" in text, (
+        "quoin/quoin/CLAUDE.md must contain 'branch-recovery.md'. "
+        "Add a pointer in the 'enforced at three layers' sentence "
+        "(see T-07 in IVG-77)."
+    )
+
+
+# ---------------------------------------------------------------------------
+# (f) pyproject.toml force-include line (dual-list guard)
+# ---------------------------------------------------------------------------
+
+def test_pyproject_force_include_line():
+    """pyproject.toml must contain the exact force-include line for branch-recovery.md.
+
+    This is the IVG-77 CRIT-1 guard: adding only the TIER1_MEMORY_FILES tuple
+    entry without this pyproject.toml line ships a short wheel (12 files vs
+    13-entry tuple) and causes test_wheel_memory_inventory_matches_tier1_set
+    to fail with a len() mismatch.
+    """
+    assert PYPROJECT_TOML.exists(), f"pyproject.toml not found at {PYPROJECT_TOML}"
+    text = PYPROJECT_TOML.read_text(encoding="utf-8")
+    assert EXPECTED_FORCE_INCLUDE_LINE in text, (
+        f"pyproject.toml must contain the exact line:\n"
+        f"  {EXPECTED_FORCE_INCLUDE_LINE}\n"
+        "This line wires branch-recovery.md into the wheel manifest (the second list "
+        "in the IVG-77 dual-list requirement). Without it, the wheel ships 12 memory "
+        "files while TIER1_MEMORY_FILES expects 13."
+    )

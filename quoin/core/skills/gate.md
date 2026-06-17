@@ -137,6 +137,9 @@ for Small and Medium tasks.
   committed task work onto a protected branch (commits ahead of its upstream
   on main/master) is a **blocking failure**. A clean repo merely sitting on
   a protected branch with zero ahead-commits is NOT a failure (fail-OPEN).
+  Recovery: use the canonical safe reset-to-origin recipe at
+  `memory/branch-recovery.md` (deployed Tier-1 memory file) — move
+  mis-placed commits to a feature branch first, then run the recipe.
 
 ### Full gate
 

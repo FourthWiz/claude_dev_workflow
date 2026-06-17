@@ -232,6 +232,8 @@ Parse the JSON output. The check uses `repos[]` from the JSON and filters on `on
 
   On Option 3: print `[quoin: branch-hygiene override — proceeding on protected branch per user choice]` and proceed to §1.
 
+  **Recovery (commits already on a protected branch):** if task commits have already landed on a protected branch (Option 3 was chosen previously, or the precheck was bypassed), use the safe reset-to-origin recipe at `__QUOIN_HOME__/memory/branch-recovery.md`. Move the mis-placed commits onto a feature branch first (e.g., `git cherry-pick` or `git rebase`), then run the recipe to restore the protected branch to origin.
+
 ## Explicit invocation only
 
 This skill MUST be explicitly invoked by the user typing `/implement`. No other skill may auto-invoke it. If you are an orchestrator or another skill and you think implementation should start — STOP and tell the user to run `/implement` themselves. This is a hard rule.

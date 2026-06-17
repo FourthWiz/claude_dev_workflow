@@ -213,7 +213,7 @@ Before touching git, verify everything is clean:
 
 1. **Review status** — resolve the artifact path via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` (or stage=None for legacy tasks), then look for `<task_dir>/review-*.md`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate. If no review file exists at the resolved path, STOP and tell the user: "No review found — please run `/review` first." If a review exists, read the latest one and confirm verdict is APPROVED. If not approved, stop and tell the user. (architecture.md and cost-ledger.md ALWAYS at task root per D-03.)
 2. **Tests pass** — run the test suite one final time. If anything fails, stop.
-3. **Branch state** — check if the branch is up to date with the base branch. If behind, rebase/merge and re-run tests.
+3. **Branch state** — check if the branch is up to date with the base branch. If behind, rebase/merge and re-run tests. If push is blocked because task commits are on a protected branch (main/master), do NOT force-push; instead follow the safe reset-to-origin recipe at `__QUOIN_HOME__/memory/branch-recovery.md` — move the mis-placed commits onto a feature branch first, then run the recipe to restore the protected branch to origin.
 4. **No secrets** — quick scan of the diff for passwords, API keys, tokens.
 
 Present a pre-flight summary:

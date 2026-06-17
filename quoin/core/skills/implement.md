@@ -89,6 +89,8 @@ This check runs at each implement dispatch entry (not per-commit). A branch swit
 
 The check is fail-OPEN: if the detection mechanism is unavailable, the skill proceeds without blocking.
 
+If task commits have already landed on a protected branch and need to be recovered, the canonical safe reset-to-origin recipe is at `memory/branch-recovery.md` (deployed Tier-1 memory file).
+
 All input and output paths remain under `.workflow_artifacts/<task-name>/` per the standard layout.
 
 ## Bounded-dispatch handling

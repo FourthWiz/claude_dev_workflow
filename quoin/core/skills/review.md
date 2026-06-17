@@ -68,7 +68,9 @@ Verdict is one of three closed values: `APPROVED`, `CHANGES_REQUESTED`,
 - The review MUST flag, as at least a MAJOR issue, any task commits found on a
   protected branch (a placement backstop computed independently of the review
   diff basis — earlier phases should have caught it; if they didn't, this is the
-  last line of defense).
+  last line of defense). The MAJOR issue writeup MUST include a pointer to the
+  canonical safe reset-to-origin recovery recipe at `memory/branch-recovery.md`
+  (deployed Tier-1 memory file).
 
 ## Out of scope
 
