@@ -334,6 +334,7 @@ The following files are explicitly **excluded** from terse-style writing — the
 - `quoin/memory/dispatch-guide.md` (+ `__QUOIN_HOME__/memory/dispatch-guide.md` deployed copy — extracted verbose §0 / §0' dispatch details from CLAUDE.md 2026-05-15).
 - `quoin/memory/hooks-table.md` (+ `__QUOIN_HOME__/memory/hooks-table.md` deployed copy — extracted hooks event/matcher table from CLAUDE.md 2026-05-15).
 - `quoin/memory/lifecycle-guide.md` (+ `__QUOIN_HOME__/memory/lifecycle-guide.md` deployed copy — extracted verbose Lifecycle skills + memory-layers details from CLAUDE.md 2026-05-15).
+- `quoin/memory/branch-recovery.md` (+ `__QUOIN_HOME__/memory/branch-recovery.md` deployed copy — canonical safe branch-reset recipe (`git update-ref`) for recovering from "commits on main"; added IVG-77 2026-06-17).
 
 NOTE: QUICKSTART.md sits at `quoin/` root and deploys to `__QUOIN_HOME__/QUICKSTART.md` (NOT under `memory/`) — this is intentional. Do NOT normalize paths.
 - `quoin/QUICKSTART.md` (+ `__QUOIN_HOME__/QUICKSTART.md` deployed copy).
