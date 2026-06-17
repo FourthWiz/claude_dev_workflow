@@ -379,3 +379,110 @@ class TestSSEDecision:
         assert "new EventSource" not in source and "EventSource(" not in source, (
             "SSE was cut (T-05 spike skipped); app.js must not construct EventSource"
         )
+
+
+# ---------------------------------------------------------------------------
+# T-07 IVG-85: url-file capture (Test C) and SIGHUP shutdown (Test D)
+# ---------------------------------------------------------------------------
+
+class TestUrlFileAndSighup:
+    def test_url_file_arg_in_help(self, tmp_path):
+        """--url-file is a recognised argument (argparse integration check)."""
+        proc = subprocess.run(
+            [sys.executable, str(_DS_PATH), "--help"],
+            capture_output=True, timeout=5,
+        )
+        assert proc.returncode == 0
+        assert b"url-file" in proc.stdout, "--url-file not listed in --help output"
+
+    def test_url_file_written_on_startup(self, tmp_path):
+        """T-07 Test C: dashboard_server.py --url-file X writes a http://127.0.0.1:<port>
+        URL to X within the poll window (5s). (T-04 acceptance criterion)
+
+        Uses subprocess with --port 0 (ephemeral) and --no-browser to avoid side-effects.
+        Polls the url-file for up to 5s to match the agentdesk poller's timing contract.
+        """
+        proj = _make_project(tmp_path)
+        url_file = tmp_path / "dash-url.txt"
+        proc = subprocess.Popen(
+            [sys.executable, str(_DS_PATH),
+             "--no-browser", "--port", "0",
+             "--project-root", str(proj),
+             "--url-file", str(url_file)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            # Poll url-file for up to 5 seconds
+            deadline = time.time() + 5
+            url_content = None
+            while time.time() < deadline:
+                if url_file.exists():
+                    content = url_file.read_text(encoding="utf-8").strip()
+                    if content.startswith("http://127.0.0.1:"):
+                        url_content = content
+                        break
+                time.sleep(0.1)
+
+            assert url_content is not None, (
+                f"URL not written to url-file within 5s; "
+                f"url_file exists={url_file.exists()}"
+            )
+            assert url_content.startswith("http://127.0.0.1:"), (
+                f"url-file content is not a loopback URL: {url_content!r}"
+            )
+            # Extract port and verify it's > 0
+            port_str = url_content.rsplit(":", 1)[-1]
+            assert int(port_str) > 0, f"Port in url-file should be > 0: {url_content!r}"
+        finally:
+            proc.terminate()
+            proc.wait(timeout=5)
+
+    def test_sighup_shuts_down_server(self, tmp_path):
+        """T-07 Test D: SIGHUP causes the server to shut down within a bounded timeout.
+        (T-01/T-02 acceptance criterion — validates the SIGHUP handler registered in main())
+
+        Starts a real server subprocess, sends SIGHUP, asserts the process exits
+        within 5 seconds. On platforms where SIGHUP is not available (Windows),
+        the test is skipped.
+        """
+        import signal as signal_mod
+        if not hasattr(signal_mod, "SIGHUP"):
+            pytest.skip("SIGHUP not available on this platform")
+
+        proj = _make_project(tmp_path)
+        proc = subprocess.Popen(
+            [sys.executable, str(_DS_PATH),
+             "--no-browser", "--port", "0",
+             "--project-root", str(proj)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            # Wait for the URL= line to confirm the server is up before sending SIGHUP.
+            url_line = None
+            deadline = time.time() + 5
+            while time.time() < deadline:
+                line = proc.stdout.readline().decode("utf-8", errors="replace").strip()
+                if line.startswith("URL="):
+                    url_line = line
+                    break
+            assert url_line is not None, "Server did not print URL= line within 5s"
+
+            # Send SIGHUP to the process.
+            proc.send_signal(signal_mod.SIGHUP)
+
+            # Assert the process shuts down within 5 seconds.
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+                raise AssertionError(
+                    "Server did not shut down within 5s after SIGHUP — "
+                    "SIGHUP handler may not be registered"
+                )
+        finally:
+            if proc.poll() is None:
+                proc.terminate()
+                proc.wait(timeout=3)

@@ -275,6 +275,14 @@ _agentdesk_pane_cmd() {
     ccr)
       printf '%s' 'source \"$HOME/.config/agentdesk/agentdesk.zsh\" 2>/dev/null || true; cd \"$PROJECT_ROOT\" && echo '\''CCR (OpenRouter) - project root:'\'' \"$PWD\" && if command -v ccr >/dev/null 2>&1; then ccr code; else echo '\''ccr not found'\''; fi; zsh'
       ;;
+    dashboard)
+      # T-06: Internal-only token — set by AGENTDESK_DASHBOARD flag, not by user picker.
+      # Primary path: T-05 injects the Dashboard tab directly via KDL heredoc.
+      # This case supports `agentdesk claude shell dashboard` for advanced users.
+      # CO-UPDATE WARNING: if the command string changes (e.g. new flags), also update
+      # the T-05 heredoc in agentdesk() near "tab name=\"Dashboard\"".
+      printf '%s' 'exec python3 \"$HOME/.claude/scripts/dashboard_server.py\" --no-browser --url-file \"$AGENTDESK_DASHBOARD_URL_FILE\"'
+      ;;
   esac
 }
 
@@ -285,12 +293,13 @@ _agentdesk_pane_cmd() {
 _agentdesk_pane_name() {
   local token="$1"
   case "$token" in
-    claude) printf '%s' 'Claude Code' ;;
-    codex)  printf '%s' 'Codex' ;;
-    shell)  printf '%s' 'Shell' ;;
-    status) printf '%s' 'Status' ;;
-    spend)  printf '%s' 'Token Spend' ;;
-    ccr)    printf '%s' 'CCR (OpenRouter)' ;;
+    claude)    printf '%s' 'Claude Code' ;;
+    codex)     printf '%s' 'Codex' ;;
+    shell)     printf '%s' 'Shell' ;;
+    status)    printf '%s' 'Status' ;;
+    spend)     printf '%s' 'Token Spend' ;;
+    ccr)       printf '%s' 'CCR (OpenRouter)' ;;
+    dashboard) printf '%s' 'quoin dashboard' ;;  # T-06: internal token
   esac
 }
 
@@ -488,6 +497,11 @@ _agentdesk_parse_custom_tokens() {
       claude|codex|shell|status|ccr|spend)
         parsed+=("$tok")
         ;;
+      dashboard)
+        # T-06/D-05: internal-only token — not advertised in the picker or --help.
+        # Accepted here so advanced users who pass it explicitly are not rejected.
+        parsed+=("$tok")
+        ;;
       *)
         printf 'Unknown token: "%s". Valid tokens: claude, codex, shell, status, ccr, spend\n' "$tok" >&2
         printf 'Re-enter comma-separated tokens (or press Enter to cancel): ' >&2
@@ -512,8 +526,28 @@ _agentdesk_parse_custom_tokens() {
 }
 
 # ============================================================
+# _agentdesk_open_url <url>
+# Reusable browser-open helper (T-03/MAJ-1 fix).
+# Extracted from the original _agentdesk_open_dashboard lines 581-587.
+# Called by the T-05 bounded poller to open the dashboard URL once available.
+# ============================================================
+_agentdesk_open_url() {
+  local url="$1"
+  if command -v open >/dev/null 2>&1; then
+    open "$url"
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$url"
+  else
+    printf 'agentdesk: dashboard running at %s (no browser opener found)\n' "$url" >&2
+  fi
+}
+
+# ============================================================
 # _agentdesk_open_dashboard
-# Opt-in quoin dashboard prompt shown before the zellij TTY hand-off.
+# Opt-in quoin dashboard prompt shown BEFORE layout resolution (T-03/CRIT-1 fix).
+#
+# This function is now a DECISION + URL-FILE SETUP helper only — it no longer
+# launches the server. The server runs as a managed zellij pane injected by T-05.
 #
 # User-mode only: deployed via deploy_agentdesk (not project mode); the server
 # is reached via the $HOME/.claude deploy path (same convention as the status
@@ -522,10 +556,9 @@ _agentdesk_parse_custom_tokens() {
 # Behavior:
 #   - Skips (returns 0) immediately when stdin is not a TTY.
 #   - Prompts "Open quoin dashboard? [y/N]:" — default No.
-#   - On No/empty: returns 0, no server started.
-#   - On Yes: starts dashboard_server.py in background with --no-browser,
-#     captures the printed URL=<url> line, opens it in the default browser,
-#     leaves the server running for the duration of the desk session.
+#   - On No/empty: returns 0, AGENTDESK_DASHBOARD remains unset.
+#   - On Yes: creates a temp URL-file path, exports AGENTDESK_DASHBOARD=1
+#     and AGENTDESK_DASHBOARD_URL_FILE=<path>. NO server launch here.
 #   - Always returns 0; any internal failure prints a note to stderr.
 # ============================================================
 _agentdesk_open_dashboard() {
@@ -551,42 +584,17 @@ _agentdesk_open_dashboard() {
     return 0
   fi
 
-  # Launch the server detached, capturing its stdout to a temp file so we can
-  # poll for the "URL=<url>" line without blocking the foreground shell.
-  local stdout_tmp
-  stdout_tmp="$(mktemp)"
-  python3 "$server_script" --no-browser > "$stdout_tmp" 2>/dev/null &
-  local server_pid=$!
+  # Create a deterministic temp path for the URL file.
+  # The dashboard pane (T-05) will write the bound URL here atomically via --url-file.
+  # The foreground poller (T-05) reads this same path.
+  local url_file
+  url_file="$(mktemp "${TMPDIR:-/tmp}/agentdesk-dash-url-XXXXXX")"
 
-  # Poll for up to ~10 s (50 × 0.2 s) for the URL= line.
-  local url=""
-  local i=0
-  while [ $i -lt 50 ]; do
-    if grep -q '^URL=' "$stdout_tmp" 2>/dev/null; then
-      url="$(grep '^URL=' "$stdout_tmp" | head -1 | sed 's/^URL=//')"
-      break
-    fi
-    sleep 0.2
-    i=$((i + 1))
-  done
-
-  rm -f "$stdout_tmp"
-
-  if [ -z "$url" ]; then
-    printf 'agentdesk: dashboard did not report a URL (server pid %s still running)\n' "$server_pid" >&2
-    return 0
-  fi
-
-  # Open the URL in the default browser; fall back to printing if no opener found.
-  if command -v open >/dev/null 2>&1; then
-    open "$url"
-  elif command -v xdg-open >/dev/null 2>&1; then
-    xdg-open "$url"
-  else
-    printf 'agentdesk: dashboard running at %s (no browser opener found)\n' "$url" >&2
-  fi
-
+  export AGENTDESK_DASHBOARD=1
+  export AGENTDESK_DASHBOARD_URL_FILE="$url_file"
   return 0
+  # NOTE: no `python3 ... &` here. The server runs inside a zellij pane injected
+  # into the layout by T-05. Its lifetime == the zellij session's lifetime.
 }
 
 agentdesk() {
@@ -777,6 +785,14 @@ HELP
     return 1
   fi
 
+  # ── Offer dashboard BEFORE layout resolution (T-03/CRIT-1 fix) ───────────
+  # _agentdesk_open_dashboard sets AGENTDESK_DASHBOARD=1 and
+  # AGENTDESK_DASHBOARD_URL_FILE=<path> when the user answers yes.
+  # These env vars are read by the layout injection block (T-05) below.
+  # Must run before the if/elif layout branch so all branches see the flags.
+  # _agentdesk_open_dashboard self-skips on non-TTY and always returns 0.
+  _agentdesk_open_dashboard
+
   # ── Resolve layout (D-08 branch order) ────────────────────────────────────
   # Declare ALL locals before the if/elif chain, outside any redirection block.
   # (zsh typeset echoes name=value to stdout when re-declaring inside { } > file)
@@ -922,9 +938,54 @@ HELP
   cat "$project_root/.workflow_artifacts/repos.md"
   echo
 
-  # Offer the quoin dashboard before handing the TTY to zellij.
-  # _agentdesk_open_dashboard self-skips on non-TTY and always returns 0.
-  _agentdesk_open_dashboard
+  # ── T-05: Inject Dashboard tab into chosen layout (D-04/CRIT-2 fix) ────────
+  # When AGENTDESK_DASHBOARD=1 (set by _agentdesk_open_dashboard above), inject
+  # a Dashboard tab into whichever layout was chosen — preserving ALL existing tabs.
+  # This is a new temp file; $layout_path is updated to point to it.
+  # When AGENTDESK_DASHBOARD != 1, $layout_path is used unchanged (byte-identical
+  # to the previous behavior).
+  #
+  # Branch 3 (saved-layout restore) note: if AGENTDESK_DASHBOARD=1, this block
+  # injects a Dashboard tab into the restored layout path — no regeneration via
+  # _agentdesk_gen_layout. The saved layout file on disk is never modified.
+  if [ "${AGENTDESK_DASHBOARD:-0}" = "1" ]; then
+    local dash_tab_tmp
+    dash_tab_tmp="$(mktemp "${TMPDIR:-/tmp}/agentdesk-dash-layout-XXXXXX.kdl")"
+    # Strip the final `}` (closing brace of the top-level `layout { ... }` block)
+    # and append the Dashboard tab KDL before re-closing.
+    # The url-file path is expanded HERE at injection time so the actual path is
+    # baked into the KDL — the poller reads the same path from AGENTDESK_DASHBOARD_URL_FILE.
+    sed '$d' "$layout_path" > "$dash_tab_tmp"
+    cat >> "$dash_tab_tmp" <<DASHTAB
+    tab name="Dashboard" {
+        pane name="quoin dashboard" {
+            command "zsh"
+            args "-lc" "exec python3 \"$HOME/.claude/scripts/dashboard_server.py\" --no-browser --url-file \"$AGENTDESK_DASHBOARD_URL_FILE\""
+        }
+    }
+}
+DASHTAB
+    # shellcheck disable=SC2064
+    trap "rm -f $dash_tab_tmp" EXIT INT TERM
+    layout_path="$dash_tab_tmp"
+
+    # D-03 bounded browser-open poller: spawned BEFORE zellij blocks the foreground.
+    # Polls the url-file for ≤10s (50 × 0.2s hard cap), opens the browser, then exits.
+    # Cannot orphan — always self-terminates. This is the ONLY `&` in the new flow.
+    local _dash_url_file="$AGENTDESK_DASHBOARD_URL_FILE"
+    ( i=0
+      while [ "$i" -lt 50 ]; do
+        if [ -f "$_dash_url_file" ] && grep -q '^http' "$_dash_url_file" 2>/dev/null; then
+          url="$(grep '^http' "$_dash_url_file" | head -1)"
+          _agentdesk_open_url "$url"
+          rm -f "$_dash_url_file"  # first rm: success path
+          break
+        fi
+        sleep 0.2
+        i=$((i + 1))
+      done
+      rm -f "$_dash_url_file" ) &  # second rm: timeout path (idempotent; rm -f on missing file is no-op)
+  fi
 
   PROJECT_ROOT="$project_root" zellij --new-session-with-layout "$layout_path" --session "$session_name"
 }
