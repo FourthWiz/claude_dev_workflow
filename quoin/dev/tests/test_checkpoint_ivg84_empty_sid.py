@@ -27,22 +27,6 @@ def _checkpoint_text() -> str:
     return CHECKPOINT_SKILL.read_text(encoding="utf-8")
 
 
-def _cleanup_text() -> str:
-    assert CLEANUP_SKILL.exists(), f"Missing: {CLEANUP_SKILL}"
-    return CLEANUP_SKILL.read_text(encoding="utf-8")
-
-
-def _window_around(text: str, marker: str, window: int = 20) -> str:
-    """Return up to `window` lines centered on the first occurrence of `marker`."""
-    lines = text.splitlines()
-    for i, line in enumerate(lines):
-        if marker in line:
-            start = max(0, i - window // 2)
-            end = min(len(lines), i + window // 2 + 1)
-            return "\n".join(lines[start:end])
-    return ""
-
-
 # ---------------------------------------------------------------------------
 # Test (a): Step 3 — pending-restore write site has empty/unknown guard
 # ---------------------------------------------------------------------------

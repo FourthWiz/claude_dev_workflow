@@ -53,7 +53,7 @@ def test_normal_uuid_sentinel_matches_glob():
     )
 
 
-def test_orphan_does_not_match_uuid_skip_pattern(tmp_path):
+def test_orphan_does_not_match_uuid_skip_pattern():
     """The orphan `pending-restore-.txt` cannot match `-<current_uuid>.txt` suffix.
 
     /cleanup Step 4 skips a file if its suffix matches `-<current_uuid>.txt`.
