@@ -1,7 +1,7 @@
 ---
 name: checkpoint
 description: "General-purpose state-saving — save session-restore state mid-session before context exhaustion, between tasks, between sessions, or before starting new heavy work. Writes a pending-restore sentinel so a fresh session can resume exactly where you left off. Also surfaces pending-restore state on --restore. Auto-runs /cleanup on save (trash-moves stale sentinels/old checkpoints) unless --no-cleanup. Use for: /checkpoint, 'save my place', 'checkpoint', 'save session', '/checkpoint --restore', 'restore checkpoint', 'resume from checkpoint'. Does NOT roll up dailies, does NOT touch lessons-learned.md or forgotten/."
-model: haiku
+model: sonnet
 ---
 
 # Checkpoint
@@ -10,7 +10,7 @@ You save session-restore state (paths-not-content) so a fresh session can resume
 
 ## §0 Model dispatch (FIRST STEP — execute before anything else)
 
-This skill is declared `model: haiku`. If the executing agent is running on a model
+This skill is declared `model: sonnet`. If the executing agent is running on a model
 strictly more expensive than the declared tier, you MUST self-dispatch before doing the
 skill's actual work.
 
@@ -38,20 +38,20 @@ Detection:
       Issue an `AskUserQuestion` with these exact two options (label + description copied
       verbatim — drift detection relies on string equality):
 
-        Question: "Parent session is on a 1M-context model. Dispatching /checkpoint to haiku
-        may fail if you don't have Haiku 1M credits. How would you like to proceed?"
+        Question: "Parent session is on a 1M-context model. Dispatching /checkpoint to sonnet
+        may fail if you don't have Sonnet 1M credits. How would you like to proceed?"
         Header:   "1M dispatch"
         multiSelect: false
 
         Option 1:
           label: "Abort — I'll switch with /model first"
           description: "Stop here. Run /model in your terminal to switch the parent session
-          to a standard-context model (e.g., /model haiku), then re-invoke /checkpoint.
-          The §0 dispatch will then land on standard Haiku successfully."
+          to a standard-context model (e.g., /model sonnet), then re-invoke /checkpoint.
+          The §0 dispatch will then land on standard Sonnet successfully."
         Option 2:
           label: "Proceed in-session at parent tier"
           description: "Skip the §0 dispatch this once. /checkpoint runs on the parent model
-          (more expensive per token than Haiku, but it works). Emits a one-line advisory
+          (more expensive per token than Sonnet, but it works). Emits a one-line advisory
           and treats the prompt as if [no-redispatch] were present."
 
       Then:
@@ -73,10 +73,10 @@ Detection:
     to the existing dispatch logic below.
 <!-- §0-1m-context-precheck-end -->
   - If current_tier > declared_tier AND prompt does NOT start with any `[no-redispatch]` form:
-      Dispatch reason: cost-guardrail handoff. dispatched-tier: haiku.
+      Dispatch reason: cost-guardrail handoff. dispatched-tier: sonnet.
       Spawn an Agent subagent with the following arguments:
-        model: "haiku"
-        description: "checkpoint dispatched at haiku tier"
+        model: "sonnet"
+        description: "checkpoint dispatched at sonnet tier"
         prompt: "[no-redispatch]\n<original user input verbatim>"
       Wait for the subagent. Return its output as your final response. STOP.
       (Return the subagent's output as your final response.)
@@ -234,7 +234,7 @@ If `[ -f "$_sentinel" ] && [ -f "$_pending" ]`:
     `_cp_path=$(head -1 "$_pending" 2>/dev/null)`
   - Inform user (verbatim):
     `[checkpoint] Auto-compact already ran in this session; precompact.sh wrote a checkpoint automatically. No additional /checkpoint needed. Auto-written checkpoint: ${_cp_path}`
-  - Append cost-ledger row: `<uuid> | <date> | checkpoint | haiku | task | "skip (compact-already-ran)" | 0`
+  - Append cost-ledger row: `<uuid> | <date> | checkpoint | sonnet | task | "skip (compact-already-ran)" | 0`
   - Release pidfile: `pidfile_release checkpoint`
   - STOP (do NOT proceed to Steps 1–6).
 
@@ -268,7 +268,7 @@ The hook forced-save (userpromptsubmit.sh STEP C2) is the independent backstop w
 4. **In-flight paths:** `find "${_PROJECT_ROOT}/.workflow_artifacts" -name current-plan.md -exec ls -t {} + 2>/dev/null | head -1` (same for `architecture.md`).
 5. Write skeleton checkpoint to `${_PROJECT_ROOT}/.workflow_artifacts/memory/checkpoints/<YYYY-MM-DD>T<HHMM>-<task>.md` (standard timestamped form). Use the same section set as the STEP C2 hook skeleton: `## Status`, `## Current stage`, `## Active task`, `## Branch`, `## Session ID`, `## Saved at`, `## In-flight artifacts`, `## Restore hint`.
 6. Write `${_PROJECT_ROOT}/.workflow_artifacts/memory/pending-restore-<sid>.txt` containing the skeleton path on line 1.
-7. Append cost-ledger row: `<uuid> | <date> | checkpoint | haiku | task | "save (panic mode)" | 0`
+7. Append cost-ledger row: `<uuid> | <date> | checkpoint | sonnet | task | "save (panic mode)" | 0`
 8. Release pidfile: `pidfile_release checkpoint`
 9. Report:
    ```
@@ -310,7 +310,7 @@ On skip: emit one-line `[checkpoint] cleanup skipped (<reason>)` and proceed to 
 1. Resolve `MEMORY_DIR = ${_PROJECT_ROOT}/.workflow_artifacts/memory`. If absent, skip.
 2. Source `. __QUOIN_HOME__/hooks/_lib.sh` (fail-OPEN: skip if missing).
 3. Acquire current UUID (same Step 1.1 procedure — reuse value if already computed). UUID unavailable → skip sentinel sweep (fail-safe: skip sentinels, proceed to checkpoint sweep).
-4. Sentinel sweep: for each of the 8 families (see `/cleanup` SKILL.md for the hardcoded allow-list), find under MEMORY_DIR `-maxdepth 1 -name '<family-glob>' -mtime +${QUOIN_CLEANUP_SENTINEL_WINDOW:-1} -print0`. For each: SKIP if suffix matches `-<current_uuid>.txt` (UUID check BEFORE age check). Else `trash_move "<path>" "$MEMORY_DIR"`.
+4. Sentinel sweep: for each of the 8 families (see `/cleanup` SKILL.md for the hardcoded allow-list), find under MEMORY_DIR `-maxdepth 1 -name '<family-glob>' -mtime +${QUOIN_CLEANUP_SENTINEL_WINDOW:-1} -print0`. For each: SKIP if suffix matches `-<current_uuid>.txt` (UUID check BEFORE age check). Empty-SID orphans (e.g. `pending-restore-.txt`, suffix `-.txt`) can never match a real UUID suffix and are always trash-eligible once older than the window. Else `trash_move "<path>" "$MEMORY_DIR"`.
 5. Checkpoint sweep: `find "${MEMORY_DIR}/checkpoints" -maxdepth 1 -name '*.md' ! -name '*.tmp' -mtime +${QUOIN_CLEANUP_CKPT_WINDOW:-30} -print0`. For each: `trash_move`.
 6. Emit: `[checkpoint] cleanup: trashed <S> sentinel(s) -> ${_PROJECT_ROOT}/.workflow_artifacts/memory/, <C> checkpoint(s) -> ${_PROJECT_ROOT}/.workflow_artifacts/memory/checkpoints/ (recover: mv ${_PROJECT_ROOT}/.workflow_artifacts/memory/trash/<date>/<file> <original-dir>)`. Or `[checkpoint] cleanup: nothing stale to clean` if zero. Do NOT say "recoverable via /sleep --restore" — `/sleep --restore` only reads `forgotten/` text entries, not `trash/` files.
 7. No ledger row here (the outer `/checkpoint` Step 4 records the session).
@@ -403,7 +403,7 @@ Read the following sources (best-effort; skip gracefully if any file is absent):
    - Unfinished work list (from `## Unfinished work` block)
 
    **UUID-anchored session-state lookup (Step 1.1):**
-   (a) Obtain the current session UUID. Priority: harness-provided system context UUID; else most recently modified `~/.claude/projects/<project-hash>/<uuid>.jsonl` filename stem (same rule used for cost-ledger UUID acquisition). `<project-hash>` = project path with `/` replaced by `-`.
+   (a) Obtain the current session UUID. Priority: harness-provided system context UUID; else `python3 __QUOIN_HOME__/scripts/get_session_uuid.py --phase checkpoint` (which resolves the correct on-disk hash via the broad-regex transform — any char not in [A-Za-z0-9-] → '-' — and returns the freshest JSONL stem).
    (b) If a UUID is obtained, grep `${_PROJECT_ROOT}/.workflow_artifacts/memory/sessions/*.md` for the UUID. Use `grep -iE` (case-insensitive on the full pattern) because the live tree has both uppercase and lowercase UUID values. Pattern: `grep -iE "^([[:space:]]*-[[:space:]]*)?(Session UUID:[[:space:]]*)${session_id}"`. The session-state file template uses the bulleted form `- Session UUID: <UUID>` — the pattern must match both `Session UUID:` and `- Session UUID:` prefixes.
    (c) If exactly one match is found: use that file. Tag with INFO line `[checkpoint] session-state located by UUID anchor: <path>`.
    (d) If zero matches AND a UUID was obtained: emit one-line WARNING `[checkpoint] WARNING: no session-state file contains Session UUID '<UUID>'; falling back to mtime ordering`; then fall back to `ls -t` most-recently-modified.
@@ -499,7 +499,7 @@ Run /checkpoint --restore in a fresh session to resume task '<task-name>' from b
 
 **`## Session link` field derivation:**
 - `<session_uuid>` is the same value written to `## Session ID` (from Step 1.1 acquisition procedure).
-- `<project-hash>` is the project's absolute path with `/` replaced by `-` (matches the cost-ledger JSONL-lookup convention used elsewhere in this skill). Compute: `_project_hash=$(printf '%s' "$_cwd" | tr '/' '-')` where `_cwd` is the raw launch cwd from stdin JSON `.cwd` (NOT `${_PROJECT_ROOT}` — Claude Code keys JSONL files to the actual launch directory; two hash dirs can coexist for the same project root when launched from different subdirs; see EXCEPTION note at the resolve-once instruction above).
+- `<project-hash>` is the project's absolute path transformed by the broad-regex rule (any char not in [A-Za-z0-9-] → '-'; covers '/', '.', '@', '_', ' ', etc.). Compute: `_project_hash=$(python3 __QUOIN_HOME__/scripts/get_session_uuid.py --print-hash --project-path "$_cwd")` where `_cwd` is the raw launch cwd from stdin JSON `.cwd` (NOT `${_PROJECT_ROOT}` — Claude Code keys JSONL files to the actual launch directory; two hash dirs can coexist for the same project root when launched from different subdirs; see EXCEPTION note at the resolve-once instruction above).
 - If `<session_uuid>` is `unknown` (UUID could not be acquired), write the section with both lines literally as `- Resume: (session UUID unavailable)` and `- JSONL: (session UUID unavailable)` rather than omitting the section — keeps parser shape stable.
 
 **Paths-not-content rule (D-04):** NEVER carry the actual file contents into the checkpoint. Only paths. Restore re-fires the Read tool on disk artifacts in the new session.
@@ -519,6 +519,12 @@ Where `session_id` is the current session's UUID (read from the session-state `#
 
 If session_id cannot be determined: emit warning and skip sentinel write (checkpoint file still kept).
 
+**Empty/unknown-SID guard (defense-in-depth):** If `session_id` is the empty string OR equals the literal value `unknown`: emit the following warning and SKIP the sentinel write (do NOT create `pending-restore-.txt` — that name is an orphan that can never be matched by a real session UUID and would persist until cleaned up by `/cleanup`):
+```
+[checkpoint] WARNING: session UUID empty/unknown; refusing to write pending-restore sentinel (would create orphan pending-restore-.txt). Checkpoint file kept; restore via picker.
+```
+Note: the guard keys on empty-string OR the exact literal `unknown` — it does NOT fire on synthetic fallback UUIDs of the form `unknown-<phase>-<timestamp>` (which are non-empty and NOT the literal `unknown`, so those do write a sentinel and are resolvable).
+
 The `sessionstart.sh` hook surfaces this sentinel on next session start.
 
 ### Step 4: Append cost-ledger row
@@ -530,11 +536,11 @@ Include a mode tag in the NOTE column:
 - "save (mid-agent mode)"
 
 ```
-<uuid> | <date> | checkpoint | haiku | task | save (MODE mode) | 0
+<uuid> | <date> | checkpoint | sonnet | task | save (MODE mode) | 0
 ```
 
 UUID: read the most-recently-modified `~/.claude/projects/<project-hash>/<uuid>.jsonl`.
-The ledger row is written ONCE — either by the Haiku-dispatched subagent (§0 dispatch path) OR by the parent (if already at Haiku tier). Never by both.
+The ledger row is written ONCE — either by the Sonnet-dispatched subagent (§0 dispatch path) OR by the parent (if already at Sonnet tier). Never by both.
 
 ### Step 4a: Restore mode sentinel
 
@@ -549,6 +555,8 @@ Step 5 report mentions:
 ### Step 4b: Load-as-reference mode sentinel
 
 (Run only when SELECTED_MODE="load-as-reference")
+
+**Empty/unknown-SID guard:** If `session_id` is the empty string OR equals the literal `unknown`: emit `[checkpoint] WARNING: session UUID empty/unknown; refusing to write pending-resume-ref sentinel (would create orphan pending-resume-ref-.txt). Checkpoint file kept.` and SKIP this step entirely.
 
 Write a reference sentinel file at:
 `${_PROJECT_ROOT}/.workflow_artifacts/memory/pending-resume-ref-${session_id}.txt`
@@ -574,6 +582,8 @@ The user's prior session content is available as background reference in the for
 ### Step 4c: Mid-agent mode sentinel
 
 (Run only when SELECTED_MODE="mid-agent". Steps 1, 2, 3, 4b are all skipped.)
+
+**Empty/unknown-SID guard:** If `session_id` is the empty string OR equals the literal `unknown`: emit `[checkpoint] WARNING: session UUID empty/unknown; refusing to write mid-agent-handoff sentinel (would create orphan mid-agent-handoff-.txt). Proceeding without sentinel.` and SKIP this step entirely.
 
 Write a minimal handoff sentinel at:
 `${_PROJECT_ROOT}/.workflow_artifacts/memory/mid-agent-handoff-${session_id}.txt`
@@ -655,6 +665,8 @@ ALL subsequent path derivations in defer mode MUST use `${_PROJECT_ROOT}`.
 
 **session_id acquisition** (same procedure as Save mode Step 1.1): priority is harness-provided system context UUID; else most recently modified `~/.claude/projects/<project-hash>/<uuid>.jsonl` filename stem. Case is preserved verbatim.
 
+**Empty/unknown-SID guard:** If `session_id` is the empty string OR equals the literal `unknown`: emit `[checkpoint] WARNING: session UUID empty/unknown; refusing to write checkpoint-defer sentinel (would create orphan checkpoint-defer-.txt). Defer mode aborted.` and EXIT without writing any sentinel. The advisory suppression cannot function without a valid session UUID.
+
 **Write a defer marker file:**
 `${_PROJECT_ROOT}/.workflow_artifacts/memory/checkpoint-defer-${session_id}.txt`
 containing a single line — the ISO-8601 UTC timestamp of when defer was set.
@@ -691,7 +703,9 @@ Use a unified picker that covers both pending-restore sentinels and recent check
 
 Before enumerating disk checkpoints, attempt to resolve a restore anchor from higher-priority signals. Proceed through tiers in order; stop at the first anchor found. Tier-1 applies a cross-task guard before returning (fast validation); Tier-2 cross-references pending-prompt sentinels; Tier-3 runs full enumeration with the combined cross-task + staleness gate.
 
-**Tier 1 — Fast path (current-session sentinel, fast validation):** check for `pending-restore-${current_session_id}.txt`. If it exists and its checkpoint path is valid, apply the cross-task identity guard before returning (fast validation, not fast bypass). Resolve `freshest_task` from the freshest `sessions/*.md` filename — the tier-2 `_anchor_task` variable is not yet set at this execution position (it is assigned inside the Tier-2 loop below). If `freshest_task` is non-empty and the candidate's `## Active task` differs from `freshest_task`, emit a loud warning and route to B3 synthesis instead of returning. If `## Active task` cannot be parsed, drop the fast path and fall through to Tier-2/Tier-3 enumeration. Otherwise (same task, or `freshest_task` is empty — no session-state to compare) return immediately — the common case still returns sub-second without full enumeration. The staleness guard is NOT applied here; a same-task sentinel that is several days old passes unconditionally (see D-01 rationale in the plan: the Tier-3 picker handles stale-same-task via fresher alternatives; suppressing it at Tier-1 would break the normal save-tonight/resume-tomorrow workflow).
+**Tier 1 — Fast path (current-session sentinel, fast validation):** If `current_session_id` is the empty string OR equals the literal `unknown`: SKIP the fast path entirely (do NOT construct `pending-restore-${current_session_id}.txt` — that would resolve to `pending-restore-.txt` and may spuriously hit a stale orphan sentinel). Fall through to Tier-2/Tier-3 enumeration.
+
+Otherwise: check for `pending-restore-${current_session_id}.txt`. If it exists and its checkpoint path is valid, apply the cross-task identity guard before returning (fast validation, not fast bypass). Resolve `freshest_task` from the freshest `sessions/*.md` filename — the tier-2 `_anchor_task` variable is not yet set at this execution position (it is assigned inside the Tier-2 loop below). If `freshest_task` is non-empty and the candidate's `## Active task` differs from `freshest_task`, emit a loud warning and route to B3 synthesis instead of returning. If `## Active task` cannot be parsed, drop the fast path and fall through to Tier-2/Tier-3 enumeration. Otherwise (same task, or `freshest_task` is empty — no session-state to compare) return immediately — the common case still returns sub-second without full enumeration. The staleness guard is NOT applied here; a same-task sentinel that is several days old passes unconditionally (see D-01 rationale in the plan: the Tier-3 picker handles stale-same-task via fresher alternatives; suppressing it at Tier-1 would break the normal save-tonight/resume-tomorrow workflow).
 
 **Tier 2 — Pending-prompt cross-reference (fix #5):** when the fast path misses (fresh session: current_session_id has no pending-restore), enumerate ALL in-window `pending-prompt-<SID>.txt` sentinels. This automates the manual "look into pending prompts to find today's real session" recovery.
 
@@ -747,6 +761,13 @@ Before building the candidate list, check for a current-session sentinel. If fou
 validate it with the cross-task guard (staleness is NOT evaluated — see Tier-1 description
 above for rationale; a same-task sentinel that is several days old passes and returns fast):
 ```
+# Empty/unknown-SID guard: if current_session_id is empty or literal "unknown",
+# skip the fast path entirely — constructing pending-restore-.txt would match a stale orphan.
+if [ -z "$current_session_id" ] || [ "$current_session_id" = "unknown" ]; then
+  # Fall through to Tier-2/Tier-3 enumeration
+  goto full_enumeration
+fi
+
 if exists pending-restore-${current_session_id}.txt:
   read its single-line content (cp_path)
   verify cp_path exists; if no: drop fast path, fall through to Tier-2/Tier-3 enumeration
@@ -1096,7 +1117,7 @@ Checkpoint artifact stays in `checkpoints/` until `/sleep --purge` (architecture
 ### Step 6: Append cost-ledger row
 
 ```
-<uuid> | <date> | checkpoint | haiku | task | restore | 0
+<uuid> | <date> | checkpoint | sonnet | task | restore | 0
 ```
 
 ### Step 7: Release pidfile

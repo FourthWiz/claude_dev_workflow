@@ -106,8 +106,8 @@ def get_session_uuid(
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point.
 
-    Accepts --project-path PATH and --phase PHASE.
-    Prints the UUID to stdout.
+    Accepts --project-path PATH, --phase PHASE, and --print-hash.
+    Prints the UUID (or project hash) to stdout.
     Always exits 0 (fail-open).
     """
     parser = argparse.ArgumentParser(
@@ -126,11 +126,30 @@ def main(argv: list[str] | None = None) -> int:
         metavar="PHASE",
         help="Phase name for fallback UUID (e.g., implement, end-of-task).",
     )
+    parser.add_argument(
+        "--print-hash",
+        action="store_true",
+        default=False,
+        help=(
+            "Print the project hash (the ~/.claude/projects/<hash> directory name) "
+            "and exit 0. Does NOT perform the JSONL lookup. "
+            "Resolves --project-path or falls back to cwd when --project-path is absent."
+        ),
+    )
     try:
         args = parser.parse_args(argv)
     except SystemExit:
         # Even on arg parse errors, print a fallback and exit 0 (fail-open)
         print(_fallback_uuid(None))
+        return 0
+
+    if args.print_hash:
+        # Resolve path: explicit --project-path if given, else cwd.
+        # NEVER pass '' to project_hash — that would produce an empty string
+        # (the same class of bug RC-1 fixes). Mirror the existing UUID path:
+        # `proj_path = project_path or str(Path.cwd())`.
+        proj_path = args.project_path or str(Path.cwd())
+        print(project_hash(proj_path))
         return 0
 
     uuid = get_session_uuid(
