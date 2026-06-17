@@ -290,7 +290,7 @@ PROJECT_ROOT="$(pwd)"
 python3 __QUOIN_HOME__/scripts/branch_hygiene.py --project-root "$PROJECT_ROOT"
 ```
 
-- If exit 1 (any repo has `has_task_commits: true` — commits ahead of upstream on a protected branch): raise a MAJOR issue (branch placement backstop). Note: this should have been caught earlier; flag the gate gap as well.
+- If exit 1 (any repo has `has_task_commits: true` — commits ahead of upstream on a protected branch): raise a MAJOR issue (branch placement backstop). Note: this should have been caught earlier; flag the gate gap as well. Cite the canonical safe reset-to-origin recovery recipe in the MAJOR issue writeup so the user knows how to fix it: `__QUOIN_HOME__/memory/branch-recovery.md` (move mis-placed commits to a feature branch first, then run the recipe to restore the protected branch to origin).
 - If exit 0: no issue — proceed with the rest of the review.
 - If exit 3 or script missing: emit a non-blocking note and proceed — fail-OPEN.
 
