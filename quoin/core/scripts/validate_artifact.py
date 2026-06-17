@@ -334,7 +334,12 @@ def check_v05(text, failures):
         if idx in def_line_indices:
             # Drop ALL ref-collection on def lines (interpretation (a) per MIN-2-R2)
             continue
-        for m in V05_REF_RE.finditer(stripped):
+        # IVG-78: strip inline-code spans before scanning for refs so that backtick-quoted
+        # cross-artifact IDs (e.g. `T-05` citing a sibling plan) are exempt from V-05.
+        # Bare undefined IDs still fail. V-04 already uses the same helper; reusing it
+        # keeps span-parsing semantics identical and inherits CommonMark multi-backtick handling.
+        scan_line = strip_inline_code(stripped)
+        for m in V05_REF_RE.finditer(scan_line):
             ref_id = m.group(1)
             if ref_id not in defs:
                 failures.append(
