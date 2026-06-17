@@ -6,9 +6,9 @@ source_files:
 - quoin/memory/format-kit.md
 - quoin/memory/glossary.md
 source_hashes:
-  quoin/memory/format-kit.md: 71edfe664259b4f8188e45c3977f773828e58b9b
-  quoin/memory/glossary.md: 49bc7fbda9431d410d53e077d0558f28c2768a3e
-total_bytes: 4051
+  quoin/memory/format-kit.md: 286c4ae6bc0a040b3f3b1fd09cfa59bb0cfbab2d
+  quoin/memory/glossary.md: 1dc852b1f090c7cd2c75fb60b468221d6415de17
+total_bytes: 4388
 ---
 
 [format-kit-§3-slice]
@@ -77,7 +77,7 @@ This file is the abbreviation whitelist for all quoin skills. It extends `terse-
 
 - term: T-NN / D-NN / R-NN / F-NN / Q-NN / S-NN
   expand: file-local cross-reference IDs (Tasks, Decisions, Risks, Findings, Questions, Stages)
-  rule: file-local namespace — references resolve only within the same artifact. Cross-artifact references must use plain English (e.g., "the parent Stage 3 smoke task" not "T-15 from the Stage 3 plan"). The validate_artifact.py V-05 invariant flags any reference without a local definition.
+  rule: file-local namespace — references resolve only within the same artifact. Cross-artifact references are exempt from V-05 when wrapped in inline-code backticks (e.g. writing `T-05` to cite a sibling plan's task). Note the exemption is content-blind — any ID inside backticks is exempt, including a genuinely-undefined one, so writers own the correctness of backticked refs. A bare cross-artifact token (e.g. T-05 without backticks) still fails V-05. Plain English (e.g., "the parent Stage 3 smoke task") remains acceptable too. The validate_artifact.py V-05 invariant flags any bare reference without a local definition.
 
 ---
 
