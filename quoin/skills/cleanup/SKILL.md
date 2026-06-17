@@ -181,6 +181,7 @@ find "$MEMORY_DIR" -maxdepth 1 -name '<family-glob>' \
 ```
 For each candidate file:
 - **UUID check FIRST (before any age check):** SKIP if the filename suffix matches `-<current_uuid>.txt`. This is the current/freshest session's sentinel — invariant, protected regardless of age.
+- **Empty-SID orphan eligibility:** Sentinels with suffix `-.txt` (e.g., `pending-restore-.txt`, produced when session UUID was empty or unknown at write time) can NEVER match `-<current_uuid>.txt` (a real UUID is always non-empty). They are therefore always trash-eligible once older than `QUOIN_CLEANUP_SENTINEL_WINDOW`. The existing `find ... -name 'pending-restore-*.txt'` glob already matches `pending-restore-.txt` — no logic change is needed; this note clarifies that the orphan is in scope.
 - Otherwise: `trash_move "<path>" "$MEMORY_DIR"`.
 
 **Step 5. Checkpoint sweep:** Find checkpoint files older than `QUOIN_CLEANUP_CKPT_WINDOW` (default 30 days):

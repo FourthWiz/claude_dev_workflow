@@ -78,7 +78,7 @@ SECTION0_TARGETS = [
     ("cleanup",        "haiku",  "§0c"),
     ("sleep",          "haiku",  "§0c"),
     ("next_steps",     "haiku",  "§1"),
-    ("checkpoint",     "haiku",  "§0c"),
+    ("checkpoint",     "sonnet", "§0c"),
     ("continue_work",  "sonnet", "§1"),
 ]
 
