@@ -510,14 +510,16 @@ def score_entries(entries: List[RawEntry], config: dict) -> List[ScoredEntry]:
             if files_with_any_overlap == 0:
                 f_score += forget_weights.get("one_shot", 2)
 
-        # stale_30days: check file mtime via source_path
-        try:
-            mtime = os.path.getmtime(entry.source_path)
-            age_days = (datetime.now(timezone.utc).timestamp() - mtime) / 86400
-            if age_days > stale_days:
-                f_score += forget_weights.get("stale_30days", 2)
-        except OSError:
-            pass
+        # stale_30days: check file mtime via source_path.
+        # Suppressed when user_marked_yes — an explicit promote vote overrides age.
+        if not entry.promote_tag:
+            try:
+                mtime = os.path.getmtime(entry.source_path)
+                age_days = (datetime.now(timezone.utc).timestamp() - mtime) / 86400
+                if age_days > stale_days:
+                    f_score += forget_weights.get("stale_30days", 2)
+            except OSError:
+                pass
 
         # user_marked_no
         if entry.no_tag:
