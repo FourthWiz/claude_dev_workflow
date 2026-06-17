@@ -25,6 +25,8 @@ TIER1_MEMORY_FILES = (
     "dispatch-guide.md",
     "lifecycle-guide.md",
     "cost-ledger-format.md",
+    # Added IVG-77: canonical safe branch-reset recipe (Tier-1 memory file)
+    "branch-recovery.md",
 )
 
 # T-05: canonical skill list — must match quoin/skills/ on disk exactly
