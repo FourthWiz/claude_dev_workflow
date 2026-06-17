@@ -245,6 +245,7 @@ class TestPortAndStartup:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        assert proc.stdout is not None
         try:
             # Read until we see the URL= line (max 5s)
             url_line = None
@@ -283,6 +284,7 @@ class TestPortAndStartup:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
+            assert proc.stdout is not None
             try:
                 url_line = None
                 deadline = time.time() + 5
@@ -458,6 +460,7 @@ class TestUrlFileAndSighup:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        assert proc.stdout is not None
         try:
             # Wait for the URL= line to confirm the server is up before sending SIGHUP.
             url_line = None
