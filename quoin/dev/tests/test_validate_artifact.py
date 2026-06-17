@@ -239,6 +239,57 @@ def test_v05_round_trip_with_canonical_glyphs():
     assert 'FAIL V-05' not in stderr
 
 
+# ── V-05: backtick cross-artifact exemption (IVG-78) ─────────────────────────
+
+def test_v05_pass_backtick_crossref():
+    """Backtick-quoted IDs with no local definition must be exempt from V-05."""
+    rc, stderr = run_validator(
+        artifact=fixture('v05-pass-backtick-crossref.md'), artifact_type='default'
+    )
+    assert rc == 0, f'Expected V-05 pass; stderr: {stderr}'
+    assert 'FAIL V-05' not in stderr
+
+
+def test_v05_mixed_backtick_and_bare_selective():
+    """Selectivity: backtick-quoted IDs exempt; bare undefined IDs still fail.
+
+    Also covers the adjacent-span case: an unrelated backtick span on the same
+    line must not shield a bare undefined ID on that line.
+    """
+    rc, stderr = run_validator(
+        artifact=fixture('v05-mixed-backtick-and-bare.md'), artifact_type='default'
+    )
+    assert rc == 1, f'Expected V-05 fail; stderr: {stderr}'
+    assert 'FAIL V-05' in stderr
+    # Bare sentinel tokens must appear in failure output
+    assert 'T-97' in stderr, f'Expected bare T-97 in stderr; got: {stderr}'
+    assert 'T-96' in stderr, f'Expected bare T-96 (adjacent-span case) in stderr; got: {stderr}'
+    # Backtick-quoted exempt token must NOT appear in any FAIL V-05 line
+    for line in stderr.splitlines():
+        if 'FAIL V-05' in line:
+            assert 'T-88' not in line, (
+                f'Backtick-quoted T-88 must not be flagged; found in: {line}'
+            )
+
+
+def test_v05_def_re_does_not_match_backticked_id():
+    """V05_DEF_RE must not treat a backticked ID as a local definition (D-03).
+
+    Guards against a future widening of the leading char class that would
+    accidentally treat backticked IDs as defs, silently voiding V-05 for them.
+    """
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('validate_artifact', VALIDATOR)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    # Bullet form with backtick-wrapped ID — must NOT match as definition
+    m_bullet = mod.V05_DEF_RE.match('- `T-05`: a cross-artifact ref, not a def')
+    assert m_bullet is None, 'V05_DEF_RE must not match a backtick-wrapped ID as a def'
+    # Bare backtick-only line — also must not match
+    m_bare = mod.V05_DEF_RE.match('`T-05`')
+    assert m_bare is None, 'V05_DEF_RE must not match a bare backtick-ID line as a def'
+
+
 # ── V-06: ## For human section ────────────────────────────────────────────────
 
 def test_v06_pass_class_b_with_summary():

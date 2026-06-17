@@ -68,7 +68,7 @@ Do not use XML tags for decorative structure; use only when machine-extraction i
 - `Q-NN` — open questions
 - `S-NN` — stages
 
-**ID namespaces are file-local.** Definitions and references resolve within a single artifact only. To refer to a task or risk defined in a sibling artifact (e.g., a critic-response referring to a plan task, or a Stage N plan referring to a parent Stage N-1 task), use plain English ("the parent Stage 3 smoke task" or "the round-1 critic's CRIT-1 issue"), NOT a bare T-NN/CRIT-N token. The validator's V-05 invariant flags any [DTRFQS]-NN reference without a local definition.
+**ID namespaces are file-local.** Definitions and references resolve within a single artifact only. To refer to a task or risk defined in a sibling artifact (e.g., a critic-response referring to a plan task, or a Stage N plan referring to a parent Stage N-1 task), you have two options: (a) use plain English ("the parent Stage 3 smoke task" or "the round-1 critic's CRIT-1 issue"), OR (b) wrap the ID in inline-code backticks (e.g. `` `T-05` `` to cite a sibling plan's task). The backtick form is exempt from V-05 — the validator treats any [DTRFQS]-NN token inside a code span as a cross-artifact reference and skips the local-definition check for it. Important: this exemption is content-blind — any ID inside backticks is exempt regardless of whether it is genuinely defined elsewhere, so writers own the correctness of backticked refs. A bare token (T-05 without backticks) is NOT exempt and will be flagged by V-05 if it has no local definition.
 
 ### Pick rules (seven)
 
