@@ -7,9 +7,12 @@ that every sibling fact-file is referenced by at least one MEMORY.md link.
 Public API:
   FORWARD_LINKS_ARE_ERRORS: bool — D-S2-2 single point of change (see below)
   LINK_RE: re.Pattern — compiled regex that captures Markdown link targets
+  DEFAULT_PATTERN_FILE: str — bare name of the pattern config file (S-3)
   parse_links(memory_md_text: str) -> list[str]
   find_fact_files(memory_dir: Path) -> set[str]
-  check(memory_dir: Path, allow_forward_links: bool = ...) -> dict
+  load_patterns(pattern_file: Path | None) -> dict  # S-3 pattern loader
+  classify(name: str, patterns: dict) -> str         # S-3 pattern classifier
+  check(memory_dir: Path, allow_forward_links: bool = ..., pattern_file: Path | None = None) -> dict
   check_index_pointers(memory_dir: Path) -> list   # D-S2-4 stub (inert until S-1)
   main(argv: list[str] | None = None) -> int
 
@@ -21,6 +24,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import re
 import sys
@@ -42,6 +46,9 @@ LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 
 # Files to exclude from the "fact files" set even if they have .md extension.
 _INDEX_FILENAMES: frozenset[str] = frozenset({"MEMORY.md", "MEMORY-INDEX.md"})
+
+# S-3: bare name of the pattern config file — resolution is done by callers.
+DEFAULT_PATTERN_FILE = "memory-maintenance.yaml"
 
 
 # ---------------------------------------------------------------------------
@@ -70,24 +77,110 @@ def find_fact_files(memory_dir: Path) -> set[str]:
     }
 
 
+def load_patterns(pattern_file: "Path | None") -> dict:
+    """Load the memory-maintenance pattern config from *pattern_file*.
+
+    Parses the memory-maintenance.yaml YAML subset using a stdlib-only line parser
+    (no PyYAML dependency — D-02). Tolerates blank lines and ``#`` comments.
+
+    Supported top-level keys: version, archived, read_only, ignore.
+    Each list is a sequence of ``- "glob"`` lines.
+
+    Args:
+        pattern_file: Path to the pattern YAML file, or None.
+
+    Returns:
+        dict with keys ``archived``, ``read_only``, ``ignore`` (each a list of str).
+        Returns all-empty lists when ``pattern_file`` is None, not found, or unreadable.
+        A missing or unreadable file is advisory only — never an error.
+    """
+    empty: dict = {"archived": [], "read_only": [], "ignore": []}
+    if pattern_file is None:
+        return empty
+    try:
+        text = Path(pattern_file).read_text(encoding="utf-8")
+    except (OSError, IOError):
+        return empty
+
+    result: dict = {"archived": [], "read_only": [], "ignore": []}
+    current_key: "str | None" = None
+
+    for raw_line in text.splitlines():
+        # Strip inline comments
+        comment_pos = raw_line.find("#")
+        line = raw_line[:comment_pos].rstrip() if comment_pos >= 0 else raw_line.rstrip()
+
+        if not line.strip():
+            continue
+
+        # Top-level key (no leading whitespace, ends with colon)
+        if not line[0].isspace() and line.rstrip().endswith(":"):
+            key = line.rstrip().rstrip(":").strip()
+            if key in result:
+                current_key = key
+            else:
+                current_key = None  # unknown key — skip items
+            continue
+
+        # List item:  - "glob"  or  - glob
+        stripped = line.lstrip()
+        if stripped.startswith("- ") and current_key is not None:
+            value = stripped[2:].strip().strip('"').strip("'")
+            if value:
+                result[current_key].append(value)
+
+    return result
+
+
+def classify(name: str, patterns: dict) -> str:
+    """Classify a bare file name against the pattern config.
+
+    Precedence (first match wins): ignore > archived > read_only > active.
+
+    Args:
+        name: bare file name (no directory component).
+        patterns: dict from load_patterns().
+
+    Returns:
+        One of: ``"ignore"``, ``"archived"``, ``"read_only"``, ``"active"``.
+    """
+    for glob in patterns.get("ignore", []):
+        if fnmatch.fnmatch(name, glob):
+            return "ignore"
+    for glob in patterns.get("archived", []):
+        if fnmatch.fnmatch(name, glob):
+            return "archived"
+    for glob in patterns.get("read_only", []):
+        if fnmatch.fnmatch(name, glob):
+            return "read_only"
+    return "active"
+
+
 def check(
     memory_dir: Path,
     allow_forward_links: bool = not FORWARD_LINKS_ARE_ERRORS,
+    pattern_file: "Path | None" = None,
 ) -> dict:
     """Check referential integrity of the auto-memory directory.
 
     Returns a dict:
       {
-        "dangling": [str, ...],  # link targets with no matching sibling file
-        "orphans":  [str, ...],  # fact-files not referenced by any link
-        "forward":  [],          # reserved for S-1/S-3 (always empty in S-2)
-        "ok":       bool,        # True iff no errors (see policy below)
+        "dangling":  [str, ...],  # link targets with no matching sibling file
+        "orphans":   [str, ...],  # fact-files not referenced by any link
+        "forward":   [],          # reserved for S-1/S-3 (always empty in S-2)
+        "archived":  [str, ...],  # fact-files classified as archived (info only)
+        "read_only": [str, ...],  # fact-files classified as read-only (info only)
+        "ok":        bool,        # True iff no errors (see policy below)
       }
 
-    Policy:
-      - Orphans are always errors (ok=False if any orphans).
-      - Dangling links are errors unless allow_forward_links=True.
-      - "forward" key is present but empty (forward-compat with S-1/S-3).
+    Policy (S-3 / D-05):
+      - Orphans are always errors unless the file is ``archived`` or ``read_only``.
+      - Dangling links are errors unless ``allow_forward_links=True`` or the link
+        target is classified as ``archived``.
+      - ``ignore``-classified files are removed from the fact-file set entirely.
+      - ``archived`` / ``read_only`` info keys are present but empty when
+        ``pattern_file`` is None (backward-compatible).
+      - ``forward`` key is always [].
     """
     memory_md = memory_dir / "MEMORY.md"
     text = memory_md.read_text(encoding="utf-8")
@@ -100,13 +193,29 @@ def check(
     ]
 
     fact_files = find_fact_files(memory_dir)
+
+    # S-3: apply pattern classifications
+    patterns = load_patterns(pattern_file)
+
+    # ignore: remove from fact-file set entirely (never reported)
+    ignored = {f for f in fact_files if classify(f, patterns) == "ignore"}
+    fact_files -= ignored
+
+    # archived / read_only: classify remaining files
+    archived_set = {f for f in fact_files if classify(f, patterns) == "archived"}
+    readonly_set = {f for f in fact_files if classify(f, patterns) == "read_only"}
+
     linked_set = set(link_targets)
 
-    # Dangling: link target has no matching sibling file
-    dangling: list[str] = [t for t in link_targets if t not in fact_files]
+    # Dangling: link target has no matching sibling file AND not archived
+    dangling: list[str] = [
+        t for t in link_targets
+        if t not in fact_files and classify(t, patterns) != "archived"
+    ]
 
     # Orphans: fact-file not referenced by any link
-    orphans: list[str] = sorted(fact_files - linked_set)
+    # CRIT-1 fix (D-05): subtract BOTH archived AND read_only — neither is an orphan error
+    orphans: list[str] = sorted((fact_files - linked_set) - archived_set - readonly_set)
 
     ok = (not orphans) and (allow_forward_links or not dangling)
 
@@ -114,6 +223,8 @@ def check(
         "dangling": dangling,
         "orphans": orphans,
         "forward": [],  # S-1/S-3 forward-compat stub
+        "archived": sorted(archived_set),
+        "read_only": sorted(readonly_set),
         "ok": ok,
     }
 
@@ -174,6 +285,16 @@ def _build_parser() -> argparse.ArgumentParser:
             "Overrides the FORWARD_LINKS_ARE_ERRORS constant for this run."
         ),
     )
+    parser.add_argument(
+        "--patterns",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Path to a memory-maintenance.yaml pattern file. When omitted, "
+            f"auto-discovers '{DEFAULT_PATTERN_FILE}' beside MEMORY.md or "
+            "under $CLAUDE_MEMORY_DIR; if absent, no patterns are applied."
+        ),
+    )
     return parser
 
 
@@ -209,8 +330,29 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: MEMORY.md not found in {memory_dir}", file=sys.stderr)
         return 2
 
+    # Resolve pattern file: explicit > auto-discover beside MEMORY.md > env > none
+    pattern_path: "Path | None" = None
+    if args.patterns:
+        pattern_path = Path(args.patterns).resolve()
+    else:
+        import os
+        # Auto-discover: look beside MEMORY.md first
+        candidate = memory_dir / DEFAULT_PATTERN_FILE
+        if candidate.exists():
+            pattern_path = candidate
+        else:
+            env_dir = os.environ.get("CLAUDE_MEMORY_DIR")
+            if env_dir:
+                candidate = Path(env_dir).resolve() / DEFAULT_PATTERN_FILE
+                if candidate.exists():
+                    pattern_path = candidate
+
     try:
-        result = check(memory_dir, allow_forward_links=args.allow_forward_links)
+        result = check(
+            memory_dir,
+            allow_forward_links=args.allow_forward_links,
+            pattern_file=pattern_path,
+        )
     except (OSError, PermissionError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -233,6 +375,17 @@ def main(argv: list[str] | None = None) -> int:
         for name in result["orphans"]:
             print(f"  - {name}")
         issues += len(result["orphans"])
+
+    # S-3: info-only sections (never change exit code)
+    if result.get("archived"):
+        print(f"Archived ({len(result['archived'])}):")
+        for name in result["archived"]:
+            print(f"  - {name}")
+
+    if result.get("read_only"):
+        print(f"Read-only ({len(result['read_only'])}):")
+        for name in result["read_only"]:
+            print(f"  - {name}")
 
     if result["ok"]:
         print("Memory integrity OK.")

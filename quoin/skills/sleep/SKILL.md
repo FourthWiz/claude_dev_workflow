@@ -189,6 +189,15 @@ Files `/sleep` does NOT read:
 - `~/.claude/projects/<hash>/memory/` — auto-memory; strictly off-limits.
 - `daily/<date>.md` briefings — rendered output, not raw insights.
 
+## Maintenance patterns
+
+`/sleep` honors `read_only`, `archived`, and `ignore` globs from `__QUOIN_HOME__/memory/memory-maintenance.yaml` via `sleep_score.py --patterns`. Globs are matched against the **bare file name** of each source file being scored:
+
+- `ignore`-matched sources: skipped entirely — produce zero entries.
+- `archived` or `read_only`-matched sources: entries are **never soft-forgotten**. If the scorer would assign `bucket="forget"`, the bucket is demoted to `"middle"` instead. The `/sleep` NDJSON parser is unchanged — protected entries already appear as `"middle"` in the output.
+
+The `--patterns` flag is always passed (see Step 2). The loader no-ops on a missing file, so this is safe even on a fresh install.
+
 ## Importance scoring
 
 At session start, read sleep config: try `__QUOIN_HOME__/memory/sleep-signals.yaml` first; if absent, read the `sleep_importance_signals` YAML block from `__QUOIN_HOME__/CLAUDE.md`; if missing, use hardcoded defaults. Emit `[sleep: config not found; using hardcoded defaults]` only when falling back to hardcoded.
@@ -231,6 +240,7 @@ python3 __QUOIN_HOME__/scripts/sleep_score.py \
   --scan-dir .workflow_artifacts/memory/daily/ \
   --scan-days 30 \
   --lessons-file .workflow_artifacts/memory/lessons-learned.md \
+  --patterns __QUOIN_HOME__/memory/memory-maintenance.yaml \
   --output json
 ```
 

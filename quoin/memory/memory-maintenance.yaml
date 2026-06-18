@@ -1,0 +1,13 @@
+# memory-maintenance.yaml — quoin memory maintenance patterns (S-3)
+# Globs matched with fnmatch against BARE FILE NAMES (fact-files,
+# MEMORY.md link targets) and against /sleep source basenames.
+# Globs are bare names only — not filesystem paths.
+version: 1
+archived:        # suppresses memory_check orphan AND dangling errors; /sleep never soft-forgets
+  - "archive_*.md"
+  - "deprecated_*.md"
+read_only:       # integrity-validated but NOT an orphan error; surfaced as info; /sleep never soft-forgets
+  - "pinned_*.md"
+  - "feedback_*.md"
+ignore:          # fully dropped from the memory_check fact-file set (not even listed); /sleep skips
+  - "*.draft.md"
