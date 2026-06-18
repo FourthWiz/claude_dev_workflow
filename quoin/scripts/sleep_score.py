@@ -28,7 +28,7 @@ import json
 import os
 import re
 import sys
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -100,7 +100,7 @@ class ScoredEntry:
 # load_config
 # ---------------------------------------------------------------------------
 
-def load_config(claude_md_path: str = None, *, signals_yaml_path: str = None) -> dict:
+def load_config(claude_md_path: Optional[str] = None, *, signals_yaml_path: Optional[str] = None) -> dict:
     """Load sleep_importance_signals config.
 
     Search order:
@@ -400,10 +400,7 @@ def _parse_separator_based(lines: List[str], abs_path: str) -> List[RawEntry]:
             entries.append(entry)
         return entries
 
-    # Build split points: start of file, each separator, end of file
-    split_points = [0] + [i + 1 for i in sep_indices] + [len(lines)]
-    # Each segment is between consecutive split points, excluding separator lines
-
+    # Each segment is between consecutive separators
     for k in range(len(sep_indices) + 1):
         if k == 0:
             seg_start = 0

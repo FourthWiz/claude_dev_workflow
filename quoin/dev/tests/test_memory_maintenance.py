@@ -26,12 +26,8 @@ Tests:
 from __future__ import annotations
 
 import importlib.util
-import json
-import subprocess
-import sys
 from pathlib import Path
 from textwrap import dedent
-from typing import Any
 
 import pytest
 
