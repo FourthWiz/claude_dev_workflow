@@ -314,6 +314,10 @@ def main(argv=None):
         "--project-root", default=".",
         help="Project root to scan (default: walk up from cwd to .workflow_artifacts/)",
     )
+    parser.add_argument(
+        "--url-file", default=None,
+        help="Write bound URL to this file atomically after server starts (used by agentdesk poller)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -341,8 +345,29 @@ def main(argv=None):
     actual_port = server.server_address[1]
     url = f"http://127.0.0.1:{actual_port}"
 
-    # D-09 lifecycle ordering: bind → print URL → browser → watcher → signals → serve
+    # D-09 lifecycle ordering: bind → print URL → url-file → browser → watcher → signals → serve
     print(f"URL={url}", flush=True)
+
+    # T-04: Write bound URL to url-file atomically so the agentdesk foreground poller
+    # can discover it without racing on a partial write. Uses os.replace (atomic rename).
+    if args.url_file:
+        import tempfile
+        url_file_path = args.url_file
+        url_file_dir = os.path.dirname(url_file_path) or "."
+        try:
+            fd, tmp_path = tempfile.mkstemp(dir=url_file_dir, prefix=".urltmp-")
+            try:
+                with os.fdopen(fd, "w") as fh:
+                    fh.write(url + "\n")
+                os.replace(tmp_path, url_file_path)
+            except Exception:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
+        except Exception as exc:
+            print(f"dashboard_server: warning: could not write url-file {url_file_path!r}: {exc}", file=sys.stderr)
 
     if not args.no_browser:
         try:
@@ -363,6 +388,12 @@ def main(argv=None):
 
     signal.signal(signal.SIGINT, _shutdown_handler)
     signal.signal(signal.SIGTERM, _shutdown_handler)
+    # T-01/T-02: zellij pane close delivers SIGHUP to the PTY foreground process group.
+    # The dashboard pane uses `exec python3 ...` so Python is the direct foreground
+    # process — SIGHUP reaches us without an intermediate zsh waiter.
+    # Guard with hasattr keeps this import-safe on Windows (no SIGHUP there).
+    if hasattr(signal, "SIGHUP"):
+        signal.signal(signal.SIGHUP, _shutdown_handler)
 
     # Blocking: serve until SIGINT/SIGTERM
     server.serve_forever()
