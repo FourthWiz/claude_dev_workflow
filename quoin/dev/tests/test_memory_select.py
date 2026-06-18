@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import math
 import subprocess
 import sys
 from pathlib import Path
@@ -246,8 +245,6 @@ def test_tokenize_lowercase():
 
 def test_score_monotonic_in_shared_tokens():
     """score must increase as shared tokens increase."""
-    from dataclasses import dataclass
-
     task_tokens = MS.tokenize("jsonl cost parsing branch")
     # Entry 1: 1 shared token
     e1 = MS.Entry(header="2026-01-01 — task1", applies_to="jsonl", body="", lineno=1)
@@ -468,9 +465,8 @@ def test_narrow_threshold_drops_human_relevant_fails_guard():
     # This test just verifies the test infra doesn't silently pass on a bad select.
     selected_headers = set(result.selected_headers)
     if not result.fellback_to_wholesale:
-        missing = human_relevant - selected_headers
         # At threshold=99, missing may be non-empty → proves the gate would catch it.
-        # (We don't assert here; we just ensure the computation runs without error.)
+        _ = human_relevant - selected_headers
     # The real gate is test_superset_gate_matcher_path — this is a sanity check
     assert isinstance(result.fellback_to_wholesale, bool)
 

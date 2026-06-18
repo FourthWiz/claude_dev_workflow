@@ -439,7 +439,7 @@ def deploy_hooks(
                 settings = json.load(f)
         except (json.JSONDecodeError, OSError) as exc:
             # Back up the broken file with a timestamp so prior backups are preserved
-            ts = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+            ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             backup = settings_path.parent / f"{settings_path.name}.bak-{ts}"
             shutil.copyfile(settings_path, backup)
             print(

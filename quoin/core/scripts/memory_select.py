@@ -65,10 +65,6 @@ _STOPWORDS: frozenset[str] = frozenset({
     "by", "if", "or", "so", "do", "be", "we", "no", "up", "out",
 })
 
-# Pattern matching ## headers (lesson entries start with "## <date> — <task>").
-# The template/comment block is skipped — it starts with HTML <!-- or <date> placeholder.
-_HEADER_RE = re.compile(r"^## ", re.MULTILINE)
-
 # Applies-to line pattern
 _APPLIES_TO_RE = re.compile(r"\*\*Applies to:\*\*\s*(.*)")
 
