@@ -83,6 +83,7 @@ DEPLOYED_SCRIPTS = (
     "spend_monitor.py",              # IVG-62: realtime token-spend monitor wrapper
     "get_session_uuid.py",           # IVG-74: reliable session-UUID capture for cost ledger
     "find_drive_conflicts.py",       # IVG-75: Drive sync-conflict sweep wrapper
+    "memory_check.py",               # IVG-50: auto-memory referential-integrity checker wrapper
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -310,6 +311,7 @@ CORE_SCRIPTS = (
     "spend_monitor.py",           # IVG-62: realtime token-spend monitor core impl
     "get_session_uuid.py",        # IVG-74: reliable session-UUID capture for cost ledger
     "find_drive_conflicts.py",    # IVG-75: Drive sync-conflict sweep core impl
+    "memory_check.py",            # IVG-50: auto-memory referential-integrity checker core impl
 )
 
 
