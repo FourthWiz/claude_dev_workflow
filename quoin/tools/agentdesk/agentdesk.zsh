@@ -966,7 +966,7 @@ HELP
 }
 DASHTAB
     # shellcheck disable=SC2064
-    trap "rm -f $dash_tab_tmp" EXIT INT TERM
+    trap "rm -f $layout_tmp $dash_tab_tmp" EXIT INT TERM
     layout_path="$dash_tab_tmp"
 
     # D-03 bounded browser-open poller: spawned BEFORE zellij blocks the foreground.
