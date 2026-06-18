@@ -23,11 +23,12 @@ CLI:
 """
 
 import argparse
+import fnmatch
 import json
 import os
 import re
 import sys
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -81,6 +82,7 @@ class RawEntry:
     source_end_line: int
     promote_tag: bool   # True if block contains "Promote?: yes" (case-insensitive)
     no_tag: bool        # True if block contains "Promote?: no" (case-insensitive)
+    protected: bool = False  # S-3: True if source matches read_only or archived pattern
 
 
 @dataclass
@@ -91,6 +93,7 @@ class ScoredEntry:
     promote_score: int
     forget_score: int
     bucket: str         # "promote" | "forget" | "middle"
+    protected: bool = False  # S-3: carried from RawEntry; demotes "forget" → "middle"
 
 
 # ---------------------------------------------------------------------------
@@ -196,10 +199,72 @@ def load_config(claude_md_path: str = None, *, signals_yaml_path: str = None) ->
 
 
 # ---------------------------------------------------------------------------
+# S-3: memory-maintenance pattern loader (duplicated from memory_check.py — Q-B)
+# The YAML schema is the single source of truth; the ~15-line parser is duplicated
+# here to avoid a new cross-script import (no core twin for sleep_score.py).
+# ---------------------------------------------------------------------------
+
+def _load_maintenance_patterns(pattern_file: Optional[str]) -> dict:
+    """Load memory-maintenance.yaml pattern config.
+
+    Stdlib-only line parser — no PyYAML. Tolerates comments and blank lines.
+    Returns dict with keys archived, read_only, ignore (each a list of str globs).
+    Returns all-empty lists when pattern_file is None, not found, or unreadable.
+    """
+    empty: dict = {"archived": [], "read_only": [], "ignore": []}
+    if pattern_file is None:
+        return empty
+    try:
+        text = Path(pattern_file).read_text(encoding="utf-8")
+    except (OSError, IOError):
+        return empty
+
+    result: dict = {"archived": [], "read_only": [], "ignore": []}
+    current_key: Optional[str] = None
+
+    for raw_line in text.splitlines():
+        comment_pos = raw_line.find("#")
+        line = raw_line[:comment_pos].rstrip() if comment_pos >= 0 else raw_line.rstrip()
+        if not line.strip():
+            continue
+        if not line[0].isspace() and line.rstrip().endswith(":"):
+            key = line.rstrip().rstrip(":").strip()
+            current_key = key if key in result else None
+            continue
+        stripped = line.lstrip()
+        if stripped.startswith("- ") and current_key is not None:
+            value = stripped[2:].strip().strip('"').strip("'")
+            if value:
+                result[current_key].append(value)
+
+    return result
+
+
+def _is_protected(basename: str, patterns: dict) -> bool:
+    """Return True if basename matches read_only or archived (S-3 protected sources)."""
+    for glob in patterns.get("archived", []):
+        if fnmatch.fnmatch(basename, glob):
+            return True
+    for glob in patterns.get("read_only", []):
+        if fnmatch.fnmatch(basename, glob):
+            return True
+    return False
+
+
+def _is_ignored(basename: str, patterns: dict) -> bool:
+    """Return True if basename matches the ignore list."""
+    for glob in patterns.get("ignore", []):
+        if fnmatch.fnmatch(basename, glob):
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # collect_entries
 # ---------------------------------------------------------------------------
 
-def collect_entries(scan_dir: str, scan_days: int = 30) -> List[RawEntry]:
+def collect_entries(scan_dir: str, scan_days: int = 30,
+                    patterns: Optional[dict] = None) -> List[RawEntry]:
     """Scan insights-*.md files and parse individual entries.
 
     Two-pass algorithm per D-07:
@@ -216,10 +281,14 @@ def collect_entries(scan_dir: str, scan_days: int = 30) -> List[RawEntry]:
     Args:
         scan_dir: directory to scan for insights-*.md files.
         scan_days: only consider files modified within this many days.
+        patterns: optional maintenance pattern dict from _load_maintenance_patterns().
+                  ignore-matched files are skipped entirely; protected-source entries
+                  have their ``protected`` field set to True (S-3).
 
     Returns:
         List of RawEntry objects.
     """
+    _patterns = patterns or {}
     scan_path = Path(scan_dir)
     if not scan_path.exists():
         print(
@@ -234,11 +303,15 @@ def collect_entries(scan_dir: str, scan_days: int = 30) -> List[RawEntry]:
     entries: List[RawEntry] = []
 
     # Glob insights files in scan_dir (and one level deep)
-    patterns = list(scan_path.glob("insights-*.md")) + list(
+    insight_globs = list(scan_path.glob("insights-*.md")) + list(
         scan_path.glob("*/insights-*.md")
     )
 
-    for filepath in sorted(patterns):
+    for filepath in sorted(insight_globs):
+        # S-3: skip ignore-matched source files entirely
+        if _is_ignored(filepath.name, _patterns):
+            continue
+
         try:
             mtime = filepath.stat().st_mtime
         except OSError:
@@ -254,6 +327,13 @@ def collect_entries(scan_dir: str, scan_days: int = 30) -> List[RawEntry]:
 
         abs_path = str(filepath.resolve())
         file_entries = _parse_file(content, abs_path)
+
+        # S-3: mark entries from protected source files
+        is_prot = _is_protected(filepath.name, _patterns)
+        if is_prot:
+            for e in file_entries:
+                e.protected = True
+
         entries.extend(file_entries)
 
     return entries
@@ -532,6 +612,10 @@ def score_entries(entries: List[RawEntry], config: dict) -> List[ScoredEntry]:
         # --- Bucket decision ---
         bucket = _bucket(p_score, f_score, promote_min, promote_max_forget, forget_min, forget_max_promote)
 
+        # S-3: carry protected flag; demote soft-forget → middle for protected sources
+        if entry.protected and bucket == "forget":
+            bucket = "middle"
+
         scored.append(ScoredEntry(
             text=entry.text,
             source_path=entry.source_path,
@@ -539,6 +623,7 @@ def score_entries(entries: List[RawEntry], config: dict) -> List[ScoredEntry]:
             promote_score=p_score,
             forget_score=f_score,
             bucket=bucket,
+            protected=entry.protected,
         ))
 
     return scored
@@ -666,14 +751,27 @@ def main(argv: Optional[List[str]] = None) -> int:
         default=None,
         help="Explicit path to sleep-signals.yaml (overrides --claude-md and home default).",
     )
+    parser.add_argument(
+        "--patterns",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Path to memory-maintenance.yaml pattern file. "
+            "When present, ignore-matched source files are skipped and "
+            "read_only/archived sources are never soft-forgotten (S-3)."
+        ),
+    )
 
     args = parser.parse_args(argv)
 
     # Load config
     config = load_config(args.claude_md, signals_yaml_path=args.signals_yaml)
 
+    # S-3: load maintenance patterns (always-pass; no-op when absent)
+    maintenance_patterns = _load_maintenance_patterns(args.patterns)
+
     # Collect entries
-    entries = collect_entries(args.scan_dir, args.scan_days)
+    entries = collect_entries(args.scan_dir, args.scan_days, patterns=maintenance_patterns)
 
     # Corpus-size guard
     if len(entries) < 5:
