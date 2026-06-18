@@ -84,6 +84,7 @@ DEPLOYED_SCRIPTS = (
     "get_session_uuid.py",           # IVG-74: reliable session-UUID capture for cost ledger
     "find_drive_conflicts.py",       # IVG-75: Drive sync-conflict sweep wrapper
     "memory_check.py",               # IVG-50: auto-memory referential-integrity checker wrapper
+    "memory_select.py",              # IVG-50 S-1: selective lessons retrieval wrapper
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -312,6 +313,7 @@ CORE_SCRIPTS = (
     "get_session_uuid.py",        # IVG-74: reliable session-UUID capture for cost ledger
     "find_drive_conflicts.py",    # IVG-75: Drive sync-conflict sweep core impl
     "memory_check.py",            # IVG-50: auto-memory referential-integrity checker core impl
+    "memory_select.py",           # IVG-50 S-1: selective lessons retrieval core impl
 )
 
 
@@ -437,7 +439,7 @@ def deploy_hooks(
                 settings = json.load(f)
         except (json.JSONDecodeError, OSError) as exc:
             # Back up the broken file with a timestamp so prior backups are preserved
-            ts = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+            ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             backup = settings_path.parent / f"{settings_path.name}.bak-{ts}"
             shutil.copyfile(settings_path, backup)
             print(
