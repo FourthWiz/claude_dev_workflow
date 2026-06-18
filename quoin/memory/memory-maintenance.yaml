@@ -1,7 +1,7 @@
 # memory-maintenance.yaml — quoin memory maintenance patterns (S-3)
 # Globs matched with fnmatch against BARE FILE NAMES (fact-files,
 # MEMORY.md link targets) and against /sleep source basenames.
-# Globs are NOT paths — they are NEVER __QUOIN_HOME__-substituted.
+# Globs are bare names only — not filesystem paths.
 version: 1
 archived:        # suppresses memory_check orphan AND dangling errors; /sleep never soft-forgets
   - "archive_*.md"
