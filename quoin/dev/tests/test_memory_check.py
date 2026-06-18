@@ -38,6 +38,8 @@ CORE_IMPL_SRC = REPO_ROOT / "quoin" / "core" / "scripts" / "memory_check.py"
 
 def _load_installer():
     spec = importlib.util.spec_from_file_location("installer", INSTALLER_PY)
+    assert spec is not None, f"Could not load spec from {INSTALLER_PY}"
+    assert spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -87,6 +89,8 @@ def test_wrapper_help_exits_zero():
 def _load_core():
     """Load the core module directly for behaviour tests (mandatory importlib pattern)."""
     spec = importlib.util.spec_from_file_location("_mc_core", CORE_IMPL_SRC)
+    assert spec is not None, f"Could not load spec from {CORE_IMPL_SRC}"
+    assert spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

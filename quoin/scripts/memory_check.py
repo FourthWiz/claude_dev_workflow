@@ -8,6 +8,7 @@ from pathlib import Path
 
 _CORE_PATH = Path(__file__).resolve().parents[1] / "core" / "scripts" / "memory_check.py"
 _SPEC = importlib.util.spec_from_file_location("_quoin_core_memory_check", _CORE_PATH)
+assert _SPEC is not None, f"Could not locate core module at {_CORE_PATH}"
 _CORE = importlib.util.module_from_spec(_SPEC)
 assert _SPEC.loader is not None
 # Register in sys.modules before exec so any module-level references resolve correctly.

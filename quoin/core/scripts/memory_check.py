@@ -124,9 +124,11 @@ def check_index_pointers(memory_dir: Path) -> list:
     When S-1 ships a MEMORY-INDEX.md, this function will validate that every
     index pointer resolves. Until then, returns [] unconditionally.
     """
-    # S-1 hook point: check for MEMORY-INDEX.md and validate its pointers.
+    # S-1 hook point: when MEMORY-INDEX.md exists, validate its pointers.
     # For S-2, no S-1 index exists yet — return empty list (inert).
-    return []
+    if not (memory_dir / "MEMORY-INDEX.md").exists():
+        return []
+    return []  # S-1 not yet implemented
 
 
 # ---------------------------------------------------------------------------
