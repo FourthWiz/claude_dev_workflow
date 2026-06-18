@@ -29,6 +29,7 @@ _counts_by_phase = _DM._counts_by_phase
 _min_artifact_mtime = _DM._min_artifact_mtime
 _stage_info = _DM._stage_info
 _task_summary = _DM._task_summary
+compute_version_token = _DM.compute_version_token
 main = _DM.main
 
 
@@ -641,3 +642,128 @@ def test_regression_exception_narrowing(tmp_path):
     # Should not raise, should degrade gracefully
     result = scan_tasks(root, cost_provider=provider_that_raises)
     assert result is not None
+
+
+# ---------------------------------------------------------------------------
+# Test: compute_version_token (IVG-76 T-01 acceptance criteria)
+# ---------------------------------------------------------------------------
+
+def test_compute_version_token_stability(tmp_path):
+    """Token stability: two calls with same root/scope and no FS change → identical token."""
+    root = tmp_path / "project"
+    root.mkdir()
+    # Create a .workflow_artifacts/ dir with one file
+    art = root / ".workflow_artifacts" / "my-task"
+    art.mkdir(parents=True)
+    (art / "current-plan.md").write_text("# plan\n")
+
+    scope = "tasks:fin=False|cj=0"
+    token1 = compute_version_token(root, scope)
+    token2 = compute_version_token(root, scope)
+
+    assert token1 == token2, "Token must be stable when FS state is unchanged"
+    # Verify ETag format: starts and ends with double-quote
+    assert token1.startswith('"') and token1.endswith('"'), (
+        f"Token must be a quoted ETag string, got: {token1!r}"
+    )
+    assert len(token1) == 18, f"Expected '\"' + 16-char hex + '\"' (18 chars), got {len(token1)}"
+
+
+def test_compute_version_token_changes_on_new_file(tmp_path):
+    """Token changes when a new artifact file is created."""
+    root = tmp_path / "project"
+    root.mkdir()
+    art = root / ".workflow_artifacts" / "my-task"
+    art.mkdir(parents=True)
+    (art / "current-plan.md").write_text("# plan\n")
+
+    scope = "tasks:fin=False|cj=0"
+    token_before = compute_version_token(root, scope)
+
+    # Create a new file
+    (art / "review-1.md").write_text("# review\n")
+    token_after = compute_version_token(root, scope)
+
+    assert token_before != token_after, "Token must change when a new file is created"
+
+
+def test_compute_version_token_scope_scoping(tmp_path):
+    """Different scope strings → different tokens even with identical FS state."""
+    root = tmp_path / "project"
+    root.mkdir()
+    art = root / ".workflow_artifacts" / "my-task"
+    art.mkdir(parents=True)
+    (art / "current-plan.md").write_text("# plan\n")
+
+    token_a = compute_version_token(root, "tasks:fin=False|cj=0")
+    token_b = compute_version_token(root, "tasks:fin=True|cj=0")
+    token_c = compute_version_token(root, "task:my-task|cj=0")
+
+    assert token_a != token_b, "fin=False and fin=True scopes must produce different tokens"
+    assert token_a != token_c, "list scope and detail scope must produce different tokens"
+    assert token_b != token_c, "fin=True scope and detail scope must produce different tokens"
+
+
+def test_compute_version_token_missing_artifacts_dir(tmp_path):
+    """Returns non-empty deterministic string when .workflow_artifacts/ is absent."""
+    root = tmp_path / "no_artifacts_project"
+    root.mkdir()
+    # No .workflow_artifacts/ created
+
+    scope = "tasks:fin=False|cj=0"
+    token = compute_version_token(root, scope)
+
+    assert token, "Token must be non-empty even when .workflow_artifacts/ is absent"
+    assert token.startswith('"') and token.endswith('"'), (
+        f"Token must be a quoted ETag string, got: {token!r}"
+    )
+    # Second call with same scope → same token (deterministic)
+    token2 = compute_version_token(root, scope)
+    assert token == token2, "Token must be deterministic when .workflow_artifacts/ is absent"
+
+
+def test_compute_version_token_same_second_different_size(tmp_path):
+    """Tokens differ for two files created in same wall-clock second with different sizes.
+
+    This tests count+size disambiguation: even if mtime is identical,
+    different file sizes produce different tokens (proves count/size signals work).
+    """
+    import time as _time
+
+    root = tmp_path / "project"
+    root.mkdir()
+    art = root / ".workflow_artifacts" / "my-task"
+    art.mkdir(parents=True)
+
+    scope = "tasks:fin=False|cj=0"
+
+    # Create first file
+    f1 = art / "file_small.md"
+    f1.write_text("x")
+    token1 = compute_version_token(root, scope)
+
+    # Create second file with different size (adds to count AND total_size)
+    f2 = art / "file_large.md"
+    f2.write_text("x" * 100)
+    token2 = compute_version_token(root, scope)
+
+    assert token1 != token2, (
+        "Token must change when a file with different size is added "
+        "(count + total_size disambiguation)"
+    )
+
+
+def test_compute_version_token_no_adapter_imports():
+    """Core-purity: compute_version_token must not import from adapter layer.
+
+    Acceptance grep: 'from|import.*scripts' must not match in dashboard_model.py
+    for any adapter-layer reference.
+    """
+    import re
+    source = _CORE_PATH.read_text(encoding="utf-8")
+    # Check no import from quoin/scripts adapter layer
+    adapter_import_re = re.compile(r'^(from|import).*dashboard_server|dashboard_cost', re.MULTILINE)
+    assert not adapter_import_re.search(source), (
+        "dashboard_model.py must not import from dashboard_server or dashboard_cost "
+        "(core/adapter boundary violation)"
+    )

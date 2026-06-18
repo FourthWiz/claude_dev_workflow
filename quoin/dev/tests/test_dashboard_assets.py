@@ -175,3 +175,51 @@ class TestAppJs:
     def test_non_empty(self):
         content = _JS.read_text(encoding="utf-8")
         assert len(content.strip()) > 200
+
+
+class TestETagConditionalPolling:
+    """IVG-76 T-06 asset tests: string-presence checks for ETag/304 client code.
+
+    These are grep-only tests (no JS execution). Runtime correctness is covered
+    by the server tests in test_dashboard_server.py.
+    """
+
+    def test_state_etags_present(self):
+        """app.js must declare state.etags for ETag cache storage."""
+        content = _JS.read_text(encoding="utf-8")
+        assert "state.etags" in content, (
+            "app.js must contain state.etags (ETag cache keyed by URL)"
+        )
+
+    def test_if_none_match_header_set(self):
+        """app.js must send If-None-Match header on conditional requests."""
+        content = _JS.read_text(encoding="utf-8")
+        assert "If-None-Match" in content, (
+            "app.js must call setRequestHeader('If-None-Match', ...) for conditional GET"
+        )
+
+    def test_304_handling_present(self):
+        """app.js must handle xhr.status === 304 (skip DOM on Not Modified)."""
+        content = _JS.read_text(encoding="utf-8")
+        assert "304" in content, (
+            "app.js must check xhr.status === 304 to skip DOM update on Not Modified"
+        )
+
+    def test_get_response_header_etag_present(self):
+        """app.js must read ETag from response via getResponseHeader."""
+        content = _JS.read_text(encoding="utf-8")
+        assert "getResponseHeader" in content, (
+            "app.js must use getResponseHeader to read ETag from response"
+        )
+
+    def test_no_eventsource_still_absent(self):
+        """SSE is still cut — EventSource must remain absent after IVG-76 changes."""
+        content = _JS.read_text(encoding="utf-8")
+        assert "new EventSource" not in content
+        assert "EventSource(" not in content
+
+    def test_no_external_urls_after_ivg76(self):
+        """IVG-76 changes must not introduce external URLs or CDN references."""
+        content = _JS.read_text(encoding="utf-8")
+        matches = _EXTERNAL_URL_RE.findall(content)
+        assert not matches, f"app.js contains external URL(s) after IVG-76: {matches[:3]}"

@@ -35,6 +35,8 @@ _SPEC.loader.exec_module(_DS)
 DashboardServer = _DS.DashboardServer
 DashboardHandler = _DS.DashboardHandler
 _bind_server = _DS._bind_server
+_cost_jsonl_mtime_ns = _DS._cost_jsonl_mtime_ns
+project_hash = _DS.project_hash
 main = _DS.main
 
 
@@ -86,6 +88,18 @@ def _method(server, method: str, path: str):
     resp.read()
     conn.close()
     return resp.status
+
+
+def _get_with_inm(server, path: str, etag: str):
+    """GET with an If-None-Match header. Returns (status, headers_dict, body_bytes)."""
+    port = server.server_address[1]
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    conn.request("GET", path, headers={"If-None-Match": etag})
+    resp = conn.getresponse()
+    body = resp.read()
+    headers = {h.lower(): v for h, v in resp.getheaders()}
+    conn.close()
+    return resp.status, headers, body
 
 
 # ---------------------------------------------------------------------------
@@ -489,3 +503,355 @@ class TestUrlFileAndSighup:
             if proc.poll() is None:
                 proc.terminate()
                 proc.wait(timeout=3)
+
+
+# ---------------------------------------------------------------------------
+# IVG-76 T-06: ETag / 304 conditional-GET tests
+# ---------------------------------------------------------------------------
+
+def _get_headers_dict(headers_list):
+    """Convert list of (name, value) header tuples to a lowercase-keyed dict."""
+    return {k.lower(): v for k, v in headers_list}
+
+
+class TestETag304Tasks:
+    """ETag/304 acceptance criteria for /api/tasks (T-02)."""
+
+    def test_first_request_returns_200_with_etag(self, tmp_path):
+        """First /api/tasks request (no If-None-Match) → 200 with ETag header."""
+        proj = _make_project(tmp_path)
+        server, _ = _start_server(proj)
+        try:
+            status, headers, body = _get(server, "/api/tasks")
+            h = _get_headers_dict(headers)
+            assert status == 200
+            assert "etag" in h, "Response must include an ETag header"
+            assert h["etag"].startswith('"') and h["etag"].endswith('"'), (
+                f"ETag must be a quoted string, got: {h['etag']!r}"
+            )
+        finally:
+            server.shutdown()
+
+    def test_second_request_matching_etag_returns_304(self, tmp_path):
+        """Second /api/tasks with matching ETag → 304, empty body, ETag echoed."""
+        proj = _make_project(tmp_path)
+        server, _ = _start_server(proj)
+        try:
+            # First request — get the ETag
+            status1, headers1, body1 = _get(server, "/api/tasks")
+            assert status1 == 200
+            h1 = _get_headers_dict(headers1)
+            assert "etag" in h1
+            etag = h1["etag"]
+
+            # Second request — send matching If-None-Match
+            status2, headers2, body2 = _get_with_inm(server, "/api/tasks", etag)
+            assert status2 == 304, f"Expected 304, got {status2}"
+            assert len(body2) == 0, "304 must not have a body"
+            assert "etag" in headers2, "304 must echo ETag header"
+            assert headers2["etag"] == etag
+        finally:
+            server.shutdown()
+
+    def test_stale_etag_returns_200(self, tmp_path):
+        """Stale/mismatched If-None-Match → 200 with fresh payload."""
+        proj = _make_project(tmp_path)
+        server, _ = _start_server(proj)
+        try:
+            status, headers, body = _get_with_inm(
+                server, "/api/tasks", '"stale-etag-value-xyz"'
+            )
+            assert status == 200
+            # headers is already a dict from _get_with_inm
+            assert "etag" in headers
+        finally:
+            server.shutdown()
+
+    def test_no_if_none_match_returns_200(self, tmp_path):
+        """No If-None-Match header → 200 full payload (backward compat)."""
+        proj = _make_project(tmp_path)
+        server, _ = _start_server(proj)
+        try:
+            status, headers, body = _get(server, "/api/tasks")
+            assert status == 200
+            data = json.loads(body)
+            assert "tasks" in data
+        finally:
+            server.shutdown()
+
+    def test_scan_tasks_not_called_on_304(self, tmp_path):
+        """scan_tasks must NOT be invoked when a 304 is returned."""
+        proj = _make_project(tmp_path)
+        call_count = {"n": 0}
+        orig_scan = _DS.scan_tasks
+
+        def counting_scan(*args, **kwargs):
+            call_count["n"] += 1
+            return orig_scan(*args, **kwargs)
+
+        server, _ = _start_server(proj)
+        try:
+            # Patch scan_tasks on the module
+            _DS.scan_tasks = counting_scan  # type: ignore[attr-defined]
+
+            # First request — populates ETag; scan_tasks called once
+            status1, headers1, _ = _get(server, "/api/tasks")
+            assert status1 == 200
+            etag = _get_headers_dict(headers1).get("etag")
+            count_after_first = call_count["n"]
+            assert count_after_first >= 1
+
+            # Second request — 304 path; scan_tasks must NOT be called again
+            assert etag is not None, "ETag must be present in first response"
+            status2, _, _ = _get_with_inm(server, "/api/tasks", etag)
+            assert status2 == 304
+            assert call_count["n"] == count_after_first, (
+                "scan_tasks must not be called when 304 is returned"
+            )
+        finally:
+            _DS.scan_tasks = orig_scan  # type: ignore[attr-defined]
+            server.shutdown()
+
+    def test_no_cache_control_in_200_response(self, tmp_path):
+        """Cache-Control and Expires must NOT appear in /api/tasks 200 response headers."""
+        proj = _make_project(tmp_path)
+        server, _ = _start_server(proj)
+        try:
+            _, headers, _ = _get(server, "/api/tasks")
+            h = _get_headers_dict(headers)
+            assert "cache-control" not in h, "Cache-Control must not be set on API responses"
+            assert "expires" not in h, "Expires must not be set on API responses"
+        finally:
+            server.shutdown()
+
+
+class TestETag304TaskDetail:
+    """ETag/304 acceptance criteria for /api/tasks/<name> (T-03)."""
+
+    def _make_project_with_task(self, tmp_path):
+        proj = _make_project(tmp_path)
+        task_dir = proj / ".workflow_artifacts" / "my-task"
+        task_dir.mkdir(parents=True)
+        (task_dir / "current-plan.md").write_text("# plan\n", encoding="utf-8")
+        return proj
+
+    def test_first_detail_request_returns_200_with_etag(self, tmp_path):
+        """First /api/tasks/<name> → 200 with ETag header."""
+        proj = self._make_project_with_task(tmp_path)
+        server, _ = _start_server(proj)
+        try:
+            status, headers, _ = _get(server, "/api/tasks/my-task")
+            h = _get_headers_dict(headers)
+            assert status == 200
+            assert "etag" in h
+        finally:
+            server.shutdown()
+
+    def test_second_detail_request_matching_etag_returns_304(self, tmp_path):
+        """Second /api/tasks/<name> with matching ETag → 304, empty body."""
+        proj = self._make_project_with_task(tmp_path)
+        server, _ = _start_server(proj)
+        try:
+            status1, headers1, _ = _get(server, "/api/tasks/my-task")
+            assert status1 == 200
+            etag = _get_headers_dict(headers1).get("etag")
+            assert etag is not None
+
+            status2, headers2, body2 = _get_with_inm(server, "/api/tasks/my-task", etag)
+            assert status2 == 304
+            assert len(body2) == 0
+            assert headers2.get("etag") == etag
+        finally:
+            server.shutdown()
+
+    def test_unknown_task_returns_404_not_304(self, tmp_path):
+        """Unknown task must return 404 (not 304, not 500)."""
+        proj = _make_project(tmp_path)
+        server, _ = _start_server(proj)
+        try:
+            # Even with a fake ETag, unknown task must 404
+            status, _, _ = _get_with_inm(
+                server, "/api/tasks/nonexistent", '"fake-etag"'
+            )
+            assert status == 404
+        finally:
+            server.shutdown()
+
+    def test_task_detail_not_called_on_304(self, tmp_path):
+        """task_detail must NOT be invoked when a 304 is returned."""
+        proj = self._make_project_with_task(tmp_path)
+        call_count = {"n": 0}
+        orig_detail = _DS.task_detail
+
+        def counting_detail(*args, **kwargs):
+            call_count["n"] += 1
+            return orig_detail(*args, **kwargs)
+
+        server, _ = _start_server(proj)
+        try:
+            _DS.task_detail = counting_detail  # type: ignore[attr-defined]
+
+            status1, headers1, _ = _get(server, "/api/tasks/my-task")
+            assert status1 == 200
+            etag = _get_headers_dict(headers1).get("etag")
+            count_after_first = call_count["n"]
+            assert count_after_first >= 1
+
+            assert etag is not None, "ETag must be present in first response"
+            status2, _, _ = _get_with_inm(server, "/api/tasks/my-task", etag)
+            assert status2 == 304
+            assert call_count["n"] == count_after_first, (
+                "task_detail must not be called when 304 is returned"
+            )
+        finally:
+            _DS.task_detail = orig_detail  # type: ignore[attr-defined]
+            server.shutdown()
+
+
+class TestCostJsonlMtimeNs:
+    """IVG-76 T-06: _cost_jsonl_mtime_ns and under-invalidation tests."""
+
+    def test_missing_project_dir_returns_zero(self, tmp_path):
+        """_cost_jsonl_mtime_ns returns 0 without raising when project dir is absent."""
+        root = tmp_path / "nonexistent_project"
+        root.mkdir()
+        # project_hash dir doesn't exist under tmp_path/.claude/projects/
+        result = _cost_jsonl_mtime_ns(root, home=tmp_path)
+        assert result == 0, "Should return 0 when JSONL project dir is absent"
+
+    def test_empty_jsonl_dir_returns_zero(self, tmp_path):
+        """_cost_jsonl_mtime_ns returns 0 when JSONL dir exists but has no .jsonl files."""
+        root = tmp_path / "project"
+        root.mkdir()
+        ph = project_hash(str(root))
+        proj_dir = tmp_path / ".claude" / "projects" / ph
+        proj_dir.mkdir(parents=True)
+        # No .jsonl files created
+
+        result = _cost_jsonl_mtime_ns(root, home=tmp_path)
+        assert result == 0
+
+    def test_existing_jsonl_returns_nonzero(self, tmp_path):
+        """_cost_jsonl_mtime_ns returns non-zero for a real .jsonl file (happy path)."""
+        root = tmp_path / "project"
+        root.mkdir()
+        ph = project_hash(str(root))
+        proj_dir = tmp_path / ".claude" / "projects" / ph
+        proj_dir.mkdir(parents=True)
+
+        jsonl = proj_dir / "test-session.jsonl"
+        jsonl.write_text('{"message": {"usage": {"input_tokens": 100}}}\n')
+
+        result = _cost_jsonl_mtime_ns(root, home=tmp_path)
+        assert result != 0, (
+            "project_hash must be in scope and JSONL must be readable (CRIT-2 guard)"
+        )
+
+    def test_jsonl_append_changes_fingerprint(self, tmp_path):
+        """Under-invalidation test (a): JSONL append changes the fingerprint (CRIT-1 guard).
+
+        A JSONL append bumps the file's mtime and size. This test would FAIL against
+        the broken dir-mtime approach (dir mtime unchanged on file append).
+        It also ensures project_hash is in scope (CRIT-2 guard via cj1 != 0 assertion).
+        """
+        import time as _time
+
+        root = tmp_path / "project"
+        root.mkdir()
+        ph = project_hash(str(root))
+        proj_dir = tmp_path / ".claude" / "projects" / ph
+        proj_dir.mkdir(parents=True)
+
+        jsonl = proj_dir / "test-session.jsonl"
+        jsonl.write_text('{"message": {"usage": {"input_tokens": 100}}}\n')
+
+        cj1 = _cost_jsonl_mtime_ns(root, home=tmp_path)
+        assert cj1 != 0, (
+            "project_hash must be in scope and JSONL must be readable (CRIT-2 guard)"
+        )
+
+        # Ensure mtime can advance (nanosecond resolution usually sufficient,
+        # but a small sleep avoids any sub-nanosecond FS edge cases)
+        _time.sleep(0.01)
+
+        # APPEND a row — this is the live cost-accrual pattern (same file, new line)
+        with open(jsonl, "a") as f:
+            f.write('{"message": {"usage": {"input_tokens": 200}}}\n')
+
+        cj2 = _cost_jsonl_mtime_ns(root, home=tmp_path)
+        assert cj2 != cj1, (
+            "ETag fingerprint must change on JSONL append (CRIT-1 guard). "
+            "This test FAILS with the broken dir-mtime approach."
+        )
+
+    def test_same_second_same_size_residual(self, tmp_path):
+        """Under-invalidation test (b): documents the R-02 accepted residual.
+
+        A same-second in-place overwrite that preserves file size may produce
+        an unchanged fingerprint (the ≤3s stale window, self-healing on next poll).
+        This test pins the residual — it will fail if the fingerprint path is removed.
+
+        We simulate the residual by pinning both writes to the same mtime.
+        """
+        import os as _os
+
+        root = tmp_path / "project"
+        root.mkdir()
+        ph = project_hash(str(root))
+        proj_dir = tmp_path / ".claude" / "projects" / ph
+        proj_dir.mkdir(parents=True)
+
+        # Write content and pin mtime to a fixed value (simulates same-second write)
+        content = '{"message": {"usage": {"input_tokens": 100}}}\n'
+        jsonl = proj_dir / "test-session.jsonl"
+        jsonl.write_text(content)
+        fixed_mtime = 1_700_000_000.0  # fixed epoch second
+        _os.utime(jsonl, (fixed_mtime, fixed_mtime))
+        cj1 = _cost_jsonl_mtime_ns(root, home=tmp_path)
+
+        # Overwrite with exactly same-size content (different bytes, same length),
+        # then pin to the SAME mtime again (simulates in-place edit within same second)
+        same_size_content = '{"message": {"usage": {"input_tokens": 999}}}\n'
+        assert len(same_size_content) == len(content), "Must have same byte size for R-02 scenario"
+        jsonl.write_text(same_size_content)
+        _os.utime(jsonl, (fixed_mtime, fixed_mtime))
+        cj2 = _cost_jsonl_mtime_ns(root, home=tmp_path)
+
+        # The residual: same mtime + same size → same XOR fingerprint
+        # R-02 accepted: self-heals within ≤3s on next poll where content differs
+        assert cj1 == cj2, (
+            "Accepted R-02 residual: same-mtime + same-size in-place overwrite "
+            "produces identical fingerprint (stale for ≤3s, self-healing)"
+        )
+
+
+class TestCacheControlAbsent:
+    """IVG-76: Cache-Control/Expires must not appear in API response helpers."""
+
+    def test_no_cache_control_in_source(self):
+        """dashboard_server.py helpers must not call send_header("Cache-Control", ...)."""
+        import re
+        source = _DS_PATH.read_text(encoding="utf-8")
+        # Check that send_header is never called with Cache-Control or Expires
+        # (comment mentions are fine; the actual API call is what we guard against)
+        cache_control_call_re = re.compile(
+            r'send_header\s*\(\s*["\']Cache-Control["\']', re.IGNORECASE
+        )
+        expires_call_re = re.compile(
+            r'send_header\s*\(\s*["\']Expires["\']', re.IGNORECASE
+        )
+        assert not cache_control_call_re.search(source), (
+            "dashboard_server.py must not call send_header('Cache-Control', ...) "
+            "on API responses"
+        )
+        assert not expires_call_re.search(source), (
+            "dashboard_server.py must not call send_header('Expires', ...) "
+            "on API responses"
+        )
+
+    def test_project_hash_bound_at_module_level(self):
+        """dashboard_server.py must bind project_hash = _dc.project_hash at module level."""
+        source = _DS_PATH.read_text(encoding="utf-8")
+        assert "project_hash = _dc.project_hash" in source, (
+            "dashboard_server.py must bind 'project_hash = _dc.project_hash' at module level"
+        )
