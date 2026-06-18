@@ -335,6 +335,8 @@ The following files are explicitly **excluded** from terse-style writing — the
 - `quoin/memory/hooks-table.md` (+ `__QUOIN_HOME__/memory/hooks-table.md` deployed copy — extracted hooks event/matcher table from CLAUDE.md 2026-05-15).
 - `quoin/memory/lifecycle-guide.md` (+ `__QUOIN_HOME__/memory/lifecycle-guide.md` deployed copy — extracted verbose Lifecycle skills + memory-layers details from CLAUDE.md 2026-05-15).
 - `quoin/memory/branch-recovery.md` (+ `__QUOIN_HOME__/memory/branch-recovery.md` deployed copy — canonical safe branch-reset recipe (`git update-ref`) for recovering from "commits on main"; added IVG-77 2026-06-17).
+- `quoin/memory/memory-maintenance.md` (+ `__QUOIN_HOME__/memory/memory-maintenance.md` deployed copy — Tier-1 reference doc for memory lifecycle: archive/soft-forget/delete policy, pattern schema, consumer contracts; added IVG-50 S-3 2026-06-18).
+- `quoin/memory/memory-maintenance.yaml` (+ `__QUOIN_HOME__/memory/memory-maintenance.yaml` deployed copy — pattern config (ignore/archived/read_only globs) for memory_check.py and /sleep; token-free glob file; added IVG-50 S-3 2026-06-18).
 
 NOTE: QUICKSTART.md sits at `quoin/` root and deploys to `__QUOIN_HOME__/QUICKSTART.md` (NOT under `memory/`) — this is intentional. Do NOT normalize paths.
 - `quoin/QUICKSTART.md` (+ `__QUOIN_HOME__/QUICKSTART.md` deployed copy).
