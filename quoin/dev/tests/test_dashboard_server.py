@@ -592,7 +592,7 @@ class TestETag304Tasks:
         server, _ = _start_server(proj)
         try:
             # Patch scan_tasks on the module
-            _DS.scan_tasks = counting_scan
+            _DS.scan_tasks = counting_scan  # type: ignore[attr-defined]
 
             # First request — populates ETag; scan_tasks called once
             status1, headers1, _ = _get(server, "/api/tasks")
@@ -602,13 +602,14 @@ class TestETag304Tasks:
             assert count_after_first >= 1
 
             # Second request — 304 path; scan_tasks must NOT be called again
+            assert etag is not None, "ETag must be present in first response"
             status2, _, _ = _get_with_inm(server, "/api/tasks", etag)
             assert status2 == 304
             assert call_count["n"] == count_after_first, (
                 "scan_tasks must not be called when 304 is returned"
             )
         finally:
-            _DS.scan_tasks = orig_scan
+            _DS.scan_tasks = orig_scan  # type: ignore[attr-defined]
             server.shutdown()
 
     def test_no_cache_control_in_200_response(self, tmp_path):
@@ -688,7 +689,7 @@ class TestETag304TaskDetail:
 
         server, _ = _start_server(proj)
         try:
-            _DS.task_detail = counting_detail
+            _DS.task_detail = counting_detail  # type: ignore[attr-defined]
 
             status1, headers1, _ = _get(server, "/api/tasks/my-task")
             assert status1 == 200
@@ -696,13 +697,14 @@ class TestETag304TaskDetail:
             count_after_first = call_count["n"]
             assert count_after_first >= 1
 
+            assert etag is not None, "ETag must be present in first response"
             status2, _, _ = _get_with_inm(server, "/api/tasks/my-task", etag)
             assert status2 == 304
             assert call_count["n"] == count_after_first, (
                 "task_detail must not be called when 304 is returned"
             )
         finally:
-            _DS.task_detail = orig_detail
+            _DS.task_detail = orig_detail  # type: ignore[attr-defined]
             server.shutdown()
 
 

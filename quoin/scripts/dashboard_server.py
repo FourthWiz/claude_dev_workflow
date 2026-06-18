@@ -69,7 +69,7 @@ project_hash = _dc.project_hash          # Required: _cost_jsonl_mtime_ns uses t
 # Cost-freshness helper (T-04b — ADAPTER LOCAL: dashboard_server.py only)
 # ---------------------------------------------------------------------------
 
-def _cost_jsonl_mtime_ns(project_root: Path, home: Path = None) -> int:
+def _cost_jsonl_mtime_ns(project_root: Path, home: Path | None = None) -> int:
     """Return a fingerprint int derived from the project's JSONL session files.
 
     Globs ~/.claude/projects/<project_hash>/*.jsonl and combines:
@@ -137,14 +137,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
     """Handles GET requests for the dashboard API and static assets."""
 
     # Project root injected at server startup (D-15 shared root invariant)
-    project_root: Path = None
+    project_root: Path = None  # type: ignore[assignment]
     cost_provider = None
 
     def log_message(self, format, *args):
         """Suppress all access log output — URL= line is the only reliable stdout marker."""
         pass
 
-    def _send_json(self, code: int, data, etag: str = None) -> None:
+    def _send_json(self, code: int, data, etag: str | None = None) -> None:
         body = json.dumps(data).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
