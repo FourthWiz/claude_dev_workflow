@@ -1,0 +1,1 @@
+Implement JSONL cost parsing with a today filter for stacked branch workflows. The parser must apply date filters per-row at parse time and handle the cost ledger row format correctly. Configure upstream on stacked branches to avoid false test exits.

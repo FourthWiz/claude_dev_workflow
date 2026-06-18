@@ -137,7 +137,7 @@ On fire:
 
 This skill may run in a fresh chat session. On start:
 1. Read `__QUOIN_HOME__/skills/plan/preamble.md` if it exists; if missing or empty, proceed normally. Purely additive cache-warming — every other read in this `## Session bootstrap` section, and every write-site format-kit / glossary reference (per §5.3 / §5.4 write-site instructions), stays in force unchanged. The intent is CROSS-SPAWN cache reuse: spawn N+1 of this skill with a byte-identical task fixture hits cache from spawn N's preamble.md tool_result, within the 5-minute prompt-cache TTL. Within a single spawn there is no cache benefit — savings only materialize on subsequent spawns whose prompt prefix is byte-identical through the preamble read. (Stage 2-alt of pipeline-efficiency-improvements.)
-2. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights — apply relevant lessons
+2. Run `python3 __QUOIN_HOME__/scripts/memory_select.py --task-text "<task description>"` to read only task-relevant lessons from `.workflow_artifacts/memory/lessons-learned.md`. If the script is absent, errors, or reports `fellback_to_wholesale`, read the whole `.workflow_artifacts/memory/lessons-learned.md` as the fallback (the wholesale read is preserved as the explicit fallback). Apply relevant lessons.
 3. Read `.workflow_artifacts/memory/sessions/` for active session state
 4. Read the task subfolder using `task_path(<task-name>, stage=<N>)` from `__QUOIN_HOME__/scripts/path_resolve.py` (or pass `stage=None` for legacy/default-root tasks); read `architecture.md` from the TASK ROOT, `current-plan.md` from the resolved path. Call pattern: `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate with integer form. architecture.md path: ALWAYS `<task-root>/architecture.md` (never under stage-N/). cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md`.
 5. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `plan`
@@ -166,7 +166,7 @@ Regardless of input, always read the relevant code and documents before planning
 
 Before writing anything:
 
-- Read `.workflow_artifacts/memory/lessons-learned.md` — apply past insights to avoid repeating mistakes
+- Run `python3 __QUOIN_HOME__/scripts/memory_select.py --task-text "<task description>"` to read only task-relevant lessons. If the script is absent or errors, read `.workflow_artifacts/memory/lessons-learned.md` wholesale (the wholesale read is the explicit fallback). Apply past insights to avoid repeating mistakes.
 - Read architecture docs if they exist (`.workflow_artifacts/<task-name>/architecture.md`)
 - **Check the knowledge cache** (if `.workflow_artifacts/cache/_index.md` exists):
   - Read `_staleness.md` (if it exists, otherwise fall back to `.workflow_artifacts/memory/repo-heads.md`) — compare each relevant repo's HEAD against cached hash
