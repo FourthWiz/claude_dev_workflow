@@ -1,5 +1,5 @@
 /* quoin workflow dashboard — vanilla JS SPA, no CDN, no build step */
-/* Polling: unconditional every 3s (no diff-based polling in this redesign). */
+/* Polling: conditional polling via ETag/If-None-Match; full re-fetch skipped on 304. */
 
 (function () {
   'use strict';
@@ -53,6 +53,7 @@
     lastDetail: null,          // T-07/T-08: cached detail payload for tab re-renders
     selectedStage: null,       // T-08: selected stage tab (stage n value)
     lastCardFingerprint: null, // T-07b: skip DOM mutation when structure unchanged on poll
+    etags: {},                 // IVG-76: ETag cache keyed by request URL
   };
 
   // ---------------------------------------------------------------------------
@@ -70,8 +71,20 @@
   function fetchJSON(url, cb) {
     var xhr = new XMLHttpRequest();
     xhr.open('GET', url);
+    // IVG-76: send cached ETag as If-None-Match for conditional polling
+    if (state.etags[url]) {
+      xhr.setRequestHeader('If-None-Match', state.etags[url]);
+    }
     xhr.onload = function () {
+      // IVG-76: 304 Not Modified — resource unchanged; skip parse and DOM update
+      if (xhr.status === 304) {
+        cb(null, null);
+        return;
+      }
       if (xhr.status >= 200 && xhr.status < 300) {
+        // IVG-76: store ETag from response for next poll
+        var et = xhr.getResponseHeader('ETag');
+        if (et) { state.etags[url] = et; }
         try {
           cb(null, JSON.parse(xhr.responseText));
         } catch (e) {
@@ -525,7 +538,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Data loading + polling (unconditional 3s — D-10)
+  // Data loading + polling (conditional polling via ETag/If-None-Match; full re-fetch skipped on 304)
   // ---------------------------------------------------------------------------
 
   function refreshTaskList(silent) {
@@ -539,6 +552,9 @@
         }
         return;
       }
+      // IVG-76: data === null means 304 Not Modified — skip all DOM work,
+      // preserve existing scroll and card state exactly as-is.
+      if (data === null) { return; }
       renderCards(data, silent);
     });
   }
@@ -556,6 +572,9 @@
           escHtml(err.message) + '</p>';
         return;
       }
+      // IVG-76: data === null means 304 Not Modified — skip all DOM work,
+      // preserve existing scroll and detail pane state exactly as-is.
+      if (data === null) { return; }
       state.lastDetail = data;        // T-08: cache for tab re-renders
       renderDetailPane(data);
       // T-08: reattach stage tab click handlers after every innerHTML replacement

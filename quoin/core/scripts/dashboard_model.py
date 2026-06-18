@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import hashlib
 import importlib.util
 import json
 import re
@@ -80,6 +81,55 @@ SECTION_RE = _path_resolve.SECTION_RE
 ROW_RE = _path_resolve.ROW_RE
 
 iter_events = _cost_event.iter_events
+
+
+# ---------------------------------------------------------------------------
+# ETag / conditional-GET support
+# ---------------------------------------------------------------------------
+
+def compute_version_token(root: Path, scope: str) -> str:
+    """Compute a strong ETag string for the artifacts tree at root.
+
+    Walks root/.workflow_artifacts/ (stat-only, no content reads) and
+    aggregates three cheap signals: max(st_mtime_ns), file_count,
+    sum(st_size).  The ``scope`` string is an opaque caller-supplied key
+    (e.g. ``"tasks:fin=False|cj=12345"``) that partitions tokens so that
+    different endpoints/query-params never share an ETag.
+
+    Returns a quoted strong-ETag value (RFC 7232 entity-tag syntax):
+      '"<16-char sha1-hex>"'
+
+    The surrounding double-quotes are part of the returned string and must
+    be preserved verbatim by HTTP clients and echoed back in If-None-Match.
+
+    Error policy:
+    - OSError/PermissionError on individual entries are swallowed.
+    - On total failure (e.g. artifacts dir absent) the token is derived
+      from scope alone — always deterministic, always non-empty.
+    - The function NEVER raises.
+
+    Core-purity contract: this function imports ONLY stdlib modules (hashlib,
+    pathlib).  It must NEVER import from quoin/scripts/ (adapter layer).
+    """
+    artifacts = root / ".workflow_artifacts"
+    max_mtime_ns: int = 0
+    count: int = 0
+    total: int = 0
+
+    if artifacts.is_dir():
+        for p in artifacts.rglob("*"):
+            try:
+                if p.is_file():
+                    st = p.stat()
+                    count += 1
+                    total += st.st_size
+                    if st.st_mtime_ns > max_mtime_ns:
+                        max_mtime_ns = st.st_mtime_ns
+            except (OSError, PermissionError):
+                continue  # vanished or permission-denied mid-walk — skip, never raise
+
+    raw = f"{scope}|{max_mtime_ns}|{count}|{total}"
+    return '"' + hashlib.sha1(raw.encode()).hexdigest()[:16] + '"'
 
 
 # ---------------------------------------------------------------------------

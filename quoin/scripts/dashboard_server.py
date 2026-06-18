@@ -55,6 +55,7 @@ _dm = _load_module(
 )
 scan_tasks = _dm.scan_tasks
 task_detail = _dm.task_detail
+compute_version_token = _dm.compute_version_token
 
 # Load adapter cost provider (same-dir sibling, D-03)
 _dc = _load_module(
@@ -62,6 +63,43 @@ _dc = _load_module(
     _SCRIPTS_DIR / "dashboard_cost.py",
 )
 make_cost_provider = _dc.make_cost_provider
+project_hash = _dc.project_hash          # Required: _cost_jsonl_mtime_ns uses this bare name
+
+# ---------------------------------------------------------------------------
+# Cost-freshness helper (T-04b — ADAPTER LOCAL: dashboard_server.py only)
+# ---------------------------------------------------------------------------
+
+def _cost_jsonl_mtime_ns(project_root: Path, home: Path = None) -> int:
+    """Return a fingerprint int derived from the project's JSONL session files.
+
+    Globs ~/.claude/projects/<project_hash>/*.jsonl and combines:
+      max(st_mtime_ns), file count, total size via XOR.
+
+    Changes whenever a JSONL file is appended to (mtime + size change),
+    a new session file is created (count change), or a file is deleted.
+
+    Returns 0 on empty directory, missing directory, or any OSError
+    (fail-open: degrades to artifact-only ETag — no crash).
+
+    The ``home`` parameter defaults to Path.home() when None, enabling
+    deterministic unit tests via a synthetic tmp-based HOME.
+
+    Catches OSError only — NOT bare Exception — so NameError/AttributeError
+    surfaces in tests and is not silently swallowed.
+    """
+    try:
+        ph = project_hash(str(project_root))
+        proj_dir = (home or Path.home()) / ".claude" / "projects" / ph
+        jsonl_files = list(proj_dir.glob("*.jsonl"))
+        if not jsonl_files:
+            return 0
+        max_mtime = max(p.stat().st_mtime_ns for p in jsonl_files)
+        fcount = len(jsonl_files)
+        total_sz = sum(p.stat().st_size for p in jsonl_files)
+        return max_mtime ^ (fcount * 1_000_000_000) ^ total_sz
+    except OSError:
+        return 0
+
 
 # ---------------------------------------------------------------------------
 # Asset serving (D-07: fixed allowlist, no path join)
@@ -106,13 +144,33 @@ class DashboardHandler(BaseHTTPRequestHandler):
         """Suppress all access log output — URL= line is the only reliable stdout marker."""
         pass
 
-    def _send_json(self, code: int, data) -> None:
+    def _send_json(self, code: int, data, etag: str = None) -> None:
         body = json.dumps(data).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        if etag is not None:
+            self.send_header("ETag", etag)
+        # NOTE: Cache-Control and Expires are intentionally NOT set here.
+        # The JS-managed If-None-Match/304 mechanism is the sole conditional
+        # caching layer. Adding Cache-Control would allow the browser to
+        # transparently serve 200 from its cache, masking 304 from onload.
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_not_modified(self, etag: str) -> None:
+        """Send a 304 Not Modified response with ETag header and no body.
+
+        Per RFC 7232 §4.1, a 304 response MUST NOT contain a message body.
+        Content-Length: 0 is explicit to avoid keep-alive ambiguity.
+        Cache-Control and Expires are intentionally omitted (same policy as
+        _send_json — If-None-Match is the sole conditional mechanism).
+        """
+        self.send_response(304)
+        self.send_header("ETag", etag)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        # No body written — 304 must not carry a message body
 
     def _send_asset(self, filename: str) -> None:
         path = _ASSETS_DIR / filename
@@ -139,12 +197,27 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 qs = parse_qs(parsed.query)
                 include_fin_str = qs.get("include_finalized", ["false"])[0].lower()
                 include_finalized = include_fin_str in ("true", "1", "yes")
+
+                # T-02: ETag / 304 short-circuit for /api/tasks
+                # _cost_jsonl_mtime_ns is called on every request (including the 304
+                # path) because the token must be fresh to correctly identify whether
+                # a 304 is valid.  The glob+stat walk over JSONL files is O(session-
+                # file-count in ~/.claude/projects/<hash>/) — typically a handful of
+                # files; comparable cost to the existing per-request artifact stat-walk.
+                cj = _cost_jsonl_mtime_ns(self.project_root)
+                scope = f"tasks:fin={include_finalized}|cj={cj}"
+                etag = compute_version_token(self.project_root, scope)
+                inm = self.headers.get("If-None-Match")
+                if inm is not None and inm == etag:
+                    self._send_not_modified(etag)
+                    return
+
                 result = scan_tasks(
                     self.project_root,
                     include_finalized=include_finalized,
                     cost_provider=self.cost_provider,
                 )
-                self._send_json(200, result)
+                self._send_json(200, result, etag=etag)
                 return
 
             if path.startswith("/api/tasks/"):
@@ -152,13 +225,30 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 if not name:
                     self._send_json(404, {"error": "task not found"})
                     return
+
+                # T-03: ETag / 304 short-circuit for /api/tasks/<name>
+                # Token is computed over the whole artifacts tree (cheap, single walk),
+                # scoped by task name and cost freshness.  Intentionally coarse — any
+                # artifact change anywhere bumps every task's detail token.  This is
+                # acceptable: the cost we eliminate is the full task_detail + JSON
+                # serialize, and a whole-tree walk is already what the watcher does
+                # every 2s.  Per-task-subtree scoping is rejected as premature
+                # optimization (see D-02 in plan).
+                cj = _cost_jsonl_mtime_ns(self.project_root)
+                scope = f"task:{name}|cj={cj}"
+                etag = compute_version_token(self.project_root, scope)
+                inm = self.headers.get("If-None-Match")
+                if inm is not None and inm == etag:
+                    self._send_not_modified(etag)
+                    return
+
                 try:
                     result = task_detail(
                         self.project_root,
                         name,
                         cost_provider=self.cost_provider,
                     )
-                    self._send_json(200, result)
+                    self._send_json(200, result, etag=etag)
                 except KeyError:
                     self._send_json(404, {"error": "task not found"})
                 return
