@@ -27,6 +27,8 @@ TIER1_MEMORY_FILES = (
     "cost-ledger-format.md",
     # Added IVG-77: canonical safe branch-reset recipe (Tier-1 memory file)
     "branch-recovery.md",
+    # Added IVG-50 S-3: subagent preamble warm-up guide (extracted from CLAUDE.md)
+    "preamble-guide.md",
     # Added IVG-50 S-3: memory maintenance reference doc and pattern config
     "memory-maintenance.md",
     "memory-maintenance.yaml",
