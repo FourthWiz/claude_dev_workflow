@@ -56,6 +56,10 @@ _dm = _load_module(
 scan_tasks = _dm.scan_tasks
 task_detail = _dm.task_detail
 compute_version_token = _dm.compute_version_token
+list_memory = _dm.list_memory
+read_memory_item = _dm.read_memory_item
+memory_version_key = _dm.memory_version_key
+MEMORY_TYPES = _dm.MEMORY_TYPES
 
 # Load adapter cost provider (same-dir sibling, D-03)
 _dc = _load_module(
@@ -112,6 +116,7 @@ _ASSET_ALLOWLIST = {
     "/index.html":   "index.html",
     "/dashboard.css": "dashboard.css",
     "/app.js":       "app.js",
+    "/memory.js":    "memory.js",
 }
 
 _CONTENT_TYPES = {
@@ -251,6 +256,54 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     self._send_json(200, result, etag=etag)
                 except KeyError:
                     self._send_json(404, {"error": "task not found"})
+                return
+
+            # Memory routes — MUST be checked before the /api/ 404 fallback
+            if path == "/api/memory" or path.startswith("/api/memory/"):
+                mv = memory_version_key(self.project_root)
+
+                if path == "/api/memory":
+                    scope = f"memory:index|mv={mv}"
+                    etag = compute_version_token(self.project_root, scope)
+                    inm = self.headers.get("If-None-Match")
+                    if inm is not None and inm == etag:
+                        self._send_not_modified(etag)
+                        return
+                    self._send_json(200, {"types": sorted(MEMORY_TYPES)}, etag=etag)
+                    return
+
+                # Split raw path segments BEFORE unquote (CRIT-1 path-traversal defence)
+                tail = path[len("/api/memory/"):]
+                parts = tail.split("/")
+                mtype = unquote(parts[0])
+                if mtype not in MEMORY_TYPES:
+                    self._send_json(404, {"error": "unknown memory type"})
+                    return
+
+                if len(parts) == 1:
+                    scope = f"memory:{mtype}|mv={mv}"
+                    etag = compute_version_token(self.project_root, scope)
+                    inm = self.headers.get("If-None-Match")
+                    if inm is not None and inm == etag:
+                        self._send_not_modified(etag)
+                        return
+                    items = list_memory(self.project_root, mtype)
+                    self._send_json(200, {"type": mtype, "items": items}, etag=etag)
+                    return
+
+                # item-level route
+                item_id = unquote(parts[1])
+                scope = f"memory:{mtype}/{item_id}|mv={mv}"
+                etag = compute_version_token(self.project_root, scope)
+                inm = self.headers.get("If-None-Match")
+                if inm is not None and inm == etag:
+                    self._send_not_modified(etag)
+                    return
+                try:
+                    item = read_memory_item(self.project_root, mtype, item_id)
+                    self._send_json(200, item, etag=etag)
+                except KeyError:
+                    self._send_json(404, {"error": "memory item not found"})
                 return
 
             if path.startswith("/api/"):
