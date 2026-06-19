@@ -767,3 +767,196 @@ def test_compute_version_token_no_adapter_imports():
         "dashboard_model.py must not import from dashboard_server or dashboard_cost "
         "(core/adapter boundary violation)"
     )
+
+
+# ---------------------------------------------------------------------------
+# T-07: Memory browser model tests
+# ---------------------------------------------------------------------------
+
+list_memory = _DM.list_memory
+read_memory_item = _DM.read_memory_item
+memory_version_key = _DM.memory_version_key
+MEMORY_TYPES = _DM.MEMORY_TYPES
+
+
+def _make_memory_layout(root: Path):
+    """Create a minimal .workflow_artifacts/memory/ layout for testing."""
+    mem = root / ".workflow_artifacts" / "memory"
+    (mem / "sessions").mkdir(parents=True, exist_ok=True)
+    (mem / "daily").mkdir(parents=True, exist_ok=True)
+    return mem
+
+
+def test_list_memory_unknown_type_raises(tmp_path):
+    """list_memory raises KeyError for unknown type."""
+    mem = _make_memory_layout(tmp_path)
+    (mem / "lessons-learned.md").write_text("")
+    with pytest.raises(KeyError, match="bogus"):
+        list_memory(tmp_path, "bogus")
+
+
+def test_list_memory_lessons_empty_file(tmp_path):
+    """list_memory('lessons') on empty file returns []."""
+    mem = _make_memory_layout(tmp_path)
+    (mem / "lessons-learned.md").write_text("")
+    items = list_memory(tmp_path, "lessons")
+    assert items == []
+
+
+def test_list_memory_lessons_parses_entries(tmp_path):
+    """list_memory('lessons') parses ## entries and returns one item per entry."""
+    mem = _make_memory_layout(tmp_path)
+    (mem / "lessons-learned.md").write_text(
+        "# Lessons Learned\n\n"
+        "## 2026-06-01 — auth-refactor\n"
+        "**What happened:** DB migrations ran late.\n"
+        "**Lesson:** Run migrations during maintenance windows.\n\n"
+        "## 2026-05-20 — api-rate-limiting\n"
+        "**What happened:** Forgot to set timeout.\n"
+        "**Lesson:** Always set timeouts.\n"
+    )
+    items = list_memory(tmp_path, "lessons")
+    assert len(items) == 2
+    assert items[0]["title"] == "2026-06-01 — auth-refactor"
+    assert items[0]["date"] == "2026-06-01"
+    assert "id" in items[0]
+    assert items[1]["title"] == "2026-05-20 — api-rate-limiting"
+
+
+def test_list_memory_sessions_empty_dir(tmp_path):
+    """list_memory('sessions') on missing sessions dir returns []."""
+    _make_memory_layout(tmp_path)
+    items = list_memory(tmp_path, "sessions")
+    assert items == []
+
+
+def test_list_memory_sessions_returns_items(tmp_path):
+    """list_memory('sessions') returns one item per .md file with id and title."""
+    mem = _make_memory_layout(tmp_path)
+    (mem / "sessions" / "2026-06-18-auth-refactor.md").write_text(
+        "---\ndate: 2026-06-18\ntask: auth-refactor\n---\n# Auth Refactor Session\n"
+    )
+    items = list_memory(tmp_path, "sessions")
+    assert len(items) == 1
+    assert items[0]["id"] == "2026-06-18-auth-refactor"
+    assert items[0]["title"] == "Auth Refactor Session"
+    assert items[0]["date"] == "2026-06-18"
+
+
+def test_list_memory_sessions_false_frontmatter(tmp_path):
+    """Sessions file where opening --- has no closing --- is treated as body (no frontmatter)."""
+    mem = _make_memory_layout(tmp_path)
+    (mem / "sessions" / "2026-06-10-no-close.md").write_text(
+        "---\njust body text here\nno closing dashes\n# Session Title\n"
+    )
+    items = list_memory(tmp_path, "sessions")
+    assert len(items) == 1
+    # Date falls back to filename prefix
+    assert items[0]["date"] == "2026-06-10"
+
+
+def test_list_memory_insights_returns_items(tmp_path):
+    """list_memory('insights') returns one item per insights-*.md file."""
+    mem = _make_memory_layout(tmp_path)
+    (mem / "daily" / "insights-2026-06-18.md").write_text("# Insights for 2026-06-18\n\nSome text.")
+    items = list_memory(tmp_path, "insights")
+    assert len(items) == 1
+    assert items[0]["date"] == "2026-06-18"
+    assert items[0]["title"] == "Insights for 2026-06-18"
+
+
+def test_read_memory_item_lessons_happy_path(tmp_path):
+    """read_memory_item returns correct body for a lessons entry."""
+    mem = _make_memory_layout(tmp_path)
+    (mem / "lessons-learned.md").write_text(
+        "## 2026-06-01 — auth-refactor\n**Lesson:** Always set timeouts.\n"
+    )
+    items = list_memory(tmp_path, "lessons")
+    assert len(items) == 1
+    item_id = items[0]["id"]
+    result = read_memory_item(tmp_path, "lessons", item_id)
+    assert result["id"] == item_id
+    assert "Always set timeouts" in result["body"]
+    assert result["body"].startswith("## ")
+
+
+def test_read_memory_item_sessions_happy_path(tmp_path):
+    """read_memory_item returns full file body for a session item."""
+    mem = _make_memory_layout(tmp_path)
+    content = "---\ndate: 2026-06-18\ntask: api\n---\n# API session\nWork done today.\n"
+    (mem / "sessions" / "2026-06-18-api.md").write_text(content)
+    result = read_memory_item(tmp_path, "sessions", "2026-06-18-api")
+    assert "Work done today" in result["body"]
+
+
+def test_read_memory_item_unknown_id_raises(tmp_path):
+    """read_memory_item raises KeyError for item_id not in list."""
+    mem = _make_memory_layout(tmp_path)
+    (mem / "lessons-learned.md").write_text("## 2026-06-01 — foo\nBody.\n")
+    with pytest.raises(KeyError):
+        read_memory_item(tmp_path, "lessons", "nonexistent-id")
+
+
+def test_read_memory_item_path_traversal_dot_dot(tmp_path):
+    """item_id with path-traversal characters does not resolve to arbitrary file."""
+    mem = _make_memory_layout(tmp_path)
+    (mem / "sessions").mkdir(exist_ok=True)
+    # Legitimate sessions file
+    (mem / "sessions" / "2026-06-18-safe.md").write_text("# Safe\nContent.\n")
+    # Attempt traversal via item_id — should raise KeyError (id not in enumerated list)
+    with pytest.raises(KeyError):
+        read_memory_item(tmp_path, "sessions", "../../../etc/passwd")
+
+
+def test_memory_version_key_changes_on_file_append(tmp_path):
+    """memory_version_key changes when a memory file is appended to."""
+    mem = _make_memory_layout(tmp_path)
+    f = mem / "lessons-learned.md"
+    f.write_text("# Lessons\n")
+    k1 = memory_version_key(tmp_path)
+    import time as _time
+    _time.sleep(0.01)
+    f.write_text("# Lessons\n\n## New entry\nContent.\n")
+    k2 = memory_version_key(tmp_path)
+    assert k1 != k2
+
+
+def test_memory_version_key_changes_on_new_file(tmp_path):
+    """memory_version_key changes when a new memory file is added."""
+    mem = _make_memory_layout(tmp_path)
+    (mem / "lessons-learned.md").write_text("# Lessons\n")
+    k1 = memory_version_key(tmp_path)
+    import time as _time
+    _time.sleep(0.01)
+    (mem / "sessions" / "2026-06-18-new.md").write_text("# Session\n")
+    k2 = memory_version_key(tmp_path)
+    assert k1 != k2
+
+
+def test_memory_version_key_stable_on_non_memory_write(tmp_path):
+    """memory_version_key is NOT changed by writing to non-memory artifacts."""
+    mem = _make_memory_layout(tmp_path)
+    (mem / "lessons-learned.md").write_text("# Lessons\n")
+    k1 = memory_version_key(tmp_path)
+    # Write to a non-memory artifact (task plan)
+    task_dir = tmp_path / ".workflow_artifacts" / "my-task"
+    task_dir.mkdir(parents=True, exist_ok=True)
+    (task_dir / "current-plan.md").write_text("## Tasks\n")
+    k2 = memory_version_key(tmp_path)
+    assert k1 == k2
+
+
+def test_fenced_yaml_in_body_not_treated_as_frontmatter(tmp_path):
+    """Sessions file with ```yaml fence in body (not opening ---) is parsed correctly."""
+    mem = _make_memory_layout(tmp_path)
+    content = (
+        "# Session Title\n\n"
+        "Code snippet:\n\n"
+        "```yaml\n"
+        "---\nkey: value\n---\n"
+        "```\n\n"
+        "More content.\n"
+    )
+    (mem / "sessions" / "2026-06-18-fenced.md").write_text(content)
+    items = list_memory(tmp_path, "sessions")
+    assert items[0]["title"] == "Session Title"

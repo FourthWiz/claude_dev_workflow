@@ -67,6 +67,7 @@ def _load_core(name: str):
 _status_graph = _load_core("status_graph")
 _path_resolve = _load_core("path_resolve")
 _cost_event = _load_core("cost_event")
+_memory_select = _load_core("memory_select")
 
 # Bind exported names from sibling modules
 detect_phase = _status_graph.detect_phase
@@ -81,6 +82,9 @@ SECTION_RE = _path_resolve.SECTION_RE
 ROW_RE = _path_resolve.ROW_RE
 
 iter_events = _cost_event.iter_events
+
+# memory_select exports used by memory browsing (T-02/T-03)
+parse_entries = _memory_select.parse_entries
 
 
 # ---------------------------------------------------------------------------
@@ -547,6 +551,255 @@ def task_detail(
     }
 
     return summary
+
+
+# ---------------------------------------------------------------------------
+# Memory browser (T-02 / T-03 / T-04)
+# ---------------------------------------------------------------------------
+
+MEMORY_TYPES: frozenset = frozenset({"lessons", "sessions", "insights"})
+
+# Canonical subpath prefixes within .workflow_artifacts/memory/ per type
+_MEMORY_SUBPATH = {
+    "lessons":  "memory/lessons-learned.md",
+    "sessions": "memory/sessions",
+    "insights": "memory/daily",
+}
+
+
+def _lessons_slug(header: str) -> str:
+    """Stable slug for a lessons-learned entry header."""
+    slug = header.lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", slug).strip("-")[:80]
+    return slug
+
+
+def _parse_lessons_entries(text: str) -> list:
+    """Parse lessons-learned.md into item dicts using memory_select.parse_entries."""
+    items = []
+    for entry in parse_entries(text):
+        header = entry.header
+        date = ""
+        m = re.match(r"^(\d{4}-\d{2}-\d{2})", header)
+        if m:
+            date = m.group(1)
+        items.append({
+            "id": _lessons_slug(header),
+            "title": header,
+            "date": date,
+            "subpath": "memory/lessons-learned.md",
+            "lineno": entry.lineno,
+        })
+    return items
+
+
+def _parse_session_file(text: str, fname: str) -> dict:
+    """Parse a session state file; return item dict with id, title, date, subpath."""
+    lines = text.splitlines()
+    # 3-condition frontmatter: (a) first non-blank line == "---",
+    # (b) closing "---" in first 50 lines, (c) interior key: value line
+    has_fm = False
+    fm_end = -1
+    body_start = 0
+    if lines and lines[0].strip() == "---":
+        for i, line in enumerate(lines[1:50], 1):
+            if line.strip() == "---":
+                interior = lines[1:i]
+                if any(re.match(r"^\w[\w-]*:\s", il) for il in interior):
+                    has_fm = True
+                    fm_end = i
+                    body_start = i + 1
+                break
+    date = ""
+    if has_fm:
+        for line in lines[1:fm_end]:
+            m = re.match(r"^date:\s*(\d{4}-\d{2}-\d{2})", line)
+            if m:
+                date = m.group(1)
+                break
+    if not date:
+        m = re.match(r"^(\d{4}-\d{2}-\d{2})", fname)
+        if m:
+            date = m.group(1)
+    title = Path(fname).stem
+    for line in lines[body_start:]:
+        m = re.match(r"^#\s+(.+)", line)
+        if m:
+            title = m.group(1).strip()
+            break
+    return {
+        "id": Path(fname).stem,
+        "title": title,
+        "date": date,
+        "subpath": f"memory/sessions/{fname}",
+    }
+
+
+def _parse_insights_file(text: str, fname: str) -> dict:
+    """Parse an insights scratchpad file; return item dict."""
+    date = ""
+    m = re.search(r"(\d{4}-\d{2}-\d{2})", fname)
+    if m:
+        date = m.group(1)
+    title = Path(fname).stem
+    for line in text.splitlines():
+        m = re.match(r"^#\s+(.+)", line)
+        if m:
+            title = m.group(1).strip()
+            break
+    return {
+        "id": Path(fname).stem,
+        "title": title,
+        "date": date,
+        "subpath": f"memory/daily/{fname}",
+    }
+
+
+def memory_version_key(root: Path) -> int:
+    """Fingerprint for the memory subtree at root/.workflow_artifacts/memory/.
+
+    Uses max(st_mtime_ns) XOR (count * 1_000_000_000) XOR sum(st_size) over
+    individual files — mirrors the _cost_jsonl_mtime_ns pattern. Only memory/
+    files contribute; non-memory artifact changes do NOT affect this value.
+    """
+    memory_dir = root / ".workflow_artifacts" / "memory"
+    if not memory_dir.is_dir():
+        return 0
+    max_mtime_ns = 0
+    count = 0
+    total = 0
+    try:
+        for p in memory_dir.rglob("*"):
+            try:
+                if p.is_file():
+                    st = p.stat()
+                    count += 1
+                    total += st.st_size
+                    if st.st_mtime_ns > max_mtime_ns:
+                        max_mtime_ns = st.st_mtime_ns
+            except (OSError, PermissionError):
+                continue
+    except (OSError, PermissionError):
+        return 0
+    return max_mtime_ns ^ (count * 1_000_000_000) ^ total
+
+
+def list_memory(root: Path, mtype: str) -> list:
+    """Enumerate memory items of the given type.
+
+    mtype must be one of MEMORY_TYPES ('lessons', 'sessions', 'insights').
+    Returns list of dicts: {id, title, date, subpath}.
+    Raises KeyError for unknown mtype.
+    """
+    if mtype not in MEMORY_TYPES:
+        raise KeyError(f"Unknown memory type: {mtype!r}")
+
+    memory_dir = root / ".workflow_artifacts" / "memory"
+
+    if mtype == "lessons":
+        path = memory_dir / "lessons-learned.md"
+        if not path.is_file():
+            return []
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except (OSError, PermissionError):
+            return []
+        return _parse_lessons_entries(text)
+
+    elif mtype == "sessions":
+        sessions_dir = memory_dir / "sessions"
+        if not sessions_dir.is_dir():
+            return []
+        items = []
+        try:
+            files = sorted(sessions_dir.glob("*.md"), key=lambda p: p.name, reverse=True)
+        except (OSError, PermissionError):
+            return []
+        for f in files:
+            try:
+                text = f.read_text(encoding="utf-8", errors="replace")
+            except (OSError, PermissionError):
+                continue
+            items.append(_parse_session_file(text, f.name))
+        return items
+
+    else:  # insights
+        daily_dir = memory_dir / "daily"
+        if not daily_dir.is_dir():
+            return []
+        items = []
+        try:
+            files = sorted(daily_dir.glob("insights-*.md"), key=lambda p: p.name, reverse=True)
+        except (OSError, PermissionError):
+            return []
+        for f in files:
+            try:
+                text = f.read_text(encoding="utf-8", errors="replace")
+            except (OSError, PermissionError):
+                continue
+            items.append(_parse_insights_file(text, f.name))
+        return items
+
+
+def read_memory_item(root: Path, mtype: str, item_id: str) -> dict:
+    """Return full content of a single memory item.
+
+    SECURITY: never constructs a filesystem path from item_id. For sessions
+    and insights, enumerates via list_memory() then resolves the stored
+    subpath from the matched item dict. For lessons, the file path is
+    hardcoded to lessons-learned.md and item_id is used only for entry
+    matching after parse_entries().
+
+    Raises KeyError for unknown mtype or unknown item_id.
+    """
+    if mtype not in MEMORY_TYPES:
+        raise KeyError(f"Unknown memory type: {mtype!r}")
+
+    memory_dir = root / ".workflow_artifacts" / "memory"
+
+    if mtype == "lessons":
+        # Re-parse entries to get body; file path is never derived from item_id
+        path = memory_dir / "lessons-learned.md"
+        if not path.is_file():
+            raise KeyError(f"Memory item not found: {mtype!r}/{item_id!r}")
+        try:
+            full_text = path.read_text(encoding="utf-8", errors="replace")
+        except (OSError, PermissionError) as e:
+            raise KeyError(f"Cannot read memory item: {e}") from e
+        for entry in parse_entries(full_text):
+            if _lessons_slug(entry.header) == item_id:
+                date = ""
+                dm = re.match(r"^(\d{4}-\d{2}-\d{2})", entry.header)
+                if dm:
+                    date = dm.group(1)
+                return {
+                    "id": item_id,
+                    "title": entry.header,
+                    "date": date,
+                    "subpath": "memory/lessons-learned.md",
+                    "body": "## " + entry.header + "\n" + entry.body,
+                }
+        raise KeyError(f"Memory item not found: {mtype!r}/{item_id!r}")
+
+    else:
+        # sessions / insights: each item is a whole file
+        # subpath is determined by enumeration, NEVER by item_id
+        items = list_memory(root, mtype)
+        matched = None
+        for item in items:
+            if item["id"] == item_id:
+                matched = item
+                break
+        if matched is None:
+            raise KeyError(f"Memory item not found: {mtype!r}/{item_id!r}")
+        file_path = root / ".workflow_artifacts" / matched["subpath"]
+        try:
+            text = file_path.read_text(encoding="utf-8", errors="replace")
+        except (OSError, PermissionError) as e:
+            raise KeyError(f"Cannot read memory item: {e}") from e
+        result = dict(matched)
+        result["body"] = text
+        return result
 
 
 # ---------------------------------------------------------------------------

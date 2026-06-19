@@ -855,3 +855,155 @@ class TestCacheControlAbsent:
         assert "project_hash = _dc.project_hash" in source, (
             "dashboard_server.py must bind 'project_hash = _dc.project_hash' at module level"
         )
+
+
+# ---------------------------------------------------------------------------
+# T-08: Memory API routes
+# ---------------------------------------------------------------------------
+
+def _make_memory_project(tmp_path: Path) -> Path:
+    """Project with minimal memory layout."""
+    proj = tmp_path / "memproject"
+    mem = proj / ".workflow_artifacts" / "memory"
+    (mem / "sessions").mkdir(parents=True, exist_ok=True)
+    (mem / "daily").mkdir(parents=True, exist_ok=True)
+    (mem / "lessons-learned.md").write_text(
+        "## 2026-06-01 — test-lesson\n**Lesson:** Always write tests.\n"
+    )
+    (mem / "sessions" / "2026-06-18-api.md").write_text(
+        "---\ndate: 2026-06-18\ntask: api\n---\n# API Session\nContent here.\n"
+    )
+    (mem / "daily" / "insights-2026-06-18.md").write_text(
+        "# Insights 2026-06-18\nInteresting finding today.\n"
+    )
+    return proj
+
+
+class TestMemoryRoutes:
+    def test_get_memory_index(self, tmp_path):
+        """/api/memory returns 200 with types list."""
+        proj = _make_memory_project(tmp_path)
+        server, _ = _start_server(proj)
+        status, _, body = _get(server, "/api/memory")
+        server.shutdown()
+        assert status == 200
+        data = json.loads(body)
+        assert "types" in data
+        assert set(data["types"]) == {"lessons", "sessions", "insights"}
+
+    def test_get_memory_lessons_list(self, tmp_path):
+        """/api/memory/lessons returns 200 with items list."""
+        proj = _make_memory_project(tmp_path)
+        server, _ = _start_server(proj)
+        status, _, body = _get(server, "/api/memory/lessons")
+        server.shutdown()
+        assert status == 200
+        data = json.loads(body)
+        assert data["type"] == "lessons"
+        assert len(data["items"]) >= 1
+        assert data["items"][0]["title"] == "2026-06-01 — test-lesson"
+
+    def test_get_memory_sessions_list(self, tmp_path):
+        """/api/memory/sessions returns items list."""
+        proj = _make_memory_project(tmp_path)
+        server, _ = _start_server(proj)
+        status, _, body = _get(server, "/api/memory/sessions")
+        server.shutdown()
+        assert status == 200
+        data = json.loads(body)
+        assert data["type"] == "sessions"
+        assert len(data["items"]) == 1
+        assert data["items"][0]["id"] == "2026-06-18-api"
+
+    def test_get_memory_insights_list(self, tmp_path):
+        """/api/memory/insights returns items list."""
+        proj = _make_memory_project(tmp_path)
+        server, _ = _start_server(proj)
+        status, _, body = _get(server, "/api/memory/insights")
+        server.shutdown()
+        assert status == 200
+        data = json.loads(body)
+        assert data["type"] == "insights"
+        assert len(data["items"]) == 1
+
+    def test_get_memory_item(self, tmp_path):
+        """/api/memory/sessions/<id> returns item with body."""
+        proj = _make_memory_project(tmp_path)
+        server, _ = _start_server(proj)
+        status, _, body = _get(server, "/api/memory/sessions/2026-06-18-api")
+        server.shutdown()
+        assert status == 200
+        data = json.loads(body)
+        assert "body" in data
+        assert "Content here" in data["body"]
+
+    def test_get_memory_etag_304(self, tmp_path):
+        """/api/memory/lessons returns ETag; same ETag on resend → 304."""
+        proj = _make_memory_project(tmp_path)
+        server, _ = _start_server(proj)
+        status1, hdrs1, _ = _get(server, "/api/memory/lessons")
+        assert status1 == 200
+        headers1 = {h.lower(): v for h, v in hdrs1}
+        etag = headers1.get("etag")
+        assert etag is not None
+        status2, _, _ = _get_with_inm(server, "/api/memory/lessons", etag)
+        server.shutdown()
+        assert status2 == 304
+
+    def test_get_memory_unknown_type_404(self, tmp_path):
+        """/api/memory/unknown returns 404."""
+        proj = _make_memory_project(tmp_path)
+        server, _ = _start_server(proj)
+        status, _, _ = _get(server, "/api/memory/unknown")
+        server.shutdown()
+        assert status == 404
+
+    def test_get_memory_unknown_item_404(self, tmp_path):
+        """/api/memory/lessons/<nonexistent-id> returns 404."""
+        proj = _make_memory_project(tmp_path)
+        server, _ = _start_server(proj)
+        status, _, _ = _get(server, "/api/memory/lessons/no-such-entry")
+        server.shutdown()
+        assert status == 404
+
+    def test_memory_route_405_post(self, tmp_path):
+        """POST /api/memory/lessons returns 405."""
+        proj = _make_memory_project(tmp_path)
+        server, _ = _start_server(proj)
+        status = _method(server, "POST", "/api/memory/lessons")
+        server.shutdown()
+        assert status == 405
+
+    def test_memory_traversal_encoded_slash(self, tmp_path):
+        """%2f-encoded slash in item_id is handled safely (no file found → 404)."""
+        proj = _make_memory_project(tmp_path)
+        server, _ = _start_server(proj)
+        # %2F is URL-encoded /; server splits raw path first, so this becomes
+        # a single segment with a slash — not a match for any real id → 404
+        status, _, _ = _get(server, "/api/memory/sessions/..%2Fetc%2Fpasswd")
+        server.shutdown()
+        assert status == 404
+
+    def test_memory_traversal_literal_dotdot(self, tmp_path):
+        """Literal ../ in item_id does not escape memory dir (id not in list → 404)."""
+        proj = _make_memory_project(tmp_path)
+        server, _ = _start_server(proj)
+        status, _, _ = _get(server, "/api/memory/sessions/../../../etc/passwd")
+        server.shutdown()
+        # The path parsing splits on / so "sessions" is the mtype, "../.." becomes
+        # the item_id — enumerate-then-match finds no match → 404
+        assert status == 404
+
+    def test_etag_isolation_memory_vs_tasks(self, tmp_path):
+        """Memory ETag scope does not collide with tasks ETag scope."""
+        proj = _make_memory_project(tmp_path)
+        # Add a task artifact so tasks route has content
+        (proj / ".workflow_artifacts" / "my-task").mkdir(parents=True, exist_ok=True)
+        server, _ = _start_server(proj)
+        _, hdrs_mem, _ = _get(server, "/api/memory/lessons")
+        _, hdrs_tasks, _ = _get(server, "/api/tasks")
+        server.shutdown()
+        etag_mem = {h.lower(): v for h, v in hdrs_mem}.get("etag")
+        etag_tasks = {h.lower(): v for h, v in hdrs_tasks}.get("etag")
+        # ETags are scoped differently; they should not be equal
+        assert etag_mem != etag_tasks

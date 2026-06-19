@@ -223,3 +223,88 @@ class TestETagConditionalPolling:
         content = _JS.read_text(encoding="utf-8")
         matches = _EXTERNAL_URL_RE.findall(content)
         assert not matches, f"app.js contains external URL(s) after IVG-76: {matches[:3]}"
+
+
+# ---------------------------------------------------------------------------
+# T-09: Memory browser asset tests
+# ---------------------------------------------------------------------------
+
+_MEMORY_JS = _ASSETS_DIR / "memory.js"
+_DS_PATH_FOR_ASSETS = (
+    Path(__file__).resolve().parents[2] / "scripts" / "dashboard_server.py"
+)
+
+
+class TestMemoryAssets:
+    def test_memory_js_exists(self):
+        """memory.js must exist in dashboard_assets/."""
+        assert _MEMORY_JS.exists(), f"memory.js not found at {_MEMORY_JS}"
+
+    def test_memory_js_no_external_urls(self):
+        """memory.js must not reference external URLs or CDN."""
+        content = _MEMORY_JS.read_text(encoding="utf-8")
+        matches = _EXTERNAL_URL_RE.findall(content)
+        assert not matches, f"memory.js contains external URL(s): {matches[:3]}"
+
+    def test_index_html_references_memory_js(self):
+        """index.html must include a <script src='./memory.js'> tag."""
+        content = _INDEX_HTML.read_text(encoding="utf-8")
+        assert "memory.js" in content, "index.html does not reference memory.js"
+
+    def test_index_html_memory_pane_section(self):
+        """index.html must contain <section id='memory-pane'>."""
+        content = _INDEX_HTML.read_text(encoding="utf-8")
+        assert 'id="memory-pane"' in content or "id='memory-pane'" in content, (
+            "index.html missing <section id='memory-pane'>"
+        )
+
+    def test_memory_js_asset_allowlist(self):
+        """dashboard_server.py _ASSET_ALLOWLIST must include '/memory.js'."""
+        source = _DS_PATH_FOR_ASSETS.read_text(encoding="utf-8")
+        assert '"/memory.js"' in source or "'/memory.js'" in source, (
+            "dashboard_server.py _ASSET_ALLOWLIST missing '/memory.js' entry"
+        )
+
+    def test_memory_js_no_etag_on_asset_send(self):
+        """_send_asset() must NOT be modified to emit ETag for memory.js.
+
+        ETag/If-None-Match applies only to /api/memory/* JSON responses, not static
+        assets. Grep that _send_asset does not call send_header with ETag.
+        """
+        source = _DS_PATH_FOR_ASSETS.read_text(encoding="utf-8")
+        # _send_asset() body must not contain 'ETag'
+        import re
+        # Find _send_asset function body (between def _send_asset and next top-level def)
+        m = re.search(r'def _send_asset\(.*?\).*?(?=\n    def |\nclass |\Z)', source, re.DOTALL)
+        if m:
+            fn_body = m.group(0)
+            assert "ETag" not in fn_body, (
+                "_send_asset() must NOT emit ETag header — ETag is for /api/memory/* only"
+            )
+
+    def test_memory_js_etag_client_side_present(self):
+        """memory.js must implement ETag/If-None-Match conditional polling."""
+        content = _MEMORY_JS.read_text(encoding="utf-8")
+        assert "If-None-Match" in content, "memory.js must send If-None-Match header"
+        assert "304" in content, "memory.js must handle HTTP 304 Not Modified"
+        assert "ETag" in content or "etag" in content, "memory.js must store/read ETag"
+
+    def test_memory_js_esc_html_present(self):
+        """memory.js must use escHtml (or equivalent) to prevent XSS."""
+        content = _MEMORY_JS.read_text(encoding="utf-8")
+        assert "escHtml" in content or "escape" in content.lower(), (
+            "memory.js must escape HTML in rendered content (XSS prevention)"
+        )
+
+    def test_memory_js_no_eventsource(self):
+        """memory.js must use polling not SSE (no EventSource)."""
+        content = _MEMORY_JS.read_text(encoding="utf-8")
+        assert "new EventSource" not in content
+        assert "EventSource(" not in content
+
+    def test_memory_bindings_in_server(self):
+        """dashboard_server.py must bind list_memory, read_memory_item, memory_version_key."""
+        source = _DS_PATH_FOR_ASSETS.read_text(encoding="utf-8")
+        assert "list_memory = _dm.list_memory" in source, "list_memory not bound from _dm"
+        assert "read_memory_item = _dm.read_memory_item" in source, "read_memory_item not bound"
+        assert "memory_version_key = _dm.memory_version_key" in source, "memory_version_key not bound"
