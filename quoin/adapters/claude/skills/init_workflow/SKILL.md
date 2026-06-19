@@ -375,6 +375,102 @@ Tell the user:
 
 If /discover finds no repos (no git repositories in the project folder), that's fine — the memory files stay empty and will be populated when repos are added.
 
+### Step 6.5: Offer/activate Serena code-intelligence
+
+**Read `.workflow_artifacts/.serena-skip` first.** If this sentinel file exists, the user previously chose to skip Serena setup for this project — print one line `[quoin: Serena setup skipped per prior choice]` and proceed to Step 7.
+
+Otherwise, detect Serena using `ToolSearch select:mcp__serena__activate_project`:
+
+**Branch (a) — Serena ABSENT (no schema AND no plugin file):**
+
+If the ToolSearch probe returns no schema, run a filesystem pre-check:
+- Plugin file: `__QUOIN_HOME__/plugins/marketplaces/claude-plugins-official/external_plugins/serena/.mcp.json`
+- `uvx` on PATH: `command -v uvx`
+
+If neither the schema nor the plugin file is found, offer installation:
+
+```
+AskUserQuestion(
+  header="Serena",
+  question="Serena gives Claude symbol-level code intelligence (find/rename symbols, references). It's not installed. Install it?",
+  multiSelect=false,
+  options=[
+    {label: "Install Serena", description: "Walk me through installing Serena (requires uv/uvx)."},
+    {label: "Skip for now",   description: "Skip Serena setup for this project."}
+  ]
+)
+```
+
+On **"Skip for now"**: write `.workflow_artifacts/.serena-skip` (creates the file, empty is fine) so Step 6.5 short-circuits on any re-run of `/init_workflow` for this project. Print `[quoin: Serena setup skipped per user choice]` and proceed to Step 7.
+
+On **"Install Serena"**: guide the user through the following steps (Serena is a Claude Code plugin launched via `uvx` — quoin cannot install it unattended):
+
+1. **Install `uv`/`uvx`** (if not already present — `command -v uvx` fails):
+   ```
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   # then restart your shell, OR:
+   brew install uv
+   ```
+
+2. **Install the Serena plugin** in Claude Code. Preferred: run `/plugin` in your Claude Code session, browse to `claude-plugins-official`, and install `serena`. Manual fallback — add to `__QUOIN_HOME__/.mcp.json` (or the project `.mcp.json`):
+   ```json
+   {
+     "mcpServers": {
+       "serena": {
+         "command": "uvx",
+         "args": ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server"]
+       }
+     }
+   }
+   ```
+
+3. **⚠️ SESSION RESTART REQUIRED.** MCP servers load only at session start. Serena tools will NOT be available until you restart Claude Code. After restarting, re-run `/init_workflow` — Step 6.5 will detect Serena as present (branch b) and complete onboarding automatically.
+
+Also idempotently append `.serena/` to the target project's `.gitignore` (see below) on this path, so the user's Serena config isn't accidentally committed before onboarding runs.
+
+**Branch (b) — Serena PRESENT, not yet onboarded:**
+
+If the ToolSearch probe succeeds and `activate_project` returns a message containing "Onboarding has not been performed":
+
+```python
+# Load all needed Serena tools
+ToolSearch select:mcp__serena__activate_project,mcp__serena__onboarding,mcp__serena__initial_instructions
+
+# Bind the project (pass bare dirname or the name from .serena/project.yml if present)
+mcp__serena__activate_project(project="<project-dirname>")
+
+# Run onboarding to generate project memories
+mcp__serena__onboarding()   # follow its steps
+
+# Confirm activation
+mcp__serena__initial_instructions()
+```
+
+Tell the user onboarding is complete and Serena is now active for the project. This is the most common real-world case: Serena installed but never set up for the project.
+
+**Branch (c) — Serena PRESENT, already onboarded:**
+
+If the ToolSearch probe succeeds and `activate_project` does NOT report onboarding-needed, confirm activation silently:
+
+```python
+ToolSearch select:mcp__serena__activate_project
+mcp__serena__activate_project(project="<project-dirname>")
+```
+
+Print one line: `[quoin: Serena active for <project-dirname> (already onboarded)]` and proceed to Step 7.
+
+**Target-project `.gitignore` (all setup paths — a/install, b, c):**
+
+On any Serena-setup path, idempotently append `.serena/` to the target project's `.gitignore`:
+```bash
+if [ -f .gitignore ]; then
+  grep -qxF '.serena/' .gitignore || echo '.serena/' >> .gitignore
+else
+  echo '.serena/' >> .gitignore
+fi
+```
+Serena config and memories are machine-local; they should not be committed to the project repo by default.
+
 ### Step 7: Copy quickstart guide + legacy detection
 
 **Legacy QUICKSTART detection (run before copying):**

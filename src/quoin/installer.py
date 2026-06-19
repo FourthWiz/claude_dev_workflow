@@ -32,6 +32,8 @@ TIER1_MEMORY_FILES = (
     # Added IVG-50 S-3: memory maintenance reference doc and pattern config
     "memory-maintenance.md",
     "memory-maintenance.yaml",
+    # Added serena-integration: Serena MCP activation protocol (Tier-1 memory file)
+    "serena-activation.md",
 )
 
 # T-05: canonical skill list — must match quoin/skills/ on disk exactly
