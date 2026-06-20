@@ -229,6 +229,10 @@ When answering complex questions or designing systems:
 
 Don't guess about external system behavior — verify it.
 
+### Serena (conditional)
+
+If `ToolSearch select:mcp__serena__activate_project` loads a schema, run the activation protocol at task start (`activate_project` then `initial_instructions`) and prefer Serena symbol tools over grep. If no schema loads, do nothing — never call Serena tools that don't exist. Full protocol: `__QUOIN_HOME__/memory/serena-activation.md`.
+
 ### Daily insight capture
 
 As you work through any task, watch for patterns, surprises, and friction points worth remembering. When you notice one, write it to the daily insights scratchpad immediately — do not wait for `/end_of_day`:

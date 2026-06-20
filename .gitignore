@@ -17,6 +17,9 @@ dist/
 .coverage
 htmlcov/
 
+# Serena code-intelligence config/memories — machine-local, not shared
+.serena/
+
 # Workflow artifacts (session-specific, not shared) — anchored to project root
 /.workflow_artifacts/
 # Prevent session-bleed when CWD is inside the quoin/ sub-package
