@@ -950,7 +950,12 @@ HELP
   # _agentdesk_gen_layout. The saved layout file on disk is never modified.
   if [ "${AGENTDESK_DASHBOARD:-0}" = "1" ]; then
     local dash_tab_tmp
-    dash_tab_tmp="$(mktemp "${TMPDIR:-/tmp}/agentdesk-dash-layout-XXXXXX.kdl")"
+    # BSD mktemp only randomizes *trailing* X's; a suffix after XXXXXX creates a
+    # literal path that collides on the second call ("File exists"). Drop the suffix.
+    dash_tab_tmp="$(mktemp "${TMPDIR:-/tmp}/agentdesk-dash-layout-XXXXXX")" || {
+      echo "agentdesk: failed to create temp dashboard layout file" >&2
+      return 1
+    }
     # Strip the final `}` (closing brace of the top-level `layout { ... }` block)
     # and append the Dashboard tab KDL before re-closing.
     # The url-file path is expanded HERE at injection time so the actual path is
