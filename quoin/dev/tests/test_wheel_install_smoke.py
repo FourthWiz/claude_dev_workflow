@@ -60,6 +60,34 @@ def test_packaging_config_excludes_benchmark_folders_from_distribution():
     assert '"benchmark-results/"' in sdist
 
 
+def test_memory_packaged_as_directory_and_all_tier1_files_present():
+    """Drift guard: memory uses a directory force-include, not per-file enumeration.
+
+    Checks two invariants without building a wheel (never skipped):
+    1. pyproject.toml uses "quoin/memory" directory mapping (not per-file lines).
+    2. Every TIER1_MEMORY_FILES entry has a source file in quoin/memory/ so the
+       directory glob will include it. Adding a file to TIER1_MEMORY_FILES without
+       creating the source file will fail here before the broken wheel is published.
+    """
+    from quoin.installer import TIER1_MEMORY_FILES
+
+    force_include = _force_include_block()
+
+    # invariant 1: directory mapping present
+    assert '"quoin/memory"' in force_include, (
+        "pyproject.toml must use a directory force-include for quoin/memory, "
+        "not per-file entries. Found no '\"quoin/memory\"' key in force-include block."
+    )
+
+    # invariant 2: all TIER1_MEMORY_FILES have source files
+    memory_src = QUOIN_SRC / "memory"
+    missing = [f for f in TIER1_MEMORY_FILES if not (memory_src / f).is_file()]
+    assert not missing, (
+        f"TIER1_MEMORY_FILES entries have no source file in quoin/memory/: {missing}. "
+        "Create the file or remove it from TIER1_MEMORY_FILES."
+    )
+
+
 @pytest.fixture(scope="module")
 def built_wheel(tmp_path_factory):
     """Build the wheel once per module and return its path."""

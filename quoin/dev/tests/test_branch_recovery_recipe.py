@@ -8,9 +8,11 @@ Asserts:
       contains the __QUOIN_HOME__/memory/branch-recovery.md path literal.
   (d) branch-recovery.md is in TIER1_MEMORY_FILES (installer.py).
   (e) CLAUDE.md contains the branch-recovery.md reference.
-  (f) pyproject.toml contains the exact force-include line (dual-list guard,
-      IVG-77 CRIT-1 fix — a missing line ships a short wheel and breaks
-      test_wheel_memory_inventory_matches_tier1_set).
+  (f) pyproject.toml wires branch-recovery.md into the wheel via the
+      quoin/memory directory force-include (replaces the former per-file
+      dual-list guard; the directory mapping ships every quoin/memory/ file,
+      so a present source file is sufficient — see
+      test_wheel_memory_inventory_matches_tier1_set for the exact-set check).
 """
 from __future__ import annotations
 
@@ -39,8 +41,11 @@ PYPROJECT_TOML = REPO_ROOT / "pyproject.toml"
 REFERENCING_SKILLS = ["implement", "gate", "review", "end_of_task"]
 
 RECIPE_ANCHOR = "update-ref refs/heads"
+# The quoin/memory directory force-include ships every file under quoin/memory/
+# (including branch-recovery.md) into the wheel. This replaced the former
+# per-file enumeration, which drifted out of sync with TIER1_MEMORY_FILES.
 EXPECTED_FORCE_INCLUDE_LINE = (
-    '"quoin/memory/branch-recovery.md" = "src/quoin/data/memory/branch-recovery.md"'
+    '"quoin/memory" = "src/quoin/data/memory"'
 )
 
 
@@ -167,19 +172,24 @@ def test_claude_md_references_branch_recovery():
 # ---------------------------------------------------------------------------
 
 def test_pyproject_force_include_line():
-    """pyproject.toml must contain the exact force-include line for branch-recovery.md.
+    """pyproject.toml must wire branch-recovery.md into the wheel.
 
-    This is the IVG-77 CRIT-1 guard: adding only the TIER1_MEMORY_FILES tuple
-    entry without this pyproject.toml line ships a short wheel (12 files vs
-    13-entry tuple) and causes test_wheel_memory_inventory_matches_tier1_set
-    to fail with a len() mismatch.
+    The quoin/memory directory force-include ships every quoin/memory/ source
+    file into the wheel, so two conditions guarantee branch-recovery.md ships:
+    (1) the directory mapping is present, and (2) the source file exists.
+    This replaced the former per-file dual-list guard, which drifted out of
+    sync with TIER1_MEMORY_FILES (see test_memory_packaged_as_directory_and_all
+    _tier1_files_present and test_wheel_memory_inventory_matches_tier1_set).
     """
     assert PYPROJECT_TOML.exists(), f"pyproject.toml not found at {PYPROJECT_TOML}"
     text = PYPROJECT_TOML.read_text(encoding="utf-8")
     assert EXPECTED_FORCE_INCLUDE_LINE in text, (
-        f"pyproject.toml must contain the exact line:\n"
+        f"pyproject.toml must contain the directory force-include line:\n"
         f"  {EXPECTED_FORCE_INCLUDE_LINE}\n"
-        "This line wires branch-recovery.md into the wheel manifest (the second list "
-        "in the IVG-77 dual-list requirement). Without it, the wheel ships 12 memory "
-        "files while TIER1_MEMORY_FILES expects 13."
+        "This maps the whole quoin/memory/ directory into the wheel manifest. "
+        "Without it, no memory files ship and quoin install aborts."
+    )
+    assert RECIPE_FILE.exists(), (
+        f"branch-recovery.md source missing at {RECIPE_FILE}; the directory "
+        "force-include can only ship a file that exists in quoin/memory/."
     )
