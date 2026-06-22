@@ -80,15 +80,24 @@ for unknown in "${REST[@]+"${REST[@]}"}"; do
 done
 
 # ── Find Python interpreter ───────────────────────────────────────────────────
+# quoin requires Python 3.10+. Try versioned candidates first so a newer
+# interpreter is preferred over an older default (e.g. pyenv global pointing
+# to 3.8 when python3.12 is also available on PATH).
 PYTHON=""
-for candidate in python3 python; do
+for candidate in python3.13 python3.12 python3.11 python3.10 python3 python; do
   if command -v "$candidate" >/dev/null 2>&1; then
-    PYTHON="$candidate"
-    break
+    _ver=$("$candidate" -c \
+      "import sys; v=sys.version_info; print(v.major * 1000 + v.minor)" \
+      2>/dev/null || echo "0")
+    if [[ "$_ver" -ge 3010 ]]; then
+      PYTHON="$candidate"
+      break
+    fi
   fi
 done
 if [[ -z "$PYTHON" ]]; then
-  echo "quoin: No Python interpreter found (tried python3, python). Install Python 3.10+." >&2
+  echo "quoin: Python 3.10+ required but not found." \
+       "Install Python 3.10+ and ensure it appears in PATH." >&2
   exit 1
 fi
 
