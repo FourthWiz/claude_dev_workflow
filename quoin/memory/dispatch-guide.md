@@ -14,6 +14,8 @@ The 12 artifact-only cheap-tier skills still use the original worktree-class rec
 
 Manual override: prefix any user-typed slash invocation with bare `[no-redispatch]` to skip dispatch entirely. Use this only when intentionally overriding the cost guardrail (e.g., for one-off debugging on a different tier).
 
+**1M-context credit mismatch recovery (IVG-89, all 19 §0 skills):** Pre-dispatch model-name detection is impossible — the model name never contains "1m" and 1M status is undetectable from inside the agent (IVG-89 F-02). Recovery is folded into the EXISTING `§0-worktree-fallback` error-classification leaf as a new 1M-credit-class branch. Classification order: 1M-credit-class is checked FIRST (before Worktree-class), keyed on substring `Usage credits required for 1M context` in the dispatch error text. On match: emit a specific advisory (`[quoin: 1M-context credit mismatch on <tier> subagent dispatch; proceeding in-session at parent tier — run /model to switch this session to standard context for a permanent fix]`) and proceed in-session at parent tier (no AskUserQuestion; fail-OPEN). The dead `§0-1m-context-precheck` marker blocks have been removed from all 19 §0 skills (IVG-89 D-03 Option A).
+
 Mechanical drift detection lives in `quoin/dev/tests/test_quoin_stage1_preamble.py` and `quoin/dev/tests/test_quoin_stage1_recursion_abort.py`; manual production-dispatch verification is captured in `quoin/dev/verify_subagent_dispatch.md`.
 
 ## §0' Pollution dispatch (verbose reference)
@@ -35,6 +37,8 @@ The 7 Opus-tier skills that are NOT orchestrators (architect, plan, critic, revi
 | /discover | project root absolute path |
 
 **Ordering:** §0 fires FIRST; §0' fires only if no §0 dispatch. For §0c skills (architect, review): §0c → §0' → body. **Excluded:** /run and /thorough_plan. **Threshold:** `QUOIN_POLLUTION_THRESHOLD` (default 5000). Fail-OPEN on Agent unavailable. `[no-redispatch]` skips. Drift detection: `test_quoin_pollution_preamble.py`; verification: `quoin/dev/verify_pollution_dispatch.md`.
+
+**1M-context credit mismatch recovery (IVG-89, all 7 §0' skills):** Same impossibility as §0 — model-name detection does not work. Recovery is folded into the `Fail-OPEN path` section of the §0' block. On a dispatch error matching `Usage credits required for 1M context`: issue AskUserQuestion (abort/proceed) with 1M-specific wording. For any other non-1M dispatch error: also issue AskUserQuestion (generic wording) so §0' never silently loses recovery (D-06). The dead `§0prime-1m-context-precheck` marker blocks have been removed from the generator template (`inject_pollution_dispatch.py`) and regenerated into all 7 §0' skills (IVG-89 D-03 Option A).
 
 ## §0″ Minimum-tier guard (verbose reference)
 
