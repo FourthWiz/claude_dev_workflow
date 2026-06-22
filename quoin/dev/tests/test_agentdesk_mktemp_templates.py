@@ -40,3 +40,51 @@ def test_no_mktemp_suffix_after_x_run() -> None:
         "on macOS BSD mktemp these suffixes defeat randomization and cause "
         "'File exists' collisions on the second call:\n" + "\n".join(violations)
     )
+
+
+# Matches: mv -f "$dash_tab_tmp" "${dash_tab_tmp}.kdl"
+# Whitespace-tolerant; dollar signs and braces are literal in the shell assignment.
+_DASH_KDL_MV = re.compile(r'mv\s+-f\s+"\$dash_tab_tmp"\s+"\$\{dash_tab_tmp\}\.kdl"')
+
+# Matches: dash_tab_tmp="${dash_tab_tmp}.kdl"
+_DASH_KDL_REASSIGN = re.compile(r'dash_tab_tmp="\$\{dash_tab_tmp\}\.kdl"')
+
+
+def test_agentdesk_dash_layout_kdl_extension() -> None:
+    """The dashboard layout temp file must be renamed to .kdl after mktemp.
+
+    Zellij requires the .kdl extension to identify a file as a layout definition.
+    Without the rename, Zellij silently falls back to its default single-pane layout
+    (the IVG-88 follow-up bug: PR #160 fixed the BSD mktemp collision but missed
+    adding the .kdl rename for the T-05 dashboard block).
+
+    This test asserts that BOTH the mv rename and the variable reassignment are
+    present on non-comment lines in the T-05 dashboard layout block.
+    """
+    assert AGENTDESK_ZSH.exists(), f"agentdesk.zsh not found at {AGENTDESK_ZSH}"
+
+    lines = AGENTDESK_ZSH.read_text().splitlines()
+
+    mv_found = False
+    reassign_found = False
+    for raw in lines:
+        stripped = raw.lstrip()
+        if stripped.startswith("#"):
+            continue
+        if _DASH_KDL_MV.search(raw):
+            mv_found = True
+        if _DASH_KDL_REASSIGN.search(raw):
+            reassign_found = True
+
+    assert mv_found, (
+        "agentdesk.zsh is missing the .kdl rename for the dashboard layout temp file.\n"
+        "Expected a non-comment line matching: mv -f \"$dash_tab_tmp\" \"${dash_tab_tmp}.kdl\"\n"
+        "Zellij requires the .kdl extension; dropping the rename reverts to the default "
+        "single-pane layout (IVG-88 follow-up bug)."
+    )
+    assert reassign_found, (
+        "agentdesk.zsh is missing the variable reassignment after the .kdl rename.\n"
+        "Expected a non-comment line matching: dash_tab_tmp=\"${dash_tab_tmp}.kdl\"\n"
+        "Without the reassignment, subsequent references to dash_tab_tmp point to the "
+        "old (non-.kdl) path, breaking the trap cleanup and sed write target."
+    )
