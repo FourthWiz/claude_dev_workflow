@@ -197,11 +197,6 @@ def _section_bounds(text: str, section_heading: str) -> tuple[int, int]:
     return start, end
 
 
-def _normalize_ws(s: str) -> str:
-    """Collapse whitespace sequences (including newlines) to a single space."""
-    return " ".join(s.split())
-
-
 # ---------------------------------------------------------------------------
 # §0 parametrized tests
 # ---------------------------------------------------------------------------
@@ -350,12 +345,7 @@ class TestSection0Precheck:
         """proceed-ref assertion — §1 vs §0c per the per-skill table."""
         proceed_ref = SKILL_PROCEED_REF[skill]
         text = self._read(skill)
-        block = _extract_block(text, S0_WF_BEGIN_MARKER, S0_WF_END_MARKER)
         if proceed_ref == "§0c":
-            # §0c-class skills should NOT have §1 in the worktree-fallback leaf
-            # (they proceed to §0c, not §1). But we don't assert §1 absent globally —
-            # only that the leaf doesn't claim to proceed to §1 as a terminal destination.
-            # (Some leaves may use §1 as a cross-reference to other parts of the file.)
             assert "§0c" in text, (
                 f"[{skill}] §0c-class skill must have '§0c' somewhere in the file"
             )
