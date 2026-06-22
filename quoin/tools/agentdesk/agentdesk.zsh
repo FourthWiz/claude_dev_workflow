@@ -951,11 +951,15 @@ HELP
   if [ "${AGENTDESK_DASHBOARD:-0}" = "1" ]; then
     local dash_tab_tmp
     # BSD mktemp only randomizes *trailing* X's; a suffix after XXXXXX creates a
-    # literal path that collides on the second call ("File exists"). Drop the suffix.
+    # literal path that collides on the second call ("File exists"). Drop the suffix,
+    # then rename to add .kdl — Zellij requires the .kdl extension to identify the
+    # file as a layout (same pattern as _agentdesk_gen_layout lines 318-323).
     dash_tab_tmp="$(mktemp "${TMPDIR:-/tmp}/agentdesk-dash-layout-XXXXXX")" || {
       echo "agentdesk: failed to create temp dashboard layout file" >&2
       return 1
     }
+    mv -f "$dash_tab_tmp" "${dash_tab_tmp}.kdl" || return 1
+    dash_tab_tmp="${dash_tab_tmp}.kdl"
     # Strip the final `}` (closing brace of the top-level `layout { ... }` block)
     # and append the Dashboard tab KDL before re-closing.
     # The url-file path is expanded HERE at injection time so the actual path is
