@@ -216,60 +216,6 @@ Detection:
   - Sentinel check: if the user's prompt starts with `[no-redispatch]`: skip dispatch.
   - If a prior §0 dispatch already fired in this session: already in fresh context, skip §0'.
 
-<!-- §0prime-1m-context-precheck-begin -->
-  - 1M-context precheck (parent-credit-mismatch guardrail for §0' opus dispatch):
-    BEFORE spawning the §0' pollution-isolated subagent, inspect the parent model name read
-    from system context.
-    If the model name string contains any of the substrings `1m`, `1M`, `(1M context)`, or
-    `context-1m` (case-insensitive match on the literal substring), the parent session is using
-    the 1M context beta. The Claude Code CLI propagates the `context-1m-2025-08-07` beta header
-    to ALL subagent API calls; if the user has parent-tier 1M credits but lacks opus 1M credits,
-    the §0' Agent dispatch will fail with:
-      `API Error: Usage credits required for 1M context · run /usage-credits to turn them
-      on, or /model to switch to standard context`
-    quoin cannot drop the beta header from the Agent call — the Agent tool exposes only
-    `model: "sonnet"|"opus"|"haiku"`, not a context-window selector.
-    When the parent-on-1M signal fires AND pollution_score >= QUOIN_POLLUTION_THRESHOLD AND
-    the prompt does NOT start with any `[no-redispatch]` form AND no prior §0 dispatch fired:
-      Issue an `AskUserQuestion` with these exact two options (label + description copied
-      verbatim — drift detection relies on string equality):
-
-        Question: "Parent session is on a 1M-context model. Dispatching /{skill} to opus
-        may fail if you don't have Opus 1M credits. How would you like to proceed?"
-        Header:   "1M dispatch"
-        multiSelect: false
-
-        Option 1:
-          label: "Abort — I'll switch with /model first"
-          description: "Stop here. Run /model in your terminal to switch the parent session
-          to a standard-context model (e.g., /model opus), then re-invoke /{skill}.
-          The §0' dispatch will then land on standard Opus successfully."
-        Option 2:
-          label: "Proceed in-session at parent tier"
-          description: "Skip the §0' dispatch this once. /{skill} runs on the parent model
-          (more expensive per token than Opus, but it works). Emits a one-line advisory
-          and treats the prompt as if [no-redispatch] were present — skip the §0' Dispatch
-          action entirely and fall through to the skill body."
-
-      Then:
-        - On Option 1 ("Abort — I'll switch with /model first"): print the single line
-          `[quoin: 1M-context parent detected; abort per user choice — switch with /model
-          and re-invoke /{skill}]` and STOP. Do NOT proceed to skill body. Do NOT spawn any
-          Agent. Do NOT call any other tool.
-        - On Option 2 ("Proceed in-session at parent tier"): print the single line
-          `[quoin: 1M-context parent detected; proceeding in-session at parent tier per
-          user choice]`, then treat the rest of §0' as if the prompt started with bare
-          `[no-redispatch]`: SKIP the §0' Dispatch action entirely and fall through to the
-          skill body (NOT the Fail-OPEN path). Do NOT spawn any Agent.
-    When the parent-on-1M signal fires AND the prompt starts with any `[no-redispatch]`
-    form: skip this precheck entirely (user already opted out of dispatch; proceed to skill body).
-    When the parent-on-1M signal fires AND pollution_score < QUOIN_POLLUTION_THRESHOLD:
-    skip this precheck entirely (no §0' dispatch would have happened anyway).
-    When the parent-on-1M signal fires AND a prior §0 dispatch already fired: skip entirely.
-    When the parent-on-1M signal does NOT fire: skip this precheck entirely and continue
-    to the existing dispatch logic below.
-<!-- §0prime-1m-context-precheck-end -->
-
 Dispatch action (when pollution detected AND no sentinel AND no prior §0 dispatch):
 {skill_dispatch_contract}
   If task description cannot be determined:
@@ -284,9 +230,47 @@ Dispatch action (when pollution detected AND no sentinel AND no prior §0 dispat
   Wait for the subagent. Return its output as your final response. STOP.
 
 Fail-OPEN path:
-  If Agent tool unavailable or errors:
-    Emit: `[quoin-S-1: pollution dispatch unavailable; proceeding in current session]`
-    Proceed with skill body.
+  If Agent tool unavailable or errors — classify the error first:
+  - 1M-credit-class: if the error text contains the substring
+      `Usage credits required for 1M context`:
+      The §0' opus dispatch hit a 1M-context credit mismatch (IVG-89). Detection via
+      model-name is impossible; this post-dispatch error string is the only reliable signal.
+      Issue an `AskUserQuestion`:
+        Question: "§0' opus dispatch failed with a 1M-context credit mismatch for /{skill}.
+        The parent session carries the 1M-context beta header which propagates to all
+        subagent calls; Opus lacks 1M credits. How would you like to proceed?"
+        Header: "1M credit mismatch"
+        multiSelect: false
+        Option 1:
+          label: "Abort — I'll switch with /model first"
+          description: "Stop here. Run /model in your terminal to switch to a
+          standard-context model (e.g., /model opus), then re-invoke /{skill}.
+          The §0' dispatch will then land on standard Opus successfully."
+        Option 2:
+          label: "Proceed in-session at parent tier"
+          description: "Skip the §0' dispatch this once. /{skill} runs in the
+          current session (may be polluted, but works). Emits a one-line advisory."
+      On Option 1: print `[quoin: 1M-context credit mismatch; abort per user choice —
+      switch with /model and re-invoke /{skill}]` and STOP. Do NOT proceed to skill body.
+      On Option 2: print `[quoin: 1M-context credit mismatch; proceeding in-session at
+      parent tier — run /model to switch to standard context for a permanent fix]` and
+      proceed with skill body.
+  - Any other error (non-1M): Issue an `AskUserQuestion` (generic wording):
+      Question: "§0' pollution dispatch failed for /{skill}. Would you like to proceed
+      in the current (polluted) session, or abort?"
+      Header: "Dispatch error"
+      multiSelect: false
+      Option 1:
+        label: "Abort — I'll diagnose and retry"
+        description: "Stop here. Investigate the dispatch error, then re-invoke /{skill}."
+      Option 2:
+        label: "Proceed in-session (polluted)"
+        description: "Continue in the current session despite the dispatch failure.
+        Performance may be degraded due to context pollution."
+      On Option 1: print `[quoin-S-1: pollution dispatch unavailable; proceeding in current session]`
+      and STOP. Do NOT proceed to skill body.
+      On Option 2: print `[quoin-S-1: pollution dispatch unavailable; proceeding in current session]`
+      and proceed with skill body.
 
 Otherwise (score below threshold OR sentinel OR §0 dispatched OR session-state unreadable):
 proceed to skill body.
@@ -609,6 +593,8 @@ def run_check() -> int:
     adapter_dir = _get_adapter_dir()
 
     # Required tokens inside §0' block (test_quoin_pollution_preamble.py REQUIRED_TOKENS)
+    # IVG-89: §0prime-1m-context-precheck region deleted (dead model-name detection);
+    # 1M recovery now in Fail-OPEN path (post-dispatch error classification).
     required_tokens = [
         "[no-redispatch]",
         "[quoin-S-1: cannot extract per-skill dispatch contract; running in main]",
@@ -616,6 +602,7 @@ def run_check() -> int:
         "pollution_score",
         "POLLUTION_THRESHOLD",
         'model: "opus"',
+        "Usage credits required for 1M context",
     ]
     # Required file-wide strings (test_pollution_score_extraction.py)
     score_extraction_strings = [
