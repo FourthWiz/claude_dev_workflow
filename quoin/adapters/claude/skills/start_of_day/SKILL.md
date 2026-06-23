@@ -25,11 +25,31 @@ Detection:
       * Counter form `[no-redispatch:1]` is reserved and treated as bare `[no-redispatch]` for forward-compatibility; do not emit it.
   - If current_tier > declared_tier AND prompt does NOT start with any `[no-redispatch]` form:
       Dispatch reason: cost-guardrail handoff. dispatched-tier: haiku.
+<!-- §0-1m-decide-begin -->
+Pre-dispatch 1M check (IVG-90 Layer 1+2):
+  - Run: python3 __QUOIN_HOME__/scripts/dispatch_config.py --decide --tier <declared_tier> --verbose
+    where <declared_tier> is the tier declared for this skill (e.g. "sonnet" or "haiku",
+    as shown in the dispatched-tier line immediately above).
+  - If the command returns "safe-path" on line 1:
+      Read the reason token from line 2 (config|cache|probe).
+      Emit the one-line advisory (verbatim, substituting <reason> with the line-2 token):
+        `[quoin: 1M-unsafe declared-tier per <reason>; running SAFE PATH without dispatch]`
+      Then proceed to §1/§0c at the current tier (treat as if [no-redispatch] were present).
+      Do NOT call the Agent dispatch. Do NOT call AskUserQuestion.
+  - If the command returns "dispatch" on line 1, OR if the script is missing / errors:
+      Continue to the Agent dispatch call below (today's path — fail-OPEN).
+<!-- §0-1m-decide-end -->
       Spawn an Agent subagent with the following arguments:
         model: "haiku"
         description: "start_of_day dispatched at haiku tier"
         prompt: "[no-redispatch]\n<original user input verbatim>"
-      Wait for the subagent. Return its output as your final response. STOP.
+      Wait for the subagent.
+<!-- §0-1m-cachewrite-begin -->
+      Cache the safe result (best-effort):
+        python3 __QUOIN_HOME__/scripts/dispatch_config.py --write-cache --tier <declared_tier> --result safe
+      (Fail-OPEN: if the script errors or is missing, silently skip and continue.)
+<!-- §0-1m-cachewrite-end -->
+      Return its output as your final response. STOP.
       (Return the subagent's output as your final response.)
 
 Abort rule (recursion guard):
@@ -64,6 +84,11 @@ Fail-graceful path with error-class triage (per architecture I-01):
       this post-dispatch error string is the only reliable signal.
       Emit (verbatim):
         `[quoin: 1M-context credit mismatch on <tier> subagent dispatch; proceeding in-session at parent tier — run /model to switch this session to standard context for a permanent fix]`
+<!-- §0-1m-cachewrite-begin -->
+      Cache the unsafe result (best-effort):
+        python3 __QUOIN_HOME__/scripts/dispatch_config.py --write-cache --tier <declared_tier> --result unsafe
+      (Fail-OPEN: if the script errors or is missing, silently skip and continue.)
+<!-- §0-1m-cachewrite-end -->
       Then proceed to §1 at the current tier (treat as if `[no-redispatch]` were present).
       Do NOT retry the Agent dispatch. Do NOT call AskUserQuestion.
 
