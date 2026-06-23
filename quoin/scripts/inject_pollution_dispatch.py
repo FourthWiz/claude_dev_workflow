@@ -69,15 +69,10 @@ MINTIER_TARGET_SKILLS = [
 ZC_SKILLS = ["architect", "review"]
 
 # ─── §0″ Minimum-tier guard block template ────────────────────────────────────
-# Spike result 2026-06-16: up-dispatch not confirmed in this session (implement
-# session runs on Sonnet; spike requires live API + Sonnet parent session to observe
-# tier escalation). Using Option B (AskUserQuestion-only). If a future spike confirms
-# up-dispatch works, update to Option A by adding the Agent spawn Step 1 block.
-#
-# All required_tokens present in both Option A and Option B variants:
-#   [no-redispatch], model: "opus", current_tier < declared_tier,
-#   Abort — run from an Opus session, Proceed at current tier (under-powered),
-#   [quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]
+# Spike result 2026-06-23: up-dispatch adopted as happy path (Option A) per IVG-91.
+# The IVG-72 implement session could not confirm up-dispatch (ran on Sonnet without
+# live API access). IVG-91 activates Option A: Agent spawn to Opus is the happy path;
+# AskUserQuestion (abort / proceed-under-powered) is the fail-open fallback only.
 #
 # Note: QUOIN_DISABLE_MINTIER_GUARD silent-skip is intentional (explicit opt-out,
 # not a bug). No advisory is emitted — emitting a line would be noise for an
@@ -87,18 +82,21 @@ ZC_SKILLS = ["architect", "review"]
 # MINTIER_HEADING to guarantee byte-identity (heading in block == MINTIER_HEADING constant).
 # This avoids U+2033 vs other quote character mismatches when the heading is typed inline.
 #
-# Required tokens in this block (all present in both Option A and Option B variants):
-#   [no-redispatch]  — in sentinel detection line
-#   model: "opus"    — in declared tier descriptor line (Option B: descriptor only, no dispatch)
+# Required tokens in this block (Option A — all must remain verbatim):
+#   [no-redispatch]  — in sentinel detection line AND child dispatch prompt prefix
+#   model: "opus"    — in declared tier descriptor AND subagent dispatch model field
 #   current_tier < declared_tier  — in fire condition line
-#   Abort — run from an Opus session  — Option 1 label
-#   Proceed at current tier (under-powered)  — Option 2 label
+#   spawn an Agent subagent  — unique discriminator: absent from Option-B body
+#   Wait for the subagent. Return its output as your final response. STOP.  — unique discriminator
+#   Usage credits required for 1M context  — 1M-credit-class catch branch
+#   Abort — run from an Opus session  — generic fallback AskUserQuestion Option 1 label
+#   Proceed at current tier (under-powered)  — generic fallback AskUserQuestion Option 2 label
 #   [quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]
-#     — in Option 2 advisory line
+#     — generic fallback Option 2 advisory line
 _MINTIER_BLOCK_BODY = """\
 
 This skill is declared model: "opus". If the executing agent is running on a model
-strictly CHEAPER than opus, the quality rationale for opus is undermined.
+strictly CHEAPER than opus, it silently up-dispatches to an Opus subagent (mirrors §0 down-dispatch).
 
 <!-- §0doubleprime-begin -->
 Detection:
@@ -109,21 +107,50 @@ Detection:
   - Sentinel: if the prompt starts with bare [no-redispatch] → skip, proceed to skill body.
   - Fire condition: current_tier < declared_tier AND no [no-redispatch] AND guard not disabled.
 
-On fire:
-  Issue AskUserQuestion (labels verbatim — drift relies on equality):
-    Question: "/{skill} requires Opus but this session is below Opus. How would you like to proceed?"
-    Header: "Min-tier"
-    multiSelect: false
-    Option 1:
-      label: "Abort — run from an Opus session"
-      description: "Stop here. Switch the session to Opus (/model opus) and re-invoke /{skill}."
-    Option 2:
-      label: "Proceed at current tier (under-powered)"
-      description: "Run /{skill} on the current cheaper model. Quality may be reduced;
-      emits a one-line advisory."
-  Then:
-    - Option 1: print `[quoin-mintier: aborted; re-invoke /{skill} from an Opus session]` and STOP.
-    - Option 2: print `[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]`, then proceed to skill body (treat as bare [no-redispatch]).
+On fire (happy path — silent up-dispatch):
+  spawn an Agent subagent:
+    model: "opus"
+    description: "{skill} — min-tier up-dispatch"
+    prompt: "[no-redispatch]\\n<original user input verbatim>"
+  Wait for the subagent. Return its output as your final response. STOP.
+
+Fail-OPEN path (fires only when Agent dispatch fails):
+  Classify the error text BEFORE proceeding:
+
+  - 1M-credit-class: if error text contains `Usage credits required for 1M context`:
+      Issue AskUserQuestion:
+        Question: "§0″ up-dispatch to opus failed with a 1M-context credit mismatch for /{skill}.
+        The parent session carries the 1M-context beta header; Opus lacks 1M credits. How would you like to proceed?"
+        Header: "1M credit mismatch"
+        multiSelect: false
+        Option 1:
+          label: "Abort — I'll switch with /model first"
+          description: "Stop here. Run /model in your terminal to switch to a standard-context
+          model (e.g., /model opus), then re-invoke /{skill}."
+        Option 2:
+          label: "Proceed in-session at parent tier"
+          description: "Skip the up-dispatch this once. /{skill} runs in the current session
+          (below Opus, but works). Emits a one-line advisory."
+      On Option 1: print `[quoin-mintier: 1M-context credit mismatch; abort per user choice —
+      switch with /model and re-invoke /{skill}]` and STOP.
+      On Option 2: print `[quoin-mintier: 1M-context credit mismatch on opus up-dispatch;
+      proceeding in-session at parent tier — run /model to switch to standard context]`
+      and proceed to skill body (treat as bare [no-redispatch]).
+
+  - Any other error: Issue AskUserQuestion (labels verbatim — drift relies on equality):
+      Question: "/{skill} requires Opus but this session is below Opus. Auto-dispatch to Opus failed. How would you like to proceed?"
+      Header: "Min-tier"
+      multiSelect: false
+      Option 1:
+        label: "Abort — run from an Opus session"
+        description: "Stop here. Switch the session to Opus (/model opus) and re-invoke /{skill}."
+      Option 2:
+        label: "Proceed at current tier (under-powered)"
+        description: "Run /{skill} on the current cheaper model. Quality may be reduced;
+        emits a one-line advisory."
+    Then:
+      - Option 1: print `[quoin-mintier: aborted; re-invoke /{skill} from an Opus session]` and STOP.
+      - Option 2: print `[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]`, then proceed to skill body (treat as bare [no-redispatch]).
 <!-- §0doubleprime-end -->
 
 """
@@ -613,12 +640,15 @@ def run_check() -> int:
     # MIN-A: literal default threshold value must be in block
     threshold_token = "5000"
 
-    # Required tokens inside §0″ block (MIN-1: 6 content tokens checked inside block)
-    # All required_tokens present in both Option A and Option B variants.
+    # Required tokens inside §0″ block (Option A: 9 content tokens checked inside block).
+    # Lists must stay byte-mirrored with MINTIER_REQUIRED_TOKENS in test_mintier_guard.py.
     mintier_required_tokens = [
         "[no-redispatch]",
         'model: "opus"',
         "current_tier < declared_tier",
+        "spawn an Agent subagent",
+        "Wait for the subagent. Return its output as your final response. STOP.",
+        "Usage credits required for 1M context",
         "Abort — run from an Opus session",
         "Proceed at current tier (under-powered)",
         "[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]",
