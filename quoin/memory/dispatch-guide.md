@@ -33,7 +33,7 @@ Two best-effort `--write-cache` lines are injected into every §0 body: one on t
 
 Fail-OPEN: any `--decide` error → returns `dispatch` (today's path, no suppression); any cache-read error → treated as `unknown` (the live probe runs); any cache-write error → silent skip. An unreadable config or cache MUST NEVER suppress a dispatch.
 
-Observability: when `--decide` returns `safe-path`, the skill emits `[quoin: 1M-unsafe tier T per <config|cache>; running SAFE PATH without dispatch]` (the `--verbose` flag surfaces the reason token `config` or `cache`).
+Observability: when `--decide` returns `safe-path`, the skill emits `[quoin: 1M-unsafe declared-tier per <reason>; running SAFE PATH without dispatch]` (the `--verbose` flag surfaces the reason token `config` or `cache`).
 
 The §0 body of all 19 cheap-tier skills has two byte-identical marked regions: `<!-- §0-1m-decide-begin -->` / `<!-- §0-1m-decide-end -->` (the pre-dispatch DECISION block — the `--decide` call and its `safe-path` branch) and `<!-- §0-1m-cachewrite-begin -->` / `<!-- §0-1m-cachewrite-end -->` (the cache-write lines). The blocks are byte-identical across all 19 files using literal placeholders `§1/§0c` and `tier T` (no per-skill token). Byte-identity is verified by `quoin/dev/tests/test_1m_proactive_precheck.py` (`test_all_19_s0_files_decide_block_byte_identical` + `test_all_19_s0_files_cachewrite_block_byte_identical`, iterating all 19 via `SECTION0_TARGETS`/`MIGRATED_TO_ADAPTER`).
 
