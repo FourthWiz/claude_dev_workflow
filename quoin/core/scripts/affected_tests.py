@@ -73,7 +73,7 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -92,6 +92,29 @@ _EXCLUDE_NAMES: frozenset[str] = frozenset({
     ".idea",
     ".vscode",
 })
+
+# Special-case mapping: certain docs/source files that are not .py themselves
+# must trigger specific test files when changed.  Each entry is a
+# (src_suffix, test_rel) pair where:
+#   src_suffix — posix suffix that must appear at the END of the changed path
+#                (with a leading "/" guard to avoid matching bare basenames from
+#                 other repos, e.g. bare "CLAUDE.md" does NOT match "quoin/CLAUDE.md").
+#   test_rel   — path of the test file, relative to the quoin/ git repo root.
+# The guard is applied as: posix == src_suffix OR posix.endswith("/" + src_suffix).
+_DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
+    (
+        "quoin/CLAUDE.md",
+        "quoin/dev/tests/test_claude_md_size_ceiling.py",
+    ),
+    (
+        "quoin/memory/format-kit.md",
+        "quoin/dev/tests/test_preamble_freshness.py",
+    ),
+    (
+        "quoin/memory/glossary.md",
+        "quoin/dev/tests/test_preamble_freshness.py",
+    ),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -350,6 +373,8 @@ def map_changed_to_tests(
       ignored           — non-.py files (docs, JSON, SKILL.md, ...) — excluded from
                           unmatched_sources; a changeset of ONLY ignored files is
                           a docs-only changeset (exit 0b, not exit 4).
+                          Exception: files listed in _DOCS_TO_TESTS are mapped to
+                          a specific test file and do NOT land in ignored.
 
     Detection algorithm:
       1. Changed test files → included directly as selectors.
@@ -382,8 +407,21 @@ def map_changed_to_tests(
                 selectors.add(str(repo_root / changed_file))
             continue
 
-        # Non-.py file (docs, JSON, SKILL.md, ...) → ignored
+        # Special-case: certain non-.py docs/source files map to specific tests.
+        # Runs BEFORE the generic non-.py "ignored" fallback so these files
+        # are treated as selector sources (exit 0a) rather than docs-only (exit 0b).
         if fpath.suffix != ".py":
+            posix = PurePosixPath(changed_file).as_posix()
+            mapped_any = False
+            for src_suffix, test_rel in _DOCS_TO_TESTS:
+                if posix == src_suffix or posix.endswith("/" + src_suffix):
+                    test_path = repo_root / test_rel
+                    if test_path.exists():
+                        selectors.add(str(test_path))
+                    mapped_any = True
+            if mapped_any:
+                continue
+            # Generic non-.py file → ignored
             ignored.append(changed_file)
             continue
 
