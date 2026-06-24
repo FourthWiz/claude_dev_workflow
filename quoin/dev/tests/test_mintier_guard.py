@@ -1,14 +1,22 @@
 """
-Drift-detection tests for the §0″ Minimum-tier guard block (IVG-72).
+Drift-detection tests for the §0″ Minimum-tier guard block (IVG-72, updated IVG-91).
 
 The 7 Opus-tier leaf skills (architect, plan, critic, revise, review,
 init_workflow, discover) carry a `## §0″ Minimum-tier guard ...` block.
 These tests verify structural correctness of that block.
 
-Note on 1M precheck: test_1m_context_precheck.py is NOT extended — §0″ carries
-no 1M precheck in v1. This is a conscious omission (deferred per plan D-06 / R-03),
-not an oversight. The fail-open leaf (AskUserQuestion) catches resulting Agent errors
-and degrades gracefully.
+Note on 1M handling (IVG-91): §0″ now carries a post-dispatch 1M-credit-class catch
+mirrored from §0'. When the Agent up-dispatch fails with `Usage credits required for
+1M context`, an AskUserQuestion surfaces two options (abort / proceed-in-session).
+This is NOT a pre-dispatch precheck — it fires only on a real dispatch error, exactly
+as §0' does (IVG-89 D-03 approach). test_1m_context_precheck.py is NOT extended —
+the 1M guard is post-dispatch and is covered by MINTIER_REQUIRED_TOKENS here.
+
+Note on happy path (IVG-91): §0″ now silently spawns an Agent subagent (model: opus)
+as the happy path; AskUserQuestion (abort / proceed-under-powered) is the fail-open
+fallback only. The two discriminator tokens `spawn an Agent subagent` and
+`Wait for the subagent. Return its output as your final response. STOP.` are absent
+from the old Option-B body and serve as the structural regression guard.
 
 Note on SO_HEADING non-collision: test_quoin_stage1_preamble.py::test_no_opus_tier_skill_has_preamble
 covers the 9 Opus skills and asserts SO_HEADING = "## §0 Model dispatch (FIRST STEP — execute
@@ -17,7 +25,7 @@ non-collision is verified by T-04's grep check (grep -c "## §0 Model dispatch" 
 7 target SKILL.md files). See also the T-04 commit for the verification output.
 
 Token list discipline (MIN-1):
-- mintier_required_tokens (6 content tokens): checked INSIDE the extracted §0″ block.
+- mintier_required_tokens (9 content tokens): checked INSIDE the extracted §0″ block.
 - mintier_required_markers (2 HTML markers): checked for presence in the full file text
   (outside block extraction), exactly once each.
 These two lists are separate to mirror the T-03 --check discipline exactly.
@@ -65,12 +73,15 @@ MINTIER_SKILLS = [
     "discover",
 ]
 
-# mintier_required_tokens (MIN-1): 6 content tokens checked INSIDE the §0″ block.
-# All required_tokens present in both Option A and Option B variants.
+# mintier_required_tokens (MIN-1): 9 content tokens checked INSIDE the §0″ block.
+# Must stay byte-mirrored with mintier_required_tokens in inject_pollution_dispatch.run_check().
 MINTIER_REQUIRED_TOKENS = [
     "[no-redispatch]",
     'model: "opus"',
     "current_tier < declared_tier",
+    "spawn an Agent subagent",
+    "Wait for the subagent. Return its output as your final response. STOP.",
+    "Usage credits required for 1M context",
     "Abort — run from an Opus session",
     "Proceed at current tier (under-powered)",
     "[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]",
@@ -225,6 +236,113 @@ def test_run_check_passes_on_committed_tree():
         "inject_pollution_dispatch run_check() returned non-zero on the committed tree. "
         "This means the adapter SKILL.md files have drifted from the template. "
         "Run `python3 quoin/scripts/inject_pollution_dispatch.py` to regenerate."
+    )
+
+
+# ─── (g) Happy-path Agent up-dispatch structural co-presence ─────────────────
+
+@pytest.mark.parametrize("skill", MINTIER_SKILLS)
+def test_mintier_happy_path_agent_dispatch_present(skill):
+    """(g) §0″ block contains all three co-present literals that are unique to Option-A.
+
+    The co-presence of 'spawn an Agent subagent' + the STOP phrase (both absent from
+    Option-B body) is the structural discriminator. 'model: "opus"' in a dispatch context
+    (not merely a descriptor) is the third. All three must appear together in the block.
+    """
+    text = _read_skill(skill)
+    block = _extract_mintier_block(text)
+    assert block, f"{skill}/SKILL.md §0″ block could not be extracted"
+
+    dispatch_literals = [
+        "spawn an Agent subagent",
+        "Wait for the subagent. Return its output as your final response. STOP.",
+        'model: "opus"',
+    ]
+    for lit in dispatch_literals:
+        assert lit in block, (
+            f"{skill}/SKILL.md §0″ block missing Option-A dispatch literal: {lit!r}. "
+            "This indicates the block has reverted to Option-B (AskUserQuestion-only) "
+            "or the Agent-spawn phrase was inadvertently removed."
+        )
+
+
+# ─── (h) Fallback AskUserQuestion labels still present ───────────────────────
+
+@pytest.mark.parametrize("skill", MINTIER_SKILLS)
+def test_mintier_fallback_askuser_labels_present(skill):
+    """(h) Generic fallback AskUserQuestion labels remain verbatim in §0″ block.
+
+    These labels are now the fail-open fallback (not the primary path), but drift
+    detection relies on their verbatim presence.
+    """
+    text = _read_skill(skill)
+    block = _extract_mintier_block(text)
+    assert block, f"{skill}/SKILL.md §0″ block could not be extracted"
+
+    fallback_labels = [
+        "Abort — run from an Opus session",
+        "Proceed at current tier (under-powered)",
+        "[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]",
+    ]
+    for label in fallback_labels:
+        assert label in block, (
+            f"{skill}/SKILL.md §0″ block missing fallback label: {label!r}"
+        )
+
+
+# ─── (i) 1M-context credit-class branch present ──────────────────────────────
+
+@pytest.mark.parametrize("skill", MINTIER_SKILLS)
+def test_mintier_1m_credit_branch_present(skill):
+    """(i) §0″ block contains the 1M-credit-class error catch (IVG-91 mirroring §0')."""
+    text = _read_skill(skill)
+    block = _extract_mintier_block(text)
+    assert block, f"{skill}/SKILL.md §0″ block could not be extracted"
+
+    assert "Usage credits required for 1M context" in block, (
+        f"{skill}/SKILL.md §0″ block missing 1M-credit-class branch "
+        "('Usage credits required for 1M context' not found). "
+        "§0″ must mirror §0' post-dispatch 1M-credit handling (IVG-89/IVG-91)."
+    )
+    # Also check 1M-specific AskUserQuestion option labels
+    assert "Abort — I'll switch with /model first" in block, (
+        f"{skill}/SKILL.md §0″ block missing 1M AskUserQuestion Option 1 label."
+    )
+    assert "Proceed in-session at parent tier" in block, (
+        f"{skill}/SKILL.md §0″ block missing 1M AskUserQuestion Option 2 label."
+    )
+
+
+# ─── (j) [no-redispatch] appears as child dispatch prefix (not only sentinel) ─
+
+@pytest.mark.parametrize("skill", MINTIER_SKILLS)
+def test_mintier_no_redispatch_as_child_prompt_prefix(skill):
+    """(j) [no-redispatch] appears ≥2 times in the §0″ block: once for the sentinel
+    detection skip and once as the child dispatch prompt prefix.
+    """
+    text = _read_skill(skill)
+    block = _extract_mintier_block(text)
+    assert block, f"{skill}/SKILL.md §0″ block could not be extracted"
+
+    count = block.count("[no-redispatch]")
+    assert count >= 2, (
+        f"{skill}/SKILL.md §0″ block: '[no-redispatch]' appears {count} time(s); "
+        "expected ≥2 (once in sentinel detection, once as child prompt prefix). "
+        "The child Agent prompt must be prefixed with bare [no-redispatch] to prevent recursion."
+    )
+
+
+# ─── (k) Disable-switch line still present ───────────────────────────────────
+
+@pytest.mark.parametrize("skill", MINTIER_SKILLS)
+def test_mintier_disable_switch_present(skill):
+    """(k) QUOIN_DISABLE_MINTIER_GUARD silent-skip detection remains in §0″ block."""
+    text = _read_skill(skill)
+    block = _extract_mintier_block(text)
+    assert block, f"{skill}/SKILL.md §0″ block could not be extracted"
+
+    assert "QUOIN_DISABLE_MINTIER_GUARD" in block, (
+        f"{skill}/SKILL.md §0″ block missing QUOIN_DISABLE_MINTIER_GUARD disable-switch line."
     )
 
 
