@@ -160,7 +160,7 @@ Use `--dry-run` first to preview what would be trashed without making any moves.
 - Priority 2: stem of the most-recently-modified `__QUOIN_HOME__/projects/<project-hash>/<uuid>.jsonl` file. `<project-hash>` = project absolute path with `/` replaced by `-`.
 - If UUID cannot be obtained: emit `[cleanup] current-session UUID unavailable; skipping sentinel sweep (fail-safe)` and **skip step 4 entirely**. Proceed directly to step 5 (checkpoint sweep). The age-only 30d checkpoint sweep is safe without UUID. NEVER fall back to age-only with any shorter floor for sentinels — if the current session cannot be identified, trash nothing from sentinel families.
 
-**Step 4. Sentinel sweep:** For each of the 8 hardcoded families listed in `## Hardcoded sentinel allow-list`, find candidates under `MEMORY_DIR` at depth 1:
+**Step 4. Sentinel sweep:** For each of the 9 hardcoded families listed in `## Hardcoded sentinel allow-list`, find candidates under `MEMORY_DIR` at depth 1:
 ```sh
 find "$MEMORY_DIR" -maxdepth 1 -name '<family-glob>' \
   -mtime +${QUOIN_CLEANUP_SENTINEL_WINDOW:-1} -print0
@@ -207,9 +207,9 @@ When `/cleanup --dry-run` is invoked:
 
 To preview what `/checkpoint` auto-fire would trash without running a full save: use `--no-cleanup` to suppress auto-fire, then run `/cleanup --dry-run` standalone.
 
-## Hardcoded sentinel allow-list (8 families)
+## Hardcoded sentinel allow-list (9 families)
 
-The sentinel sweep targets ONLY these 8 hardcoded families. This is a hardcoded allow-list — no user-supplied pattern argument, no catch-all globs:
+The sentinel sweep targets ONLY these 9 hardcoded families. This is a hardcoded allow-list — no user-supplied pattern argument, no catch-all globs:
 
 1. `pending-restore-*.txt`
 2. `pending-prompt-*.txt`
@@ -219,14 +219,17 @@ The sentinel sweep targets ONLY these 8 hardcoded families. This is a hardcoded 
 6. `checkpoint-defer-*.txt`
 7. `postcompact-reset-*.txt`
 8. `checkpoint-pending-compact-*.txt`
+9. `idle-advisory-pending-*.txt`
 
 These families are enumerated literally in the sentinel sweep. No user-supplied pattern is accepted. No catch-all glob (`*.txt`, `pending-*.txt`) is used as the sweep target.
 
-`/cleanup` NEVER targets `lessons-learned.md`, `forgotten/`, or any source file — only the 8 sentinel families above and `checkpoints/*.md` under `.workflow_artifacts/memory/`.
+Canonical machine-readable source: `hooks/_lib.sh:sentinel_globs()` — sessionstart.sh consumes that; this list and sleep/SKILL.md's list MUST stay byte-identical (drift-guarded by test_sentinel_family_parity.py).
+
+`/cleanup` NEVER targets `lessons-learned.md`, `forgotten/`, or any source file — only the 9 sentinel families above and `checkpoints/*.md` under `.workflow_artifacts/memory/`.
 
 ## Relationship to /sleep --purge --sentinels
 
-`/cleanup` and `/sleep --purge --sentinels` both target the same 8 sentinel families (byte-identical literal lists) but are NOT the same operation:
+`/cleanup` and `/sleep --purge --sentinels` both target the same 9 sentinel families (byte-identical literal lists) but are NOT the same operation:
 
 | Dimension | /cleanup | /sleep --purge --sentinels |
 |---|---|---|
@@ -241,6 +244,6 @@ Use `/sleep --purge --sentinels --older-than Nd` for explicit permanent purge of
 
 ## Write-target / delete-target restriction
 
-**/cleanup ONLY trash-moves files under `.workflow_artifacts/memory/` matching the 8 sentinel families listed above or `checkpoints/*.md`; it never touches `lessons-learned.md`, `forgotten/`, or any source file.**
+**/cleanup ONLY trash-moves files under `.workflow_artifacts/memory/` matching the 9 sentinel families listed above or `checkpoints/*.md`; it never touches `lessons-learned.md`, `forgotten/`, or any source file.**
 
 Any other trash-move or write is a bug.
