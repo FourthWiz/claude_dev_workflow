@@ -76,14 +76,35 @@ if [ "$EOD_BANNER_FIRED" -eq 0 ] && [ -d "$SESSIONS_DIR" ]; then
 fi
 # === end S-4 missing-EOD banner ===
 
-# STEP 2: Sweep stale sentinel files
-# Trash-move pending-prompt-*.txt, pending-restore-*.txt, pending-resume-ref-*.txt,
-# and mid-agent-handoff-*.txt older than STALE_DAYS days.
-# STALE_DAYS sourced from read_constants() (default 7, override via QUOIN_STALE_SENTINEL_DAYS)
-# Using find -exec sh -c to avoid word-splitting on paths containing spaces.
-HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
-find "$MEMORY_DIR" -maxdepth 1 \( -name 'pending-prompt-*.txt' -o -name 'pending-restore-*.txt' -o -name 'pending-resume-ref-*.txt' -o -name 'mid-agent-handoff-*.txt' -o -name 'compact-happened-*.txt' -o -name 'checkpoint-pending-compact-*.txt' \) -mtime +"$STALE_DAYS" \
-  -exec sh -c ". \"$HOOKS_DIR/_lib.sh\" && trash_move \"\$1\" \"\$2\"" _ {} "$MEMORY_DIR" \; 2>/dev/null || true
+# STEP 2: UUID-aware sweep of all 9 sentinel families.
+# Tight window (SESSIONSTART_SWEEP_DAYS, default 1d) when current session is known;
+# falls back to conservative STALE_DAYS (7d) age-only when session_id is empty (defensive — see D-02).
+# NOTE (D-08): the tight window also applies to pending-restore/pending-resume-ref/mid-agent-handoff,
+# so STEP 4's cross-session fallback now sees only <=1d non-current pending-restore anchors. This is
+# an INTENTIONAL narrowing of the STEP 4 input set (NOT a no-op); the banner-rendering code below is
+# byte-unchanged. Do NOT re-add any "STEP 3+ unchanged" claim.
+# Safe for paths with spaces: IFS= read -r preserves the full path (verified on the "My Drive" root).
+# Sentinel basenames are FAMILY-<uuid>.txt (no newlines), so the find|while-read pipe is newline-safe
+# for this controlled filename set — diverges from the old -exec form but is correct here.
+# (_lib.sh sourced once at sessionstart.sh:16, so sentinel_globs/trash_move are in scope; no per-file re-source.)
+if [ -n "$session_id" ]; then
+  _sweep_days="$SESSIONSTART_SWEEP_DAYS"
+else
+  _sweep_days="$STALE_DAYS"   # no anchor → conservative age-only (defensive, see D-02)
+fi
+sentinel_globs | while IFS= read -r _glob; do
+  [ -n "$_glob" ] || continue
+  find "$MEMORY_DIR" -maxdepth 1 -name "$_glob" -mtime +"$_sweep_days" 2>/dev/null | \
+  while IFS= read -r _f; do
+    [ -f "$_f" ] || continue
+    _base=$(basename "$_f")
+    # current-session protection: skip files ending in -SESSION_ID.txt
+    if [ -n "$session_id" ] && [ "$_base" != "${_base%-${session_id}.txt}" ]; then
+      continue
+    fi
+    trash_move "$_f" "$MEMORY_DIR" 2>/dev/null || true
+  done
+done 2>/dev/null || true
 
 # STEP 3: Look for sentinel files (priority order: pending-restore > pending-resume-ref > mid-agent-handoff)
 # Emit AT MOST ONE banner per session start.
