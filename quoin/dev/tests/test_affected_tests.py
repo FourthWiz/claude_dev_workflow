@@ -132,6 +132,92 @@ class TestMapChangedToTests:
 
 
 # ---------------------------------------------------------------------------
+# IVG-92: special-case docs→test mapping (uses real quoin repo tree)
+# ---------------------------------------------------------------------------
+
+# Resolve the quoin/ git repo root the same way the module's loader does:
+# _CORE_PATH is <repo>/quoin/core/scripts/affected_tests.py
+#   parents[0] = scripts/
+#   parents[1] = core/
+#   parents[2] = quoin/       (the quoin Python package)
+#   parents[3] = <repo root>  (the quoin/ git repo)
+_REPO_ROOT = _CORE_PATH.resolve().parents[3]
+
+# Sanity guard: fail loudly if the index is wrong rather than silently
+# testing against the wrong tree (R-02 mitigation).
+assert (_REPO_ROOT / "quoin/dev/tests/test_affected_tests.py").exists(), (
+    f"_REPO_ROOT ({_REPO_ROOT}) does not look like the quoin git repo root — "
+    "check the parents[N] index in test_affected_tests.py"
+)
+
+
+class TestIvg92SpecialCaseMapping:
+    """Verify that docs/source files in _DOCS_TO_TESTS map to their designated tests.
+
+    These tests use the REAL quoin repo tree (not fake_repo) because the
+    special-case block guards on test_path.exists() against the real filesystem.
+    """
+
+    def test_claude_md_triggers_size_ceiling(self):
+        """quoin/CLAUDE.md -> test_claude_md_size_ceiling.py is in selectors."""
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["quoin/CLAUDE.md"], _REPO_ROOT
+        )
+        assert any("test_claude_md_size_ceiling.py" in s for s in selectors), (
+            f"expected test_claude_md_size_ceiling.py in selectors, got {selectors}"
+        )
+        assert not ignored, f"ignored should be empty for a mapped file, got {ignored}"
+        assert not unmatched
+
+    def test_glossary_triggers_preamble_freshness(self):
+        """quoin/memory/glossary.md -> test_preamble_freshness.py is in selectors."""
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["quoin/memory/glossary.md"], _REPO_ROOT
+        )
+        assert any("test_preamble_freshness.py" in s for s in selectors), (
+            f"expected test_preamble_freshness.py in selectors, got {selectors}"
+        )
+        assert not ignored
+        assert not unmatched
+
+    def test_format_kit_triggers_preamble_freshness(self):
+        """quoin/memory/format-kit.md -> test_preamble_freshness.py is in selectors."""
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["quoin/memory/format-kit.md"], _REPO_ROOT
+        )
+        assert any("test_preamble_freshness.py" in s for s in selectors), (
+            f"expected test_preamble_freshness.py in selectors, got {selectors}"
+        )
+        assert not ignored
+        assert not unmatched
+
+    def test_unrelated_skill_md_still_ignored(self):
+        """Non-special non-.py file (SKILL.md) still lands in ignored (regression guard)."""
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["quoin/skills/gate/SKILL.md"], _REPO_ROOT
+        )
+        assert not selectors, f"expected no selectors for SKILL.md, got {selectors}"
+        assert not unmatched
+        assert "quoin/skills/gate/SKILL.md" in ignored
+
+    def test_bare_claude_md_does_not_match(self):
+        """Bare 'CLAUDE.md' (no quoin/ parent) must NOT trigger the size-ceiling test.
+
+        The leading-'/' guard on the suffix match ensures only paths ending in
+        '.../quoin/CLAUDE.md' match; a root-level CLAUDE.md must fall through
+        to ignored (R-01 false-positive mitigation).
+        """
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["CLAUDE.md"], _REPO_ROOT
+        )
+        assert not selectors, (
+            f"bare CLAUDE.md should not map to any selector, got {selectors}"
+        )
+        assert "CLAUDE.md" in ignored, f"bare CLAUDE.md should be in ignored, got {ignored}"
+        assert not unmatched
+
+
+# ---------------------------------------------------------------------------
 # resolve_repo
 # ---------------------------------------------------------------------------
 
