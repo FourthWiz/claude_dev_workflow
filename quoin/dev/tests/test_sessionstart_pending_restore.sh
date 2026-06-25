@@ -210,28 +210,58 @@ else
   ok "(e) stale sweep → (skipped: touch -t may not have set old enough mtime on this platform)"
 fi
 
-# ─── (e2) staleness-tunable test: QUOIN_STALE_SENTINEL_DAYS=14, 10-day-old file ─
+# ─── (e2) staleness-tunable test: QUOIN_SESSIONSTART_SWEEP_DAYS=2, 3-day-old file ─
+# After T-02 refactor: the UUID-aware sweep window is QUOIN_SESSIONSTART_SWEEP_DAYS
+# (default 1d), NOT QUOIN_STALE_SENTINEL_DAYS (which now only applies to empty-SID
+# fallback path — D-02).
+# Test 1: a 3-day-old OTHER-session file IS swept at SWEEP_DAYS=2 (threshold exceeded).
+# Test 2: a 3-day-old SAME-session file is NOT swept (UUID protection, regardless of age).
+# Test 3: a 3-day-old OTHER-session file is NOT swept at SWEEP_DAYS=5 (under threshold).
 
 rm -f "$MEMORY_DIR/pending-prompt-"*.txt 2>/dev/null || true
 
-printf '10-day-old content\n' > "$MEMORY_DIR/pending-prompt-10day-sess.txt"
-# Set mtime to exactly 10 days ago using touch -t with a date 10 days back
-TEN_DAYS_AGO=$(date -v -10d +%Y%m%d%H%M.%S 2>/dev/null || date -d '10 days ago' +%Y%m%d%H%M.%S 2>/dev/null || echo "")
-if [ -n "$TEN_DAYS_AGO" ]; then
-  touch -t "$TEN_DAYS_AGO" "$MEMORY_DIR/pending-prompt-10day-sess.txt" 2>/dev/null || true
-  stdin=$(make_stdin "startup" "sess-e2-test")
-  printf '%s' "$stdin" | QUOIN_STALE_SENTINEL_DAYS=14 sh "$HOOK" 2>/dev/null > /dev/null
-  # With 14-day threshold, a 10-day-old file should NOT be swept
-  if [ -f "$MEMORY_DIR/pending-prompt-10day-sess.txt" ]; then
-    ok "(e2) QUOIN_STALE_SENTINEL_DAYS=14: 10-day-old sentinel NOT swept (threshold=14)"
+THREE_DAYS_AGO=$(date -v -3d +%Y%m%d%H%M.%S 2>/dev/null || date -d '3 days ago' +%Y%m%d%H%M.%S 2>/dev/null || echo "")
+if [ -n "$THREE_DAYS_AGO" ]; then
+  # --- test (e2a): 3-day-old OTHER file swept at SWEEP_DAYS=2 ---
+  printf '3-day-old other\n' > "$MEMORY_DIR/pending-prompt-3day-other-e2.txt"
+  touch -t "$THREE_DAYS_AGO" "$MEMORY_DIR/pending-prompt-3day-other-e2.txt" 2>/dev/null || true
+  stdin_e2a=$(make_stdin "startup" "sess-e2-test")
+  printf '%s' "$stdin_e2a" | QUOIN_SESSIONSTART_SWEEP_DAYS=2 sh "$HOOK" 2>/dev/null > /dev/null
+  if [ ! -f "$MEMORY_DIR/pending-prompt-3day-other-e2.txt" ]; then
+    ok "(e2a) QUOIN_SESSIONSTART_SWEEP_DAYS=2: 3-day-old OTHER sentinel swept (threshold=2)"
   else
-    fail "(e2) QUOIN_STALE_SENTINEL_DAYS=14: 10-day-old sentinel was swept (should not be)"
+    fail "(e2a) QUOIN_SESSIONSTART_SWEEP_DAYS=2: 3-day-old OTHER sentinel NOT swept (should be)"
   fi
-else
-  ok "(e2) staleness-tunable test → (skipped: date manipulation not supported on this platform)"
-fi
+  rm -f "$MEMORY_DIR/pending-prompt-3day-other-e2.txt" 2>/dev/null || true
 
-rm -f "$MEMORY_DIR/pending-prompt-10day-sess.txt" 2>/dev/null || true
+  # --- test (e2b): same-session file NOT swept by UUID protection ---
+  printf '3-day-old same-session\n' > "$MEMORY_DIR/pending-prompt-3day-sess-e2-test.txt"
+  touch -t "$THREE_DAYS_AGO" "$MEMORY_DIR/pending-prompt-3day-sess-e2-test.txt" 2>/dev/null || true
+  stdin_e2b=$(make_stdin "startup" "sess-e2-test")
+  printf '%s' "$stdin_e2b" | QUOIN_SESSIONSTART_SWEEP_DAYS=2 sh "$HOOK" 2>/dev/null > /dev/null
+  if [ -f "$MEMORY_DIR/pending-prompt-3day-sess-e2-test.txt" ]; then
+    ok "(e2b) QUOIN_SESSIONSTART_SWEEP_DAYS=2: same-session 3-day sentinel NOT swept (UUID-protected)"
+  else
+    fail "(e2b) QUOIN_SESSIONSTART_SWEEP_DAYS=2: same-session 3-day sentinel was swept (UUID not protecting)"
+  fi
+  rm -f "$MEMORY_DIR/pending-prompt-3day-sess-e2-test.txt" 2>/dev/null || true
+
+  # --- test (e2c): 3-day-old OTHER file NOT swept at SWEEP_DAYS=5 (under threshold) ---
+  printf '3-day-old other under threshold\n' > "$MEMORY_DIR/pending-prompt-3day-other2-e2.txt"
+  touch -t "$THREE_DAYS_AGO" "$MEMORY_DIR/pending-prompt-3day-other2-e2.txt" 2>/dev/null || true
+  stdin_e2c=$(make_stdin "startup" "sess-e2-test")
+  printf '%s' "$stdin_e2c" | QUOIN_SESSIONSTART_SWEEP_DAYS=5 sh "$HOOK" 2>/dev/null > /dev/null
+  if [ -f "$MEMORY_DIR/pending-prompt-3day-other2-e2.txt" ]; then
+    ok "(e2c) QUOIN_SESSIONSTART_SWEEP_DAYS=5: 3-day-old OTHER sentinel NOT swept (threshold=5, under)"
+  else
+    fail "(e2c) QUOIN_SESSIONSTART_SWEEP_DAYS=5: 3-day-old OTHER sentinel swept (should not be at threshold=5)"
+  fi
+  rm -f "$MEMORY_DIR/pending-prompt-3day-other2-e2.txt" 2>/dev/null || true
+else
+  ok "(e2a) staleness-tunable test → (skipped: date manipulation not supported on this platform)"
+  ok "(e2b) staleness-tunable UUID-protect test → (skipped: date manipulation not supported)"
+  ok "(e2c) staleness-tunable under-threshold test → (skipped: date manipulation not supported)"
+fi
 
 # ─── (f) sh syntax check ─────────────────────────────────────────────────────
 
@@ -320,6 +350,166 @@ fi
 rm -f "$MEMORY_DIR/pending-restore-${SID_T10E}.txt" \
       "$MEMORY_DIR/pending-resume-ref-${SID_T10E}.txt" \
       "$MEMORY_DIR/mid-agent-handoff-${SID_T10E}.txt"
+
+# ─── IVG-95 / T-05: UUID-aware sweep behavior tests ─────────────────────────
+# These tests require touch -t with date -v/-d support (skip gracefully if absent).
+# Use QUOIN_SESSIONSTART_SWEEP_DAYS=1 explicitly to test the tight window.
+
+HAVE_DATE_V=$(date -v -2d +%Y%m%d%H%M.%S 2>/dev/null && echo yes || echo no)
+
+# (g) Current-session protection: 2-day-old compact-happened-SID.txt is NOT swept
+# when running with the SAME session_id.
+if [ "$HAVE_DATE_V" = "yes" ]; then
+  SID_G="sess-uuid-protect-g"
+  printf 'content\n' > "$MEMORY_DIR/compact-happened-${SID_G}.txt"
+  TWO_DAYS_AGO_G=$(date -v -2d +%Y%m%d%H%M.%S 2>/dev/null || echo "")
+  touch -t "$TWO_DAYS_AGO_G" "$MEMORY_DIR/compact-happened-${SID_G}.txt" 2>/dev/null || true
+  stdin_g=$(make_stdin "startup" "$SID_G")
+  printf '%s' "$stdin_g" | QUOIN_SESSIONSTART_SWEEP_DAYS=1 sh "$HOOK" 2>/dev/null > /dev/null
+  if [ -f "$MEMORY_DIR/compact-happened-${SID_G}.txt" ]; then
+    ok "(g) current-session protection: 2-day-old compact-happened-SID NOT swept (same session_id)"
+  else
+    fail "(g) current-session protection: compact-happened-SID was swept — current session NOT protected"
+  fi
+  rm -f "$MEMORY_DIR/compact-happened-${SID_G}.txt"
+else
+  ok "(g) current-session protection → (skipped: date -v not supported)"
+fi
+
+# (h) Non-current sweep (regression-proving test): 2-day-old compact-happened-OTHER.txt
+# IS swept when running with a DIFFERENT session_id and default 1d window.
+# This test MUST FAIL if T-02 is reverted (pre-fix: 6-family at 7d → 2-day file survives).
+if [ "$HAVE_DATE_V" = "yes" ]; then
+  SID_H_CURRENT="sess-current-h"
+  SID_H_OTHER="sess-other-h"
+  printf 'content\n' > "$MEMORY_DIR/compact-happened-${SID_H_OTHER}.txt"
+  TWO_DAYS_AGO_H=$(date -v -2d +%Y%m%d%H%M.%S 2>/dev/null || echo "")
+  touch -t "$TWO_DAYS_AGO_H" "$MEMORY_DIR/compact-happened-${SID_H_OTHER}.txt" 2>/dev/null || true
+  stdin_h=$(make_stdin "startup" "$SID_H_CURRENT")
+  printf '%s' "$stdin_h" | QUOIN_SESSIONSTART_SWEEP_DAYS=1 sh "$HOOK" 2>/dev/null > /dev/null
+  if [ ! -f "$MEMORY_DIR/compact-happened-${SID_H_OTHER}.txt" ]; then
+    ok "(h) non-current sweep: 2-day-old compact-happened-OTHER trash-moved (regression-proving)"
+  else
+    fail "(h) non-current sweep: compact-happened-OTHER NOT swept — pre-fix behavior detected"
+  fi
+  rm -f "$MEMORY_DIR/compact-happened-${SID_H_OTHER}.txt" 2>/dev/null || true
+else
+  ok "(h) non-current sweep → (skipped: date -v not supported)"
+fi
+
+# (i) Fresh-file safety: postcompact-reset-OTHER.txt with mtime=now is NOT swept
+# (younger than 1d window).
+SID_I_OTHER="sess-fresh-i"
+SID_I_CURRENT="sess-current-i"
+printf 'fresh content\n' > "$MEMORY_DIR/postcompact-reset-${SID_I_OTHER}.txt"
+# mtime is "now" by default (just written)
+stdin_i=$(make_stdin "startup" "$SID_I_CURRENT")
+printf '%s' "$stdin_i" | QUOIN_SESSIONSTART_SWEEP_DAYS=1 sh "$HOOK" 2>/dev/null > /dev/null
+if [ -f "$MEMORY_DIR/postcompact-reset-${SID_I_OTHER}.txt" ]; then
+  ok "(i) fresh-file safety: postcompact-reset-OTHER with mtime=now NOT swept"
+else
+  fail "(i) fresh-file safety: postcompact-reset-OTHER was swept (should be younger than 1d)"
+fi
+rm -f "$MEMORY_DIR/postcompact-reset-${SID_I_OTHER}.txt" 2>/dev/null || true
+
+# (j) New-family parity: 3 newly-covered families (checkpoint-defer, postcompact-reset,
+# idle-advisory-pending) are all swept when 2 days old with a different session_id.
+# Proves the 3 newly-covered families including the 9th (idle-advisory-pending).
+if [ "$HAVE_DATE_V" = "yes" ]; then
+  SID_J_CURRENT="sess-current-j"
+  SID_J_OTHER="sess-other-j"
+  printf 'content\n' > "$MEMORY_DIR/checkpoint-defer-${SID_J_OTHER}.txt"
+  printf 'content\n' > "$MEMORY_DIR/postcompact-reset-${SID_J_OTHER}.txt"
+  printf 'content\n' > "$MEMORY_DIR/idle-advisory-pending-${SID_J_OTHER}.txt"
+  TWO_DAYS_AGO_J=$(date -v -2d +%Y%m%d%H%M.%S 2>/dev/null || echo "")
+  touch -t "$TWO_DAYS_AGO_J" "$MEMORY_DIR/checkpoint-defer-${SID_J_OTHER}.txt" 2>/dev/null || true
+  touch -t "$TWO_DAYS_AGO_J" "$MEMORY_DIR/postcompact-reset-${SID_J_OTHER}.txt" 2>/dev/null || true
+  touch -t "$TWO_DAYS_AGO_J" "$MEMORY_DIR/idle-advisory-pending-${SID_J_OTHER}.txt" 2>/dev/null || true
+  stdin_j=$(make_stdin "startup" "$SID_J_CURRENT")
+  printf '%s' "$stdin_j" | QUOIN_SESSIONSTART_SWEEP_DAYS=1 sh "$HOOK" 2>/dev/null > /dev/null
+  J_PASS=1
+  [ -f "$MEMORY_DIR/checkpoint-defer-${SID_J_OTHER}.txt" ] && J_PASS=0
+  [ -f "$MEMORY_DIR/postcompact-reset-${SID_J_OTHER}.txt" ] && J_PASS=0
+  [ -f "$MEMORY_DIR/idle-advisory-pending-${SID_J_OTHER}.txt" ] && J_PASS=0
+  if [ "$J_PASS" -eq 1 ]; then
+    ok "(j) new-family parity: all 3 newly-covered families (incl. 9th idle-advisory) trash-moved"
+  else
+    fail "(j) new-family parity: one or more newly-covered family files NOT swept"
+  fi
+  rm -f "$MEMORY_DIR/checkpoint-defer-${SID_J_OTHER}.txt" \
+        "$MEMORY_DIR/postcompact-reset-${SID_J_OTHER}.txt" \
+        "$MEMORY_DIR/idle-advisory-pending-${SID_J_OTHER}.txt" 2>/dev/null || true
+else
+  ok "(j) new-family parity → (skipped: date -v not supported)"
+fi
+
+# (k) Empty-SID degraded-path conservatism: run hook with session_id="", a 2-day-old
+# sentinel present; assert it is NOT trashed at the 1d window (empty SID → falls back
+# to 7d age-only, file survives). Label: "degraded-path conservatism" — NOT "protect
+# current session" (current writers never emit empty-SID sentinels, per D-02).
+if [ "$HAVE_DATE_V" = "yes" ]; then
+  printf 'content\n' > "$MEMORY_DIR/compact-happened-emptysid.txt"
+  TWO_DAYS_AGO_K=$(date -v -2d +%Y%m%d%H%M.%S 2>/dev/null || echo "")
+  touch -t "$TWO_DAYS_AGO_K" "$MEMORY_DIR/compact-happened-emptysid.txt" 2>/dev/null || true
+  stdin_k=$(printf '{"source":"startup","session_id":"","cwd":"%s"}' "$TMPDIR_TEST")
+  printf '%s' "$stdin_k" | QUOIN_SESSIONSTART_SWEEP_DAYS=1 sh "$HOOK" 2>/dev/null > /dev/null
+  if [ -f "$MEMORY_DIR/compact-happened-emptysid.txt" ]; then
+    ok "(k) degraded-path conservatism: empty-SID + 2-day file NOT swept at 1d (falls back to 7d)"
+  else
+    fail "(k) degraded-path conservatism: 2-day file WAS swept with empty session_id (should survive at 1d)"
+  fi
+  rm -f "$MEMORY_DIR/compact-happened-emptysid.txt" 2>/dev/null || true
+else
+  ok "(k) degraded-path conservatism → (skipped: date -v not supported)"
+fi
+
+# (l) STEP 4 fallback-window narrowing (pins D-08 behavior).
+# (l-1): 2-day-old pending-restore-OTHER IS swept by STEP 2, so STEP 4 does NOT
+#         surface it as a "different session" restore banner.
+# (l-2): Fresh pending-restore-OTHER SURVIVES (under 1d) AND STEP 4 surfaces it.
+if [ "$HAVE_DATE_V" = "yes" ]; then
+  SID_L_CURRENT="sess-current-l"
+  SID_L_OTHER="sess-other-l"
+
+  # (l-1): 2-day-old non-current pending-restore → swept by STEP 2, not surfaced by STEP 4
+  printf '/old/checkpoint.md\n' > "$MEMORY_DIR/pending-restore-${SID_L_OTHER}.txt"
+  TWO_DAYS_AGO_L=$(date -v -2d +%Y%m%d%H%M.%S 2>/dev/null || echo "")
+  touch -t "$TWO_DAYS_AGO_L" "$MEMORY_DIR/pending-restore-${SID_L_OTHER}.txt" 2>/dev/null || true
+  stdin_l1=$(make_stdin "startup" "$SID_L_CURRENT")
+  out_l1=$(printf '%s' "$stdin_l1" | QUOIN_SESSIONSTART_SWEEP_DAYS=1 sh "$HOOK" 2>/dev/null)
+  # File should be swept (not present) AND the banner should NOT mention "different session"
+  L1_FILE_SWEPT=0
+  L1_BANNER_SILENT=0
+  [ ! -f "$MEMORY_DIR/pending-restore-${SID_L_OTHER}.txt" ] && L1_FILE_SWEPT=1
+  if ! printf '%s' "$out_l1" | grep -q 'different session\|mismatch-warning\|mtime-most-recent' 2>/dev/null; then
+    L1_BANNER_SILENT=1
+  fi
+  if [ "$L1_FILE_SWEPT" -eq 1 ] && [ "$L1_BANNER_SILENT" -eq 1 ]; then
+    ok "(l-1) D-08 narrowing: 2-day-old non-current pending-restore swept + STEP 4 banner silent"
+  else
+    fail "(l-1) D-08 narrowing: file_swept=$L1_FILE_SWEPT banner_silent=$L1_BANNER_SILENT (expected 1 1)"
+  fi
+  rm -f "$MEMORY_DIR/pending-restore-${SID_L_OTHER}.txt" 2>/dev/null || true
+
+  # (l-2): Fresh non-current pending-restore SURVIVES (< 1d) AND STEP 4 surfaces banner
+  printf '/recent/checkpoint.md\n' > "$MEMORY_DIR/pending-restore-${SID_L_OTHER}.txt"
+  # mtime = now by default (just written) → survives 1d sweep
+  stdin_l2=$(make_stdin "startup" "$SID_L_CURRENT")
+  out_l2=$(printf '%s' "$stdin_l2" | QUOIN_SESSIONSTART_SWEEP_DAYS=1 sh "$HOOK" 2>/dev/null)
+  L2_SURVIVED=0
+  L2_BANNER_FIRED=0
+  [ -f "$MEMORY_DIR/pending-restore-${SID_L_OTHER}.txt" ] && L2_SURVIVED=1
+  printf '%s' "$out_l2" | grep -q 'mismatch\|mtime-most-recent\|different session\|Pending restore' 2>/dev/null && L2_BANNER_FIRED=1
+  if [ "$L2_SURVIVED" -eq 1 ] && [ "$L2_BANNER_FIRED" -eq 1 ]; then
+    ok "(l-2) D-08 narrowing: fresh non-current pending-restore survives AND STEP 4 banner fires"
+  else
+    fail "(l-2) D-08 narrowing: survived=$L2_SURVIVED banner_fired=$L2_BANNER_FIRED (expected 1 1)"
+  fi
+  rm -f "$MEMORY_DIR/pending-restore-${SID_L_OTHER}.txt" 2>/dev/null || true
+else
+  ok "(l-1) D-08 narrowing → (skipped: date -v not supported)"
+  ok "(l-2) D-08 narrowing → (skipped: date -v not supported)"
+fi
 
 # ─── Summary ──────────────────────────────────────────────────────────────────
 
