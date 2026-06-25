@@ -355,7 +355,7 @@ rm -f "$MEMORY_DIR/pending-restore-${SID_T10E}.txt" \
 # These tests require touch -t with date -v/-d support (skip gracefully if absent).
 # Use QUOIN_SESSIONSTART_SWEEP_DAYS=1 explicitly to test the tight window.
 
-HAVE_DATE_V=$(date -v -2d +%Y%m%d%H%M.%S 2>/dev/null && echo yes || echo no)
+HAVE_DATE_V=$(date -v -2d >/dev/null 2>&1 && echo yes || echo no)
 
 # (g) Current-session protection: 2-day-old compact-happened-SID.txt is NOT swept
 # when running with the SAME session_id.

@@ -19,6 +19,8 @@ Runnable with:
   python3 -m pytest quoin/dev/tests/test_sentinel_family_parity.py
 """
 
+from __future__ import annotations
+
 import re
 import subprocess
 import sys
