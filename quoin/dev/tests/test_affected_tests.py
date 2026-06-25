@@ -123,6 +123,23 @@ class TestMapChangedToTests:
         assert not unmatched
         assert ignored  # all three should be in ignored
 
+    def test_sh_test_file_not_selected_as_pytest_selector(self, fake_repo):
+        """test_*.sh files must NOT be added as pytest selectors.
+
+        IVG-95: test_sessionstart_pending_restore.sh is a changed shell-script
+        test file whose name starts with test_.  Before the fix, map_changed_to_tests
+        included it as a selector, causing pytest to exit 4 (collection error).
+        After the fix (fpath.suffix == ".py" guard on line 400 of core/scripts/
+        affected_tests.py), .sh files are routed to the ignored bucket instead.
+        """
+        sh_file = "dev/tests/test_sessionstart_pending_restore.sh"
+        (fake_repo / "dev" / "tests").mkdir(parents=True, exist_ok=True)
+        (fake_repo / sh_file).write_text("#!/usr/bin/env bash\necho ok\n")
+        selectors, unmatched, ignored = _at.map_changed_to_tests([sh_file], fake_repo)
+        assert not selectors, f"shell test file must not be a pytest selector, got {selectors}"
+        assert not unmatched, f"shell test file must not be unmatched_sources, got {unmatched}"
+        assert any(".sh" in i for i in ignored), f"shell test file must be in ignored, got {ignored}"
+
     def test_determinism(self, fake_repo):
         """Selector list is sorted and stable across calls."""
         s1, _, _ = _at.map_changed_to_tests(["foo.py", "bar.py"], fake_repo)

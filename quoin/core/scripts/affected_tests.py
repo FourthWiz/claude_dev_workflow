@@ -396,8 +396,10 @@ def map_changed_to_tests(
         fpath = Path(changed_file)
         name = fpath.name
 
-        # Is this file itself a test file?
-        if name.startswith("test_") or name.endswith("_test.py"):
+        # Is this file itself a Python test file?
+        # Guard on .py suffix to avoid selecting non-Python test files (e.g., .sh)
+        # as pytest selectors — pytest would fail to collect them (exit 4).
+        if fpath.suffix == ".py" and (name.startswith("test_") or name.endswith("_test.py")):
             # Include directly as a selector; resolve against repo_root if relative
             full = (repo_root / changed_file).resolve() if not fpath.is_absolute() else fpath.resolve()
             if full.exists():
