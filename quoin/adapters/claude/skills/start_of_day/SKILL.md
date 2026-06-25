@@ -125,6 +125,38 @@ Read `<project-root>/.workflow_artifacts/memory/resume-cookie.md` if present.
 
 **Banner check (compose with Step 1 — signal B):** while reading session files for the briefing, also check `.workflow_artifacts/memory/sessions/` for any session-state files written within the last 36 hours that have `end_of_day_due: yes`. Count them as M. If M > 0, signal B is positive. Signal B is combined with signal A (the insights-file check in Step 1) in a unified banner — see Step 1 for the combined rule.
 
+### Step 1b: Sentinel-health check (read-only, lightweight)
+
+Count files under `.workflow_artifacts/memory/` at depth 1 matching the 9 sentinel families that are older than `QUOIN_STALE_SENTINEL_DAYS` (default 7) days AND whose filename suffix is NOT the current session's UUID. This step is **read-only** — no trash_move, no rm, no writes of any kind.
+
+The 9 sentinel families are: `pending-restore-*.txt`, `pending-prompt-*.txt`, `compact-happened-*.txt`, `mid-agent-handoff-*.txt`, `pending-resume-ref-*.txt`, `checkpoint-defer-*.txt`, `postcompact-reset-*.txt`, `checkpoint-pending-compact-*.txt`, `idle-advisory-pending-*.txt`.
+
+```sh
+# Pseudocode (lightweight count — fail-silent if memory dir absent)
+_sod_stale_days=${QUOIN_STALE_SENTINEL_DAYS:-7}
+_sod_warn_threshold=${QUOIN_SOD_SENTINEL_WARN:-3}
+_sod_count=$(find .workflow_artifacts/memory -maxdepth 1 \
+  \( -name 'pending-restore-*.txt' -o -name 'pending-prompt-*.txt' \
+     -o -name 'compact-happened-*.txt' -o -name 'mid-agent-handoff-*.txt' \
+     -o -name 'pending-resume-ref-*.txt' -o -name 'checkpoint-defer-*.txt' \
+     -o -name 'postcompact-reset-*.txt' -o -name 'checkpoint-pending-compact-*.txt' \
+     -o -name 'idle-advisory-pending-*.txt' \) \
+  -mtime +"$_sod_stale_days" 2>/dev/null | wc -l || echo 0)
+# Exclude current-session files (any ending in -<current_uuid>.txt):
+# In practice Haiku counts all matches; the threshold of 3 provides enough
+# margin that the current session's 0-1 sentinels don't trigger a false alarm.
+```
+
+If the count exceeds `QUOIN_SOD_SENTINEL_WARN` (default 3), compose a one-line advisory into the unified Step 1 banner:
+
+> "⚠ N stale workflow sentinels in memory/ — run /cleanup to trash-move them (recoverable)."
+
+Compose this advisory INTO the existing unified Step 1 banner (signal A + signal B); do NOT add a separate AskUserQuestion for the sentinel count. If the count is at or below the threshold, skip silently.
+
+Fail-silent if `.workflow_artifacts/memory/` is absent or unreadable — never error on missing dir.
+
+Note: do NOT source any deployed file paths in this pseudocode. The count operates on the project-local `.workflow_artifacts/memory/` path only. No `__QUOIN_HOME__` reference needed.
+
 ## Session bootstrap
 
 Cost tracking note: `/start_of_day` is a lightweight daily-orientation skill. Append to the cost ledger only if a specific task context is clearly active (the user mentioned a task name or there's a clear active task from session state). If in doubt, skip cost recording — don't guess a task name.
