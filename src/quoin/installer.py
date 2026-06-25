@@ -34,6 +34,8 @@ TIER1_MEMORY_FILES = (
     "memory-maintenance.yaml",
     # Added serena-integration: Serena MCP activation protocol (Tier-1 memory file)
     "serena-activation.md",
+    # Added claude-md-trim: relocated Tier-1 catalog from CLAUDE.md
+    "tier1-files.md",
 )
 
 # T-05: canonical skill list — must match quoin/skills/ on disk exactly

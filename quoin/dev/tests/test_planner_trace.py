@@ -30,6 +30,8 @@ _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent  # Claude_workflow/
 TESTS_DIR = Path(__file__).parent
 SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
 CLAUDE_MD = _PROJECT_ROOT / "quoin" / "CLAUDE.md"
+# Tier-1 catalog relocated here (claude-md-trim 2026-06-25)
+TIER1_FILES_MD = _PROJECT_ROOT / "quoin" / "memory" / "tier1-files.md"
 
 PLAN_SKILL = SKILLS_DIR / "plan" / "SKILL.md"
 CRITIC_SKILL = SKILLS_DIR / "critic" / "SKILL.md"
@@ -185,43 +187,48 @@ def test_end_of_task_deletes_breadcrumb():
     )
 
 
-# --- Layer 4: quoin/CLAUDE.md ---
+# --- Layer 4: quoin/CLAUDE.md / tier1-files.md ---
 
 def test_claude_md_tier3_note():
-    """quoin/CLAUDE.md must contain a Tier-3 note about .planner-trace.md near 'ephemeral'."""
-    text = _read(CLAUDE_MD)
-    assert ".planner-trace.md" in text, (
-        "'.planner-trace.md' not found in quoin/CLAUDE.md"
+    """The Tier-3 note about .planner-trace.md with 'ephemeral' nearby must exist.
+
+    (claude-md-trim 2026-06-25): the Tier-1 catalog was extracted from CLAUDE.md
+    into quoin/memory/tier1-files.md, so the .planner-trace.md Tier-3 paragraph
+    now lives in tier1-files.md. Check both files for the note.
+    """
+    # The Tier-3 ephemeral note may appear in the catalog file (tier1-files.md)
+    # or remain in CLAUDE.md; accept either.
+    claude_text = _read(CLAUDE_MD)
+    tier1_text = _read(TIER1_FILES_MD)
+    combined = claude_text + tier1_text
+
+    assert ".planner-trace.md" in combined, (
+        "'.planner-trace.md' not found in quoin/CLAUDE.md or quoin/memory/tier1-files.md"
     )
     # Find the position and check 'ephemeral' is nearby (within 200 chars)
-    idx = text.find(".planner-trace.md")
-    window = text[max(0, idx - 50): idx + 200]
+    idx = combined.find(".planner-trace.md")
+    window = combined[max(0, idx - 50): idx + 200]
     assert "ephemeral" in window.lower(), (
-        "'ephemeral' not found within 200 chars of '.planner-trace.md' in quoin/CLAUDE.md"
+        "'ephemeral' not found within 200 chars of '.planner-trace.md' "
+        "in quoin/CLAUDE.md or quoin/memory/tier1-files.md"
     )
-    # Must NOT be in the Source files sub-list (Tier 1 inventory)
-    # Find the "Source files:" block and check .planner-trace.md is not a bullet inside it.
-    # The Source files block ends at the first blank-line-then-non-bullet paragraph.
-    source_files_idx = text.find("**Source files:**")
+    # Must NOT be in the Source files sub-list (Tier 1 inventory) of tier1-files.md
+    source_files_idx = tier1_text.find("**Source files:**")
     if source_files_idx != -1:
-        after_source = text[source_files_idx:]
-        # Source files block ends at first paragraph that is NOT a bullet list item
-        # i.e., a non-empty line that doesn't start with "- " and isn't a continuation
+        after_source = tier1_text[source_files_idx:]
         lines = after_source.split("\n")
         source_lines = []
-        in_block = True
         for i, line in enumerate(lines):
             if i == 0:
                 source_lines.append(line)
                 continue
-            # End of bullet block: non-empty, non-bullet line that isn't a continuation
             stripped = line.strip()
             if stripped and not stripped.startswith("- ") and not stripped.startswith("  "):
                 break
             source_lines.append(line)
         source_block = "\n".join(source_lines)
         assert ".planner-trace.md" not in source_block, (
-            "'.planner-trace.md' appears in the **Source files:** sub-list of quoin/CLAUDE.md "
+            "'.planner-trace.md' appears in the **Source files:** sub-list of tier1-files.md "
             "— it must appear in the Tier-3 guidance paragraph instead"
         )
 
