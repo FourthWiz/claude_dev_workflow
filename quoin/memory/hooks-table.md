@@ -16,6 +16,9 @@ All hooks fail-OPEN (exit 0 on any error). jq is a soft-required dependency (`br
 Hook-side tunable constants (defined in `_lib.sh:read_constants()` and exported to all hook scripts):
 - `QUOIN_COMPACT_FIRST_BPS` (default 9000 = 90.00%) — threshold at which `/checkpoint` emits a high-util notice and prompts the user to run `/compact` before saving.
 - `QUOIN_PANIC_BPS` (default 10000 = 100.00%) — threshold at which `/checkpoint` switches to a minimal panic/degraded-save path, skipping heavy session-state gathering and AskUserQuestion, writing only a skeleton checkpoint + pending-restore sentinel. `compute_utilization` is unclamped so values >10000 are normal; PANIC_BPS=10000 correctly fires for all true overflow (>=100%).
+- `QUOIN_STALE_SENTINEL_DAYS` (pre-existing, default 7) — sentinel age threshold used by `sessionstart.sh` as the fallback sweep window when `session_id` is empty (defense-in-depth, per IVG-95 D-02). Also consumed by `/cleanup` and `/sleep --purge --sentinels`.
+- `QUOIN_SESSIONSTART_SWEEP_DAYS` (NEW IVG-95, default 1) — UUID-aware tight sweep window for `sessionstart.sh` STEP 2. When `session_id` is known, files older than this window AND not matching the current session's UUID are trash-moved. Also narrows the STEP 4 cross-session `pending-restore` restore-banner fallback window (intentional per IVG-95 D-08).
+- `QUOIN_SOD_SENTINEL_WARN` (NEW IVG-95, default 3) — `start_of_day` Step 1b sentinel-health check threshold. Emits a one-line advisory banner if the count of stale sentinels in `memory/` exceeds this value. Read-only — `start_of_day` never mutates files.
 
 Skill-side picker knobs (read inline in `checkpoint/SKILL.md`, NOT hook constants — do NOT add to `_lib.sh`):
 - `QUOIN_RESTORE_SENTINEL_WINDOW` (default 7 days) — mtime filter for pending-restore sentinel enumeration.
