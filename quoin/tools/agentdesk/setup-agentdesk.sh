@@ -861,7 +861,7 @@ manage_zellij_keybinds() {
   fi
 
   # Idempotency guard: if sentinel already present, skip.
-  if grep -qF '# [agentdesk: freed]' "$config" 2>/dev/null; then
+  if grep -qF '// [agentdesk: freed]' "$config" 2>/dev/null; then
     echo "Unchanged: Zellij keybind merge already applied (sentinel found in $config)"
     return 0
   fi
@@ -913,7 +913,8 @@ manage_zellij_keybinds() {
       # Inject bind "Alt s" before the closing brace of this block
       if (/^[[:space:]]*\}[[:space:]]*$/) {
         if (!injected_alts) {
-          print "        bind \"Alt s\" { SwitchToMode \"session\"; }  # [agentdesk: added]"
+          print "        // [agentdesk: added]"
+          print "        bind \"Alt s\" { SwitchToMode \"session\"; }"
           injected_alts = 1
         }
         in_shared_locked = 0
@@ -922,12 +923,12 @@ manage_zellij_keybinds() {
       }
       # Comment out Alt left
       if (/bind[[:space:]]+"Alt left"[[:space:]]*\{/) {
-        print "        # [agentdesk: freed] " $0
+        print "        // [agentdesk: freed] " $0
         next
       }
       # Comment out Alt right
       if (/bind[[:space:]]+"Alt right"[[:space:]]*\{/) {
-        print "        # [agentdesk: freed] " $0
+        print "        // [agentdesk: freed] " $0
         next
       }
       print
@@ -942,7 +943,7 @@ manage_zellij_keybinds() {
         next
       }
       if (/bind[[:space:]]+"Ctrl o"[[:space:]]*\{[[:space:]]*SwitchToMode[[:space:]]+"session"/) {
-        print "        # [agentdesk: freed] " $0
+        print "        // [agentdesk: freed] " $0
         next
       }
       print

@@ -118,10 +118,10 @@ def test_manage_zellij_keybinds_defined() -> None:
 
 
 def test_sentinel_string_in_awk_script() -> None:
-    """The sentinel comment '# [agentdesk: freed]' appears in the awk script in setup-agentdesk.sh."""
+    """The sentinel comment '// [agentdesk: freed]' appears in the awk script in setup-agentdesk.sh."""
     src = SETUP_SH.read_text(encoding="utf-8")
-    assert "# [agentdesk: freed]" in src, (
-        "Sentinel '# [agentdesk: freed]' not found in setup-agentdesk.sh"
+    assert "// [agentdesk: freed]" in src, (
+        "Sentinel '// [agentdesk: freed]' not found in setup-agentdesk.sh"
     )
 
 
@@ -171,11 +171,11 @@ def test_merge_frees_alt_left(tmp_path: Path) -> None:
     assert result.returncode == 0, f"merge failed (rc={result.returncode}):\n{result.stderr}"
     merged = config.read_text()
     # The original bind must be commented out
-    assert '# [agentdesk: freed]' in merged, "Sentinel not found in merged config"
+    assert '// [agentdesk: freed]' in merged, "Sentinel not found in merged config"
     # The uncommented Alt left bind must be gone
     uncommented_lines = [
         ln for ln in merged.splitlines()
-        if 'bind "Alt left"' in ln and not ln.strip().startswith("#")
+        if 'bind "Alt left"' in ln and not ln.strip().startswith("//")
     ]
     assert not uncommented_lines, (
         f"Alt left bind is still uncommented after merge:\n"
@@ -191,7 +191,7 @@ def test_merge_frees_alt_right(tmp_path: Path) -> None:
     merged = config.read_text()
     uncommented_lines = [
         ln for ln in merged.splitlines()
-        if 'bind "Alt right"' in ln and not ln.strip().startswith("#")
+        if 'bind "Alt right"' in ln and not ln.strip().startswith("//")
     ]
     assert not uncommented_lines, (
         f"Alt right bind is still uncommented after merge:\n"
@@ -209,7 +209,7 @@ def test_merge_frees_ctrl_o_session(tmp_path: Path) -> None:
         ln for ln in merged.splitlines()
         if 'bind "Ctrl o"' in ln
         and 'SwitchToMode "session"' in ln
-        and not ln.strip().startswith("#")
+        and not ln.strip().startswith("//")
     ]
     assert not uncommented_lines, (
         f"Ctrl o → session bind is still uncommented after merge:\n"
@@ -246,7 +246,7 @@ def test_merge_preserves_other_binds(tmp_path: Path) -> None:
     ]:
         uncommented = [
             ln for ln in merged.splitlines()
-            if bind_str in ln and not ln.strip().startswith("#")
+            if bind_str in ln and not ln.strip().startswith("//")
         ]
         assert uncommented, (
             f"Unrelated bind '{bind_str}' was incorrectly removed by merge"
