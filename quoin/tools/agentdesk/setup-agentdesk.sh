@@ -852,6 +852,110 @@ if [ -t 0 ]; then
   esac
 fi
 
+manage_zellij_keybinds() {
+  local config="${1:-$HOME/.config/zellij/config.kdl}"
+
+  if [ ! -f "$config" ]; then
+    echo "Warning: Zellij config not found at $config — skipping keybind merge."
+    return 0
+  fi
+
+  # Idempotency guard: if sentinel already present, skip.
+  if grep -qF '// [agentdesk: freed]' "$config" 2>/dev/null; then
+    echo "Unchanged: Zellij keybind merge already applied (sentinel found in $config)"
+    return 0
+  fi
+
+  local tmp
+  tmp="$(mktemp "${config}.keybinds.XXXXXX")"
+
+  # awk script (single-quoted heredoc — no shell expansion inside).
+  # Edits performed in one pass:
+  #   1. Inside shared_except "locked" { ... } (ends at the bare closing brace):
+  #      - Comment out `bind "Alt left" { ... }` and `bind "Alt right" { ... }`
+  #      - Inject `bind "Alt s" { SwitchToMode "session"; }` before the closing brace
+  #   2. In shared_except "locked" "session" { ... }:
+  #      - Comment out `bind "Ctrl o" { SwitchToMode "session"; }`
+  awk '
+    BEGIN {
+      in_shared_locked = 0
+      in_shared_locked_session = 0
+      injected_alts = 0
+    }
+
+    # Detect entry into shared_except "locked" { (NOT followed by more quoted args)
+    /^[[:space:]]*shared_except[[:space:]]+"locked"[[:space:]]*\{/ &&
+    !/shared_except[[:space:]]+"locked"[[:space:]]+"/ {
+      in_shared_locked = 1
+      in_shared_locked_session = 0
+      print
+      next
+    }
+
+    # Detect entry into shared_except "locked" "session" {
+    /^[[:space:]]*shared_except[[:space:]]+"locked"[[:space:]]+"session"[[:space:]]*\{/ {
+      in_shared_locked_session = 1
+      in_shared_locked = 0
+      print
+      next
+    }
+
+    # Detect any other shared_except / shared_among block start — exit tracking
+    /^[[:space:]]*(shared_except|shared_among)[[:space:]]/ {
+      in_shared_locked = 0
+      in_shared_locked_session = 0
+      print
+      next
+    }
+
+    # Inside shared_except "locked": inject Alt s and comment out Alt left/right
+    in_shared_locked {
+      # Inject bind "Alt s" before the closing brace of this block
+      if (/^[[:space:]]*\}[[:space:]]*$/) {
+        if (!injected_alts) {
+          print "        // [agentdesk: added]"
+          print "        bind \"Alt s\" { SwitchToMode \"session\"; }"
+          injected_alts = 1
+        }
+        in_shared_locked = 0
+        print
+        next
+      }
+      # Comment out Alt left
+      if (/bind[[:space:]]+"Alt left"[[:space:]]*\{/) {
+        print "        // [agentdesk: freed] " $0
+        next
+      }
+      # Comment out Alt right
+      if (/bind[[:space:]]+"Alt right"[[:space:]]*\{/) {
+        print "        // [agentdesk: freed] " $0
+        next
+      }
+      print
+      next
+    }
+
+    # Inside shared_except "locked" "session": comment out Ctrl o → session
+    in_shared_locked_session {
+      if (/^[[:space:]]*\}[[:space:]]*$/) {
+        in_shared_locked_session = 0
+        print
+        next
+      }
+      if (/bind[[:space:]]+"Ctrl o"[[:space:]]*\{[[:space:]]*SwitchToMode[[:space:]]+"session"/) {
+        print "        // [agentdesk: freed] " $0
+        next
+      }
+      print
+      next
+    }
+
+    { print }
+  ' "$config" > "$tmp"
+
+  write_if_changed "$config" "$tmp" "keybinds"
+}
+
 mkdir -p "$ZELLIJ_CONFIG_DIR"
 
 if [ ! -f "$ZELLIJ_CONFIG" ]; then
@@ -892,6 +996,11 @@ else
   printf '\ncopy_command "%s"\n' "$_chosen_backend" >> "$ZELLIJ_CONFIG"
   echo "Appended copy_command \"$_chosen_backend\" to $ZELLIJ_CONFIG"
 fi
+
+# ── Keybind merge: free Alt+left, Alt+right, Ctrl+o for Claude Code panes ─────
+echo
+echo "Step 3b: patching Zellij keybinds (IVG-86)"
+manage_zellij_keybinds "$ZELLIJ_CONFIG"
 
 echo
 echo "Step 4: patch ~/.zshrc if needed"
