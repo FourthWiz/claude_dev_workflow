@@ -11,6 +11,9 @@ No pytest required — stdlib unittest / plain assert-based tests.
 
 import sys
 import os
+import shutil
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 # Make sleep_score importable from quoin/scripts/
@@ -57,110 +60,142 @@ def _run_test(name: str, fn) -> bool:
         return False
 
 
+@contextmanager
+def materialized_fixture(name: str):
+    """Copy a fixture directory to a temp dir and stamp all file mtimes to now.
+
+    Prevents mtime-sensitive failures when the repo checkout is older than the
+    scan_days window used by collect_entries().  The original fixture directory
+    is never written; the temp copy is removed on context exit even if the body
+    raises.
+
+    Usage::
+
+        with materialized_fixture("promote_hit") as fdir:
+            entries = collect_entries(str(fdir), scan_days=365)
+    """
+    tmp = tempfile.mkdtemp(prefix="sleep_fx_")
+    try:
+        dst = Path(tmp) / name
+        shutil.copytree(_FIXTURES / name, dst)
+        # Stamp every file (and dir) mtime to now so collect_entries() sees them
+        # as within any reasonable scan_days window.  os.utime(path, None) sets
+        # both atime and mtime to the current time without requiring `import time`.
+        for root, dirs, files in os.walk(dst):
+            for fname in files:
+                os.utime(os.path.join(root, fname), None)
+            for dname in dirs:
+                os.utime(os.path.join(root, dname), None)
+        os.utime(dst, None)
+        yield dst
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
 def test_promote_hit():
     """promote_hit/ fixture: at least one entry scores as promote."""
-    fixture_dir = str(_FIXTURES / "promote_hit")
-    entries = collect_entries(fixture_dir, scan_days=365)
-    _assert(len(entries) > 0, f"Expected entries from promote_hit/, got 0 (fixture_dir={fixture_dir})")
+    with materialized_fixture("promote_hit") as fdir:
+        entries = collect_entries(str(fdir), scan_days=365)
+        _assert(len(entries) > 0, f"Expected entries from promote_hit/, got 0 (fixture_dir={fdir})")
 
-    config = DEFAULT_CONFIG
-    scored = score_entries(entries, config)
-    _assert(len(scored) > 0, "score_entries() returned empty list")
+        config = DEFAULT_CONFIG
+        scored = score_entries(entries, config)
+        _assert(len(scored) > 0, "score_entries() returned empty list")
 
-    promote_entries = [e for e in scored if e.bucket == "promote"]
-    _assert(
-        len(promote_entries) >= 1,
-        f"Expected at least 1 promote entry, got 0. Buckets: {[(e.bucket, e.promote_score, e.forget_score) for e in scored]}",
-    )
+        promote_entries = [e for e in scored if e.bucket == "promote"]
+        _assert(
+            len(promote_entries) >= 1,
+            f"Expected at least 1 promote entry, got 0. Buckets: {[(e.bucket, e.promote_score, e.forget_score) for e in scored]}",
+        )
 
 
 def test_forget_hit():
     """forget_hit/ fixture: at least one entry scores as forget."""
-    fixture_dir = str(_FIXTURES / "forget_hit")
-    entries = collect_entries(fixture_dir, scan_days=365)
-    _assert(len(entries) > 0, f"Expected entries from forget_hit/, got 0 (fixture_dir={fixture_dir})")
+    with materialized_fixture("forget_hit") as fdir:
+        entries = collect_entries(str(fdir), scan_days=365)
+        _assert(len(entries) > 0, f"Expected entries from forget_hit/, got 0 (fixture_dir={fdir})")
 
-    config = DEFAULT_CONFIG
-    scored = score_entries(entries, config)
-    _assert(len(scored) > 0, "score_entries() returned empty list")
+        config = DEFAULT_CONFIG
+        scored = score_entries(entries, config)
+        _assert(len(scored) > 0, "score_entries() returned empty list")
 
-    forget_entries = [e for e in scored if e.bucket == "forget"]
-    _assert(
-        len(forget_entries) >= 1,
-        f"Expected at least 1 forget entry, got 0. Buckets: {[(e.bucket, e.promote_score, e.forget_score) for e in scored]}",
-    )
+        forget_entries = [e for e in scored if e.bucket == "forget"]
+        _assert(
+            len(forget_entries) >= 1,
+            f"Expected at least 1 forget entry, got 0. Buckets: {[(e.bucket, e.promote_score, e.forget_score) for e in scored]}",
+        )
 
 
 def test_middle_band():
     """middle_band/ fixture: at least one entry scores as middle."""
-    fixture_dir = str(_FIXTURES / "middle_band")
-    entries = collect_entries(fixture_dir, scan_days=365)
-    _assert(len(entries) > 0, f"Expected entries from middle_band/, got 0 (fixture_dir={fixture_dir})")
+    with materialized_fixture("middle_band") as fdir:
+        entries = collect_entries(str(fdir), scan_days=365)
+        _assert(len(entries) > 0, f"Expected entries from middle_band/, got 0 (fixture_dir={fdir})")
 
-    config = DEFAULT_CONFIG
-    scored = score_entries(entries, config)
-    _assert(len(scored) > 0, "score_entries() returned empty list")
+        config = DEFAULT_CONFIG
+        scored = score_entries(entries, config)
+        _assert(len(scored) > 0, "score_entries() returned empty list")
 
-    middle_entries = [e for e in scored if e.bucket == "middle"]
-    _assert(
-        len(middle_entries) >= 1,
-        f"Expected at least 1 middle entry, got 0. Buckets: {[(e.bucket, e.promote_score, e.forget_score) for e in scored]}",
-    )
+        middle_entries = [e for e in scored if e.bucket == "middle"]
+        _assert(
+            len(middle_entries) >= 1,
+            f"Expected at least 1 middle entry, got 0. Buckets: {[(e.bucket, e.promote_score, e.forget_score) for e in scored]}",
+        )
 
 
 def test_dedup_suppress():
     """dedup_suppress/ fixture: overlapping candidate is removed from promote list after dedup."""
-    fixture_dir = str(_FIXTURES / "dedup_suppress")
-    lessons_fixture = _FIXTURES / "dedup_suppress" / "lessons-learned-fixture.md"
+    with materialized_fixture("dedup_suppress") as fdir:
+        lessons_fixture = fdir / "lessons-learned-fixture.md"
 
-    _assert(lessons_fixture.exists(), f"lessons-learned-fixture.md not found at {lessons_fixture}")
+        _assert(lessons_fixture.exists(), f"lessons-learned-fixture.md not found at {lessons_fixture}")
 
-    entries = collect_entries(fixture_dir, scan_days=365)
-    _assert(len(entries) > 0, f"Expected entries from dedup_suppress/, got 0 (fixture_dir={fixture_dir})")
+        entries = collect_entries(str(fdir), scan_days=365)
+        _assert(len(entries) > 0, f"Expected entries from dedup_suppress/, got 0 (fixture_dir={fdir})")
 
-    config = DEFAULT_CONFIG
-    scored = score_entries(entries, config)
+        config = DEFAULT_CONFIG
+        scored = score_entries(entries, config)
 
-    # Before dedup: should have at least one promote entry (the pyyaml entry with user_marked_yes)
-    promote_before = [e for e in scored if e.bucket == "promote"]
-    _assert(
-        len(promote_before) >= 1,
-        f"Expected at least 1 promote entry before dedup, got 0. Buckets: {[(e.bucket, e.promote_score) for e in scored]}",
-    )
+        # Before dedup: should have at least one promote entry (the pyyaml entry with user_marked_yes)
+        promote_before = [e for e in scored if e.bucket == "promote"]
+        _assert(
+            len(promote_before) >= 1,
+            f"Expected at least 1 promote entry before dedup, got 0. Buckets: {[(e.bucket, e.promote_score) for e in scored]}",
+        )
 
-    # Dedup against the fixture lessons
-    lessons_text = lessons_fixture.read_text(encoding="utf-8")
-    after = dedup_against_lessons(scored, lessons_text)
+        # Dedup against the fixture lessons
+        lessons_text = lessons_fixture.read_text(encoding="utf-8")
+        after = dedup_against_lessons(scored, lessons_text)
 
-    # After dedup: the pyyaml promote entry should be filtered out
-    promote_after = [e for e in after if e.bucket == "promote"]
-    _assert(
-        len(promote_after) == 0,
-        f"Expected 0 promote entries after dedup, got {len(promote_after)}: {[e.text[:60] for e in promote_after]}",
-    )
+        # After dedup: the pyyaml promote entry should be filtered out
+        promote_after = [e for e in after if e.bucket == "promote"]
+        _assert(
+            len(promote_after) == 0,
+            f"Expected 0 promote entries after dedup, got {len(promote_after)}: {[e.text[:60] for e in promote_after]}",
+        )
 
 
 def test_weight_override():
     """Overriding promote_min_score to 99 means no entries can reach promote bucket."""
-    fixture_dir = str(_FIXTURES / "promote_hit")
-    entries = collect_entries(fixture_dir, scan_days=365)
-    _assert(len(entries) > 0, "Expected entries from promote_hit/")
+    with materialized_fixture("promote_hit") as fdir:
+        entries = collect_entries(str(fdir), scan_days=365)
+        _assert(len(entries) > 0, "Expected entries from promote_hit/")
 
-    # Override promote_min_score to impossibly high value
-    import copy
-    config = copy.deepcopy(DEFAULT_CONFIG)
-    config["thresholds"]["promote_min_score"] = 99
+        # Override promote_min_score to impossibly high value
+        import copy
+        config = copy.deepcopy(DEFAULT_CONFIG)
+        config["thresholds"]["promote_min_score"] = 99
 
-    scored = score_entries(entries, config)
-    promote_entries = [e for e in scored if e.bucket == "promote"]
-    _assert(
-        len(promote_entries) == 0,
-        f"Expected 0 promote entries with min_score=99, got {len(promote_entries)}",
-    )
+        scored = score_entries(entries, config)
+        promote_entries = [e for e in scored if e.bucket == "promote"]
+        _assert(
+            len(promote_entries) == 0,
+            f"Expected 0 promote entries with min_score=99, got {len(promote_entries)}",
+        )
 
 
 def test_default_weights_present():
