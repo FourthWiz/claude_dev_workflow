@@ -359,7 +359,7 @@ def deploy_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
 
 
 # T-12: Dashboard asset directory — fixed set of SPA files
-_DASHBOARD_ASSETS = ("index.html", "dashboard.css", "app.js")
+_DASHBOARD_ASSETS = ("index.html", "dashboard.css", "app.js", "memory.js")
 
 
 def deploy_dashboard_assets(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
@@ -368,7 +368,7 @@ def deploy_dashboard_assets(source_dir: pathlib.Path, dest_root: pathlib.Path) -
 
     (a) Creates the destination directory with parents=True before copying
         (fresh-install safety — _copy_with_substitution does not mkdir).
-    (b) Copies index.html, dashboard.css, app.js via _copy_with_substitution
+    (b) Copies index.html, dashboard.css, app.js, memory.js via _copy_with_substitution
         (no __QUOIN_HOME__ placeholders in these files; byte-copy harmless).
     (c) Fails with clear stderr + sys.exit(1) if a source asset is missing.
 

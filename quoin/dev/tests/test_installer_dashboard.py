@@ -55,7 +55,7 @@ class TestListsRegistered:
 
 class TestDeployAssets:
     def test_deploy_assets_fresh_dest(self, tmp_path):
-        """deploy_dashboard_assets creates dest dir and copies all three assets."""
+        """deploy_dashboard_assets creates dest dir and copies all four assets."""
         dest_root = tmp_path / "dest_claude"
         # dest_root/core/scripts/dashboard_assets does NOT exist yet (fresh install)
         installer.deploy_dashboard_assets(_QUOIN_SRC, dest_root)
@@ -114,7 +114,7 @@ class TestAssetsNoPlaceholder:
 
 class TestDoctorAssetCheck:
     def test_doctor_project_mode_shows_assets(self, tmp_path, capsys):
-        """quoin doctor --scope project:<tmp> shows Assets section with three files."""
+        """quoin doctor --scope project:<tmp> shows Assets section with four files."""
         # First install to tmp_path to create a valid dest
         dest_root = tmp_path / ".claude"
         installer.deploy_dashboard_assets(_QUOIN_SRC, dest_root)
@@ -134,7 +134,7 @@ class TestDoctorAssetCheck:
         output = buf.getvalue()
         # Assets section must be present
         assert "Assets" in output or "dashboard_assets" in output
-        # All three asset filenames must appear
+        # All four asset filenames must appear
         for fname in _DASHBOARD_ASSETS:
             assert fname in output
 
@@ -211,7 +211,7 @@ class TestInstalledSmoke:
         ds = _spec_load("_t15_dashboard_server", server_path)
         assert hasattr(ds, "scan_tasks"), "deployed dashboard_server doesn't bind scan_tasks"
 
-        # --- (c) Assert three asset files exist ---
+        # --- (c) Assert four asset files exist ---
         assets_dir = dest_root / "core" / "scripts" / "dashboard_assets"
         for fname in _DASHBOARD_ASSETS:
             assert (assets_dir / fname).exists(), f"deployed asset missing: {fname}"
