@@ -55,7 +55,7 @@ class TestListsRegistered:
 
 class TestDeployAssets:
     def test_deploy_assets_fresh_dest(self, tmp_path):
-        """deploy_dashboard_assets creates dest dir and copies all three assets."""
+        """deploy_dashboard_assets creates dest dir and copies all four assets."""
         dest_root = tmp_path / "dest_claude"
         # dest_root/core/scripts/dashboard_assets does NOT exist yet (fresh install)
         installer.deploy_dashboard_assets(_QUOIN_SRC, dest_root)
@@ -107,6 +107,65 @@ class TestAssetsNoPlaceholder:
         content = (_ASSETS_SRC / "app.js").read_text(encoding="utf-8")
         assert installer.QUOIN_HOME_PLACEHOLDER not in content
 
+    def test_memory_js_no_placeholder(self):
+        content = (_ASSETS_SRC / "memory.js").read_text(encoding="utf-8")
+        assert installer.QUOIN_HOME_PLACEHOLDER not in content
+
+
+# ---------------------------------------------------------------------------
+# T-02 (IVG-87): every local asset ref in index.html is in _DASHBOARD_ASSETS
+# ---------------------------------------------------------------------------
+
+class TestIndexHtmlAssetCoverage:
+    """Guard: any <script src> / <link href> added to index.html but not the
+    installer tuple must fail CI (prevents a repeat of the memory.js 404 bug)."""
+
+    def _parse_local_asset_refs(self) -> list[str]:
+        import re
+        content = (_ASSETS_SRC / "index.html").read_text(encoding="utf-8")
+        # Match src="..." and href="..." attribute values
+        raw = re.findall(r'(?:src|href)=["\']([^"\']+)["\']', content)
+        result = []
+        for ref in raw:
+            if ref.startswith("data:"):
+                continue  # skip base64 inline data URIs (favicon)
+            if "://" in ref or ref.startswith("//"):
+                continue  # skip external URLs
+            # Keep only relative local refs (bare filename or ./filename)
+            fname = ref.lstrip("./")
+            if fname:
+                result.append(fname)
+        return result
+
+    def test_all_index_html_refs_in_assets_tuple(self):
+        """Every local asset ref in index.html must be listed in _DASHBOARD_ASSETS."""
+        refs = self._parse_local_asset_refs()
+        assert refs, "No local asset refs found in index.html — parser may be broken"
+        for fname in refs:
+            assert fname in _DASHBOARD_ASSETS, (
+                f"index.html references '{fname}' but it is not in "
+                f"installer._DASHBOARD_ASSETS. Add it to the tuple."
+            )
+
+    def test_all_index_html_refs_are_deployed(self, tmp_path):
+        """After deploy, every local asset ref in index.html exists on disk."""
+        refs = self._parse_local_asset_refs()
+        dest_root = tmp_path / "dest"
+        installer.deploy_dashboard_assets(_QUOIN_SRC, dest_root)
+        assets_dir = dest_root / "core" / "scripts" / "dashboard_assets"
+        for fname in refs:
+            assert (assets_dir / fname).exists(), (
+                f"index.html references '{fname}' but it was not deployed to {assets_dir}"
+            )
+
+    def test_data_uri_favicon_not_treated_as_asset(self):
+        """data: URIs (inline base64 favicon) must not be treated as local asset refs."""
+        refs = self._parse_local_asset_refs()
+        for ref in refs:
+            assert not ref.startswith("data:"), (
+                f"data: URI leaked into asset refs: {ref!r}"
+            )
+
 
 # ---------------------------------------------------------------------------
 # T-14: quoin doctor assets section in both user and project modes
@@ -114,7 +173,7 @@ class TestAssetsNoPlaceholder:
 
 class TestDoctorAssetCheck:
     def test_doctor_project_mode_shows_assets(self, tmp_path, capsys):
-        """quoin doctor --scope project:<tmp> shows Assets section with three files."""
+        """quoin doctor --scope project:<tmp> shows Assets section with four files."""
         # First install to tmp_path to create a valid dest
         dest_root = tmp_path / ".claude"
         installer.deploy_dashboard_assets(_QUOIN_SRC, dest_root)
@@ -134,7 +193,7 @@ class TestDoctorAssetCheck:
         output = buf.getvalue()
         # Assets section must be present
         assert "Assets" in output or "dashboard_assets" in output
-        # All three asset filenames must appear
+        # All four asset filenames must appear
         for fname in _DASHBOARD_ASSETS:
             assert fname in output
 
@@ -211,7 +270,7 @@ class TestInstalledSmoke:
         ds = _spec_load("_t15_dashboard_server", server_path)
         assert hasattr(ds, "scan_tasks"), "deployed dashboard_server doesn't bind scan_tasks"
 
-        # --- (c) Assert three asset files exist ---
+        # --- (c) Assert four asset files exist ---
         assets_dir = dest_root / "core" / "scripts" / "dashboard_assets"
         for fname in _DASHBOARD_ASSETS:
             assert (assets_dir / fname).exists(), f"deployed asset missing: {fname}"

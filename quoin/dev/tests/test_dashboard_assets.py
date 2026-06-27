@@ -91,6 +91,20 @@ class TestIndexHtml:
         # Must note the implement/in-progress indistinguishability per D-13
         assert "indistinguishable" in content.lower() or "git probe" in content.lower()
 
+    def test_role_list_present(self):
+        """index.html must have role="list" on the task-card-list container (T-09 MIN-A)."""
+        content = _INDEX_HTML.read_text(encoding="utf-8")
+        assert 'role="list"' in content, (
+            'index.html missing role="list" on task-card-list container'
+        )
+
+    def test_aria_label_present(self):
+        """index.html must have at least one aria-label attribute (T-09 MIN-A)."""
+        content = _INDEX_HTML.read_text(encoding="utf-8")
+        assert "aria-label" in content, (
+            "index.html missing aria-label attribute(s)"
+        )
+
 
 class TestDashboardCss:
     """T-07 acceptance criteria for dashboard.css."""
@@ -171,6 +185,18 @@ class TestAppJs:
         content = _JS.read_text(encoding="utf-8")
         assert "/api/tasks" in content
         assert "include_finalized" in content
+
+    def test_role_listitem_emitted(self):
+        """app.js must emit role="listitem" on task card elements (T-09 MIN-A).
+
+        role="listitem" is dynamically emitted (not in static index.html) — a T-08
+        refactor that drops this attribute would silently break a11y with no other
+        test catch. Assert the literal string is present in app.js source.
+        """
+        content = _JS.read_text(encoding="utf-8")
+        assert 'role="listitem"' in content, (
+            'app.js must emit role="listitem" on task card elements'
+        )
 
     def test_non_empty(self):
         content = _JS.read_text(encoding="utf-8")
@@ -308,3 +334,15 @@ class TestMemoryAssets:
         assert "list_memory = _dm.list_memory" in source, "list_memory not bound from _dm"
         assert "read_memory_item = _dm.read_memory_item" in source, "read_memory_item not bound"
         assert "memory_version_key = _dm.memory_version_key" in source, "memory_version_key not bound"
+
+    def test_switch_type_clears_etag(self):
+        """switchType() must delete memState.etags entry for the new type URL.
+
+        Without this, a tab switch that follows a 304-cached fetch leaves the
+        just-cleared list empty (the 304 returns no body). Fix added during IVG-87
+        Playwright pass as a deviation from T-05 scope.
+        """
+        content = _MEMORY_JS.read_text(encoding="utf-8")
+        assert "delete memState.etags" in content, (
+            "memory.js switchType() must delete memState.etags to force full fetch on tab switch"
+        )

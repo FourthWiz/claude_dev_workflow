@@ -245,6 +245,35 @@ class TestRoutes:
 
 
 # ---------------------------------------------------------------------------
+# T-02b (IVG-87): server must serve /memory.js with 200 + JS MIME
+# ---------------------------------------------------------------------------
+
+class TestAssetServing:
+    """Server-level guard: _ASSET_ALLOWLIST must serve memory.js (IVG-87).
+
+    _send_asset reads from _ASSETS_DIR (source tree), not a deployed copy,
+    so this test is deterministic — memory.js always exists in the source tree.
+    If _ASSET_ALLOWLIST ever drops '/memory.js', this test fails immediately.
+    """
+
+    def test_memory_js_served_200(self, tmp_path):
+        """GET /memory.js returns 200 with application/javascript MIME."""
+        proj = _make_project(tmp_path)
+        server, _ = _start_server(proj)
+        try:
+            status, headers, body = _get(server, "/memory.js")
+            assert status == 200, f"GET /memory.js returned {status}, expected 200"
+            content_type = _get_headers_dict(headers).get("content-type", "")
+            assert content_type.startswith("application/javascript"), (
+                f"GET /memory.js content-type was {content_type!r}, "
+                "expected application/javascript"
+            )
+            assert len(body) > 0, "GET /memory.js returned empty body"
+        finally:
+            server.shutdown()
+
+
+# ---------------------------------------------------------------------------
 # T-04: URL= line, auto-increment, explicit-port-taken, --no-browser
 # ---------------------------------------------------------------------------
 

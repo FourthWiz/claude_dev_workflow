@@ -13,6 +13,7 @@
     selectedId: null,
     etags: {},
     pollInterval: null,
+    lastFingerprint: '',
   };
 
   // ---------------------------------------------------------------------------
@@ -118,8 +119,19 @@
     var url = memTypeUrl(memState.type);
     fetchMemJSON(url, function (err, data) {
       if (err || data === null) { return; }
-      memState.items = data.items || [];
-      renderItemList(memState.items);
+      var items = data.items || [];
+      // Compute structural fingerprint to skip unnecessary DOM churn on unchanged data
+      var fp = memState.type + '|' + JSON.stringify(items.map(function (i) {
+        return [i.id, i.title, i.date];
+      }));
+      if (fp === memState.lastFingerprint) { return; }
+      memState.lastFingerprint = fp;
+      // Preserve scroll position across re-render
+      var listEl = document.getElementById('mem-item-list');
+      var savedTop = listEl ? listEl.scrollTop : 0;
+      memState.items = items;
+      renderItemList(items);
+      if (listEl) { listEl.scrollTop = savedTop; }
     });
   }
 
@@ -145,6 +157,10 @@
     memState.type = mtype;
     memState.selectedId = null;
     memState.items = [];
+    memState.lastFingerprint = '';
+    // Clear ETag so the first fetch after a tab switch always returns full data,
+    // not a 304 that would leave the just-cleared list empty.
+    delete memState.etags[memTypeUrl(mtype)];
     renderTypeButtons(mtype);
     renderItemList([]);
     renderItemContent(null);
