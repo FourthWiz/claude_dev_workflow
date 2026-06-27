@@ -158,6 +158,9 @@
     memState.selectedId = null;
     memState.items = [];
     memState.lastFingerprint = '';
+    // Clear ETag so the first fetch after a tab switch always returns full data,
+    // not a 304 that would leave the just-cleared list empty.
+    delete memState.etags[memTypeUrl(mtype)];
     renderTypeButtons(mtype);
     renderItemList([]);
     renderItemContent(null);
