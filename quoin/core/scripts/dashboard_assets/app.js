@@ -450,8 +450,12 @@
         // Cost table (all stages combined — per-stage breakdown requires schema change)
         var sCost = detail.cost;
         if (sCost && sCost.by_phase && Object.keys(sCost.by_phase).length > 0) {
-          html += '<p class="stage-cost-note">Cost breakdown — all stages combined</p>';
-          html += '<table class="by-phase-table"><thead><tr><th>Phase</th><th>Cost</th></tr></thead><tbody>';
+          var sCaption = (sCost.mode === 'counts')
+            ? 'Activity — all stages combined (no token/USD data)'
+            : 'Cost breakdown — all stages combined';
+          html += '<p class="stage-cost-note">' + sCaption + '</p>';
+          var sColHdr = (sCost.mode === 'counts') ? 'Events' : 'Cost';
+          html += '<table class="by-phase-table"><thead><tr><th>Phase</th><th>' + sColHdr + '</th></tr></thead><tbody>';
           var sByPhase = sCost.by_phase;
           var sPhases = Object.keys(sByPhase).sort();
           for (var spi = 0; spi < sPhases.length; spi++) {
@@ -482,8 +486,13 @@
     // (multi-stage tasks show cost inside the stage detail panel above)
     var cost = detail.cost;
     if (!isMultiStage && cost && cost.by_phase && Object.keys(cost.by_phase).length > 0) {
-      html += '<div class="detail-section"><h3>Cost by phase</h3>';
-      html += '<table class="by-phase-table"><thead><tr><th>Phase</th><th>Cost</th></tr></thead><tbody>';
+      var ssHdr = (cost.mode === 'counts') ? 'Activity by phase' : 'Cost by phase';
+      html += '<div class="detail-section"><h3>' + ssHdr + '</h3>';
+      if (cost.mode === 'counts') {
+        html += '<p class="stage-cost-note">Activity (no token/USD data available)</p>';
+      }
+      var ssColHdr = (cost.mode === 'counts') ? 'Events' : 'Cost';
+      html += '<table class="by-phase-table"><thead><tr><th>Phase</th><th>' + ssColHdr + '</th></tr></thead><tbody>';
       var byPhase = cost.by_phase;
       var phases = Object.keys(byPhase).sort();
       for (var bpi = 0; bpi < phases.length; bpi++) {
