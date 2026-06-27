@@ -184,6 +184,26 @@ Identify the project root. This is typically:
 Confirm with the user if ambiguous:
 > "I'll set up the workflow in `<path>`. Is this the right project root?"
 
+### Step 2b: Ancestor .workflow_artifacts/ check
+
+Before creating or using `.workflow_artifacts/` at the detected root, walk upward
+from the project root, checking each ancestor directory (up to $HOME exclusive) for
+a `.workflow_artifacts/` subdirectory: check `../.workflow_artifacts`,
+`../../.workflow_artifacts`, and so on. (Note: the Python `_find_nested_ancestor()` in
+`path_resolve.py` has no $HOME cap; this $HOME bound applies only to the SKILL.md
+guidance for human-readable clarity. The cap is an adapter-layer policy — see D-04.)
+
+If any ancestor directory contains `.workflow_artifacts/`, a parent project already
+owns the artifact tree. In this case:
+
+1. Warn the user:
+   > ⚠️ A parent-level `.workflow_artifacts/` already exists at `<ancestor-path>`.
+   > Using that as the project root to avoid creating nested artifact directories.
+2. Set the **effective project root** to `<ancestor-path>` for all subsequent steps.
+3. Do NOT create a new `.workflow_artifacts/` at the originally-detected root.
+
+If no ancestor has `.workflow_artifacts/`, proceed normally with the detected root.
+
 ### Step 3: Check for existing setup and detect legacy layout
 
 **Case: current layout (`memory/` at project root)**

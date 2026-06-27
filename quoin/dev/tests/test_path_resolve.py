@@ -332,3 +332,53 @@ def test_substring_multimatch_raises(tmp_path):
     assert "disambiguate by using --stage <integer>" in msg, (
         f"Expected disambiguation hint in: {msg}"
     )
+
+
+def test_cli_verify_root_not_nested(tmp_path):
+    """--verify-root exits 0 when project root has no ancestor with .workflow_artifacts/."""
+    project = tmp_path / "project"
+    project.mkdir()
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--task", "foo",
+         "--project-root", str(project), "--verify-root"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, (
+        f"Expected exit 0 (no nesting), got {result.returncode}; stderr={result.stderr!r}"
+    )
+# Validates absence of false positives only. That the guard exists is validated by test_cli_verify_root_nested.
+
+
+def test_cli_verify_root_nested(tmp_path):
+    """--verify-root exits 3 when an ancestor directory contains .workflow_artifacts/."""
+    (tmp_path / ".workflow_artifacts").mkdir()   # ancestor owns artifact tree
+    subproject = tmp_path / "subproject"
+    subproject.mkdir()
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--task", "foo",
+         "--project-root", str(subproject), "--verify-root"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 3, (
+        f"Expected exit 3 (nested root), got {result.returncode}; stderr={result.stderr!r}"
+    )
+    assert ".workflow_artifacts" in result.stderr, (
+        f"Expected ancestor path in stderr, got: {result.stderr!r}"
+    )
+# FAILS if --verify-root is missing (returncode 0) or check not implemented (returncode 0).
+
+
+def test_cli_verify_root_no_flag_ignores_nesting(tmp_path):
+    """Without --verify-root, nested root is silently accepted (no exit 3)."""
+    (tmp_path / ".workflow_artifacts").mkdir()
+    subproject = tmp_path / "subproject"
+    subproject.mkdir()
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--task", "foo",
+         "--project-root", str(subproject)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, (
+        f"Expected exit 0 without flag, got {result.returncode}; stderr={result.stderr!r}"
+    )
+# FAILS if check fires unconditionally (breaks existing callers that don't pass --verify-root).

@@ -158,6 +158,18 @@ _cwd=$(from stdin JSON .cwd field, or $PWD if absent)
 _PROJECT_ROOT=$(resolve_project_root "$_cwd")
 ```
 ALL subsequent path derivations in this skill (checkpoints, pending-restore, sessions, recent-sessions, MEMORY_DIR) MUST use `${_PROJECT_ROOT}` — do NOT re-read stdin `.cwd` at later sites; reuse the resolved variable. This ensures that launching from a nested subdirectory (e.g. `quoin/quoin/`) still writes sentinels and checkpoints at the true project root where a fresh restore session can find them.
+
+**Nested-root warning:** After resolving `_PROJECT_ROOT`, if `_cwd` differs from
+`_PROJECT_ROOT` AND `[ -d "$_cwd/.workflow_artifacts" ]` is true (a `.workflow_artifacts/`
+directory exists directly at `_cwd`), emit a one-line WARNING before proceeding:
+
+`[checkpoint] WARNING: nested .workflow_artifacts/ detected at <_cwd>; writing session
+state to project root <_PROJECT_ROOT> instead. Remove <_cwd>/.workflow_artifacts/ to
+eliminate this confusion.`
+
+Continue normally — this warning is informational only. `_PROJECT_ROOT` is already
+correct (set by `resolve_project_root`).
+
 **EXCEPTION — project-hash / JSONL lookup:** The `<project-hash>` used in `~/.claude/projects/<project-hash>/` is keyed by Claude Code to the ACTUAL launch cwd, NOT the resolved root. Use the raw `_cwd` (stdin `.cwd`) when computing `_project_hash`. See Step 2 `## Session link` derivation.
 
 **Arg parsing (first in save mode):** Scan the user's prompt for these flags:
