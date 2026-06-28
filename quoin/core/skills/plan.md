@@ -66,6 +66,7 @@ The skill also updates a session-state file under
   implementing `process(id: str) -> Result`" is a task.
 - The plan MUST read actual source code — not just the architecture doc.
   Assumptions about file structure or API shapes must be verified.
+- For exploratory tasks, the plan MUST verify that a proposed feature does not already exist (searching source and recent history) before planning to build it, and MUST verify project conventions against real files before relying on them.
 - Integration points MUST receive extra scrutiny; trace data flows end-to-end.
 - Each task MUST be independently reviewable and produce a testable unit.
 - Testing is not optional: every task touching code must carry test

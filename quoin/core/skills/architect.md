@@ -77,6 +77,7 @@ The skill also updates a session-state file under
 
 - The skill MUST scan the actual source code before producing architecture.
   Assumptions about file structure or API shapes must be verified.
+- For exploratory tasks, the skill MUST verify that a proposed feature does not already exist — searching the actual source and recent history — before asserting in `## Current state` that the feature is absent or proposing a build stage. The skill MUST also verify project conventions (e.g., cross-reference/link styles) against real files before asserting them, since documented conventions can drift from reality.
 - Integration points MUST be explicitly mapped across all repos or services
   involved in the task.
 - The skill MUST produce a `## Stage decomposition` section that downstream

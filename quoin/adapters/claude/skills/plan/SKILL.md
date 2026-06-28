@@ -187,6 +187,7 @@ Before writing anything:
   - For stale repos: run `git diff --name-only <cached-head> <current-head>` to identify changed files. Trust cache entries for unchanged files; read source only for changed files relevant to the task.
   - If no cache exists, skip this step — fall through to source reads (current behavior)
 - Read the existing codebase — **targeted reads only**: source files where cache was stale/missing/insufficient, files that need exact code details for task specifications
+- **Feature-existence pre-flight (exploratory tasks).** Before planning to "build X" or asserting a capability is missing, verify it does not already exist: grep the source for the feature keyword and check `git log --oneline -30`. If found, plan against the existing implementation rather than a greenfield build. If `git log` is unavailable, rely on grep alone (fail-open). Verify conventions against real files, not just instructions.
 - Read any critic responses from prior rounds if this is part of a `/thorough_plan` cycle
 - Search the web if you need to understand external APIs, library behavior, or best practices
 - Ask the user clarifying questions if requirements are ambiguous
@@ -309,6 +310,7 @@ If the task directory cannot be resolved: skip writing the trace file silently (
 
 - **Be concrete.** File paths, function signatures, data shapes. "Add a new service" is not a task. "Create `src/services/payment.service.ts` implementing `processRefund(orderId: string): Promise<RefundResult>`" is a task.
 - **Read actual code.** Verify your assumptions against the codebase. Don't guess at file structures or API shapes.
+- **Confirm existence before proposing new work.** For exploratory tasks, grep + `git log --oneline -30` to confirm the feature doesn't already exist before planning a build. Verify conventions against real files.
 - **Integration points get extra scrutiny.** Most production incidents come from integration failures. Trace data flows end-to-end.
 - **Each task is independently reviewable.** No mega-tasks. Each produces a testable, reviewable unit of work.
 - **De-risk upfront.** If something is uncertain, the plan should include a spike/POC as an early task, not hand-wave over it.
