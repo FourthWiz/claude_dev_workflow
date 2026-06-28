@@ -3,6 +3,11 @@
 Public API: task_path(task_name, stage=None, project_root=None) -> Path
 Rules: Rule 1: int >= 1 → stage-N/; Rule 2: str → decomp lookup; Rule 3: None → task root.
 See CLAUDE.md "Multi-stage tasks" for the full convention.
+
+Exit codes (CLI only):
+  0 — success
+  2 — ValueError (bad task name, stage not found, ambiguous match)
+  3 — nested root detected (--verify-root flag only)
 """
 
 import re
@@ -19,6 +24,16 @@ ROW_RE = re.compile(
     r"^[0-9]+\.\s+(?:[✅✓✗⏳⛔⚠️\s])*S-([0-9]+):\s*(.+?)\s*$",
     re.MULTILINE,
 )
+
+
+def _find_nested_ancestor(project_root: Path):
+    """Return nearest ancestor of project_root containing .workflow_artifacts/, else None."""
+    cur = project_root.parent
+    while cur != cur.parent:
+        if (cur / ".workflow_artifacts").is_dir():
+            return cur
+        cur = cur.parent
+    return None
 
 
 def _lookup_stage_by_name(arch_text: str, name: str):
@@ -135,6 +150,15 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Project root directory (default: cwd)",
     )
+    parser.add_argument(
+        "--verify-root",
+        action="store_true",
+        default=False,
+        help=(
+            "Exit 3 if the given --project-root is nested inside an ancestor "
+            ".workflow_artifacts/ tree. Prints offending ancestor path to stderr."
+        ),
+    )
     return parser
 
 
@@ -153,14 +177,25 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     stage = _parse_stage_arg(args.stage)
+    project_root = Path(args.project_root or Path.cwd()).resolve()
 
     try:
         result = task_path(
             task_name=args.task,
             stage=stage,
-            project_root=args.project_root,
+            project_root=project_root,
         )
         print(str(result))
+        if args.verify_root:
+            ancestor = _find_nested_ancestor(project_root)
+            if ancestor is not None:
+                print(
+                    f"path_resolve: nested .workflow_artifacts/ detected — "
+                    f"ancestor '{ancestor}' also contains .workflow_artifacts/. "
+                    f"Use the ancestor as project root.",
+                    file=sys.stderr,
+                )
+                sys.exit(3)
         sys.exit(0)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
