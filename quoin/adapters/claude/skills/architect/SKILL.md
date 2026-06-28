@@ -309,6 +309,8 @@ Produce a detailed architectural plan. The plan should include:
 
 2. **Current state analysis** — how things work today. What's good, what's painful, what's broken. Include a component diagram if helpful (text-based, mermaid, or ASCII).
 
+**Feature-existence pre-flight (exploratory / "improve X" tasks).** Before writing any `## Current state` claim that a capability is absent (e.g., "observability is text-only"), or proposing a "build X" stage, verify the feature does not already exist. Run a quick keyword grep over the source (`grep -ri "<feature-keyword>" <repo>`) and check recent history with `git log --oneline -30` for commits mentioning the keyword. This is a targeted check — a grep plus a 30-line log scan, NOT a bulk source read or full re-scan — consistent with the targeted-read exception in Cost discipline. If a match is found, surface it in `## Current state` as "already implemented in [commit/file]" rather than asserting it doesn't exist. If `git log` is unavailable (no git history in this tree), skip the git-log step and rely on grep alone (fail-open). Likewise, verify conventions against real files before asserting them (e.g., confirm the actual cross-reference/link style used in `MEMORY.md` and artifacts — standard `[title](file.md)` links, not `[[wikilinks]]` — not just what instructions describe); instructions can drift from reality.
+
 3. **Proposed architecture** — the target state. Be specific about:
    - Components and their responsibilities
    - Data flow between components
@@ -378,7 +380,7 @@ Reference files (apply HERE at the body-generation WRITE-SITE — per format-kit
 # When referring to a sibling artifact's task or risk, use plain English (e.g., "the parent plan's T-04"), NOT a bare T-NN token. See format-kit.md §1 / glossary.md.
 Compose the format-aware body for `architecture.md` per format-kit.md §2 enumeration:
 - `## Context` — caveman prose: what are we solving and why, constraints, business context.
-- `## Current state` — caveman prose: how things work today, pain points.
+- `## Current state` — caveman prose: how things work today, pain points. (Before writing this section, run the Feature-existence pre-flight from Phase 2: grep + `git log --oneline -30` for the feature keyword; if found, write "already implemented in [commit/file]" instead of claiming absence.)
 - `## Proposed architecture` — prose + component diagrams (mermaid or ASCII where helpful).
 - `## Integration analysis` — table if ≥2 integration points, terse list otherwise (optional section).
 - `## Risk register` — markdown table (columns: id / risk / likelihood / impact / mitigation / rollback).
@@ -567,6 +569,7 @@ This is what `/end_of_day` reads to consolidate the day's work. Without it, this
 
 ## Important behaviors
 
+- **Verify before you claim absence.** For exploratory tasks, confirm the feature doesn't already exist before proposing a "build" stage — grep the source and skim `git log --oneline -30` for the keyword. Verify conventions against real files, not just instructions.
 - **Be thorough, not fast.** This is the exploration phase. Cutting corners here means bad plans downstream.
 - **Show your reasoning.** Don't just state conclusions — explain how you got there. The user needs to understand your thinking to validate it.
 - **Challenge assumptions.** If the user's initial direction seems problematic, say so. Explain why and offer alternatives. You're the architect — your job is to push back when needed.
