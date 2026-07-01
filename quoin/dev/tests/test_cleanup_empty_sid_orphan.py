@@ -20,7 +20,7 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-CLEANUP_SKILL = REPO_ROOT / "quoin" / "skills" / "cleanup" / "SKILL.md"
+CLEANUP_SKILL = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "cleanup" / "SKILL.md"
 
 
 # ---------------------------------------------------------------------------

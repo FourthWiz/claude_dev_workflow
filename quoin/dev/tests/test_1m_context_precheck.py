@@ -54,6 +54,8 @@ MIGRATED_TO_ADAPTER: frozenset[str] = frozenset({
     "capture_insight", "triage", "start_of_day", "plan", "critic", "revise",
     "revise-fast", "gate", "implement", "rollback", "end_of_task", "run",
     "end_of_day", "weekly_review", "cost_snapshot", "expand", "pr", "status",
+    # Phase 22 migrations
+    "checkpoint", "cleanup", "continue_work", "next_steps", "sleep",
     # §0' targets — all adapter-path
     "architect", "review", "init_workflow", "discover",
 })

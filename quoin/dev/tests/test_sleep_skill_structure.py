@@ -15,8 +15,8 @@ import sys
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).parent
-SKILLS_DIR = TESTS_DIR.parent.parent / "skills"
-SLEEP_SKILL = SKILLS_DIR / "sleep" / "SKILL.md"
+ADAPTER_SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
+SLEEP_SKILL = ADAPTER_SKILLS_DIR / "sleep" / "SKILL.md"
 
 DEPLOYED_SLEEP_SKILL = Path.home() / ".claude" / "skills" / "sleep" / "SKILL.md"
 

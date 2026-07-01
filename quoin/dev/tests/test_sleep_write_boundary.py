@@ -30,7 +30,7 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent  # Claude_workflow/
 _SCRIPT = _PROJECT_ROOT / "quoin" / "scripts" / "sleep_score.py"
 _FIXTURE_DIR = _PROJECT_ROOT / "quoin" / "dev" / "tests" / "fixtures" / "sleep" / "no_auto_memory_bleed"
-_SKILL_MD = _PROJECT_ROOT / "quoin" / "skills" / "sleep" / "SKILL.md"
+_SKILL_MD = _PROJECT_ROOT / "quoin" / "adapters" / "claude" / "skills" / "sleep" / "SKILL.md"
 
 # Python executable: prefer .venv if it exists
 _VENV_PYTHON = _PROJECT_ROOT / ".venv" / "bin" / "python"
