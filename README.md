@@ -231,6 +231,7 @@ workflow intent through natural-language phase requests and repo-local docs.
 | `/review` | Opus | Verifies implementation against the plan |
 | `/gate` | Sonnet | Automated quality checkpoint between phases; requires approval |
 | `/rollback` | Sonnet | Safely undoes an implementation phase or specific tasks |
+| `/pr` | Sonnet | Full pull-request lifecycle: optional version bump, push, create PR, wait for merge, switch branch |
 
 ### Session Lifecycle
 
@@ -239,8 +240,11 @@ workflow intent through natural-language phase requests and repo-local docs.
 | `/init_workflow` | Opus | One-time project bootstrap; creates `.workflow_artifacts/` and runs discovery |
 | `/discover` | Opus | Scans repos; maps architecture, dependencies, and git history |
 | `/start_of_day` | Haiku | Morning briefing from daily/session memory |
-| `/end_of_day` | Haiku | Saves session state and promotes insights |
+| `/end_of_day` | Haiku | Saves session state and promotes insights; auto-invokes /sleep |
 | `/end_of_task` | Sonnet | Pushes branch, captures lessons, and finalizes task state |
+| `/checkpoint` | Sonnet | Save/restore session context mid-session; writes pending-restore sentinel |
+| `/continue_work` | Sonnet | Resume context from a prior session using the recent-sessions index |
+| `/sleep` | Haiku | Memory consolidation: promotes insights to lessons-learned, archives stale entries |
 
 ### Utilities
 
@@ -252,6 +256,9 @@ workflow intent through natural-language phase requests and repo-local docs.
 | `/weekly_review` | Haiku | Aggregates weekly progress into a structured review |
 | `/capture_insight` | Haiku | Logs a pattern or discovery to daily insights |
 | `/expand <path>` | Sonnet | Re-renders a terse workflow artifact in readable English |
+| `/status` | Haiku | Renders the workflow pipeline graph with the active phase marked (read-only) |
+| `/cleanup` | Haiku | Trash-moves stale sentinels and old checkpoints into recoverable archive |
+| `/next-steps` | Haiku | Append-only queue for future work items (`add` / `list` / `done N`) |
 
 ## Open-model routing (opt-in)
 

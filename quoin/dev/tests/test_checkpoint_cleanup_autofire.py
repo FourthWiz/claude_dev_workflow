@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).parent
-CHECKPOINT_SKILL = TESTS_DIR.parent.parent / "skills" / "checkpoint" / "SKILL.md"
+CHECKPOINT_SKILL = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills" / "checkpoint" / "SKILL.md"
 
 
 def _text() -> str:

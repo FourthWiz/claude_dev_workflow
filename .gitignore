@@ -24,6 +24,8 @@ htmlcov/
 /.workflow_artifacts/
 # Prevent session-bleed when CWD is inside the quoin/ sub-package
 /quoin/.workflow_artifacts/
+# Prevent session-bleed from nested extension directories
+vscode-extension/.workflow_artifacts/
 
 # Legacy artifact locations (pre-.workflow_artifacts layout) — anchored to project root
 # so they don't catch in-tree directories like quoin/memory/ or quoin/finalized/.

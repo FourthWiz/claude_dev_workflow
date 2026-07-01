@@ -6,8 +6,8 @@ import pytest
 
 # Repo root is 3 levels up from this file (quoin/dev/tests/ → quoin/ → quoin/ → root)
 REPO_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
-SKILLS_DIR = REPO_ROOT / "quoin" / "skills"
-SKILL_FILE = SKILLS_DIR / "continue_work" / "SKILL.md"
+ADAPTER_SKILLS_DIR = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills"
+SKILL_FILE = ADAPTER_SKILLS_DIR / "continue_work" / "SKILL.md"
 
 
 def _read_skill() -> str:

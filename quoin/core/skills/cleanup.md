@@ -1,0 +1,47 @@
+# cleanup
+
+Runtime-neutral intent for the cleanup skill. Any runtime adapter (Claude,
+Codex, …) that implements this skill should match the contract described here.
+
+## Purpose
+
+Trash-move stale workflow sentinels and old checkpoint files into a recoverable
+`trash/<date>/` archive so the session state directory stays navigable and stale
+sentinels do not cause false-positive lifecycle events.
+
+## When to use
+
+- User says "/cleanup" or "clean up stale sentinels".
+- Automatically fired as the first sub-block of `/checkpoint` unless `--no-cleanup`.
+
+## Inputs
+
+- `.workflow_artifacts/memory/` — all sentinel files (`*.txt`, `*.md` sentinel
+  families) and checkpoint files.
+- Current session UUID (to identify the freshest/current session's sentinels and
+  skip them from cleanup).
+- `QUOIN_CLEANUP_SENTINEL_WINDOW` env var (default `1d`): sentinels older than this
+  are trashed (except the freshest sentinel per family and the current session's).
+- `QUOIN_CLEANUP_CKPT_WINDOW` env var (default `30d`): checkpoint files older than
+  this are trashed.
+
+## Output
+
+- Stale sentinels and old checkpoints moved to `.workflow_artifacts/memory/trash/<date>/`.
+- Optional dry-run report (when `--dry-run` flag present): lists what WOULD be moved
+  without moving anything.
+
+## Behavior contract
+
+- UUID-aware skip: before any age check, identify the current/freshest session UUID.
+  NEVER trash sentinels belonging to the current or freshest session.
+- Recoverable archive: all moves go to `trash/<date>/`, not permanent deletion.
+  Recovery is manual `mv` from the trash directory; NOT `/sleep --restore`.
+- Dry-run is safe: `--dry-run` MUST make no filesystem changes.
+- Missing directories are a no-op (not an error).
+- Never modify source files, never commit.
+
+## Out of scope
+
+- Lessons-learned or daily-cache management (that is `/sleep` and `/end_of_day`).
+- Model tier and §0 dispatch grammar — runtime adapter concerns.

@@ -29,8 +29,8 @@ _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent  # quoin/ git repo ro
 _REPO_ROOT = _PROJECT_ROOT / "quoin"
 _LIB_SH = _REPO_ROOT / "hooks" / "_lib.sh"
 _SESSIONSTART_SH = _REPO_ROOT / "hooks" / "sessionstart.sh"
-_CLEANUP_SKILL_MD = _REPO_ROOT / "skills" / "cleanup" / "SKILL.md"
-_SLEEP_SKILL_MD = _REPO_ROOT / "skills" / "sleep" / "SKILL.md"
+_CLEANUP_SKILL_MD = _REPO_ROOT / "adapters" / "claude" / "skills" / "cleanup" / "SKILL.md"
+_SLEEP_SKILL_MD = _REPO_ROOT / "adapters" / "claude" / "skills" / "sleep" / "SKILL.md"
 
 EXPECTED_FAMILIES = [
     "pending-restore-*.txt",

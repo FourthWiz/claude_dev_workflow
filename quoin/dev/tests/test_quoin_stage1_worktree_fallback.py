@@ -43,6 +43,10 @@ MIGRATED_TO_ADAPTER = {
     "weekly_review",
     "cost_snapshot",
     "expand",
+    # Phase 22 migrations
+    "checkpoint",
+    "next_steps",
+    "sleep",
 }
 
 

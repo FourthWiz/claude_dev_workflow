@@ -17,8 +17,8 @@ import re
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).parent
-SKILLS_DIR = TESTS_DIR.parent.parent / "skills"
-CLEANUP_SKILL = SKILLS_DIR / "cleanup" / "SKILL.md"
+ADAPTER_SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
+CLEANUP_SKILL = ADAPTER_SKILLS_DIR / "cleanup" / "SKILL.md"
 
 DEPLOYED_CLEANUP_SKILL = Path.home() / ".claude" / "skills" / "cleanup" / "SKILL.md"
 

@@ -260,7 +260,7 @@ Phase 22 added an adapter drift validator at `quoin/core/scripts/validate_adapte
 
 **What this phase did:**
 - Extended `skills.json` `schema_version` from 1 to 2 with two new optional fields: `section_0` (bool) and `spawn_target` (bool).
-- Added `validate_adapter_drift.py` in `quoin/core/scripts/` (canonical) and `quoin/scripts/` (compat wrapper), covering 16 invariants (AD-CO through AD-IO) over all 21 skills in the manifest.
+- Added `validate_adapter_drift.py` in `quoin/core/scripts/` (canonical) and `quoin/scripts/` (compat wrapper), covering 16 invariants (AD-CO through AD-IO) over all 28 skills in the manifest.
 - Added 23 tests in `quoin/dev/tests/test_validate_adapter_drift.py` (2 positive, 16 invariant negatives, 5 misc).
 - Documented the invariants and new fields in `quoin/core/workflow/skills.md`.
 

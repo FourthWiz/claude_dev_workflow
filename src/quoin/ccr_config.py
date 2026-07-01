@@ -69,7 +69,7 @@ def backup_config(path: pathlib.Path) -> pathlib.Path | None:
     """
     if not path.exists():
         return None
-    ts = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup = path.parent / f"{path.name}.bak-{ts}"
     shutil.copyfile(path, backup)
     return backup
@@ -88,7 +88,7 @@ def load_config(path: pathlib.Path) -> dict[str, Any]:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
-        ts = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         broken = path.parent / f"{path.name}.broken-{ts}"
         try:
             shutil.copyfile(path, broken)

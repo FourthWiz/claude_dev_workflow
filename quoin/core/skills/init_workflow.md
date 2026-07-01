@@ -174,7 +174,7 @@ the mandatory handoff at the end of bootstrap — NOT by this skill directly.
   run. The adapter should make the fallback stub clearly indicate that a fresh
   install of the host runtime will produce a richer version.
 - This skill is the 21st and final Phase 6–21 migration in the runtime-
-  portability effort. All 21 skills now have a portable intent doc in
+  portability effort. All 28 skills now have a portable intent doc in
   `quoin/core/skills/` and a Claude adapter in
   `quoin/adapters/claude/skills/`. The `.workflow_artifacts/<task-name>/`
   path convention is the universal artifact storage layout shared across all

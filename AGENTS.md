@@ -43,6 +43,9 @@ User-facing workflow skills with effort levels (from `quoin/core/workflow/skills
 |-------|-------|--------|
 | `architect` | architecture | max |
 | `capture_insight` | memory | low |
+| `checkpoint` | checkpoint | medium |
+| `cleanup` | cleanup | low |
+| `continue_work` | continue-work | medium |
 | `cost_snapshot` | cost | low |
 | `critic` | critic | high |
 | `discover` | discovery | high |
@@ -52,12 +55,16 @@ User-facing workflow skills with effort levels (from `quoin/core/workflow/skills
 | `gate` | gate | medium |
 | `implement` | implementation | medium |
 | `init_workflow` | project-bootstrap | high |
+| `next_steps` | next-steps | low |
 | `plan` | planning | high |
+| `pr` | pr | medium |
 | `review` | review | high |
 | `revise` | planning | high |
 | `rollback` | rollback | medium |
 | `run` | orchestration | max |
+| `sleep` | sleep | low |
 | `start_of_day` | session-lifecycle | low |
+| `status` | status | low |
 | `thorough_plan` | planning | max |
 | `triage` | routing | low |
 | `weekly_review` | session-lifecycle | low |

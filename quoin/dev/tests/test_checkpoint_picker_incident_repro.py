@@ -21,7 +21,7 @@ import os
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-CHECKPOINT_SKILL = REPO_ROOT / "quoin" / "skills" / "checkpoint" / "SKILL.md"
+CHECKPOINT_SKILL = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "checkpoint" / "SKILL.md"
 
 
 def _text() -> str:

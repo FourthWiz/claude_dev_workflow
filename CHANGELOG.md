@@ -2,6 +2,215 @@
 
 All notable changes to Quoin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.11.17] — 2026-06-28
+
+### Fixed
+
+- **Permissions: remove invalid `Bash(rm:*.tmp)` allow rules from `/init_workflow`** (IVG-101). `/init_workflow` Step 4 was generating `"Bash(rm:*.tmp)"` and `"Bash(rm:*.body.tmp)"` entries in project `settings.json`. Claude Code rejects these at startup ("Invalid permission rule: :* pattern must be at the end") and they were semantically dead anyway (the deny list already has `Bash(rm:*)`). The rules are no longer generated; a regression test guards against reintroduction.
+
+## [0.11.16] — 2026-06-28
+
+### Added
+
+- **Architect and plan: feature-existence pre-flight** (IVG-94). `/architect` and `/plan` now verify that features referenced in the task description actually exist in the codebase before writing `current-plan.md`. The check runs as a pre-flight step and surfaces missing features to the user for correction before planning proceeds, preventing plans built on phantom capabilities.
+
+## [0.11.15] — 2026-06-27
+
+### Added
+
+- **Path resolve: nested `.workflow_artifacts/` guard** (IVG-97). `path_resolve.py` gained a `--verify-root` flag and guards against nested `.workflow_artifacts/` directories (e.g. a subproject inside the workspace). The resolver now aborts with a clear error rather than silently resolving to the wrong root, preventing artifact contamination across project boundaries.
+
+## [0.11.13] — 2026-06-27
+
+### Added
+
+- **Dashboard: instrument-panel amber theme redesign** (IVG-87 T-07). Full visual redesign of the quoin dashboard with an amber instrument-panel color scheme. Scroll state and memory list selection are preserved across three-second poll cycles. Cost and activity heading labels corrected in counts mode. Added `memory.js` to the dashboard asset bundle so the memory tab loads correctly.
+
+### Fixed
+
+- **Dashboard: ETag cleared on memory tab switch** (IVG-87 T-09). Switching away from the memory tab and returning was returning a stale empty list because the old ETag was reused. The client now clears the ETag on tab change, forcing a fresh fetch on return.
+- **Sentinel cleanup: UUID-aware 9-family sweep** (IVG-95). Session-start hook sentinel sweep was missing five of nine sentinel families, causing stale sentinels to pile up and trigger false-positive lifecycle events. The sweep now covers all nine families and uses a UUID-aware skip rule so it never removes the current or freshest session's sentinels. `/start_of_day` gains a Step 1b sentinel-health check that reports pile-up before the user's first prompt. `/cleanup` and `/sleep` allow-lists updated to match.
+- **CLAUDE.md: Tier-1 catalog extracted to `tier1-files.md`** (PR #169). The always-English file catalog (previously inline in `CLAUDE.md`) was extracted into its own Tier-1 memory file, reducing `CLAUDE.md` size by the catalog's footprint while keeping the catalog independently testable.
+
+## [0.11.7] — 2026-06-23
+
+### Added
+
+- **Proactive 1M-context dispatch precheck for all 19 §0 skills** (IVG-90). When Claude Code is running on a 1M-context SKU, the model name does not match what §0 expects, causing silent dispatch failures. All 19 cheap-tier skills now include a proactive precheck that detects the 1M SKU before dispatch and routes correctly. A `dispatch_config.py` module centralizes the config and per-tier sentinel cache. A `propagate_1m_s0_edit.py` script regenerates the precheck block from a single template across all 19 files.
+
+### Changed
+
+- **Minimum-tier guard: silent up-dispatch instead of `AskUserQuestion`** (IVG-91). The §0″ minimum-tier guard previously interrupted the user with a dialog when a skill was invoked on a cheaper model than it requires. It now silently re-dispatches to Opus without any prompt.
+
+### Fixed
+
+- **1M-context SKU recovery in §0 and §0' fail-open paths** (IVG-89). Dead precheck code in §0 and §0' was removed; 1M-context recovery is now handled in the fail-open path after dispatch, not as a pre-dispatch gate. Tests rewritten to match the post-dispatch recovery contract.
+- **CLAUDE.md → `affected_tests.py` mapping for CLAUDE.md edits** (IVG-92). Edits to `CLAUDE.md` and format-kit/glossary files now correctly trigger the size-ceiling and affected-area tests in CI.
+- **AgentDesk: `.kdl` rename step in dashboard layout temp file** (IVG-88). `mktemp` on macOS was generating a temp file without the `.kdl` suffix required by Zellij, causing layout load failures. The file is now explicitly renamed with the correct extension.
+
+## [0.11.0] — 2026-06-20
+
+### Added
+
+- **Serena code-intelligence integration** (PR #158). When the Serena MCP server is present in a session (detected via a `ToolSearch` probe at task start), skills now automatically activate it and prefer Serena's symbol-level tools (find/rename symbols, cross-reference search, language-server navigation) over raw grep. The activation protocol is documented in `serena-activation.md` (a new Tier-1 memory file). The integration is strictly conditional: if Serena is absent, skills do nothing differently.
+- **Python 3.10+ interpreter preference in `install.sh`** (PR #158). The installer now probes for a Python 3.10+ interpreter via pyenv before falling back to the system default, avoiding silent failures on machines where the default Python is 3.8 or 3.9.
+
+## [0.10.3] — 2026-06-19
+
+### Added
+
+- **Dashboard: read-only memory browser pane** (IVG-50 S-4). A fourth tab in the quoin dashboard lists `lessons-learned.md` entries, daily briefings, and session archives. The pane is read-only and searchable in the browser; it uses a `memory.js` endpoint served by the dashboard server.
+
+## [0.10.2] — 2026-06-18
+
+### Added
+
+- **Memory maintenance patterns** (IVG-50 S-3). A `memory-maintenance.yaml` config file defines protected-source patterns — entries that should never be auto-promoted to `lessons-learned.md` by `/sleep` because they are project-specific, transient, or already captured elsewhere. `/sleep` reads this file and skips entries matching any maintenance pattern before scoring. `memory-maintenance.md` added as a Tier-1 reference file.
+
+## [0.10.1] — 2026-06-18
+
+### Added
+
+- **Selective lessons retrieval for planning and review skills** (IVG-50 S-1). `memory_select.py` computes relevance scores for `lessons-learned.md` entries against the active task description and returns only the relevant subset. `/plan`, `/architect`, and `/review` now inject only the matched lessons rather than the full file, reducing context-window pressure for repos with large lesson histories.
+- **Memory referential-integrity checker** (IVG-50 S-2). `memory_check.py` scans all memory files for broken `[[link]]` cross-references, session files pointing to tasks that have moved to `finalized/`, and stale entries. Can be run standalone or wired into CI.
+
+## [0.10.0] — 2026-06-18
+
+### Added
+
+- **Dashboard: ETag/If-None-Match/304 conditional polling** (IVG-76). The dashboard client now sends a hash of its last response; the server returns HTTP 304 if the state hasn't changed. This eliminates unnecessary DOM repaints and JSON parsing on the three-second poll cycle.
+
+### Fixed
+
+- **AgentDesk: dashboard server tied to Zellij session lifetime** (IVG-85). The dashboard server was continuing to run after the Zellij session exited, leaving a dangling process until the next desk launch. The EXIT trap now terminates the server on session end. `EXIT` traps are combined to prevent layout temp-file leaks.
+
+## [0.9.28] — 2026-06-17
+
+### Added
+
+- **Branch-recovery recipe** (IVG-77). `branch-recovery.md` added as a Tier-1 memory file documenting the safe canonical recipe for recovering mis-placed commits from a protected branch. Pointers to this file added in `/implement`, `/gate`, `/review`, and `/end_of_task` skill files.
+
+### Fixed
+
+- **`validate_artifact`: exempt backtick-quoted IDs from V-05** (IVG-78). The V-05 validator was incorrectly rejecting backtick-quoted artifact IDs as bare cross-artifact references. Quoted IDs are now exempt.
+- **`/sleep`: suppress stale-30-days penalty when `user_marked_yes`** (PR #150). An entry explicitly marked to keep was still being penalized for age. The scoring logic now checks the `user_marked_yes` flag before applying the staleness penalty.
+- **Checkpoint: project-hash derivation corrected** (IVG-84). `/checkpoint --restore` was computing the wrong project hash on machines where the project root contains a symlink component. The derivation now uses the resolved absolute path.
+
+## [0.9.21] — 2026-06-16
+
+### Added
+
+- **VS Code extension: full release** (IVG-54). Six stages shipped across June 13–15:
+  - S-1: `SessionManager`, script-root detection, Activity Bar registration.
+  - S-2: Control-panel webview with skill palette. Clicking a skill name sends the slash command to the Claude Code terminal via `sendText` with a Ctrl-U pre-clear.
+  - S-3: Workflow tree view with current-phase highlighting; backed by a new `--emit-nodes` flag on `status_graph.py`.
+  - S-4: Sessions-archive view — browse completed sessions without leaving VS Code.
+  - S-5: Cost tab webview — shows the cost ledger for the active task.
+  - S-6: Packaging (`vsce`), settings, CI, Marketplace publish. Extension published as `igorban.quoin-vscode` with a quoin cube+Q logo.
+  - `ProjectContext` module handles multi-workspace roots; a project switcher overrides which project's artifacts are shown.
+- **Drive conflict-copy detection** (IVG-75). `find_drive_conflicts.py` scans the workspace for Google Drive sync-conflict copies (e.g. `file (Ivan's conflicted copy).md`) and reports them. `status_graph.py` and `get_session_uuid.py` now ignore conflict copies when enumerating session files.
+- **`get_session_uuid.py` core script** (PR #133). Replaces the previous `uuidgen`-based approach in cost-ledger generation, which produced different UUID formats on different platforms. The script reads the Claude session UUID directly from the JSONL stream.
+
+### Changed
+
+- **License: MIT → PolyForm Noncommercial 1.0.0** (IVG-83). Quoin is free for personal, research, and non-commercial use. Commercial use requires a separate license.
+
+## [0.9.14] — 2026-06-12
+
+### Added
+
+- **AgentDesk: layout persistence** (IVG-82). AgentDesk remembers the layout you selected at first setup and uses it on subsequent launches without asking. A `--reset-layout` flag re-prompts when you want to change it.
+- **Real-time token spend monitor + Spend tab** (IVG-62). A `spend_monitor.py` sidecar reads live token counts from `ccusage` output and exposes them to the AgentDesk spend pane. A dedicated Spend tab is added to both the Standard layout and dynamic layouts; the AgentDesk always includes it even when other tab sets vary.
+
+### Fixed
+
+- **Checkpoint: all path sites use resolved project root** (IVG-61). Multiple places in the checkpoint skill were using relative `.workflow_artifacts` paths that broke when the skill was invoked from a subdirectory. A `_PROJECT_ROOT` variable is now resolved once at script entry and used at every path site. A canary prose-form path test detects regressions.
+- **§0' Pollution dispatch restored to 7 Opus-tier skills** (IVG-69). The §0' block had been accidentally stripped from the Opus-tier adapter SKILL.md files during a prior regeneration pass. Restored and guarded by a parity drift test.
+- **AgentDesk: auto-suffix session names to avoid attaching to existing sessions** (PR #125). AgentDesk was sometimes attaching to an existing Zellij session with a matching name rather than creating a fresh one, causing layout confusion.
+
+## [0.9.7] — 2026-06-08
+
+### Added
+
+- **Branch hygiene enforcement: three-layer guard** (IVG-70). Work can no longer silently land on `main` or `master`:
+  1. `/implement` runs `branch_hygiene.py` at dispatch entry and prompts to create a feature branch if any repo involved is on a protected branch.
+  2. `/gate` hard-fails if commits are detected ahead of upstream on a protected branch (commits-ahead signal, not bare on-main status).
+  3. `/review` flags on-main commits as a diff-independent backstop.
+  Configurable via `QUOIN_PROTECTED_BRANCHES` (csv, default `main,master`) and `QUOIN_DISABLE_BRANCH_HYGIENE=1`.
+- **Affected-area test suite as hard gate precondition** (IVG-71). `affected_tests.py` maps changed files to test files using a configurable matcher. `/gate` and `/review` now run the affected-area suite as a hard precondition for APPROVED; an untested or failing affected suite blocks the APPROVED verdict. A base-branch merge-base diff closes the gap where committed-but-clean branches were incorrectly passing.
+- **`/cleanup` skill** (IVG-68). Trash-moves stale sentinels and old checkpoint files into a recoverable `trash/<date>/` archive using a UUID-aware skip rule (never removes the current or freshest session's sentinels). Fires automatically as the first step of `/checkpoint` unless `--no-cleanup` is passed.
+
+### Fixed
+
+- **Dispatch sidecar and `git_root_for_dispatch.py` added to `CORE_SCRIPTS`** (PR #122). Both scripts were missing from the installer's core-scripts list, causing `quoin doctor` false negatives and deployment gaps.
+
+## [0.9.2] — 2026-06-06
+
+### Added
+
+- **Quoin dashboard MVP** (IVG-63). A standalone local web server (`quoin dashboard`) that shows workflow state in a browser tab:
+  - `dashboard_model.py` — portable core script that scans `.workflow_artifacts/`, identifies tasks and stages, reads cost ledgers, and returns structured JSON. Runtime-neutral; no adapter-specific imports.
+  - `dashboard_server.py` — `ThreadingHTTPServer` wrapper serving the SPA and the model API.
+  - Vanilla-JS single-page app with task cards, stage tabs, phase timeline, and cost breakdown. Scroll state preserved across poll cycles. Favicon embedded as base64 SVG.
+  - `quoin dashboard` CLI subcommand; installer wiring for all assets.
+  - AgentDesk gains an opt-in dashboard prompt at desk launch (saved after first answer).
+- **`quoin router` command group** (IVG-64). `quoin router setup` configures Claude Code Router (CCR) with an OpenRouter API key and writes the proxy config. `quoin router status` shows proxy liveness. `ccr code` launches Claude Code through the proxy. AgentDesk gains a `ccr` window-type token so the proxy window appears in the desk layout.
+- **`quoin models` command** (IVG-65). Shows the tier-to-open-model mapping (haiku-, sonnet-, and opus-equivalent open models available via CCR/OpenRouter).
+
+## [0.7.2] — 2026-06-04
+
+### Added
+
+- **`/status` slash command** (IVG-59). Lightweight Haiku-tier skill that reads `.workflow_artifacts/` and emits a pipeline graph showing which phases are complete, active, and pending. Wired into AgentDesk: the status pane refreshes on each session start. The VS Code extension's workflow tree view reads the `--emit-nodes` JSON output from the same `status_graph.py` script.
+- **AgentDesk: Zellij `copy_command` setup** (PR #111). `agentdesk setup` now configures Zellij's `copy_command` for the host OS during first-time setup, so terminal copy-paste works without manual KDL editing.
+
+### Fixed
+
+- **Checkpoint: fast-path `--restore` applies cross-task guard** (PR #112). The fast-path restore was bypassing the cross-task guard that prevents restoring a checkpoint from a different task into the current context.
+- **AgentDesk: `mktemp` template fixed for macOS** (PR #113). The generated KDL layout temp file used a GNU `mktemp` template syntax that fails on BSD/macOS. Corrected to use a macOS-compatible template.
+
+## [0.6.0] — 2026-05-30
+
+### Added
+
+- **AgentDesk with dynamic layout support** (IVG-60, PR #107). `agentdesk` is a Zellij-based terminal workspace for AI work. Running `agentdesk setup` creates a Zellij session with configurable panes for the agent terminal, spend monitor, workflow status, and (optionally) the quoin dashboard. Dynamic layouts are generated from a template at launch; static layouts can also be used. First-time setup runs interactively; subsequent launches reuse the saved layout.
+
+  Added to the quoin repo under `quoin/tools/agentdesk/`. Documented in README.
+
+## [0.5.19] — 2026-05-30
+
+### Added
+
+- **`/pr` skill: full pull request lifecycle** (IVG-53, PR #98). Handles pre-flight checks (not on main, `gh` CLI available and authenticated), optional version bump detection, push to remote, `gh pr create` with structured title and body, wait for merge, and switch to the merge target branch after merge. Invoked explicitly after `/end_of_task` — never auto-created.
+- **`AskUserQuestion` option lists for multi-choice prompts** (IVG-55, PR #100). Workflow skills that previously asked free-text questions (e.g. "which stage?", "restore or reference?") now surface structured option lists via `AskUserQuestion`, eliminating ambiguous text parsing.
+- **Inline step summaries required from major skills** (IVG-52, PR #102). `/thorough_plan`, `/implement`, and `/review` now print a concise human-readable English summary at the end of each run (what was produced, main components, remaining concerns, artifact location). This is a REQUIRED rule in `CLAUDE.md` — the summary is a chat message, never written to disk.
+
+### Fixed
+
+- **ccusage v20 bulk format compatibility** (IVG-58). The cost tracking parser broke when `ccusage` changed its output to a bulk per-session format in v20. Both the old per-session format and the new bulk format are now handled.
+- **Checkpoint: restore picker staleness fixes** (PR #105). Three staleness bugs (B1, B2, B3) in the restore picker were fixed — incorrect ordering of candidates when multiple checkpoints exist for the same session date, and stale entries surfacing above fresh ones.
+- **Checkpoint: panic save on context-block** (PR #105). When the userpromptsubmit hook fires the block branch (context utilization above `QUOIN_BLOCK_BPS`), the hook now forces a skeleton checkpoint save before blocking, so no session state is lost even if the user closes the terminal.
+
+## [0.5.0] — 2026-05-15
+
+### Added
+
+- **Checkpoint: non-blocking precompact flow and three save modes** (PR #85). Previously, the precompact hook blocked the conversation while saving state. The new design is non-blocking: the hook records utilization state asynchronously, and Claude decides whether to compact or save based on the threshold. Three explicit save modes:
+  - `--mode restore` (default): saves state and writes a pending-restore sentinel.
+  - `--mode load-as-reference`: saves state as reference-only; a fresh session can consult it without fully restoring.
+  - `--mode mid-agent`: saves state mid-flight inside a long-running agent without touching session banners.
+  `COMPACT_FIRST_BPS` tunable controls at which utilization level checkpoint recommends compacting before saving.
+- **Checkpoint: compact-ordering fixes** (PR #88). A Step 1.4 "compact-already-ran skip path" detects a `compact-happened` sentinel written by the new `postcompact.sh` hook and skips a redundant save after auto-compact. The `--after-compact` flag is deprecated in favour of sentinel-based detection.
+- **Worktree dispatch for nested-git contexts** (PR #95). The `WorktreeCreate` hook now supports nested-git worktree isolation for subagent dispatch, preventing Git operations in one subagent from interfering with another.
+- **`skillOverrides` injection in `deploy_hooks`** (PR #91). The installer can inject custom skill overrides into `settings.json` during install, allowing site-specific skill behaviour (custom `/review` templates, modified `/gate` thresholds) without forking the core.
+- **`/end_of_task` working-tree cleanup scan** (PR #97). Before committing, `/end_of_task` now scans for common dirty-state artefacts (debug files, `.tmp` files, unreferenced test fixtures) and reports them for the user to review.
+- **CLAUDE.md: verbose sections extracted to memory files** (PR #86). `cost-ledger-format.md`, `dispatch-guide.md`, `hooks-table.md`, and `lifecycle-guide.md` extracted from `CLAUDE.md` into `~/.claude/memory/`. Skills read the relevant file during bootstrap. Net reduction of ~10,500 characters in installed `CLAUDE.md` size.
+
+### Fixed
+
+- **`/implement`: 1M-context SKU-mismatch precheck** (PR #96). Added a §0-1m-context-precheck to avoid dispatch failures when `implement` is invoked on a 1M-context model.
+- **End-of-day rollup: date-window session selection** (PR #87). Session selection now uses a date-window + shared helper that covers all unprocessed sessions since the last daily cache, not just today's files. A `merge_daily()` function handles the double-rollup edge case idempotently.
+
 ## [0.3.3] — 2026-05-14
 
 ### Fixed

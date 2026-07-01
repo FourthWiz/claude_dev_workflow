@@ -345,7 +345,7 @@ The full catalog of always-English Tier-1 files (hand-edited, contract-approval,
 | /cost_snapshot | Haiku | Read-only cost reporting from ledger files and ccusage (lightweight) |
 | /status | Haiku | Read-only pipeline-graph reporting (shows active workflow phase) |
 | /triage | Haiku | Lightweight routing: reads prompt, inspects state, proposes a skill. |
-| /next-steps | Haiku | Lightweight queue management for future work items |
+| /next-steps | Haiku | Lightweight queue management for future work items (invocation: `/next-steps`; skill dir/canonical id: `next_steps` — same pattern as `/pr` ↔ `pr`) |
 | /continue_work | Sonnet | Revive context from a prior session: reads recent-sessions.md, presents session picker, extracts checkpoint summary and recent messages from JSONL. |
 | /cleanup | Haiku | Mechanical trash-move of stale sentinels/checkpoints (structured file ops). |
 

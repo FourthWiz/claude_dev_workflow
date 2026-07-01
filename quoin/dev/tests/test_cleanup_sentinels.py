@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent  # quoin/ git repo root
-_SKILL_MD = _PROJECT_ROOT / "quoin" / "skills" / "cleanup" / "SKILL.md"
+_SKILL_MD = _PROJECT_ROOT / "quoin" / "adapters" / "claude" / "skills" / "cleanup" / "SKILL.md"
 
 
 def _extract_cleanup_section(content: str) -> str:

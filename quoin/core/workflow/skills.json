@@ -20,6 +20,33 @@
       "spawn_target": false
     },
     {
+      "name": "checkpoint",
+      "phase": "checkpoint",
+      "effort": "medium",
+      "user_facing": true,
+      "claude_model": "sonnet",
+      "section_0": true,
+      "spawn_target": false
+    },
+    {
+      "name": "cleanup",
+      "phase": "cleanup",
+      "effort": "low",
+      "user_facing": true,
+      "claude_model": "haiku",
+      "section_0": true,
+      "spawn_target": false
+    },
+    {
+      "name": "continue_work",
+      "phase": "continue-work",
+      "effort": "medium",
+      "user_facing": true,
+      "claude_model": "sonnet",
+      "section_0": true,
+      "spawn_target": false
+    },
+    {
       "name": "cost_snapshot",
       "phase": "cost",
       "effort": "low",
@@ -101,6 +128,15 @@
       "spawn_target": false
     },
     {
+      "name": "next_steps",
+      "phase": "next-steps",
+      "effort": "low",
+      "user_facing": true,
+      "claude_model": "haiku",
+      "section_0": true,
+      "spawn_target": false
+    },
+    {
       "name": "plan",
       "phase": "planning",
       "effort": "high",
@@ -108,6 +144,15 @@
       "claude_model": "opus",
       "section_0": false,
       "spawn_target": true
+    },
+    {
+      "name": "pr",
+      "phase": "pr",
+      "effort": "medium",
+      "user_facing": true,
+      "claude_model": "sonnet",
+      "section_0": true,
+      "spawn_target": false
     },
     {
       "name": "review",
@@ -155,8 +200,26 @@
       "spawn_target": false
     },
     {
+      "name": "sleep",
+      "phase": "sleep",
+      "effort": "low",
+      "user_facing": true,
+      "claude_model": "haiku",
+      "section_0": true,
+      "spawn_target": false
+    },
+    {
       "name": "start_of_day",
       "phase": "session-lifecycle",
+      "effort": "low",
+      "user_facing": true,
+      "claude_model": "haiku",
+      "section_0": true,
+      "spawn_target": false
+    },
+    {
+      "name": "status",
+      "phase": "status",
       "effort": "low",
       "user_facing": true,
       "claude_model": "haiku",

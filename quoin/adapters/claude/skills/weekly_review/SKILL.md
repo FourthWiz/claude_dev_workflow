@@ -132,10 +132,10 @@ Read these in parallel:
 
 1. **Daily caches** — `.workflow_artifacts/memory/daily/<date>.md` for each day in the range. These are the primary source — they contain completed work, unfinished carry-forwards, decisions, and git summaries.
 
-2. **Session files** — use the shared helper `quoin/core/scripts/select_unprocessed_sessions.py`
+2. **Session files** — use the shared helper `__QUOIN_HOME__/core/scripts/select_unprocessed_sessions.py`
    with `--lower-bound-source weekly` to enumerate session files in scope:
    ```
-   python3 quoin/core/scripts/select_unprocessed_sessions.py \
+   python3 __QUOIN_HOME__/core/scripts/select_unprocessed_sessions.py \
      --window <monday>..<saturday> \
      --lower-bound-source weekly
    ```

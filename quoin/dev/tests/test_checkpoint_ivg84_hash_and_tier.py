@@ -34,7 +34,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CORE_SCRIPT = REPO_ROOT / "quoin" / "core" / "scripts" / "get_session_uuid.py"
 WRAPPER_SCRIPT = REPO_ROOT / "quoin" / "scripts" / "get_session_uuid.py"
-CHECKPOINT_SKILL = REPO_ROOT / "quoin" / "skills" / "checkpoint" / "SKILL.md"
+CHECKPOINT_SKILL = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "checkpoint" / "SKILL.md"
 
 # The real project path for this repo — contains '.', '@', '_', and ' '.
 REAL_PATH = str(

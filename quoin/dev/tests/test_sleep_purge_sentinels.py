@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent.parent  # quoin/ git repo root (Codex_workflow/quoin/)
-_SKILL_MD = _PROJECT_ROOT / "quoin" / "skills" / "sleep" / "SKILL.md"
+_SKILL_MD = _PROJECT_ROOT / "quoin" / "adapters" / "claude" / "skills" / "sleep" / "SKILL.md"
 
 
 def _extract_purge_section(content: str) -> str:
