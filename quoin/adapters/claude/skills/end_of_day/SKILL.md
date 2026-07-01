@@ -159,7 +159,7 @@ work was never captured.
    `json-discovery-map-review`. This prevents false-positive "covered" verdicts caused by
    prefix collisions.
 4. Partition orphans by file date: **RECENT** (file_date >= today - 7 days) and **HISTORICAL**
-   (older). The shared helper `quoin/core/scripts/select_unprocessed_sessions.py`'s
+   (older). The shared helper `__QUOIN_HOME__/core/scripts/select_unprocessed_sessions.py`'s
    `find_orphans()` implements this procedure exactly.
 5. If no orphans → print "No orphaned sessions detected." then proceed with normal EOD (Step 1).
 6. If RECENT orphans → print a numbered list (file_date + slug for each), then prompt:
@@ -252,9 +252,9 @@ Then enumerate session files. A session file at `.workflow_artifacts/memory/sess
 Legacy session files lacking the `end_of_day_due` line are treated as `yes` (D-02).
 Future-dated files (date > today) are excluded.
 
-The shared helper `quoin/core/scripts/select_unprocessed_sessions.py`'s
+The shared helper `__QUOIN_HOME__/core/scripts/select_unprocessed_sessions.py`'s
 `select_unprocessed_sessions()` implements this procedure exactly and can be invoked as a
-cross-check: `python3 quoin/core/scripts/select_unprocessed_sessions.py --window LOWER..today --lower-bound-source daily`
+cross-check: `python3 __QUOIN_HOME__/core/scripts/select_unprocessed_sessions.py --window LOWER..today --lower-bound-source daily`
 
 **Same-day re-run:** If `daily/<today>.md` already exists when Step 3 begins, MERGE per
 proc:D-06 (section-by-section algorithm) rather than overwrite. If unable to merge (proc:D-06
