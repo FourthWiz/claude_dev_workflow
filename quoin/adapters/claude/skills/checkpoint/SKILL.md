@@ -6,6 +6,8 @@ model: sonnet
 
 # Checkpoint
 
+*Portable intent doc: `quoin/core/skills/checkpoint.md`*
+
 You save session-restore state (paths-not-content) so a fresh session can resume after context compaction or voluntary save. You also provide `--restore` to re-hydrate that state in a new session.
 
 ## §0 Model dispatch (FIRST STEP — execute before anything else)

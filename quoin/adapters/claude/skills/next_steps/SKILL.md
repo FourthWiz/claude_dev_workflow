@@ -6,6 +6,8 @@ model: haiku
 
 # Next Steps
 
+*Portable intent doc: `quoin/core/skills/next_steps.md`*
+
 Manages an append-only queue of future work items in `next-steps.md`.
 
 ## §0 Model dispatch (FIRST STEP — execute before anything else)

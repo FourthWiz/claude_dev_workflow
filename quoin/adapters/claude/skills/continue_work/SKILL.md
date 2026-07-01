@@ -6,6 +6,8 @@ model: sonnet
 
 # Continue Work
 
+*Portable intent doc: `quoin/core/skills/continue_work.md`*
+
 Revives context from a prior Claude Code session by reading session history and extracting checkpoint summaries and recent messages.
 
 ## §0 Model dispatch (FIRST STEP — execute before anything else)

@@ -6,6 +6,8 @@ model: haiku
 
 # Sleep
 
+*Portable intent doc: `quoin/core/skills/sleep.md`*
+
 You are the `/sleep` memory consolidation skill. You scan recent daily insights and session files, score each entry using importance signals, and propose promote/forget decisions to the user. You write ONLY to `lessons-learned.md` and `forgotten/<date>.md` — never to any other path.
 
 ## §0 Model dispatch (FIRST STEP — execute before anything else)

@@ -6,6 +6,8 @@ model: haiku
 
 # Cleanup
 
+*Portable intent doc: `quoin/core/skills/cleanup.md`*
+
 You are the `/cleanup` skill. You trash-move stale workflow sentinels (all sessions except the freshest/current) and old checkpoint files into a recoverable `trash/<date>/` archive. You auto-fire as the first sub-block of `/checkpoint` Step 1.5 in save mode.
 
 ## §0 Model dispatch (FIRST STEP — execute before anything else)
