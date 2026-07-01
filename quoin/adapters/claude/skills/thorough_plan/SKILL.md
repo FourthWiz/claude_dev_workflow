@@ -49,6 +49,44 @@ ValueError), interpret the stderr message as "user-recoverable input ambiguity" 
   (c) ask the user to disambiguate by re-invoking with the integer form `stage <N> of <task>`.
 Do NOT abort the orchestration on exit-code-2.
 
+#### 1b. Startup resume-detection (PRIMARY kill-recovery path — IVG-98)
+
+After resolving `{task_dir}` and `mkdir -p`, scan for a phase-boundary progress checkpoint
+that matches THIS task before dispatching any planning work. This is the PRIMARY recovery
+path after an external kill — it reads `checkpoints/` DIRECTLY and is fully immune to the
+restore picker's B3 Clause-B gate (see `## Phase-boundary checkpoints` for rationale).
+
+**Scan procedure:**
+
+```bash
+_MEM="{project-root}/.workflow_artifacts/memory"
+_CKPT_GLOB="$_MEM/checkpoints/thorough-plan-progress-*.md"
+```
+
+For each file matching the glob (if any):
+1. Check `## Active task` header equals THIS task name. Skip if not.
+2. Check that `current-plan.md` exists in `task_dir` (proves round-1 plan completed). Skip if not.
+3. **Age bound:** checkpoint file mtime must be within the last 7 days OR newer than the
+   current `current-plan.md` mtime (whichever bound is more permissive). Silently skip stale checkpoints.
+4. If multiple qualifying files exist, pick the one with the most recent mtime (tiebreak: freshest wins).
+
+**If a qualifying checkpoint is found:** use `AskUserQuestion` to offer:
+- **(a) Resume** — read the `## Current stage` token (`thorough-plan:round-{N}-{phase}`), parse N and
+  phase, re-hydrate by reading the existing `current-plan.md` and any `critic-response-*.md` on disk,
+  set the round counter, and re-dispatch the phase that was in flight (the phase AFTER the last
+  completed boundary). Surface-first: show the user the current stage and the next phase before
+  re-dispatching.
+- **(b) Start fresh** — ignore the progress checkpoint and run round 1. Non-destructive: the checkpoint
+  file is NOT deleted on "start fresh".
+
+**If NO qualifying checkpoint exists:** continue silently with round 1 (no AskUserQuestion).
+
+**Convergence cleanup (on PASS or Small single-pass convergence):** after writing the converged plan,
+trash-move (or delete) `$_MEM/checkpoints/thorough-plan-progress-$_TPCKPT_SID.md` and
+`$_MEM/pending-restore-$_TPCKPT_SID.txt` so a completed run is NOT re-offered as resumable on the
+next invocation. Use the SID cached at startup (`$_TPCKPT_SID`). If cleanup fails, log a one-line
+warning and continue — fail-OPEN.
+
 ### 2. Gather initial context
 
 Collect and pass to `/plan`:
@@ -237,6 +275,19 @@ When converged, add a convergence summary to the top of `current-plan.md`:
 
 For Small-profile tasks that took the single-pass path, the convergence summary still appears at the top of `current-plan.md` but with `Rounds: 1` and `Key revisions: N/A — single-pass plan`. This signals to downstream skills that the plan was not critic-reviewed.
 
+**Convergence cleanup (IVG-98):** After writing the converged plan, trash-move or delete the
+phase-boundary progress checkpoint and its sentinel so this completed run is NOT re-offered as
+resumable on the next `/thorough_plan` invocation:
+
+```bash
+_MEM="{project-root}/.workflow_artifacts/memory"
+rm -f "$_MEM/checkpoints/thorough-plan-progress-$_TPCKPT_SID.md" || true
+rm -f "$_MEM/pending-restore-$_TPCKPT_SID.txt" || true
+```
+
+If cleanup fails, log a one-line warning and continue — fail-OPEN. (`$_TPCKPT_SID` is the SID
+cached at startup; see `## Phase-boundary checkpoints` §Startup acquisition.)
+
 Then spawn `/gate` as a subagent session (post-plan boundary — subagent dispatch required because the parent has just exited the plan→critic loop and the post-plan checks operate against a different context shape than the loop. Audit-log persistence applies regardless of mode — see `/gate/SKILL.md`.) to present automated checks and a summary to the user.
 
 After the gate, print an **inline summary** in the chat as your final user-facing message (REQUIRED — do NOT rely on the user reading `current-plan.md`; the plan body is Tier-3 terse). Cover the canonical field set:
@@ -285,3 +336,79 @@ After the gate, print an **inline summary** in the chat as your final user-facin
   NOTE: This retry only fires for subagents dispatched BY /thorough_plan.
   Standalone /revise and /plan invocations have no automatic retry.
 - **Pass context explicitly.** Each agent starts with limited knowledge. Give them the file paths and repo locations they need.
+
+## Phase-boundary checkpoints (IVG-98)
+
+`/thorough_plan` writes a durable progress checkpoint at every phase boundary so an externally
+killed session can be resumed by re-invoking `/thorough_plan {task}` in a fresh session (T-04 startup
+scan, PRIMARY path — see Setup §1b). `/checkpoint --restore` is a SECONDARY convenience path and
+may degrade to task-level restore in the kill-during-subagent window (B3 Clause-B fires when a
+subagent's `{date}-{task}.md` is newer than the checkpoint; T-04 direct scan is immune).
+
+Verified: `## Current stage` is free-text for all readers (`/start_of_day`, `/end_of_day`,
+`/status`, `/continue_work`, B3 awk); the colon-delimited token `thorough-plan:round-N-{phase}`
+is safe and unambiguous.
+
+### Startup acquisition (run ONCE at orchestrator startup)
+
+Acquire and cache the session UUID and current branch before the planning loop. Both acquisitions
+are fail-OPEN: a slow or failed call falls back to `unknown` and never stalls the loop.
+
+```bash
+_TPCKPT_SID="$(python3 __QUOIN_HOME__/scripts/get_session_uuid.py --phase thorough-plan 2>/dev/null || echo unknown)"
+_TPCKPT_BRANCH="$(git -C {project-root} rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+```
+
+### Checkpoint procedure (call at each phase boundary)
+
+After each subagent returns and its artifact is verified on disk, run the helper as the LAST
+action of that boundary. The helper always exits 0 (fail-OPEN) and is additionally wrapped
+`|| true` as defence-in-depth — a checkpoint failure NEVER blocks the planning round.
+
+```bash
+python3 __QUOIN_HOME__/scripts/thorough_plan_checkpoint.py \
+  --project-root {root} --task {task} --round {N} --phase {plan|critic|revise} \
+  --sid "$_TPCKPT_SID" --branch "$_TPCKPT_BRANCH" \
+  --plan-path {task_dir}/current-plan.md \
+  [--critic-path {task_dir}/critic-response-{N}.md] \
+  --session-state {sessions}/{date}-{task}-orchestrator.md || true
+```
+
+The `--session-state` path uses the ORCHESTRATOR-DEDICATED file (`{date}-{task}-orchestrator.md`).
+Subagents write only to the standard `{date}-{task}.md` — these two files are fully disjoint (M-02/D-07).
+The orchestrator file owns `## Current stage: thorough-plan:round-N-{phase}` and subagents never touch it.
+
+**`## Current stage` ownership note:** The orchestrator file is authoritative for the round/phase token
+but is NOT a reliable B3 Tier-4 fallback: in the kill-during-subagent window, B3 Tier-4 reads the
+freshest `sessions/*.md` by mtime, which is the subagent's file. Recovery: re-invoke
+`/thorough_plan {task}` — T-04 direct scan always works (B3-immune). The checkpoint file
+`thorough-plan-progress-{sid}.md` is the AUTHORITATIVE resume anchor.
+
+### Boundary triggers
+
+Run the checkpoint procedure at each of these points:
+
+1. **After `/plan` returns and `current-plan.md` is written** (round 1):
+   `--round 1 --phase plan`
+2. **After each `/critic` returns and `critic-response-{N}.md` is written** (every round):
+   `--round N --phase critic --critic-path {task_dir}/critic-response-{N}.md`
+3. **After each `/revise`/`/revise-fast` returns and `current-plan.md` is updated** (rounds 2+):
+   `--round N --phase revise`
+4. **Small-profile routing** (single `/plan` pass): after the plan write, same as trigger 1:
+   `--round 1 --phase plan`
+
+### Session-state ownership
+
+- **Orchestrator writes:** `{date}-{task}-orchestrator.md` (fully owned; updated at each boundary via helper)
+- **Subagents write:** `{date}-{task}.md` (per-phase tracking only; orchestrator never reads this for resume)
+- **PRIMARY resume anchor:** `thorough-plan-progress-{sid}.md` checkpoint file (T-04 direct scan)
+- **SECONDARY convenience:** `/checkpoint --restore` — best-effort; B3 Clause-B limitation documented above
+
+The sentinel `pending-restore-{sid}.txt` is still written at each boundary and enables Tier-3
+picker enumeration. However, it CANNOT override B3 Clause-B when a subagent file is newer. In that
+window, T-04 direct scan (not the picker) is the reliable resume path.
+
+The checkpoint file includes `## Last user intent` with the next-phase re-entry string (e.g.,
+`"thorough_plan {task}: last completed boundary thorough-plan:round-1-plan; next phase to run: critic.
+Re-invoke /thorough_plan {task} and resume at critic."`). This is the field the picker's Step 2
+surface renders as re-entry guidance and must always be present and non-empty (C-01).

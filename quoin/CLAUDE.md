@@ -298,6 +298,13 @@ Every skill records its session to the task's cost ledger at session start.
 
 **Phase values:** `discover`, `architect`, `plan`, `critic`, `revise`, `implement`, `review`, `gate`, `end-of-task`, `pr`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `triage`, `expand`, `checkpoint`, `cleanup`, `sleep`, `session-close-hook`, `next-steps`, `ad-hoc`
 
+Note: `/thorough_plan` writes phase-boundary session-state updates (IVG-98) to a DEDICATED
+orchestrator file (`{date}-{task}-orchestrator.md`) at each planning-loop boundary, with
+`## Current stage: thorough-plan:round-{N}-{phase}` (phase ∈ {plan, critic, revise}). This token is
+a recognized `## Current stage` value consumed by `/start_of_day`, `/end_of_day`, and `/status`.
+Subagents write only to the standard `{date}-{task}.md`; the orchestrator file is fully owned by
+the orchestrator and subagents never touch it (M-02/D-07, see lifecycle-guide.md).
+
 **Category:** Always write `task`.
 
 **Conditional skills:** `/discover`, `/gate`, `/start_of_day`, `/capture_insight`, and `/triage` skip cost recording if no task context is active.
