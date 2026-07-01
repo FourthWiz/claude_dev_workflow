@@ -27,7 +27,6 @@ Exit codes
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -76,8 +75,6 @@ def _update_session_state(
     blocks are preserved (atomic full-file rewrite, not in-place line edit).
     If file does NOT exist: creates a minimal template (M-02 creation-if-absent).
     """
-    today = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
-
     if ss_path.exists():
         text = ss_path.read_text(encoding="utf-8")
         lines = text.splitlines(keepends=True)
@@ -119,7 +116,6 @@ def _write_checkpoint(
     stage: str,
     task: str,
     branch: str,
-    round_n: int,
     phase: str,
     plan_path: str,
     critic_path: str,
@@ -282,7 +278,6 @@ def main(argv: list[str] | None = None) -> int:
             stage=stage,
             task=args.task,
             branch=args.branch,
-            round_n=args.round_n,
             phase=args.phase,
             plan_path=args.plan_path,
             critic_path=args.critic_path,

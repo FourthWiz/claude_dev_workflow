@@ -14,12 +14,8 @@ Tests the full write/read cycle for thorough_plan_checkpoint.py:
 from __future__ import annotations
 
 import importlib.util
-import os
-import re
 import time
 from pathlib import Path
-
-import pytest
 
 # ---------------------------------------------------------------------------
 # Import the core module under test
@@ -35,6 +31,7 @@ def _load_module():
     spec = importlib.util.spec_from_file_location(
         "_test_thorough_plan_checkpoint", _CORE_SCRIPT
     )
+    assert spec is not None
     mod = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(mod)
@@ -256,8 +253,10 @@ class TestThoroughPlanCheckpointRoundtrip:
         _call(tmp_path, round_n=1, phase="plan")
 
         mem = tmp_path / ".workflow_artifacts" / "memory"
-        # "New session" with a different SID — simulate post-kill fresh session
-        new_sid = "NEW-SID-AFTER-KILL"
+        # "New session" with a different SID — simulate post-kill fresh session.
+        # (new_sid is intentionally not passed to any call — the test asserts
+        #  that the sentinel written under SID is discoverable regardless of
+        #  the current session's ID, i.e., by glob not by SID match.)
 
         # Port the picker's sentinel-discovery logic:
         #   1. Glob pending-restore-*.txt in memory/
