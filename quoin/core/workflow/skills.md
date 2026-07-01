@@ -85,4 +85,4 @@ behavior without keeping duplicate per-skill shell branches in the wrapper.
 
 **Runtime boundary note:** despite living in `core/scripts/` for wrapper-pattern symmetry, the validator is Claude-adapter-specific in scope. It checks `## §0 Model dispatch` headings, `adapters/claude/` paths, and install.sh routing — all Claude-specific concepts. A future Codex adapter drift validator would be a parallel script (`validate_adapter_drift_codex.py`), not a generalization of this one.
 
-**Pilot-test coexistence:** 17 existing `test_*_adapter_pilot.py` files remain as point-in-time regression guards from individual phase migrations. The adapter drift validator is the forward-looking guard for all 21 skills and any future additions. Both coexist; do not delete the pilot tests.
+**Pilot-test coexistence:** 17 existing `test_*_adapter_pilot.py` files remain as point-in-time regression guards from individual phase migrations. The adapter drift validator is the forward-looking guard for all 28 skills and any future additions. Both coexist; do not delete the pilot tests.

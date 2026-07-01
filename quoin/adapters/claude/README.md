@@ -34,23 +34,21 @@ The first runtime-portability pass must not change Claude install behavior.
 
 ## Per-skill adapter files
 
-The following per-skill adapter files live under this directory and are the
-install source for the Claude runtime. `bash quoin/install.sh` deploys each
-to `~/.claude/skills/<name>/SKILL.md` instead of the legacy stub at
-`quoin/skills/<name>/SKILL.md`.
+Per-skill adapter SKILL.md files live under `skills/<name>/SKILL.md` in this
+directory and are the install source for the Claude runtime.
+`bash quoin/install.sh` deploys each to `~/.claude/skills/<name>/SKILL.md`
+instead of the legacy stub at `quoin/skills/<name>/SKILL.md`.
 
-- `skills/capture_insight/SKILL.md` — Phase 6 pilot of the runtime-portable adapter pattern.
-- `skills/triage/SKILL.md` — Phase 7 migration.
-- `skills/start_of_day/SKILL.md` — Phase 7 migration.
-- `skills/review/SKILL.md` — Phase 8 migration.
-- `skills/plan/SKILL.md` — Phase 9 migration.
-- `skills/critic/SKILL.md` — Phase 9 migration.
-- `skills/revise/SKILL.md` — Phase 9 migration.
-- `skills/revise-fast/SKILL.md` — Phase 9 migration.
-- `skills/architect/SKILL.md` — Phase 10 migration.
-- `skills/thorough_plan/SKILL.md` — Phase 10 migration.
+**Authoritative source for the full skill list:** `quoin/core/workflow/skills.json`
+(`skills[].name` array). This README previously maintained a per-skill enumeration
+that inevitably drifted; the manifest is now the single source of truth.
+Currently 28 skills are registered. To inspect:
 
-The runtime-neutral intent docs for these skills live at
-`quoin/core/skills/<name>.md`. The legacy stubs at
-`quoin/skills/<name>/SKILL.md` remain only so glob-based tests and the
-manifest frontmatter parser continue to find a valid SKILL.md at each path.
+```bash
+python3 -c "import json; d=json.load(open('quoin/core/workflow/skills.json')); [print(s['name']) for s in d['skills']]"
+```
+
+The runtime-neutral intent docs for each skill live at
+`quoin/core/skills/<name>.md`. Legacy stubs at `quoin/skills/<name>/SKILL.md`
+remain only so glob-based tests and the manifest frontmatter parser continue
+to find a valid SKILL.md at each path.

@@ -152,7 +152,7 @@ Four primary modes:
 
 **(b) Standalone** — user runs `/sleep` directly. Full default mode (Steps 0–6). Step 0 verifies today's daily briefing exists first.
 
-**(c) `--dry-run`** — scores entries and prints three-bucket decisions; **Makes NO writes**. Use during the first 30 days of production calibration. Also triggered automatically when `__QUOIN_HOME__/memory/sleep_dryrun_start.txt` exists and is less than 30 days old.
+**(c) `--dry-run`** — scores entries and prints three-bucket decisions; **Makes NO writes**. Use during the first 30 days of production calibration. Also triggered automatically when `__QUOIN_HOME__/memory/sleep_dryrun_start.txt` exists and is less than 30 days old. To enter calibration mode: create this file with today's ISO date as its contents (`echo "$(date +%Y-%m-%d)" > ~/.claude/memory/sleep_dryrun_start.txt`). Delete the file to exit calibration mode early.
 
 **(d) `--escalate`** — after default scoring, spawns a separate Opus Agent subagent for middle-band candidates. Opus returns revised decisions; user confirms each. NOTE: `[no-redispatch]` guards the parent `/sleep` from §0 re-dispatch only; it does NOT prevent `/sleep` from spawning Opus children via `--escalate`. The Opus subagent is an explicit forward dispatch, not a tier-switch.
 
