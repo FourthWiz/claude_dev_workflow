@@ -4,6 +4,7 @@
 Serves:
   GET /api/tasks                     → scan_tasks() JSON
   GET /api/tasks/<name>              → task_detail() JSON
+  GET /api/spend                     → aggregate_today() snapshot JSON (T-06)
   GET /                              → index.html
   GET /dashboard.css                 → dashboard.css
   GET /app.js                        → app.js
@@ -68,6 +69,13 @@ _dc = _load_module(
 )
 make_cost_provider = _dc.make_cost_provider
 project_hash = _dc.project_hash          # Required: _cost_jsonl_mtime_ns uses this bare name
+
+# Load portable spend_monitor (T-06: /api/spend endpoint)
+_sm = _load_module(
+    "_dashboard_server_spend_monitor",
+    _CORE_SCRIPTS / "spend_monitor.py",
+)
+_aggregate_today = _sm.aggregate_today
 
 # ---------------------------------------------------------------------------
 # Cost-freshness helper (T-04b — ADAPTER LOCAL: dashboard_server.py only)
@@ -304,6 +312,30 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     self._send_json(200, item, etag=etag)
                 except KeyError:
                     self._send_json(404, {"error": "memory item not found"})
+                return
+
+            if path == "/api/spend":
+                # ETag uses JSONL mtime (spend changes when sessions change)
+                cj = _cost_jsonl_mtime_ns(self.project_root)
+                scope = f"spend:cj={cj}"
+                etag = compute_version_token(self.project_root, scope)
+                inm = self.headers.get("If-None-Match")
+                if inm is not None and inm == etag:
+                    self._send_not_modified(etag)
+                    return
+                snap = _aggregate_today(project_root=self.project_root)
+                data = {
+                    "today_usd": snap.today_usd,
+                    "by_model": snap.by_model,
+                    "by_model_pct": snap.by_model_pct,
+                    "by_task": snap.by_task,
+                    "by_task_partial": snap.by_task_partial,
+                    "by_phase": snap.by_phase,
+                    "by_phase_partial": snap.by_phase_partial,
+                    "scope": snap.scope,
+                    "stale": snap.stale,
+                }
+                self._send_json(200, data, etag=etag)
                 return
 
             if path.startswith("/api/"):

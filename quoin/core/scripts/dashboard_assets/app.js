@@ -54,6 +54,7 @@
     selectedStage: null,       // T-08: selected stage tab (stage n value)
     lastCardFingerprint: null, // T-07b: skip DOM mutation when structure unchanged on poll
     etags: {},                 // IVG-76: ETag cache keyed by request URL
+    spend: null,               // T-06: latest /api/spend snapshot
   };
 
   // ---------------------------------------------------------------------------
@@ -619,6 +620,36 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // T-06: Today's spend section
+  // ---------------------------------------------------------------------------
+
+  function fetchSpend() {
+    fetchJSON('/api/spend', function (err, data) {
+      if (err || data === null) return;  // 304 or error — keep existing state
+      state.spend = data;
+      renderSpendSection();
+    });
+  }
+
+  function renderSpendSection() {
+    var el = document.getElementById('spend-section');
+    if (!el) return;
+    var snap = state.spend;
+    if (!snap) { el.innerHTML = ''; return; }
+
+    var usd = typeof snap.today_usd === 'number' ? snap.today_usd : null;
+    if (usd === null) { el.innerHTML = ''; return; }
+
+    var partialMark = snap.by_task_partial ? '~' : '';
+    var formatted = partialMark + '$' + usd.toFixed(2);
+    var html = 'Today: <span class="spend-today">' + escHtml(formatted) + '</span>';
+    if (snap.by_task_partial) {
+      html += '<span class="spend-unattrib">(partial)</span>';
+    }
+    el.innerHTML = html;
+  }
+
   function startPolling() {
     if (state.pollInterval) clearInterval(state.pollInterval);
     state.pollInterval = setInterval(function () {
@@ -626,6 +657,7 @@
       if (state.selectedTask) {
         loadTaskDetail(state.selectedTask, true);  // T-07: silent — preserve scroll
       }
+      fetchSpend();           // T-06: refresh spend display
     }, 3000);
   }
 
@@ -657,6 +689,9 @@
 
     // Initial load (non-silent — animate cards on first render)
     refreshTaskList(false);
+
+    // T-06: initial spend load
+    fetchSpend();
 
     // Start polling (~3s, unconditional — D-10)
     startPolling();
