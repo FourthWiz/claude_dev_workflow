@@ -111,3 +111,24 @@ class TestThoroughPlanPhaseCheckpointPresent:
             "thorough_plan/SKILL.md is missing reference to orchestrator-dedicated session-state "
             "file (M-02/D-07 fix)"
         )
+
+    def test_same_session_check_present(self):
+        """SKILL.md must document the same-session check in §1b."""
+        text = _read()
+        assert "_TP_SAME_SESSION" in text or "Same-session" in text, (
+            "thorough_plan/SKILL.md must document same-session detection (_TP_SAME_SESSION) "
+            "in the §1b startup resume-detection block (IVG-105)."
+        )
+
+    def test_resume_in_new_session_option_present(self):
+        """SKILL.md must document option (c) 'Resume in a new session'."""
+        text = _read()
+        assert any(phrase in text for phrase in [
+            "Resume in a new session",
+            "resume in a new session",
+            "option (c)",
+            "Option (c)",
+        ]), (
+            "thorough_plan/SKILL.md must document option (c) 'Resume in a new session' "
+            "for the same-session scenario in §1b (IVG-105)."
+        )

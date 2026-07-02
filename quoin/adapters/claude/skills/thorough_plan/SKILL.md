@@ -70,7 +70,46 @@ For each file matching the glob (if any):
    current `current-plan.md` mtime (whichever bound is more permissive). Silently skip stale checkpoints.
 4. If multiple qualifying files exist, pick the one with the most recent mtime (tiebreak: freshest wins).
 
-**If a qualifying checkpoint is found:** use `AskUserQuestion` to offer:
+**If a qualifying checkpoint is found:**
+
+**Same-session check (insert BEFORE presenting the AskUserQuestion options):**
+
+Extract the SID from the qualifying checkpoint's filename:
+```sh
+_ckpt_sid=$(basename "$ckpt_file" .md | sed 's/^thorough-plan-progress-//')
+```
+
+Compare to `_TPCKPT_SID` (acquired at startup via `get_session_uuid.py`):
+```sh
+if [ -n "$_ckpt_sid" ] && [ "$_ckpt_sid" != "unknown" ] \
+   && [ -n "$_TPCKPT_SID" ] && [ "$_TPCKPT_SID" != "unknown" ] \
+   && [ "$_ckpt_sid" = "$_TPCKPT_SID" ]; then
+  _TP_SAME_SESSION=true
+else
+  _TP_SAME_SESSION=false
+fi
+```
+
+**If `_TP_SAME_SESSION=true`:** the AskUserQuestion gains a third option and a warning
+in its body:
+
+- **Header:** `Resume planning checkpoint?`
+- **Warning line (add above options when same-session):**
+  `⚠ Same-session detected: this task was in progress in your CURRENT session.
+   Resuming here adds more subagent dispatches to an already-used context window.`
+- Use `AskUserQuestion` to offer:
+  - **(a) Resume here** — re-hydrate and continue (same-session, not recommended)
+  - **(b) Start fresh** — restart round 1, ignore checkpoint (non-destructive)
+  - **(c) Resume in a new session** — print instructions and STOP:
+    ```
+    To resume in a new session:
+      • Close this window, then run: claude
+      • In the new session, run: /thorough_plan <task-name>
+      • The §1b scan will find the same checkpoint there (it is not deleted).
+    ```
+    STOP — do NOT dispatch any planning work.
+
+**If `_TP_SAME_SESSION=false` (normal case):** use `AskUserQuestion` to offer:
 - **(a) Resume** — read the `## Current stage` token (`thorough-plan:round-{N}-{phase}`), parse N and
   phase, re-hydrate by reading the existing `current-plan.md` and any `critic-response-*.md` on disk,
   set the round counter, and re-dispatch the phase that was in flight (the phase AFTER the last
@@ -78,6 +117,9 @@ For each file matching the glob (if any):
   re-dispatching.
 - **(b) Start fresh** — ignore the progress checkpoint and run round 1. Non-destructive: the checkpoint
   file is NOT deleted on "start fresh".
+
+**Fail-OPEN:** if `_ckpt_sid` extraction fails (empty result) or `_TPCKPT_SID == "unknown"`,
+treat as `_TP_SAME_SESSION=false` and present the standard 2-option AskUserQuestion.
 
 **If NO qualifying checkpoint exists:** continue silently with round 1 (no AskUserQuestion).
 

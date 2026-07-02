@@ -746,7 +746,7 @@ done
 ```
 
 Explicit fallthrough behavior:
-- `_anchor` set → present it (skip to Step 2).
+- `_anchor` set → bind cp_path = <anchor file path>, proceed to Step 1.5 (same-session detection), then Step 2.
 - `_anchor` not set but `_anchor_task` set → feed `_anchor_task` to tier-3 freshest_task override; proceed to tier-3 full enumeration.
 - Neither set → fall through to tier-3 full enumeration (no silent failure; the combined gate at auto-pick applies).
 
@@ -789,7 +789,7 @@ if exists pending-restore-${current_session_id}.txt:
     <invoke B3 session-state fallback>
   else
     # Same task, or freshest_task is empty (no session-state files — safe no-op, guard short-circuits)
-    return cp_path immediately  # fast validation passed; no full enumeration needed
+    proceed to Step 1.5 (same-session detection) with cp_path bound, then Step 2
   fi
 ```
 `current_session_id` is obtained via the same UUID-acquisition procedure as Step 1.1 (harness-provided UUID; else most recently modified JSONL filename stem).
@@ -997,6 +997,79 @@ consumed_sentinel_path=""
    On `n`: fall through to existing Step 3 graceful "no checkpoints found" path.
 
    **Note:** The session-state fallback fires BEFORE the Step 3 graceful-error path. Step 3 is only reached when both the normal picker and the B3 fallback are exhausted or declined.
+
+### Step 1.5: Same-session detection
+
+(Runs AFTER Step 1 picker resolves a checkpoint path — ANY tier. Runs BEFORE Step 2.
+ Requires the two Tier-1/Tier-2 reroutes above so that no picker fast-path bypasses this step.)
+
+Rationale: if the checkpoint was saved in the CURRENT session, restoring here loads prior
+work context into an already-used session window, defeating the purpose of checkpointing.
+The primary scenario is a user who compacted (or was blocked) and then immediately ran
+/checkpoint --restore in the SAME session instead of opening a fresh one.
+
+**Post-compact no-warning (intentional):** When `compact-happened-*` exists, the compact
+already cleared the context window — continuing in this session is safe (analogous to opening
+a fresh session). No warning is shown in this case by design.
+
+**Compact-happened check (runs FIRST — fail-OPEN if sentinel exists):**
+```sh
+_compact_ran="${_PROJECT_ROOT}/.workflow_artifacts/memory/compact-happened-${current_session_id}.txt"
+if [ -f "$_compact_ran" ]; then
+  _SAME_SESSION=false   # compact already cleared the context; no warning needed
+fi
+```
+
+If the above sentinel file exists, skip the rest of Step 1.5 entirely and proceed to Step 2.
+
+**SID extraction (runs only if compact-happened sentinel does NOT exist):**
+```sh
+# Note: $cp_path is bound by the Tier-1 fast path (above reroute) and the Tier-2 anchor
+# (above reroute). For Tier-3/4 resolutions (full enumeration, B3 synthesis), cp_path may
+# be unset → ckpt_sid will be empty → _SAME_SESSION=false (fail-OPEN by design).
+# The same-session-without-compact scenario is a fast-path-only phenomenon; non-fast-path
+# resolutions are inherently lower-risk.
+ckpt_sid=$(awk '/^## Session ID[[:space:]]*$/{getline; gsub(/\r$/,""); print; exit}' "$cp_path" \
+           2>/dev/null || echo "")
+```
+
+**Comparison:**
+```sh
+if [ -n "$ckpt_sid" ] && [ "$ckpt_sid" != "unknown" ] \
+   && [ -n "$current_session_id" ] && [ "$current_session_id" != "unknown" ] \
+   && [ "$ckpt_sid" = "$current_session_id" ]; then
+  _SAME_SESSION=true
+else
+  _SAME_SESSION=false
+fi
+```
+
+**If `_SAME_SESSION=true`:** use `AskUserQuestion` with:
+- Header: `Same-session restore detected`
+- Body: `This checkpoint was saved in your current session (ID: ${ckpt_sid:0:8}…). Restoring
+  here loads prior work context into an already-used session window, which defeats the purpose
+  of checkpointing. For the cleanest restore, open a new Claude Code session and run
+  /checkpoint --restore there.`
+- Option A: `Proceed in this session (not recommended)` → continue to Step 2 normally
+- Option B: `Show me how to start a fresh session` → print the guidance below and STOP
+  (do NOT proceed to Step 2):
+
+  ```
+  To start a fresh session:
+    • GUI:     Cmd+N (macOS) / Ctrl+N (Linux/Windows) — opens a new Claude Code window
+    • Terminal: close this window, then run: claude
+  Then run /checkpoint --restore in the new session.
+  ```
+
+**If `_SAME_SESSION=false` or the check is skipped (fail-OPEN):** proceed to Step 2 without
+any warning.
+
+**Fail-OPEN conditions (skip the check entirely, proceed normally):**
+- `compact-happened-${current_session_id}.txt` exists (compact already ran; context is clear)
+- `ckpt_sid` empty after extraction (parse failure or legacy checkpoint without ## Session ID;
+  also covers Tier-3/4 non-fast-path resolutions where cp_path is unset)
+- `ckpt_sid` == the literal string `unknown`
+- `current_session_id` empty or == literal `unknown`
 
 ### Step 2: Surface checkpoint state to user
 
