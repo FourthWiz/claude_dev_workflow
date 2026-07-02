@@ -162,6 +162,29 @@ body {
   color: var(--text-secondary);
 }
 
+/* T-06: Today's spend display in the header */
+.spend-section {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.spend-today {
+  font-weight: 700;
+  color: var(--amber);
+}
+
+.spend-scope-label {
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+.spend-unattrib {
+  color: var(--text-muted);
+  font-size: 10px;
+  margin-left: 4px;
+}
+
 /* ── Main body layout ────────────────────────────────────────────────── */
 .app-body {
   display: flex;

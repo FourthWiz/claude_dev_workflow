@@ -98,6 +98,7 @@ DEPLOYED_SCRIPTS = (
     "generate_discovery_map.py",     # /discover optional hook — silently skips without deploy
     "select_unprocessed_sessions.py",  # session-selection cross-check for end_of_day/weekly_review
     "thorough_plan_checkpoint.py",   # IVG-98: phase-boundary checkpoint wrapper for /thorough_plan
+    "cost_summary.py",               # IVG-96: portable cost-summary.json normalizer wrapper
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -175,14 +176,25 @@ def _copy_with_substitution(
 
     Non-text extensions are byte-copied without substitution.
     Sets +x for .py and .sh files.
+    Skips the write when the destination already contains identical content
+    so that re-installs preserve file mtimes (CRIT-1 round-2).
     """
     if src.suffix in _SUBSTITUTE_EXTS:
-        dst.write_text(
-            substitute_quoin_home(src.read_text(encoding="utf-8"), dest_root),
-            encoding="utf-8",
-        )
+        new_content = substitute_quoin_home(src.read_text(encoding="utf-8"), dest_root)
+        if dst.exists() and dst.read_text(encoding="utf-8") == new_content:
+            # Still fix permissions even when content unchanged
+            if src.suffix in (".py", ".sh"):
+                os.chmod(dst, 0o755)
+            return
+        dst.write_text(new_content, encoding="utf-8")
     else:
-        shutil.copyfile(src, dst)
+        src_bytes = src.read_bytes()
+        if dst.exists() and dst.read_bytes() == src_bytes:
+            # Still fix permissions even when content unchanged
+            if src.suffix in (".py", ".sh"):
+                os.chmod(dst, 0o755)
+            return
+        dst.write_bytes(src_bytes)
     if src.suffix in (".py", ".sh"):
         os.chmod(dst, 0o755)
 
@@ -331,6 +343,7 @@ CORE_SCRIPTS = (
     "generate_discovery_map.py",  # /discover optional hook — builds discovery-map.json post-scan
     "select_unprocessed_sessions.py",  # session-selection helper for end_of_day/weekly_review
     "thorough_plan_checkpoint.py",  # IVG-98: phase-boundary checkpoint core impl for /thorough_plan
+    "cost_summary.py",              # IVG-96: portable cost-summary.json normalizer core impl
 )
 
 

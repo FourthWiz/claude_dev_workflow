@@ -455,6 +455,94 @@ def test_memo_cache_no_reparse(sm, fixture_home):
         sm.parse_session_today = original_parse
 
 
+# ---------------------------------------------------------------------------
+# T-05: by_phase breakdown tests (D-04)
+# ---------------------------------------------------------------------------
+
+def test_by_phase_populated(sm, fixture_with_ledger):
+    """by_phase populated from ledger PHASE column; phase key matches ledger value."""
+    snap = sm.aggregate_today(
+        home=fixture_with_ledger["home"],
+        project_root=fixture_with_ledger["project_root"],
+    )
+    assert snap.by_phase, f"by_phase should be non-empty: {snap.by_phase}"
+    assert "implement" in snap.by_phase, (
+        f"'implement' not in by_phase — expected phase from fixture ledger: {snap.by_phase}"
+    )
+    assert snap.by_phase["implement"] > 0, (
+        f"by_phase['implement'] should be > 0: {snap.by_phase}"
+    )
+
+
+def test_by_phase_uuid_dedup(sm, tmp_path):
+    """Same UUID referenced by two ledger tasks → by_phase counts it exactly once."""
+    home = tmp_path / "home"
+    project_root = tmp_path / "project"
+    proj_hash_str = sm.project_hash(str(project_root))
+
+    proj_dir = home / ".claude" / "projects" / proj_hash_str
+    proj_dir.mkdir(parents=True)
+    test_uuid = "aaaa1111-bbbb-2222-cccc-3333dddd4444"
+    jsonl_path = proj_dir / f"{test_uuid}.jsonl"
+    jsonl_path.write_text(
+        _make_row("claude-opus-4-7", 100, 50, _ts_today()) + "\n"
+    )
+
+    day_start, day_end = sm._local_day_bounds()
+    direct = sm.parse_session_today(jsonl_path, day_start, day_end)
+    direct_usd = sum(direct["per_model_cost"].values())
+    assert direct_usd > 0, "Fixture JSONL must produce positive USD"
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    # Two tasks referencing the same UUID with different phases
+    for task_name in ("task-a", "task-b"):
+        d = project_root / ".workflow_artifacts" / task_name
+        d.mkdir(parents=True)
+        phase = "implement" if task_name == "task-a" else "review"
+        (d / "cost-ledger.md").write_text(
+            f"# Cost Ledger\nUUID | DATE | PHASE | MODEL | task | NOTE\n"
+            f"{test_uuid} | {today_str} | {phase} | sonnet | task | \"dedup test\"\n"
+        )
+
+    snap = sm.aggregate_today(home=home, project_root=project_root)
+
+    # Total by_phase sum must equal direct_usd (counted once, not twice)
+    phase_total = sum(snap.by_phase.values())
+    assert abs(phase_total - direct_usd) < 1e-9, (
+        f"UUID dedup failed: by_phase sum {phase_total} != direct_usd {direct_usd} "
+        f"(UUID counted {phase_total / direct_usd:.1f}x). by_phase={snap.by_phase}"
+    )
+
+
+def test_scan_ledgers_today_early_return_3tuple(sm, tmp_path):
+    """scan_ledgers_today returns a 3-tuple ({}, {}, False) when .workflow_artifacts is absent."""
+    project_root = tmp_path / "no-artifacts"
+    project_root.mkdir()
+    home = tmp_path / "home"
+    home.mkdir()
+
+    day_start, day_end = sm._local_day_bounds()
+    result = sm.scan_ledgers_today(project_root, day_start, day_end, home=home)
+
+    assert isinstance(result, tuple), f"Expected tuple, got {type(result)}"
+    assert len(result) == 3, f"Expected 3-tuple, got {len(result)}-tuple: {result}"
+    by_task, by_phase, partial = result
+    assert by_task == {}, f"by_task should be empty: {by_task}"
+    assert by_phase == {}, f"by_phase should be empty: {by_phase}"
+    assert partial is False, f"partial should be False: {partial}"
+
+
+def test_snapshot_has_by_phase_fields(sm):
+    """SpendSnapshot has by_phase and by_phase_partial fields with correct defaults."""
+    snap = sm.SpendSnapshot()
+    assert hasattr(snap, "by_phase"), "SpendSnapshot missing by_phase field"
+    assert hasattr(snap, "by_phase_partial"), "SpendSnapshot missing by_phase_partial field"
+    assert snap.by_phase == {}, f"Default by_phase should be {{}}: {snap.by_phase}"
+    assert snap.by_phase_partial is False, (
+        f"Default by_phase_partial should be False: {snap.by_phase_partial}"
+    )
+
 def test_memo_cache_forces_reparse_on_mtime_change(sm, fixture_home):
     """Touching a fixture file's mtime between calls forces a re-parse of only that file."""
     parse_count = [0]

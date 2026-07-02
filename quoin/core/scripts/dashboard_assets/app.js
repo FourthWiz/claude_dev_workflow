@@ -54,6 +54,7 @@
     selectedStage: null,       // T-08: selected stage tab (stage n value)
     lastCardFingerprint: null, // T-07b: skip DOM mutation when structure unchanged on poll
     etags: {},                 // IVG-76: ETag cache keyed by request URL
+    spend: null,               // T-06: latest /api/spend snapshot
   };
 
   // ---------------------------------------------------------------------------
@@ -450,9 +451,24 @@
         // Cost table (all stages combined — per-stage breakdown requires schema change)
         var sCost = detail.cost;
         if (sCost && sCost.by_phase && Object.keys(sCost.by_phase).length > 0) {
+          // Compute attributed spend for this task's phase entries (USD mode only)
+          var sAttribTotal = null;
+          if (sCost.mode === 'usd') {
+            var sByPhaseVals = sCost.by_phase;
+            var sAttrib = 0;
+            var sBpKeys = Object.keys(sByPhaseVals);
+            for (var sbk = 0; sbk < sBpKeys.length; sbk++) {
+              var sbv = sByPhaseVals[sBpKeys[sbk]];
+              sAttrib += (sbv && sbv.usd != null) ? sbv.usd : 0;
+            }
+            sAttribTotal = sAttrib;
+          }
           var sCaption = (sCost.mode === 'counts')
             ? 'Activity — all stages combined (no token/USD data)'
             : 'Cost breakdown — all stages combined';
+          if (sAttribTotal !== null) {
+            sCaption = 'By phase (of $' + sAttribTotal.toFixed(2) + ' attributed spend) — all stages combined';
+          }
           html += '<p class="stage-cost-note">' + sCaption + '</p>';
           var sColHdr = (sCost.mode === 'counts') ? 'Events' : 'Cost';
           html += '<table class="by-phase-table"><thead><tr><th>Phase</th><th>' + sColHdr + '</th></tr></thead><tbody>';
@@ -490,6 +506,15 @@
       html += '<div class="detail-section"><h3>' + ssHdr + '</h3>';
       if (cost.mode === 'counts') {
         html += '<p class="stage-cost-note">Activity (no token/USD data available)</p>';
+      } else if (cost.mode === 'usd') {
+        // Compute attributed spend as sum of by_phase usd values for this task
+        var ssAttrib = 0;
+        var ssBpKeys = Object.keys(cost.by_phase);
+        for (var ssbk = 0; ssbk < ssBpKeys.length; ssbk++) {
+          var ssbv = cost.by_phase[ssBpKeys[ssbk]];
+          ssAttrib += (ssbv && ssbv.usd != null) ? ssbv.usd : 0;
+        }
+        html += '<p class="stage-cost-note">By phase (of $' + ssAttrib.toFixed(2) + ' attributed spend):</p>';
       }
       var ssColHdr = (cost.mode === 'counts') ? 'Events' : 'Cost';
       html += '<table class="by-phase-table"><thead><tr><th>Phase</th><th>' + ssColHdr + '</th></tr></thead><tbody>';
@@ -619,6 +644,68 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // T-06: Today's spend section
+  // ---------------------------------------------------------------------------
+
+  function fetchSpend() {
+    fetchJSON('/api/spend', function (err, data) {
+      if (err || data === null) return;  // 304 or error — keep existing state
+      state.spend = data;
+      renderSpendSection();
+    });
+  }
+
+  function renderSpendSection() {
+    var el = document.getElementById('spend-section');
+    if (!el) return;
+    var snap = state.spend;
+    if (!snap) { el.innerHTML = ''; return; }
+
+    var usd = typeof snap.today_usd === 'number' ? snap.today_usd : null;
+    if (usd === null) { el.innerHTML = ''; return; }
+
+    // Total line
+    var html = 'Today: <span class="spend-today">$' + usd.toFixed(2) + '</span>';
+    if (snap.by_phase_partial || snap.by_task_partial) {
+      html += ' <span class="spend-unattrib">(partial)</span>';
+    }
+
+    // By-phase breakdown table
+    var byPhase = snap.by_phase;
+    if (byPhase && Object.keys(byPhase).length > 0) {
+      var phases = Object.keys(byPhase).sort();
+      // Use server-computed attributed/unattributed if available; fall back to local sum
+      var attributed = typeof snap.attributed_usd === 'number'
+        ? snap.attributed_usd
+        : phases.reduce(function (acc, ph) {
+            var v = byPhase[ph];
+            return acc + (typeof v === 'number' ? v : 0);
+          }, 0);
+      var unattributed = typeof snap.unattributed_usd === 'number'
+        ? snap.unattributed_usd
+        : Math.max(0, usd - attributed);
+
+      html += '<div class="spend-phase-breakdown">';
+      html += '<div class="spend-phase-label">By phase:</div>';
+      html += '<table class="spend-phase-table"><tbody>';
+      for (var spi = 0; spi < phases.length; spi++) {
+        var sph = phases[spi];
+        var sval = byPhase[sph];
+        var sstr = typeof sval === 'number' ? '$' + sval.toFixed(2) : '?';
+        html += '<tr><td>' + escHtml(sph) + '</td><td>' + escHtml(sstr) + '</td></tr>';
+      }
+      html += '</tbody></table>';
+      if (unattributed > 0.001) {
+        html += '<div class="spend-unattrib-line">Unattributed: ' +
+          '<span>$' + unattributed.toFixed(2) + '</span></div>';
+      }
+      html += '</div>';
+    }
+
+    el.innerHTML = html;
+  }
+
   function startPolling() {
     if (state.pollInterval) clearInterval(state.pollInterval);
     state.pollInterval = setInterval(function () {
@@ -626,6 +713,7 @@
       if (state.selectedTask) {
         loadTaskDetail(state.selectedTask, true);  // T-07: silent — preserve scroll
       }
+      fetchSpend();           // T-06: refresh spend display
     }, 3000);
   }
 
@@ -657,6 +745,9 @@
 
     // Initial load (non-silent — animate cards on first render)
     refreshTaskList(false);
+
+    // T-06: initial spend load
+    fetchSpend();
 
     // Start polling (~3s, unconditional — D-10)
     startPolling();

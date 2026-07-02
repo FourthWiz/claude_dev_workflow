@@ -258,7 +258,14 @@ def test_wheel_install_and_quoin_install(built_wheel):
         migrated = "plan"
         deployed_plan = claude_dir / "skills" / migrated / "SKILL.md"
         source_plan = QUOIN_SRC / "adapters" / "claude" / "skills" / migrated / "SKILL.md"
-        assert deployed_plan.read_bytes() == source_plan.read_bytes()
+        source_bytes = source_plan.read_bytes()
+        deployed_bytes = deployed_plan.read_bytes()
+        # The installer substitutes __QUOIN_HOME__ → the real ~/.claude path.
+        # Verify the substitution was applied correctly rather than checking raw equality.
+        expected_bytes = source_bytes.replace(b"__QUOIN_HOME__", str(claude_dir.resolve()).encode())
+        assert deployed_bytes == expected_bytes, (
+            "Deployed plan/SKILL.md does not match source after __QUOIN_HOME__ substitution"
+        )
 
         # QUICKSTART
         assert (claude_dir / "QUICKSTART.md").exists()
