@@ -324,6 +324,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     self._send_not_modified(etag)
                     return
                 snap = _aggregate_today(project_root=self.project_root)
+                attributed_usd = round(sum(snap.by_phase.values()), 6)
+                unattributed_usd = round(max(0.0, snap.today_usd - attributed_usd), 6)
                 data = {
                     "today_usd": snap.today_usd,
                     "by_model": snap.by_model,
@@ -332,6 +334,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "by_task_partial": snap.by_task_partial,
                     "by_phase": snap.by_phase,
                     "by_phase_partial": snap.by_phase_partial,
+                    "attributed_usd": attributed_usd,
+                    "unattributed_usd": unattributed_usd,
                     "scope": snap.scope,
                     "stale": snap.stale,
                 }

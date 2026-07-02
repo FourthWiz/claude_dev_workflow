@@ -182,11 +182,17 @@ def _copy_with_substitution(
     if src.suffix in _SUBSTITUTE_EXTS:
         new_content = substitute_quoin_home(src.read_text(encoding="utf-8"), dest_root)
         if dst.exists() and dst.read_text(encoding="utf-8") == new_content:
+            # Still fix permissions even when content unchanged
+            if src.suffix in (".py", ".sh"):
+                os.chmod(dst, 0o755)
             return
         dst.write_text(new_content, encoding="utf-8")
     else:
         src_bytes = src.read_bytes()
         if dst.exists() and dst.read_bytes() == src_bytes:
+            # Still fix permissions even when content unchanged
+            if src.suffix in (".py", ".sh"):
+                os.chmod(dst, 0o755)
             return
         dst.write_bytes(src_bytes)
     if src.suffix in (".py", ".sh"):
