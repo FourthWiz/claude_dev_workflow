@@ -3,6 +3,10 @@
 
 Reads quoin/core/workflow/skills.json and asserts per-skill structural
 invariants across core/, adapters/claude/, and legacy skills/ trees.
+Also validates that quoin/scripts/ has a wrapper for every core script
+(AD-WR), that wrappers are delegation-only shims (AD-WD), that pyproject
+force-include ships all required core asset dirs (AD-PK), and that the
+Codex adapter surface is complete (AD-CX).
 
 Lives in core/scripts/ because the manifest and the artifact-path
 conventions are runtime-neutral; references to ## §0 dispatch and
@@ -60,6 +64,10 @@ from typing import Any, Dict, List, Optional, Tuple
 # DRIFT AD-IV  (install.sh-variable)
 # DRIFT AD-IE  (install.sh-branch)
 # DRIFT AD-IO  (install.sh-ordering)
+# DRIFT AD-WR  (core-script-has-wrapper) — every quoin/core/scripts/*.py needs a quoin/scripts/ shim
+# DRIFT AD-WD  (wrapper-delegation-only) — wrappers that shadow a core script must be shims only
+# DRIFT AD-PK  (pip-manifest-key) — pyproject force-include must ship all required core asset dirs
+# DRIFT AD-CX  (codex-surface) — every manifest skill needs a Codex README; feature-manifest must be valid
 # ---------------------------------------------------------------------------
 AD_CO = "AD-CO"   # core-doc-exists
 AD_AD = "AD-AD"   # adapter-doc-exists
@@ -77,6 +85,10 @@ AD_PX = "AD-PX"   # preamble-not-present-for-non-spawn
 AD_IV = "AD-IV"   # install.sh-variable
 AD_IE = "AD-IE"   # install.sh-branch
 AD_IO = "AD-IO"   # install.sh-ordering
+AD_WR = "AD-WR"   # core-script-has-wrapper
+AD_WD = "AD-WD"   # wrapper-delegation-only
+AD_PK = "AD-PK"   # pip-manifest-key
+AD_CX = "AD-CX"   # codex-surface
 
 
 # ---------------------------------------------------------------------------
@@ -469,6 +481,212 @@ def _python_installer_prefers_claude_adapter(repo_root: Path) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# T-02: AD-WR and AD-WD checks
+# ---------------------------------------------------------------------------
+
+# Regex to detect a top-level def or class in wrapper text
+_TOPLEVEL_DEF_CLASS = re.compile(r"^(def|class)\s", re.MULTILINE)
+
+
+def check_core_wrapper_parity(
+    repo_root: Path,
+    violations: List[Dict[str, str]],
+) -> None:
+    """AD-WR: every quoin/core/scripts/*.py must have a quoin/scripts/<name>.py wrapper.
+    AD-WD: wrappers that shadow a core script must be delegation-only shims.
+
+    AD-WD scope is intentionally restricted to core-matched wrappers only (wrappers
+    that have a corresponding core script). Adapter-only scripts in quoin/scripts/
+    (analyze_cost_ledger, build_preambles, etc.) are never iterated here.
+
+    Guard: if quoin/core/scripts is not a dir, skip silently so synthetic fixture
+    tests with no core/scripts directory still pass.
+    """
+    core_scripts_dir = repo_root / "quoin" / "core" / "scripts"
+    if not core_scripts_dir.is_dir():
+        return
+
+    wrapper_dir = repo_root / "quoin" / "scripts"
+
+    for core_script in sorted(core_scripts_dir.iterdir()):
+        if not core_script.suffix == ".py":
+            continue  # skip __pycache__/, dashboard_assets/, non-.py items
+        name = core_script.name
+
+        wrapper_path = wrapper_dir / name
+
+        # AD-WR: wrapper must exist
+        if not wrapper_path.is_file():
+            violations.append({
+                "invariant": AD_WR,
+                "skill": name,
+                "detail": f"core script {name} has no wrapper in quoin/scripts/",
+            })
+            continue  # can't check AD-WD if wrapper is absent
+
+        # AD-WD: wrapper must be delegation-only (importlib shim present, no top-level def/class)
+        try:
+            wrapper_text = wrapper_path.read_text(encoding="utf-8")
+        except OSError:
+            continue  # can't read wrapper — skip AD-WD for this script
+
+        missing_shim = "spec_from_file_location" not in wrapper_text
+        has_toplevel = bool(_TOPLEVEL_DEF_CLASS.search(wrapper_text))
+
+        if missing_shim:
+            violations.append({
+                "invariant": AD_WD,
+                "skill": name,
+                "detail": (
+                    f"wrapper quoin/scripts/{name} is missing importlib shim "
+                    "(spec_from_file_location not found)"
+                ),
+            })
+        if has_toplevel:
+            violations.append({
+                "invariant": AD_WD,
+                "skill": name,
+                "detail": (
+                    f"wrapper quoin/scripts/{name} defines a top-level def or class "
+                    "(must be a delegation-only shim)"
+                ),
+            })
+
+
+# ---------------------------------------------------------------------------
+# T-03: AD-PK check (pip force-include manifest)
+# ---------------------------------------------------------------------------
+
+# Required core-asset keys that must appear in pyproject force-include section
+_REQUIRED_FORCE_INCLUDE_KEYS = {
+    "quoin/scripts",
+    "quoin/core",
+    "quoin/skills",
+    "quoin/adapters/claude",
+    "quoin/adapters/codex",
+    "quoin/hooks",
+    "quoin/memory",
+}
+
+# Regex to extract quoted left-hand keys in force-include section lines
+_FORCE_INCLUDE_KEY_RE = re.compile(r'^\s*"([^"]+)"\s*=')
+
+
+def _parse_force_include_keys(pyproject_text: str) -> set:
+    """Extract the set of quoted left-hand keys from the force-include section.
+
+    Uses scoped regex (no tomllib) to stay compatible with Python 3.10.
+    Locates [tool.hatch.build.targets.wheel.force-include], skips past
+    the header line, then collects keys until the next TOML section header.
+    """
+    header = "[tool.hatch.build.targets.wheel.force-include]"
+    lines = pyproject_text.splitlines()
+
+    # Find the header line index
+    header_idx = None
+    for i, line in enumerate(lines):
+        if line.strip() == header:
+            header_idx = i
+            break
+
+    if header_idx is None:
+        return set()
+
+    keys: set = set()
+    # Start scanning AFTER the header line
+    for line in lines[header_idx + 1:]:
+        # Stop at the next TOML section header
+        if line.strip().startswith("["):
+            break
+        m = _FORCE_INCLUDE_KEY_RE.match(line)
+        if m:
+            keys.add(m.group(1))
+
+    return keys
+
+
+def check_pip_manifest(
+    repo_root: Path,
+    violations: List[Dict[str, str]],
+) -> None:
+    """AD-PK: pyproject.toml force-include must contain all required core asset dirs.
+
+    Guard: if pyproject.toml is absent, skip silently (keeps synthetic repos clean).
+    Only checks presence of the known-required set; never complains about extra keys.
+    """
+    pyproject_path = repo_root / "pyproject.toml"
+    if not pyproject_path.is_file():
+        return
+
+    try:
+        pyproject_text = pyproject_path.read_text(encoding="utf-8")
+    except OSError:
+        return
+
+    present_keys = _parse_force_include_keys(pyproject_text)
+
+    for required_key in sorted(_REQUIRED_FORCE_INCLUDE_KEYS):
+        if required_key not in present_keys:
+            violations.append({
+                "invariant": AD_PK,
+                "skill": required_key,
+                "detail": f"pyproject force-include missing core asset dir {required_key}",
+            })
+
+
+# ---------------------------------------------------------------------------
+# T-04: AD-CX check (Codex adapter surface)
+# ---------------------------------------------------------------------------
+
+def check_codex_surface(
+    name: str,
+    repo_root: Path,
+    violations: List[Dict[str, str]],
+) -> None:
+    """AD-CX (per-skill): manifest skill must have quoin/adapters/codex/skills/<name>/README.md.
+
+    Caller is responsible for the codex_enabled guard — this function must only
+    be called when quoin/adapters/codex/skills/ is a directory.
+    """
+    readme_path = repo_root / "quoin" / "adapters" / "codex" / "skills" / name / "README.md"
+    if not readme_path.is_file():
+        violations.append({
+            "invariant": AD_CX,
+            "skill": name,
+            "detail": f"missing quoin/adapters/codex/skills/{name}/README.md",
+        })
+
+
+def check_codex_manifest(
+    repo_root: Path,
+    violations: List[Dict[str, str]],
+) -> None:
+    """AD-CX (manifest): quoin/adapters/codex/feature-manifest.json must exist and be valid JSON.
+
+    Caller is responsible for the codex_enabled guard — this function must only
+    be called when quoin/adapters/codex/skills/ is a directory.
+    """
+    manifest_path = repo_root / "quoin" / "adapters" / "codex" / "feature-manifest.json"
+    if not manifest_path.is_file():
+        violations.append({
+            "invariant": AD_CX,
+            "skill": "feature-manifest",
+            "detail": "missing quoin/adapters/codex/feature-manifest.json",
+        })
+        return
+
+    try:
+        text = manifest_path.read_text(encoding="utf-8")
+        json.loads(text)
+    except (OSError, json.JSONDecodeError) as exc:
+        violations.append({
+            "invariant": AD_CX,
+            "skill": "feature-manifest",
+            "detail": f"quoin/adapters/codex/feature-manifest.json is not valid JSON: {exc}",
+        })
+
+
+# ---------------------------------------------------------------------------
 # Emit violations
 # ---------------------------------------------------------------------------
 
@@ -535,6 +753,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     violations: List[Dict[str, str]] = []
     skills_with_iv: List[str] = []  # skills that passed AD-IV (for AD-IO ordering check)
 
+    # AD-CX: compute codex_enabled once — skip all Codex checks when dir is absent
+    codex_enabled: bool = (repo_root / "quoin" / "adapters" / "codex" / "skills").is_dir()
+
     for skill in manifest["skills"]:
         name: str = skill["name"]
         claude_model: str = skill["claude_model"]
@@ -558,10 +779,24 @@ def main(argv: Optional[List[str]] = None) -> int:
             if iv_ok:
                 skills_with_iv.append(name)
 
+        # AD-CX: per-skill Codex README check
+        if codex_enabled:
+            check_codex_surface(name, repo_root, violations)
+
     if not install_routing_delegated:
         check_install_sh_ordering(
             manifest["skills"], install_sh_content, skills_with_iv, violations
         )
+
+    # AD-WR / AD-WD: core-to-wrapper parity
+    check_core_wrapper_parity(repo_root, violations)
+
+    # AD-PK: pyproject force-include completeness
+    check_pip_manifest(repo_root, violations)
+
+    # AD-CX: feature-manifest.json presence and validity
+    if codex_enabled:
+        check_codex_manifest(repo_root, violations)
 
     emit_violations(violations, args.json)
 
