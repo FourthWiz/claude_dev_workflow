@@ -450,11 +450,13 @@ On **"Install Serena"**: guide the user through the following steps (Serena is a
      "mcpServers": {
        "serena": {
          "command": "uvx",
-         "args": ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server"]
+         "args": ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--open-web-dashboard", "false"]
        }
      }
    }
    ```
+
+   > **Dashboard flag:** `--open-web-dashboard false` keeps the Serena web dashboard running (accessible at its local URL, typically `http://localhost:8080`) but suppresses the auto-open behavior that would otherwise launch a browser tab on every Claude Code session start. If you want to fully disable the dashboard (no local server, no URL), use `--enable-web-dashboard false` instead.
 
 3. **⚠️ SESSION RESTART REQUIRED.** MCP servers load only at session start. Serena tools will NOT be available until you restart Claude Code. After restarting, re-run `/init_workflow` — Step 6.5 will detect Serena as present (branch b) and complete onboarding automatically.
 

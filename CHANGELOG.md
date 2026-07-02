@@ -2,6 +2,12 @@
 
 All notable changes to Quoin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.11.22] — 2026-07-02
+
+### Fixed
+
+- **init_workflow: suppress Serena dashboard auto-open** (IVG-108). The Serena `start-mcp-server` snippet in Step 6.5 now includes `--open-web-dashboard false`, preventing the browser from auto-opening on every Claude Code session start. The dashboard remains accessible at its local URL; use `--enable-web-dashboard false` to disable it entirely.
+
 ## [0.11.17] — 2026-06-28
 
 ### Fixed
