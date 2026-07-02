@@ -60,7 +60,7 @@
           "id": "quoin.cost",
           "name": "Cost",
           "type": "webview",
-          "visibility": "collapsed"
+          "visibility": "visible"
         }
       ]
     },
