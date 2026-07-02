@@ -1,0 +1,85 @@
+[
+  {
+    "name": "grand_total_live",
+    "summary": {"grand_total": 12.237305, "fallback_used": false},
+    "expect_total": 12.237305,
+    "expect_partial": false
+  },
+  {
+    "name": "grand_total_partial",
+    "summary": {"grand_total": 35.0, "fallback_used": true, "fallback_note": "3 of 25 UUIDs resolved"},
+    "expect_total": 35.0,
+    "expect_partial": true
+  },
+  {
+    "name": "grand_total_usd",
+    "summary": {"grand_total_usd": 82.59},
+    "expect_total": 82.59,
+    "expect_partial": false
+  },
+  {
+    "name": "total_usd_real",
+    "summary": {"total_usd": 5.0},
+    "expect_total": 5.0,
+    "expect_partial": false
+  },
+  {
+    "name": "total_usd_null_unavailable",
+    "summary": {"total_usd": null, "task": "some-task"},
+    "expect_total": null,
+    "expect_partial": false
+  },
+  {
+    "name": "total_cost_usd_live_zero",
+    "summary": {"total_cost_usd": 0.0, "cost_data_available": true},
+    "expect_total": 0.0,
+    "expect_partial": false
+  },
+  {
+    "name": "period_total_cost_usd",
+    "summary": {"period_total_cost_usd": 7.25},
+    "expect_total": 7.25,
+    "expect_partial": false
+  },
+  {
+    "name": "estimated_task_cost_usd",
+    "summary": {"estimated_task_cost_usd": 3.5},
+    "expect_total": 3.5,
+    "expect_partial": false
+  },
+  {
+    "name": "task_total_only",
+    "summary": {"task_total": 1.23},
+    "expect_total": 1.23,
+    "expect_partial": false
+  },
+  {
+    "name": "hybrid_stage_sum_partial",
+    "summary": {
+      "S-1": {"task_total": 15.45, "per_phase": {"implement": 9.05, "review": 6.40}},
+      "S-2": {"task_total": null, "fallback_note": "UUIDs unresolved"},
+      "S-3": {"task_total": 6.01},
+      "fallback_note": "some sessions unresolved"
+    },
+    "expect_total": 21.46,
+    "expect_partial": true
+  },
+  {
+    "name": "no_total_unavailable",
+    "summary": {"task_name": "some-task", "phases": ["plan", "implement"], "note": "No cost data"},
+    "expect_total": null,
+    "expect_partial": false
+  },
+  {
+    "name": "fallback_note_partial",
+    "summary": {"grand_total": 10.0, "fallback_note": "some sessions unresolved"},
+    "expect_total": 10.0,
+    "expect_partial": true
+  },
+  {
+    "name": "by_task_partial_key",
+    "summary": {"grand_total": 8.0, "by_task_partial": true},
+    "expect_total": 8.0,
+    "expect_partial": true
+  }
+]

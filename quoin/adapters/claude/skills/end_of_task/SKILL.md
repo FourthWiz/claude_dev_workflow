@@ -433,6 +433,13 @@ Spawn an Agent subagent:
          "fallback_note": ""
        }
        ```
+       NOTE: `fallback_used=true` means "partial estimate — some ledger UUIDs did not
+       resolve to JSONL sessions". It does NOT mean the cost is unavailable. A present
+       `grand_total` with `fallback_used=true` should be rendered as `~$X (partial)`.
+       Only a null or absent total key means unavailable. Consumer map: this file is
+       consumed only by `costService.ts` (extension). `/cost_snapshot` and
+       `dashboard_model.py` consume `cost-ledger.md` instead — do NOT wire them to
+       this file.
     6. Report: lessons appended (yes/no), session state updated, cost summary written.
 
     Scope cap: at most ~15 tool uses. If blocked on cost aggregation, write partial
