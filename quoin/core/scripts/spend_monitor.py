@@ -83,6 +83,8 @@ class SpendSnapshot:
     by_model_pct: Dict[str, float] = field(default_factory=dict)  # short_name -> pct
     by_task: Dict[str, float] = field(default_factory=dict)       # task_name -> usd
     by_task_partial: bool = False    # True if some ledger rows were na/unresolvable
+    by_phase: Dict[str, float] = field(default_factory=dict)      # phase -> usd (D-04)
+    by_phase_partial: bool = False   # True when unresolved-UUID condition applies
     stale: bool = False
     scope: str = "global"            # "global" or "project"
 
@@ -222,11 +224,11 @@ def _cache_set(cache: Optional[dict], path: Path, result: Any) -> None:
 # ---------------------------------------------------------------------------
 
 def _parse_ledger_today(ledger_path: Path, today_str: str) -> list:
-    """Return list of {uuid, task_name} for rows where date == today_str.
+    """Return list of {uuid, phase} for rows where date == today_str.
 
     Parses the cost-ledger.md pipe-separated format:
       UUID | DATE | PHASE | MODEL | task | NOTE | FALLBACK_FIRES
-    Columns are 0-indexed. date is col 1, uuid is col 0.
+    Columns are 0-indexed. date is col 1, uuid is col 0, phase is col 2.
     """
     rows = []
     try:
@@ -236,13 +238,14 @@ def _parse_ledger_today(ledger_path: Path, today_str: str) -> list:
                 if not line or line.startswith("#") or line.startswith("UUID"):
                     continue
                 parts = [p.strip() for p in line.split("|")]
-                if len(parts) < 2:
+                if len(parts) < 3:
                     continue
                 uuid = parts[0].strip()
                 date_str = parts[1].strip()
                 if date_str != today_str:
                     continue
-                rows.append({"uuid": uuid})
+                phase = parts[2].strip()
+                rows.append({"uuid": uuid, "phase": phase})
     except (IOError, OSError):
         pass
     return rows
@@ -260,10 +263,17 @@ def scan_ledgers_today(
     For each row with a valid (non-na, non-empty) UUID:
       - Resolve UUID → JSONL path via jsonl_path_for
       - Call parse_session_today to get today's spend
-      - Accumulate per task name
+      - Accumulate per task name AND per phase (D-04: direct PHASE-column attribution)
 
-    Returns (by_task: dict[str, float], by_task_partial: bool).
-    by_task_partial is True if any rows had na-UUID or unresolvable JSONL.
+    UUID deduplication: maintain seen_uuids set per task-dir scan. When a UUID is
+    encountered a second time (possibly under a different phase), skip parse_session_today
+    — cost was already counted on the first occurrence. Phase is attributed to the first
+    row for each UUID.
+
+    Returns (by_task, by_phase, by_task_partial).
+    by_task: dict[str, float] — task_name -> usd
+    by_phase: dict[str, float] — phase -> usd (flat, D-04)
+    by_task_partial: bool — True if any rows had na-UUID or unresolvable JSONL.
     """
     if home is None:
         home = Path.home()
@@ -274,10 +284,12 @@ def scan_ledgers_today(
 
     artifacts_dir = project_root / ".workflow_artifacts"
     if not artifacts_dir.is_dir():
-        return {}, False
+        return {}, {}, False
 
     by_task: Dict[str, float] = {}
+    by_phase: Dict[str, float] = {}
     by_task_partial = False
+    seen_uuids: set = set()
 
     try:
         for task_dir in sorted(artifacts_dir.iterdir()):
@@ -296,18 +308,25 @@ def scan_ledgers_today(
                 if not uuid or uuid.lower() == "na":
                     by_task_partial = True
                     continue
+                # UUID deduplication: skip if already counted (first-row attribution)
+                if uuid in seen_uuids:
+                    continue
                 jsonl_path = jsonl_path_for(uuid, proj_hash_str, home=home)
                 if not jsonl_path.exists():
                     by_task_partial = True
                     continue
+                seen_uuids.add(uuid)
                 result = parse_session_today(jsonl_path, day_start_utc, day_end_utc)
                 task_usd = sum(result["per_model_cost"].values())
                 if task_usd > 0:
                     by_task[task_name] = by_task.get(task_name, 0.0) + task_usd
+                    phase = row.get("phase", "")
+                    if phase:
+                        by_phase[phase] = by_phase.get(phase, 0.0) + task_usd
     except (OSError, PermissionError):
         pass
 
-    return by_task, by_task_partial
+    return by_task, by_phase, by_task_partial
 
 
 # ---------------------------------------------------------------------------
@@ -414,18 +433,20 @@ def aggregate_today(
         for short, usd in by_model.items():
             by_model_pct[short] = round(usd / today_usd * 100, 1)
 
-    # T-03: by-task breakdown
+    # T-03: by-task breakdown; T-05: by-phase breakdown (D-04)
     by_task: Dict[str, float] = {}
+    by_phase: Dict[str, float] = {}
     by_task_partial = False
     if project_root is not None:
         try:
             ph = project_hash(str(project_root))
-            by_task, by_task_partial = scan_ledgers_today(
+            by_task, by_phase, by_task_partial = scan_ledgers_today(
                 project_root, day_start_utc, day_end_utc,
                 home=home, proj_hash_str=ph,
             )
         except Exception:
             by_task = {}
+            by_phase = {}
             by_task_partial = False
 
     return SpendSnapshot(
@@ -434,6 +455,8 @@ def aggregate_today(
         by_model_pct=by_model_pct,
         by_task=by_task,
         by_task_partial=by_task_partial,
+        by_phase=by_phase,
+        by_phase_partial=by_task_partial,
         stale=False,
         scope=scope,
     )
@@ -603,6 +626,8 @@ def _run_once(args: argparse.Namespace, project_root: Optional[Path]) -> tuple:
             "by_model_pct": snap.by_model_pct,
             "by_task": snap.by_task,
             "by_task_partial": snap.by_task_partial,
+            "by_phase": snap.by_phase,
+            "by_phase_partial": snap.by_phase_partial,
             "scope": snap.scope,
             "stale": snap.stale,
         }
