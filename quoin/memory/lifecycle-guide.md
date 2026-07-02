@@ -46,6 +46,46 @@ Subcommands:
 - `/end_of_day` → end-of-workday only — daily rollup (`daily/`, `lessons-learned.md`) + auto-invokes `/sleep`
 - `/sleep` → long-term memory promote/forget (S-3 scope)
 
+## /thorough_plan phase-boundary checkpoints (IVG-98)
+
+`/thorough_plan` writes phase-boundary progress checkpoints at each planning-loop boundary
+(after `/plan`, after each `/critic`, after each `/revise`/`/revise-fast`).
+
+**Files written at each boundary:**
+- `checkpoints/thorough-plan-progress-{sid}.md` — AUTHORITATIVE resume anchor. Fixed filename per
+  session (D-03 idempotent overwrite). NOT a timestamped name, so the picker's "Saved" column may
+  render a garbage date — cosmetic only; mtime-ordering and task-name display work correctly.
+- `pending-restore-{sid}.txt` — sentinel for picker Tier-3 enumeration (written once at first boundary;
+  omitted if SID is empty/`unknown`).
+- `sessions/{date}-{task}-orchestrator.md` — ORCHESTRATOR-DEDICATED session-state (M-02). Updated at
+  each boundary. Subagents write only to the standard `{date}-{task}.md` — these files are fully
+  disjoint and serve different consumers.
+
+**Stage token:** `## Current stage` value = `thorough-plan:round-{N}-{phase}` where phase ∈
+{`plan`, `critic`, `revise`} and N is the 1-based round number. This token is recognized by
+`/start_of_day`, `/end_of_day`, `/status`, `/continue_work`, and B3 awk (free-text readers — the
+colon-delimited form is safe).
+
+**PRIMARY resume path (B3-immune):** Re-invoke `/thorough_plan {task}` in a fresh session.
+Setup §1b scans `checkpoints/thorough-plan-progress-*.md` directly, matches by `## Active task`,
+applies a 7-day age bound, and offers Resume/Start-fresh via `AskUserQuestion`. This scan does NOT
+go through the restore picker's B3 Clause-B gate and is therefore immune to it.
+
+**SECONDARY convenience path (B3-limited):** `/checkpoint --restore`. Works when no subagent
+wrote `{date}-{task}.md` AFTER the last phase-boundary helper call. In the common
+kill-during-subagent window (subagent writes its session file AFTER the last checkpoint), B3
+Clause-B fires (`max(candidate mtime) < max(sessions/*.md mtime within 7d)`) and the picker
+discards the checkpoint, synthesising a degraded task-level restore from the subagent file.
+The sentinel/checkpoint pair is still written but cannot override B3 in that window. Use the
+PRIMARY path for phase-precise recovery.
+
+**`/run` transitive coverage:** When `/run` dispatches `/thorough_plan` as a subagent, the
+phase-boundary checkpoints fire inside that subagent (SKILL.md edit runs). The planning kill-gap is
+covered transitively. The deferred `/run` follow-up (IVG-98 D-06) concerns only the
+implement→review inter-phase gap, not planning. Note: under `/run`, the checkpoint sentinel carries
+the `/thorough_plan` subagent's SID, so restore re-enters `/thorough_plan` mid-loop rather than
+`/run` — acceptable and documented.
+
 ## Memory layout
 
 Directory tree and `forgotten/<date>.md` entry format:

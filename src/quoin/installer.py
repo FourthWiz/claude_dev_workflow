@@ -97,6 +97,7 @@ DEPLOYED_SCRIPTS = (
     "dispatch_config.py",            # IVG-90: 1M-dispatch config+cache reader/writer wrapper
     "generate_discovery_map.py",     # /discover optional hook — silently skips without deploy
     "select_unprocessed_sessions.py",  # session-selection cross-check for end_of_day/weekly_review
+    "thorough_plan_checkpoint.py",   # IVG-98: phase-boundary checkpoint wrapper for /thorough_plan
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -329,6 +330,7 @@ CORE_SCRIPTS = (
     "dispatch_config.py",         # IVG-90: 1M-dispatch config+cache reader core impl; required by ~/.claude/scripts/dispatch_config.py parents[1] loader
     "generate_discovery_map.py",  # /discover optional hook — builds discovery-map.json post-scan
     "select_unprocessed_sessions.py",  # session-selection helper for end_of_day/weekly_review
+    "thorough_plan_checkpoint.py",  # IVG-98: phase-boundary checkpoint core impl for /thorough_plan
 )
 
 
