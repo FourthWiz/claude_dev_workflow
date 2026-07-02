@@ -176,14 +176,19 @@ def _copy_with_substitution(
 
     Non-text extensions are byte-copied without substitution.
     Sets +x for .py and .sh files.
+    Skips the write when the destination already contains identical content
+    so that re-installs preserve file mtimes (CRIT-1 round-2).
     """
     if src.suffix in _SUBSTITUTE_EXTS:
-        dst.write_text(
-            substitute_quoin_home(src.read_text(encoding="utf-8"), dest_root),
-            encoding="utf-8",
-        )
+        new_content = substitute_quoin_home(src.read_text(encoding="utf-8"), dest_root)
+        if dst.exists() and dst.read_text(encoding="utf-8") == new_content:
+            return
+        dst.write_text(new_content, encoding="utf-8")
     else:
-        shutil.copyfile(src, dst)
+        src_bytes = src.read_bytes()
+        if dst.exists() and dst.read_bytes() == src_bytes:
+            return
+        dst.write_bytes(src_bytes)
     if src.suffix in (".py", ".sh"):
         os.chmod(dst, 0o755)
 
