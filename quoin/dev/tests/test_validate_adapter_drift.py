@@ -1,7 +1,7 @@
 """Tests for validate_adapter_drift.py — Phase 22 runtime-portability work.
 
 Coverage:
-- test_validator_passes_on_live_repo           positive gold-master
+- test_validator_passes_on_live_repo           positive gold-master (IVG-107: also exercises AD-WR/AD-WD/AD-PK/AD-CX on clean tree)
 - test_validator_passes_on_minimal_repo        positive minimal synthetic
 - test_drift_co_detected                       AD-CO  core doc missing
 - test_drift_ad_detected                       AD-AD  adapter SKILL.md missing
@@ -24,6 +24,14 @@ Coverage:
 - test_unreadable_manifest_returns_65          bad manifest path → exit 65
 - test_bad_cli_args_return_64                  unknown flag → exit 64
 - test_validator_handles_missing_optional_fields  omitted section_0/spawn_target default=false
+IVG-107 additions (T-07):
+- test_drift_wr_detected                       AD-WR  core script has no wrapper
+- test_drift_wd_missing_shim                   AD-WD  wrapper missing importlib shim
+- test_drift_wd_has_toplevel_def               AD-WD  wrapper has top-level def
+- test_drift_pk_detected                       AD-PK  force-include key missing
+- test_drift_cx_detected                       AD-CX  Codex skill README missing
+- test_drift_cx_manifest_detected              AD-CX  feature-manifest absent/invalid JSON
+- test_new_checks_skip_when_absent             no new-ID violations on bare minimal repo
 """
 import json
 import subprocess
@@ -153,6 +161,11 @@ def test_validator_passes_on_live_repo():
     This also validates:
     - AD-IE relaxed check handles capture_insight's leading 'if' form
     - AD-PT substring check handles revise-fast's See-also form
+
+    IVG-107 criterion-4 clean-tree guarantee: once AD-WR/AD-WD/AD-PK/AD-CX
+    are wired into main(), this existing test automatically exercises them on
+    the live repo. A zero exit here confirms all four new invariants produce
+    no false positives on the clean tree. No separate live-tree test is needed.
     """
     result = _run(REPO_ROOT)
     assert result.returncode == 0, (
@@ -484,3 +497,183 @@ def test_validator_handles_missing_optional_fields(tmp_path):
     assert result.returncode == 0, (
         f"Validator raised with missing optional fields (exit {result.returncode}):\n{result.stderr}"
     )
+
+
+# ---------------------------------------------------------------------------
+# IVG-107 T-07: AD-WR / AD-WD / AD-PK / AD-CX tests
+# ---------------------------------------------------------------------------
+
+# Minimal importlib delegation shim body (used to build synthetic wrappers)
+_SHIM_BODY = (
+    '"""Wrapper."""\n'
+    "import importlib.util\n"
+    "import sys\n"
+    "from pathlib import Path\n\n"
+    '_CORE_PATH = Path(__file__).resolve().parents[1] / "core" / "scripts" / "bar.py"\n'
+    '_SPEC = importlib.util.spec_from_file_location("_core_bar", _CORE_PATH)\n'
+    "_CORE = importlib.util.module_from_spec(_SPEC)\n"
+    "assert _SPEC.loader is not None\n"
+    "_SPEC.loader.exec_module(_CORE)\n\n"
+    "if __name__ == '__main__':\n"
+    "    import sys; sys.exit(_CORE.main())\n"
+)
+
+# Minimal core script content (just needs to exist as a .py file)
+_CORE_SCRIPT_BODY = '"""Core script stub."""\ndef main():\n    return 0\n'
+
+
+def _make_minimal_repo_with_core_script(tmp_path: Path, wrapper_content: str = "") -> Path:
+    """Extend a minimal repo with a synthetic core script (bar.py) and optional wrapper.
+
+    The minimal repo has skill 'foo' with all files in place. This helper additionally
+    creates quoin/core/scripts/bar.py (a synthetic core script) and optionally
+    quoin/scripts/bar.py (the wrapper) with the given content.
+
+    If wrapper_content is empty string, the wrapper file is NOT created (triggers AD-WR).
+    """
+    _make_minimal_repo(tmp_path)
+
+    # Create synthetic core/scripts/ directory with bar.py
+    core_scripts = tmp_path / "quoin" / "core" / "scripts"
+    core_scripts.mkdir(parents=True, exist_ok=True)
+    (core_scripts / "bar.py").write_text(_CORE_SCRIPT_BODY, encoding="utf-8")
+
+    # Create wrapper directory
+    scripts_dir = tmp_path / "quoin" / "scripts"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+
+    if wrapper_content:
+        (scripts_dir / "bar.py").write_text(wrapper_content, encoding="utf-8")
+
+    return tmp_path
+
+
+def test_drift_wr_detected(tmp_path):
+    """AD-WR: core script bar.py exists but has no wrapper in quoin/scripts/ -> AD-WR fires."""
+    _make_minimal_repo_with_core_script(tmp_path, wrapper_content="")  # no wrapper
+    result = _run(tmp_path)
+    assert result.returncode == 2
+    assert "DRIFT AD-WR bar.py:" in result.stderr
+
+
+def test_drift_wd_missing_shim(tmp_path):
+    """AD-WD: wrapper exists but lacks spec_from_file_location -> AD-WD fires.
+
+    Uses a synthetic core script + matching wrapper in tmp_path (not the live repo).
+    """
+    # Wrapper with no importlib shim at all
+    wrapper_without_shim = (
+        '"""Bad wrapper: no importlib delegation."""\n'
+        "import sys\n\n"
+        "def main():\n"
+        "    print('direct implementation — not a shim')\n"
+    )
+    _make_minimal_repo_with_core_script(tmp_path, wrapper_content=wrapper_without_shim)
+    result = _run(tmp_path)
+    assert result.returncode == 2
+    assert "DRIFT AD-WD bar.py:" in result.stderr
+    assert "spec_from_file_location" in result.stderr
+
+
+def test_drift_wd_has_toplevel_def(tmp_path):
+    """AD-WD: wrapper has spec_from_file_location but also defines a top-level def -> AD-WD fires.
+
+    Uses a synthetic core script + matching wrapper in tmp_path (not the live repo).
+    """
+    # Wrapper with the importlib shim BUT also defines a top-level function
+    wrapper_with_shim_and_def = (
+        '"""Semi-bad wrapper: has shim but also defines a function."""\n'
+        "import importlib.util\n"
+        "import sys\n"
+        "from pathlib import Path\n\n"
+        '_CORE_PATH = Path(__file__).resolve().parents[1] / "core" / "scripts" / "bar.py"\n'
+        '_SPEC = importlib.util.spec_from_file_location("_core_bar", _CORE_PATH)\n'
+        "_CORE = importlib.util.module_from_spec(_SPEC)\n"
+        "assert _SPEC.loader is not None\n"
+        "_SPEC.loader.exec_module(_CORE)\n\n"
+        "# This top-level def violates AD-WD\n"
+        "def helper():\n"
+        "    return 42\n"
+    )
+    _make_minimal_repo_with_core_script(tmp_path, wrapper_content=wrapper_with_shim_and_def)
+    result = _run(tmp_path)
+    assert result.returncode == 2
+    assert "DRIFT AD-WD bar.py:" in result.stderr
+    # The specific complaint is about the top-level def, not the missing shim
+    assert "top-level" in result.stderr
+
+
+def test_drift_pk_detected(tmp_path):
+    """AD-PK: pyproject.toml missing a required force-include key -> AD-PK fires."""
+    _make_minimal_repo(tmp_path)
+    # Write a pyproject.toml that is missing 'quoin/core'
+    pyproject_content = (
+        "[tool.hatch.build.targets.wheel.force-include]\n"
+        '"quoin/scripts" = "src/quoin/data/scripts"\n'
+        '"quoin/skills" = "src/quoin/data/skills"\n'
+        '"quoin/adapters/claude" = "src/quoin/data/adapters/claude"\n'
+        '"quoin/adapters/codex" = "src/quoin/data/adapters/codex"\n'
+        '"quoin/hooks" = "src/quoin/data/hooks"\n'
+        '"quoin/memory" = "src/quoin/data/memory"\n'
+        "# quoin/core intentionally omitted to trigger AD-PK\n"
+        "\n"
+        "[build-system]\n"
+        'requires = ["hatchling"]\n'
+    )
+    (tmp_path / "pyproject.toml").write_text(pyproject_content, encoding="utf-8")
+    result = _run(tmp_path)
+    assert result.returncode == 2
+    assert "DRIFT AD-PK quoin/core:" in result.stderr
+
+
+def test_drift_cx_detected(tmp_path):
+    """AD-CX: Codex skill README missing for a manifest skill -> AD-CX fires."""
+    _make_minimal_repo(tmp_path)
+    # Create the codex skills dir (so codex_enabled = True) but leave out foo/README.md
+    codex_skills_dir = tmp_path / "quoin" / "adapters" / "codex" / "skills"
+    codex_skills_dir.mkdir(parents=True)
+    # Create feature-manifest.json (so manifest check passes)
+    (tmp_path / "quoin" / "adapters" / "codex" / "feature-manifest.json").write_text(
+        '{"skills": ["foo"]}', encoding="utf-8"
+    )
+    # No foo/README.md — should trigger AD-CX
+    result = _run(tmp_path)
+    assert result.returncode == 2
+    assert "DRIFT AD-CX foo:" in result.stderr
+
+
+def test_drift_cx_manifest_detected(tmp_path):
+    """AD-CX: feature-manifest.json absent or invalid JSON -> AD-CX fires."""
+    _make_minimal_repo(tmp_path)
+    # Create codex skills dir with foo/README.md (so per-skill check passes)
+    foo_codex_dir = tmp_path / "quoin" / "adapters" / "codex" / "skills" / "foo"
+    foo_codex_dir.mkdir(parents=True)
+    (foo_codex_dir / "README.md").write_text("# Foo Codex README\n", encoding="utf-8")
+    # Write an invalid JSON feature-manifest
+    (tmp_path / "quoin" / "adapters" / "codex" / "feature-manifest.json").write_text(
+        "this is not json {{{", encoding="utf-8"
+    )
+    result = _run(tmp_path)
+    assert result.returncode == 2
+    assert "DRIFT AD-CX feature-manifest:" in result.stderr
+
+
+def test_new_checks_skip_when_absent(tmp_path):
+    """AD-WR/AD-WD/AD-PK/AD-CX: none fire on a bare minimal repo without their target dirs/files.
+
+    Validates that all new skip-guards work correctly:
+    - No quoin/core/scripts dir -> AD-WR/AD-WD skipped
+    - No pyproject.toml -> AD-PK skipped
+    - No quoin/adapters/codex/skills dir -> AD-CX skipped
+    """
+    _make_minimal_repo(tmp_path)
+    # The minimal repo has no core/scripts, no pyproject.toml, no codex skills dir
+    # Ensure none of the new IDs appear in the output
+    result = _run(tmp_path)
+    assert result.returncode == 0, (
+        f"New checks fired on minimal repo (exit {result.returncode}):\n{result.stderr}"
+    )
+    for new_id in ("AD-WR", "AD-WD", "AD-PK", "AD-CX"):
+        assert new_id not in result.stderr, (
+            f"{new_id} unexpectedly fired on minimal repo:\n{result.stderr}"
+        )
