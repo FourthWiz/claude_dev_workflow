@@ -99,6 +99,30 @@ identically.
 Daily cache files have no YAML frontmatter — scan the first 50 lines of the
 file directly (no frontmatter to skip).
 
+## Discovery & Serena staleness check (Step 1c)
+
+After Step 1b (sentinel-health check), run `discovery_staleness.py <project-root> --json`
+(fail-open: absent script or errors → skip silently). Parse JSON for:
+- `verdict == "stale" | "absent"` → discovery needs refresh; fold one-line advisory into Step 1 banner.
+- `serena.present_marker=true AND serena.stale=true` → Serena re-onboarding may be needed.
+- `serena.present_marker=false` → absent marker (may need first-time onboarding).
+
+This step is **read-only**. Store the result for Step 6b. Use `QUOIN_DISCOVERY_STALE_DAYS`
+(do NOT introduce `QUOIN_SOD_DISCOVERY_STALE_DAYS`). `QUOIN_DISCOVERY_AUTOREFRESH=1`
+allows /start_of_day to invoke `/discover` inline without asking. Serena refresh is
+NEVER auto-run interactively.
+
+## Staleness refresh picker (Step 6b)
+
+A separate AskUserQuestion (after the Step 6 task-resume picker) fires only when Step 1c
+detected staleness. Options are built dynamically:
+- Discovery stale/absent: `"Refresh discovery"` → run /discover.
+- Serena stale OR absent-marker AND ToolSearch probe succeeds: `"Set up / Refresh Serena memory"` →
+  run the §Refresh procedure from serena-activation.md then write/update `serena-onboarded.md`.
+- Always: `"Skip refresh"`.
+- Graceful Absence: if ToolSearch probe loads no schema → omit Serena option entirely.
+- If no staleness in Step 1c → skip Step 6b entirely.
+
 ## Notes
 
 - The set of briefing sections is closed (yesterday-summary, since-last-session,
