@@ -76,6 +76,47 @@ if [ "$EOD_BANNER_FIRED" -eq 0 ] && [ -d "$SESSIONS_DIR" ]; then
 fi
 # === end S-4 missing-EOD banner ===
 
+# === S-5 discovery-staleness banner ===
+# Runs after S-4. Calls discovery_staleness.py (deployed wrapper) via hook-relative path.
+# Fail-OPEN: any error (python missing, script absent, non-zero-other) → no banner, continue.
+# Exit codes: 0=fresh/disabled (no banner), 10=stale, 11=absent, 12=serena-present-but-stale.
+# Dedup sentinel: mirrors S-4 pattern exactly, including stat -f %m fallback.
+
+_disc_banner=""
+_DISC_SENTINEL="${TMPDIR:-/tmp}/quoin-s5-staleness-banner-$(date -u +%Y%m%d).tmp"
+
+# Dedup check: skip if sentinel fired within the last 300 seconds
+if [ -f "$_DISC_SENTINEL" ]; then
+  _disc_sentinel_mtime=$(python3 -c "import os,sys; print(int(os.path.getmtime(sys.argv[1])))" "$_DISC_SENTINEL" 2>/dev/null \
+    || stat -f %m "$_DISC_SENTINEL" 2>/dev/null \
+    || echo 0)
+  _disc_sentinel_age=$(( $(date +%s) - _disc_sentinel_mtime ))
+  if [ "$_disc_sentinel_age" -lt 300 ]; then
+    _DISC_SKIP_S5=1
+  fi
+fi
+
+if [ "${_DISC_SKIP_S5:-0}" = "0" ]; then
+  if command -v python3 >/dev/null 2>&1; then
+    # env (QUOIN_DISCOVERY_STALE_DAYS, QUOIN_DISCOVERY_REFRESH_DISABLE) propagates to child
+    python3 "$(dirname "$0")/../scripts/discovery_staleness.py" "$cwd" --quiet >/dev/null 2>&1
+    _disc_rc=$?
+  else
+    _disc_rc=0   # no python → no signal → no banner (fail-OPEN)
+  fi
+  case "$_disc_rc" in
+    10) _disc_banner="[quoin-S-5] Discovery memory may be stale — run /start_of_day or /discover to refresh. Set QUOIN_DISCOVERY_REFRESH_DISABLE=1 to silence." ;;
+    11) _disc_banner="[quoin-S-5] No discovery memory found — run /discover to index the project." ;;
+    12) _disc_banner="[quoin-S-5] Serena project memory is stale — run /start_of_day and choose 'Set up / Refresh Serena memory'. Set QUOIN_DISCOVERY_REFRESH_DISABLE=1 to silence." ;;
+    *)  _disc_banner="" ;;   # 0 fresh/disabled, 2 error → silent (fail-OPEN)
+  esac
+  if [ -n "$_disc_banner" ]; then
+    printf '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "%s"}}\n' "$_disc_banner"
+    touch "$_DISC_SENTINEL" 2>/dev/null || true
+  fi
+fi
+# === end S-5 discovery-staleness banner ===
+
 # STEP 2: UUID-aware sweep of all 9 sentinel families.
 # Tight window (SESSIONSTART_SWEEP_DAYS, default 1d) when current session is known;
 # falls back to conservative STALE_DAYS (7d) age-only when session_id is empty (defensive — see D-02).
