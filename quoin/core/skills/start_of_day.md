@@ -109,14 +109,14 @@ After Step 1b (sentinel-health check), run `discovery_staleness.py <project-root
 
 This step is **read-only**. Store the result for Step 6b. Use `QUOIN_DISCOVERY_STALE_DAYS`
 (do NOT introduce `QUOIN_SOD_DISCOVERY_STALE_DAYS`). `QUOIN_DISCOVERY_AUTOREFRESH=1`
-allows /start_of_day to invoke `/discover` inline without asking. Serena refresh is
+allows this skill to invoke the discover skill inline without asking. Serena refresh is
 NEVER auto-run interactively.
 
 ## Staleness refresh picker (Step 6b)
 
 A separate AskUserQuestion (after the Step 6 task-resume picker) fires only when Step 1c
 detected staleness. Options are built dynamically:
-- Discovery stale/absent: `"Refresh discovery"` → run /discover.
+- Discovery stale/absent: `"Refresh discovery"` → invoke the discover skill.
 - Serena stale OR absent-marker AND ToolSearch probe succeeds: `"Set up / Refresh Serena memory"` →
   run the §Refresh procedure from serena-activation.md then write/update `serena-onboarded.md`.
 - Always: `"Skip refresh"`.
