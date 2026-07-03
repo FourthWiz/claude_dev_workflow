@@ -36,6 +36,8 @@ TIER1_MEMORY_FILES = (
     "serena-activation.md",
     # Added claude-md-trim: relocated Tier-1 catalog from CLAUDE.md
     "tier1-files.md",
+    # Added IVG-106: discovery/Serena refresh routine recipe (Tier-1 memory file)
+    "discovery-refresh-routine.md",
 )
 
 # T-05: canonical skill list — must match quoin/skills/ on disk exactly
