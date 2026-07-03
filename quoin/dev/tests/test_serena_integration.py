@@ -106,3 +106,46 @@ def test_init_workflow_serena_uses_quoin_home_token() -> None:
     assert "~/.claude/" not in serena_section, (
         "adapter SKILL.md Serena block must use __QUOIN_HOME__, not literal ~/.claude/"
     )
+
+
+# ── IVG-106 T-05: serena-activation.md §Refresh section ──────────────────────
+
+def test_serena_activation_has_refresh_section() -> None:
+    """serena-activation.md must have a ## Refresh / Re-onboarding section with required content."""
+    text = SERENA_MEMORY.read_text(encoding="utf-8")
+    assert "## Refresh" in text or "Re-onboarding" in text, (
+        "serena-activation.md must contain ## Refresh section"
+    )
+    assert "QUOIN_SERENA_STALE_DAYS" in text, (
+        "serena-activation.md must reference QUOIN_SERENA_STALE_DAYS"
+    )
+    assert "serena-onboarded.md" in text, (
+        "serena-activation.md must reference serena-onboarded.md marker"
+    )
+    assert "onboarding" in text.lower(), (
+        "serena-activation.md must reference onboarding procedure"
+    )
+    # Graceful Absence
+    assert "do nothing" in text.lower() or "Graceful Absence" in text, (
+        "serena-activation.md must contain Graceful Absence 'do nothing' phrase"
+    )
+    # Present-but-stale language
+    assert "present" in text.lower() and "stale" in text.lower(), (
+        "serena-activation.md must describe the present-but-stale condition"
+    )
+    # First-time onboarding path
+    assert "first-time" in text.lower() or "absent marker" in text.lower() or "first time" in text.lower(), (
+        "serena-activation.md must describe the first-time onboarding path"
+    )
+    # Hook does NOT emit exit-12 for absent marker (important invariant)
+    assert "hook" in text.lower() and "absent" in text.lower(), (
+        "serena-activation.md must document that hook does not emit Serena banner for absent marker"
+    )
+
+
+def test_serena_marker_written_by_init_workflow() -> None:
+    """init_workflow SKILL.md must reference serena-onboarded.md on onboarding branches."""
+    text = ADAPTER_INIT_WORKFLOW.read_text(encoding="utf-8")
+    assert "serena-onboarded.md" in text, (
+        "init_workflow SKILL.md must reference serena-onboarded.md staleness marker on onboarding branches"
+    )

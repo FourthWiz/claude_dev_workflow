@@ -482,6 +482,12 @@ mcp__serena__initial_instructions()
 
 Tell the user onboarding is complete and Serena is now active for the project. This is the most common real-world case: Serena installed but never set up for the project.
 
+Write the staleness marker after successful onboarding:
+```
+# Write/update .workflow_artifacts/memory/serena-onboarded.md
+# Content: "Serena onboarded for <project-dirname>.\nTimestamp: <ISO-UTC>\n"
+```
+
 **Branch (c) — Serena PRESENT, already onboarded:**
 
 If the ToolSearch probe succeeds and `activate_project` does NOT report onboarding-needed, confirm activation silently:
@@ -491,7 +497,15 @@ ToolSearch select:mcp__serena__activate_project
 mcp__serena__activate_project(project="<project-dirname>")
 ```
 
-Print one line: `[quoin: Serena active for <project-dirname> (already onboarded)]` and proceed to Step 7.
+Print one line: `[quoin: Serena active for <project-dirname> (already onboarded)]`.
+
+Write/update the staleness marker (resets the staleness clock):
+```
+# Write/update .workflow_artifacts/memory/serena-onboarded.md
+# Content: "Serena onboarded for <project-dirname>.\nTimestamp: <ISO-UTC>\n"
+```
+
+Proceed to Step 7.
 
 **Target-project `.gitignore` (all setup paths — a/install, b, c):**
 

@@ -69,6 +69,62 @@ to built-in tools silently.
 
 Never instruct a user to call Serena tools that don't exist in their session.
 
+## Refresh / Re-onboarding
+
+### When to refresh
+
+Two paths trigger a Serena refresh:
+
+**Path 1 — Present-but-stale:** `.workflow_artifacts/memory/serena-onboarded.md` marker EXISTS
+AND its mtime is older than `QUOIN_SERENA_STALE_DAYS` (default 30 days) AND a ToolSearch probe
+loads a schema. This is the normal periodic re-onboarding path — positive evidence Serena was
+previously onboarded for this project.
+
+**Path 2 — First-time onboarding (absent marker):** marker is ABSENT AND ToolSearch probe loads a
+schema. The hook (`sessionstart.sh` S-5) does NOT emit a Serena banner for absent markers (Graceful
+Absence — the hook cannot confirm Serena is installed from a non-session process). `/start_of_day`
+Step 6b handles first-time onboarding: it probes via ToolSearch and if successful, offers the
+"Set up / Refresh Serena memory" option.
+
+**Graceful Absence:** if `ToolSearch select:mcp__serena__activate_project` loads no schema → do
+nothing, no marker write, no mention of Serena.
+
+### How to refresh (§Refresh procedure)
+
+```python
+# 1. Probe and load schemas
+ToolSearch select:mcp__serena__activate_project,mcp__serena__onboarding,mcp__serena__initial_instructions
+
+# 2. Activate the project
+mcp__serena__activate_project(project="<project-dirname>")
+
+# 3. Run onboarding (re-scans project memories)
+mcp__serena__onboarding()
+
+# 4. Read the Serena manual
+mcp__serena__initial_instructions()
+
+# 5. Write/update the staleness marker
+#    Path: .workflow_artifacts/memory/serena-onboarded.md
+#    Content: "Serena onboarded for <project-dirname>.\nTimestamp: <ISO-UTC>\n"
+```
+
+### Cost and throttle
+
+Re-onboarding is expensive (full project re-scan). Guard with the marker:
+- Prompt-only in interactive sessions (NEVER auto-run — D-04).
+- At most once per `QUOIN_SERENA_STALE_DAYS` window.
+- Cron routine may run it unattended (see `discovery-refresh-routine.md`).
+
+### Marker file
+
+Path: `.workflow_artifacts/memory/serena-onboarded.md`
+
+Written by `/init_workflow` Step 6.5 on first successful onboarding (branches b and c), and by
+`/start_of_day` Step 6b when the user chooses "Set up / Refresh Serena memory". The hook and
+staleness script read its mtime to determine whether Serena is present-but-stale; an absent marker
+means not-yet-onboarded (or marker was lost).
+
 ## Why Both Calls Are Required
 
 The root cause of Serena silently not being used was that **neither call was instructed
