@@ -482,6 +482,12 @@ mcp__serena__initial_instructions()
 
 Tell the user onboarding is complete and Serena is now active for the project. This is the most common real-world case: Serena installed but never set up for the project.
 
+Write the staleness marker after successful onboarding:
+```
+# Write/update .workflow_artifacts/memory/serena-onboarded.md
+# Content: "Serena onboarded for <project-dirname>.\nTimestamp: <ISO-UTC>\n"
+```
+
 **Branch (c) — Serena PRESENT, already onboarded:**
 
 If the ToolSearch probe succeeds and `activate_project` does NOT report onboarding-needed, confirm activation silently:
@@ -491,7 +497,15 @@ ToolSearch select:mcp__serena__activate_project
 mcp__serena__activate_project(project="<project-dirname>")
 ```
 
-Print one line: `[quoin: Serena active for <project-dirname> (already onboarded)]` and proceed to Step 7.
+Print one line: `[quoin: Serena active for <project-dirname> (already onboarded)]`.
+
+Write/update the staleness marker (resets the staleness clock):
+```
+# Write/update .workflow_artifacts/memory/serena-onboarded.md
+# Content: "Serena onboarded for <project-dirname>.\nTimestamp: <ISO-UTC>\n"
+```
+
+Proceed to Step 7.
 
 **Target-project `.gitignore` (all setup paths — a/install, b, c):**
 
@@ -555,6 +569,29 @@ The interactive guide lives in the source clone:
 ```
 <your-quoin-clone>/Workflow-User-Guide.html — open in your browser for full walkthrough scenarios.
 ```
+
+### Step 7.5: Offer scheduled discovery refresh
+
+After the quickstart copy, offer to register the weekly discovery-refresh cron routine (non-blocking; default Skip):
+
+```
+AskUserQuestion(
+  question="Would you like to set up a weekly automated discovery refresh?",
+  options=[
+    {label: "Register weekly refresh",
+     description: "Register a /schedule routine (quoin-discovery-refresh) to refresh discovery memory every Monday at 06:00. See __QUOIN_HOME__/memory/discovery-refresh-routine.md for details."},
+    {label: "Skip for now",
+     description: "Skip automated refresh setup. The session-start banner (S-5) will prompt you when discovery is stale."}
+  ]
+)
+```
+
+On **"Register weekly refresh"**: instruct the user to run `/schedule` with the payload from
+`__QUOIN_HOME__/memory/discovery-refresh-routine.md` (reference the file; do not duplicate the
+payload here). Note the cloud-sandbox limitation: the routine may be a no-op if repos live on
+local Drive. Print `[quoin: discovery-refresh-routine registered — see discovery-refresh-routine.md for details]`.
+
+On **"Skip for now"**: print `[quoin: discovery-refresh skipped — run /start_of_day to refresh manually when S-5 banner fires]` and proceed to Step 8.
 
 ### Step 8: Report
 

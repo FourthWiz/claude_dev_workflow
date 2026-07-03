@@ -103,6 +103,8 @@ The intended flow depends on the task profile (Small / Medium / Large). `/thorou
 
 Variations: (a) Small tasks skip `/architect` and the critic loop — `/thorough_plan` auto-routes to a single `/plan` pass. (b) `/run` chains every phase automatically, each phase in its own subagent session, pausing at each GATE for confirmation; accepts the same profile tags as `/thorough_plan`. (c) Discover is skipped if a recent (<7 days) discovery file exists.
 
+**Discovery/Serena refresh policy:** The `<7 days` skip threshold mirrors the `QUOIN_DISCOVERY_STALE_DAYS` default (7). Session-start staleness is surfaced via the `S-5` hook banner in `sessionstart.sh` and `/start_of_day` Step 1c. Automated weekly refresh: `discovery-refresh-routine.md` documents the `/schedule` cron recipe. Environment knobs: `QUOIN_DISCOVERY_STALE_DAYS` (default 7), `QUOIN_SERENA_STALE_DAYS` (default 30), `QUOIN_DISCOVERY_AUTOREFRESH` (auto-run /discover on SOD, off by default), `QUOIN_DISCOVERY_REFRESH_DISABLE` (master off switch), `QUOIN_DISCOVERY_REFRESH_CRON` (cron schedule, default `0 6 * * 1`).
+
 **Note on `/architect`:** Phase 4 critic loop is INTERNAL to `/architect` — the canonical flow string above is unchanged. `/architect` internally runs a critic loop (max 2 rounds default, max 4 in strict mode) before returning `architecture.md` as final. This does not add a visible step to the flow.
 
 ### Task profiles
@@ -232,6 +234,8 @@ Don't guess about external system behavior — verify it.
 ### Serena (conditional)
 
 If `ToolSearch select:mcp__serena__activate_project` loads a schema, run the activation protocol at task start (`activate_project` then `initial_instructions`) and prefer Serena symbol tools over grep. If no schema loads, do nothing — never call Serena tools that don't exist. Full protocol: `__QUOIN_HOME__/memory/serena-activation.md`.
+
+For periodic re-onboarding when Serena memory becomes stale (marker `serena-onboarded.md` exists AND is older than `QUOIN_SERENA_STALE_DAYS`): see `__QUOIN_HOME__/memory/serena-activation.md §Refresh / Re-onboarding`. The `/start_of_day` Step 6b offers the "Set up / Refresh Serena memory" option when staleness is detected.
 
 ### Daily insight capture
 

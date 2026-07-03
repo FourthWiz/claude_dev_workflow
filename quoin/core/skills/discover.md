@@ -159,6 +159,15 @@ fails; the markdown outputs remain the authoritative source.
   staleness file MUST be rewritten on every run (including for skipped
   repos — their existing HEAD value is preserved). The legacy
   `repo-heads.md` MUST also be rewritten for backward compatibility.
+- **Clock-reset invariant (D-06): the `Updated` column in `_staleness.md` MUST be
+  set to the current run timestamp for ALL repos on every run, including skipped
+  (HEAD-unchanged) repos.** This resets the staleness clock so the session-start
+  staleness banner (`S-5`, added by IVG-106) does not fire after a successful
+  incremental scan that found no changes. An incremental scan that is near-free
+  in content terms is NOT stale in time terms — the clock must reflect the run.
+- The `S-5` session-start banner and the start-of-day skill Step 1c read `_staleness.md`
+  `Updated` values to detect whether discovery is stale. Re-run the discover skill when the
+  banner fires, or when repos have changed significantly.
 - When discover runs incrementally and some repos are skipped, the
   root `_index.md` MUST still be rewritten to reflect every repo
   (skipped repos keep their existing one-sentence summary; rescanned

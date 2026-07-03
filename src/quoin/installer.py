@@ -36,6 +36,8 @@ TIER1_MEMORY_FILES = (
     "serena-activation.md",
     # Added claude-md-trim: relocated Tier-1 catalog from CLAUDE.md
     "tier1-files.md",
+    # Added IVG-106: discovery/Serena refresh routine recipe (Tier-1 memory file)
+    "discovery-refresh-routine.md",
 )
 
 # T-05: canonical skill list — must match quoin/skills/ on disk exactly
@@ -99,6 +101,7 @@ DEPLOYED_SCRIPTS = (
     "select_unprocessed_sessions.py",  # session-selection cross-check for end_of_day/weekly_review
     "thorough_plan_checkpoint.py",   # IVG-98: phase-boundary checkpoint wrapper for /thorough_plan
     "cost_summary.py",               # IVG-96: portable cost-summary.json normalizer wrapper
+    "discovery_staleness.py",        # IVG-106: discovery/Serena staleness detector wrapper
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -344,6 +347,7 @@ CORE_SCRIPTS = (
     "select_unprocessed_sessions.py",  # session-selection helper for end_of_day/weekly_review
     "thorough_plan_checkpoint.py",  # IVG-98: phase-boundary checkpoint core impl for /thorough_plan
     "cost_summary.py",              # IVG-96: portable cost-summary.json normalizer core impl
+    "discovery_staleness.py",       # IVG-106: discovery/Serena staleness detector core impl
 )
 
 

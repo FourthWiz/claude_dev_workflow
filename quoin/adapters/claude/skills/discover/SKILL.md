@@ -165,7 +165,9 @@ Before scanning each repo, check if a previous scan recorded the repo's HEAD com
 2. For each repo in the project folder, run `git rev-parse HEAD` and compare against the stored value.
 3. **If HEAD matches the stored value: skip the full scan for that repo.** Its inventory, dependencies, and API surface have not changed. Report to the user: "Skipping <repo-name> — unchanged since last scan (HEAD: <short-hash>)."
 4. **If HEAD differs or no stored value exists: perform the full scan** as described below.
-5. After completing all scans, write `.workflow_artifacts/cache/_staleness.md` with the current HEAD values for all repos (including unchanged ones). Create the `.workflow_artifacts/cache/` directory if it does not exist. Also write `.workflow_artifacts/memory/repo-heads.md` with the same data (backward compatibility — `/architect` and `/run` may still read it until they are updated in later stages).
+5. After completing all scans, write `.workflow_artifacts/cache/_staleness.md` with the current HEAD values for all repos (including unchanged ones). **Clock-reset invariant (D-06): always write the current run timestamp to the `Updated` column for ALL repos on every run, including repos whose HEAD was unchanged and whose scan was skipped.** This resets the staleness clock even when no content changes — so a near-free incremental scan does not leave the discovery memory appearing stale. Without this invariant, a project whose repos never change would trigger the session-start staleness banner (`S-5`) on every session. Create the `.workflow_artifacts/cache/` directory if it does not exist. Also write `.workflow_artifacts/memory/repo-heads.md` with the same data (backward compatibility — `/architect` and `/run` may still read it until they are updated in later stages).
+
+**Session-start staleness trigger:** the `S-5` sessionstart.sh hook and `/start_of_day` Step 1c read this `Updated` timestamp to determine whether discovery memory is stale. Run `/discover` when the session-start banner fires, or when repos have changed significantly.
 
 Format for `.workflow_artifacts/cache/_staleness.md`:
 

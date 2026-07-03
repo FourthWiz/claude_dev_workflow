@@ -157,6 +157,24 @@ Fail-silent if `.workflow_artifacts/memory/` is absent or unreadable — never e
 
 Note: do NOT source any deployed file paths in this pseudocode. The count operates on the project-local `.workflow_artifacts/memory/` path only. No `__QUOIN_HOME__` reference needed.
 
+### Step 1c: Discovery & Serena staleness check
+
+Run `python3 __QUOIN_HOME__/scripts/discovery_staleness.py <project-root> --json` (fail-open if script absent — missing script = no advisory, not an error). Parse the JSON output to check:
+- `verdict`: `"stale"` or `"absent"` → discovery needs refresh
+- `serena.present_marker`: `true` AND `serena.stale`: `true` → Serena re-onboarding may be needed
+- `serena.present_marker`: `false` → absent marker (may need first-time onboarding — Step 6b will probe via ToolSearch)
+
+This step is **read-only**. Do NOT write any files here. Marker writes happen only when the user takes the Serena action in Step 6b.
+
+Store the result for Step 6b. Fold a one-line advisory into the unified Step 1 banner if any staleness is detected:
+- Discovery stale/absent: `"Discovery memory is stale or absent — /discover recommended."`
+- Serena present-but-stale: `"Serena project memory is stale — refresh available in Step 6b."`
+- Both: combine into a single advisory line.
+
+If the script is absent or errors → skip silently (no advisory, no error). Reuse `QUOIN_DISCOVERY_STALE_DAYS` for the threshold — do NOT introduce `QUOIN_SOD_DISCOVERY_STALE_DAYS`.
+
+Note: `QUOIN_DISCOVERY_AUTOREFRESH=1` allows /start_of_day to invoke `/discover` inline without asking (auto-run opt-in). Serena refresh is NEVER auto-run interactively (D-04).
+
 ## Session bootstrap
 
 Cost tracking note: `/start_of_day` is a lightweight daily-orientation skill. Append to the cost ledger only if a specific task context is clearly active (the user mentioned a task name or there's a clear active task from session state). If in doubt, skip cost recording — don't guess a task name.
@@ -293,6 +311,32 @@ AskUserQuestion(
   options=[
     {label: "Start something new", description: "Begin a new task."},
     {label: "Run /discover", description: "Index the repos first."}
+  ]
+)
+```
+
+### Step 6b: Staleness refresh (separate AskUserQuestion)
+
+Fire this step only when Step 1c detected staleness (discovery stale/absent OR Serena stale/first-time). If no staleness was detected in Step 1c → skip Step 6b entirely.
+
+Present a dedicated second AskUserQuestion for refresh actions (after the main Step 6 task-resume picker). This keeps the main Step 6 picker capped at ≤4 options.
+
+Build options dynamically:
+
+- **If discovery is stale or absent:** include `label: "Refresh discovery"`, `description: "Run /discover (incremental — cheap if HEAD unchanged)"`. If `QUOIN_DISCOVERY_AUTOREFRESH=1`, run `/discover` inline without asking and omit this option from the picker.
+- **If `serena.stale=true` (present-but-stale) OR `serena.present_marker=false` (absent marker):** probe with `ToolSearch select:mcp__serena__activate_project`. If probe loads a schema: include `label: "Set up / Refresh Serena memory"`, `description: "Run Serena onboarding or re-onboarding and update the staleness marker — prompt-only per D-04"`. On the user choosing this option: call the `serena-activation.md §Refresh` path (run `mcp__serena__activate_project` then `mcp__serena__onboarding` then `mcp__serena__initial_instructions`) then write/update `.workflow_artifacts/memory/serena-onboarded.md` with a 1-line body and ISO timestamp. If probe loads no schema → omit the Serena option entirely (Graceful Absence — do not mention Serena to users who may not have it).
+- **Always include:** `label: "Skip refresh"`, `description: "Continue without refreshing."` as the last option.
+
+Both discovery and Serena options may appear simultaneously if both are stale. The Serena refresh is prompt-only in interactive sessions — NEVER auto-run (D-04).
+
+Example (both stale):
+```
+AskUserQuestion(
+  question="Discovery memory needs a refresh. What would you like to do?",
+  options=[
+    {label: "Refresh discovery", description: "Run /discover (incremental — cheap if HEAD unchanged)"},
+    {label: "Set up / Refresh Serena memory", description: "Run Serena onboarding and update the staleness marker"},
+    {label: "Skip refresh", description: "Continue without refreshing."}
   ]
 )
 ```
