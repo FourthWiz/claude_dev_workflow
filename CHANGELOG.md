@@ -2,6 +2,12 @@
 
 All notable changes to Quoin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.11.25] — 2026-07-04
+
+### Fixed
+
+- **agentdesk: session-name collision now offers to attach (default) or start new, instead of always auto-suffixing** (IVG-109). Re-running `agentdesk` in a folder with a live same-named Zellij session now prompts to attach to it (the default, and the fix for the reported "always creates a new session" complaint) or start a fresh suffixed session (`_1`, `_2`, …) by replying `n`/`new`. Non-interactive callers (no TTY, e.g. scripts/CI) are unaffected — they always start a new suffixed session exactly as before. The standalone-installer fallback heredoc in `setup-agentdesk.sh` was synced to match.
+
 ## [0.11.22] — 2026-07-02
 
 ### Fixed

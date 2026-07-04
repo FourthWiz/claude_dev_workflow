@@ -667,7 +667,13 @@ Layout memory:
   Set AGENTDESK_PICK=1 to force the picker via environment variable.
 
 Behavior:
-  Re-running in a folder with a live same-named session starts a NEW suffixed session (_1, _2, …); it never attaches.
+  Re-running with a live same-named session prompts to attach to it (default) or
+  start a new suffixed session (_1, _2, …) instead — reply 'n' to start new.
+  Non-interactive callers (no TTY, e.g. scripts/CI) skip the prompt and always
+  start a new suffixed session, matching the prior default exactly.
+  Note: attaching (the default) reconnects to the session as-is — any --mode or
+  window-type tokens passed on this invocation are ignored for an attach; reply
+  'n' to build the requested layout fresh instead (see MINOR-2, T-01).
 
 Examples:
   agentdesk
@@ -746,13 +752,34 @@ HELP
   local layout_key
   layout_key="$(_agentdesk_layout_key "$custom_name" "$project_root")"
 
-  # ── Resolve session name suffix (never auto-attach) ───────────────────────
+  # ── Resolve session name suffix (attach-or-new prompt, IVG-109) ───────────
   local resolved_name
   resolved_name="$(_agentdesk_next_session_name "$session_name")"
   if [ "$resolved_name" != "$session_name" ]; then
-    echo "Session '$session_name' already exists; starting new session '$resolved_name' instead."
-    echo "(To resume the existing session: agentdesk-attach $session_name)"
-    session_name="$resolved_name"
+    # $session_name is currently a live Zellij session (collision).
+    if [ -t 0 ]; then
+      printf "Session '%s' already exists. Attach to it, or start a new session '%s'? [A/n]: " \
+        "$session_name" "$resolved_name" >&2
+      local reply
+      read -r reply
+      case "$reply" in
+        [Nn]|[Nn][Ee][Ww])
+          echo "Starting new session '$resolved_name'."
+          session_name="$resolved_name"
+          ;;
+        *)
+          # Default (bare Enter, 'a', 'attach', or anything else): attach.
+          echo "Attaching to existing session '$session_name'."
+          agentdesk-attach "$session_name"
+          return $?
+          ;;
+      esac
+    else
+      # Non-TTY: preserve exact prior behavior — never prompt, never hang.
+      echo "Session '$session_name' already exists; starting new session '$resolved_name' instead."
+      echo "(To resume the existing session: agentdesk-attach $session_name)"
+      session_name="$resolved_name"
+    fi
   fi
 
   # ── Prepare workflow artifacts ─────────────────────────────────────────────
