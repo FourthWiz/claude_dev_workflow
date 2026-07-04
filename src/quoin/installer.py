@@ -98,7 +98,7 @@ DEPLOYED_SCRIPTS = (
     "memory_select.py",              # IVG-50 S-1: selective lessons retrieval wrapper
     "dispatch_config.py",            # IVG-90: 1M-dispatch config+cache reader/writer wrapper
     "generate_discovery_map.py",     # /discover optional hook — silently skips without deploy
-    "select_unprocessed_sessions.py",  # session-selection cross-check for end_of_day/weekly_review
+    "select_unprocessed_sessions.py",  # authoritative session-selection helper for end_of_day/weekly_review
     "thorough_plan_checkpoint.py",   # IVG-98: phase-boundary checkpoint wrapper for /thorough_plan
     "cost_summary.py",               # IVG-96: portable cost-summary.json normalizer wrapper
     "discovery_staleness.py",        # IVG-106: discovery/Serena staleness detector wrapper
