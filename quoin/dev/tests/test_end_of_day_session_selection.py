@@ -158,6 +158,59 @@ def test_adapter_recover_orphans_documented():
     )
 
 
+def test_adapter_mandates_selection_script():
+    """(T-04f) Step 3 must mandate the script as authoritative, not describe it
+    as a cross-check (guards the IVG-103 regression)."""
+    text = _adapter_text()
+    keywords = ["select_unprocessed_sessions.py", "authoritative", "run", "--show-window"]
+    found = [kw for kw in keywords if kw in text]
+    assert len(found) >= 2, (
+        f"Adapter SKILL.md must mandate the selection script with at least 2 of "
+        f"{keywords}. Found: {found}"
+    )
+    assert "cross-check" not in text.lower(), (
+        "Adapter SKILL.md must not describe the selection script as a 'cross-check' — "
+        "it must be mandatory/authoritative."
+    )
+
+
+def test_step2_uses_since_bound_for_multiday_window():
+    """(T-04g) Step 2 must document the --since=<lower_bound> threading for
+    multi-day windows, keep the single-day -20 cap, and Step 3's Git activity
+    summary must cite this run's own gather rather than solely git-log.md."""
+    text = _adapter_text()
+    step2_start = text.find("### Step 2:")
+    step2_end = text.find("### Step 3:", step2_start)
+    step2 = text[step2_start:step2_end]
+    assert "--since=" in step2, "Step 2 must document --since=<lower_bound> for multi-day windows"
+    assert "-20" in step2, "Step 2 must retain the single-day -20 cap"
+
+    git_summary_start = text.find("## Git activity summary")
+    assert git_summary_start != -1
+    git_summary = text[git_summary_start: git_summary_start + 600]
+    assert "this run's own" in git_summary or "current run" in git_summary, (
+        "Step 3's Git activity summary must state it is built from this run's own gather, "
+        "not solely a reference to git-log.md"
+    )
+
+
+def test_adapter_recover_orphans_included_in_build_and_flip():
+    """(T-04i) Step 3 build and Step 3d flip must both define the in-scope set as
+    the SAME union of script file list + confirmed orphans (guards against the
+    build/flip sets silently diverging again)."""
+    text = _adapter_text()
+    step3_start = text.find("### Step 3:")
+    step3d_start = text.find("### Step 3d:")
+    assert step3_start != -1 and step3d_start != -1
+    step3_region = text[step3_start:text.find("### Step 3b:", step3_start)]
+    step3d_region = text[step3d_start: step3d_start + 1500]
+
+    assert "confirmed_orphans" in step3_region or "confirmed orphans" in step3_region
+    assert "script" in step3_region.lower()
+    assert "confirmed_orphans" in step3d_region or "confirmed orphans" in step3d_region
+    assert "script" in step3d_region.lower()
+
+
 def test_weekly_review_honors_flag_signal():
     """weekly_review adapter Step 2 must reference end_of_day_due or select_unprocessed_sessions."""
     if not WEEKLY_ADAPTER.is_file():
