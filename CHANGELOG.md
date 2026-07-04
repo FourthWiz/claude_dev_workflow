@@ -2,7 +2,7 @@
 
 All notable changes to Quoin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.11.24] — 2026-07-04
+## [0.11.25] — 2026-07-04
 
 ### Fixed
 
