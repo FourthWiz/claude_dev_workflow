@@ -329,7 +329,8 @@ Usage:
   agentdesk --name <session-name>
   agentdesk -n <session-name>
 
-  (never attaches; if the name is taken it starts a fresh suffixed session — use agentdesk-attach to resume)
+  (prompts to attach to a live same-named session by default; reply 'n' to start new.
+   Non-interactive callers always start new, unchanged.)
 
 Install via quoin for --mode and layout options.
 HELP
@@ -361,13 +362,35 @@ HELP
     return 1
   fi
 
-  # ── Resolve session name suffix (never auto-attach) ───────────────────────
+  # NOTE: mirrors the primary agentdesk.zsh collision block (IVG-109) — keep both in sync.
+  # ── Resolve session name suffix (attach-or-new prompt, IVG-109, fallback copy) ──
   local resolved_name
   resolved_name="$(_agentdesk_next_session_name "$session_name")"
   if [ "$resolved_name" != "$session_name" ]; then
-    echo "Session '$session_name' already exists; starting new session '$resolved_name' instead."
-    echo "(To resume the existing session: agentdesk-attach $session_name)"
-    session_name="$resolved_name"
+    # $session_name is currently a live Zellij session (collision).
+    if [ -t 0 ]; then
+      printf "Session '%s' already exists. Attach to it, or start a new session '%s'? [A/n]: " \
+        "$session_name" "$resolved_name" >&2
+      local reply
+      read -r reply
+      case "$reply" in
+        [Nn]|[Nn][Ee][Ww])
+          echo "Starting new session '$resolved_name'."
+          session_name="$resolved_name"
+          ;;
+        *)
+          # Default (bare Enter, 'a', 'attach', or anything else): attach.
+          echo "Attaching to existing session '$session_name'."
+          agentdesk-attach "$session_name"
+          return $?
+          ;;
+      esac
+    else
+      # Non-TTY: preserve exact prior behavior — never prompt, never hang.
+      echo "Session '$session_name' already exists; starting new session '$resolved_name' instead."
+      echo "(To resume the existing session: agentdesk-attach $session_name)"
+      session_name="$resolved_name"
+    fi
   fi
 
   mkdir -p "$project_root/.workflow_artifacts"
