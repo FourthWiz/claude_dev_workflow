@@ -26,6 +26,11 @@ pytestmark = pytest.mark.skipif(
     reason="zsh not available on this system",
 )
 
+# Full agentdesk() launches spend ~14s on the pre-existing non-git child-folder
+# search on slow/cloud-mounted filesystems, which brushes a 15s timeout under
+# load and makes these tests flaky (TimeoutExpired, not assertion failures).
+SUBPROCESS_TIMEOUT = 30
+
 
 def _make_mock_env(tmp_path: Path) -> dict:
     """Build an env dict with a mock zellij wrapper in $PATH.
@@ -71,7 +76,7 @@ def _run_agentdesk(args: str, tmp_path: Path, stdin: Optional[str] = None) -> su
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=SUBPROCESS_TIMEOUT,
     )
 
 
@@ -374,7 +379,7 @@ def _run_zsh_fn(fn_call: str, tmp_path: Path, stdin_input: str = "") -> subproce
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=SUBPROCESS_TIMEOUT,
     )
 
 
@@ -716,7 +721,7 @@ def test_open_dashboard_non_tty_skips(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=SUBPROCESS_TIMEOUT,
     )
     assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
     # No prompt should appear on stderr (function returned before printf)
@@ -784,7 +789,7 @@ def test_open_dashboard_accepts_exports_flags(tmp_path: Path) -> None:
         except OSError:
             pass
         try:
-            stdout_b, stderr_b = proc.communicate(timeout=15)
+            stdout_b, stderr_b = proc.communicate(timeout=SUBPROCESS_TIMEOUT)
         except subprocess.TimeoutExpired:
             proc.kill()
             stdout_b, stderr_b = proc.communicate()
@@ -865,7 +870,7 @@ rm -f "$_dash_url_file"
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=SUBPROCESS_TIMEOUT,
     )
     assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
     assert marker.exists(), (
@@ -958,7 +963,7 @@ def _run_next_session_name(base: str, sessions: list, tmp_path: Path) -> subproc
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=SUBPROCESS_TIMEOUT,
     )
 
 
@@ -1034,7 +1039,7 @@ def _run_agentdesk_with_sessions_and_attach(
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=SUBPROCESS_TIMEOUT,
     )
 
 
@@ -1294,7 +1299,7 @@ def _run_agentdesk_state(
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=SUBPROCESS_TIMEOUT,
     )
 
 
@@ -1310,7 +1315,7 @@ def _run_zsh_fn_state(
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=SUBPROCESS_TIMEOUT,
     )
 
 
@@ -1386,7 +1391,7 @@ def test_save_load_roundtrip(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=SUBPROCESS_TIMEOUT,
     )
     assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
     assert result.stdout.strip() == "claude+shell", (
@@ -1412,7 +1417,7 @@ def test_save_load_dotted_path(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=SUBPROCESS_TIMEOUT,
     )
     assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
     lines = result.stdout.strip().splitlines()
@@ -1437,7 +1442,7 @@ def test_load_absent_key_rc1(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=SUBPROCESS_TIMEOUT,
     )
     assert result.returncode != 0, (
         f"Loading absent key should return rc!=0 (rc={result.returncode})"
@@ -1486,7 +1491,7 @@ def test_layout_from_value_tokens(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=SUBPROCESS_TIMEOUT,
     )
     assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
     kdl = result.stdout
@@ -1543,7 +1548,7 @@ def test_bare_launch_reuses_saved(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=SUBPROCESS_TIMEOUT,
     )
     assert key_result.returncode == 0, f"key derivation failed: {key_result.stderr}"
     key = key_result.stdout.strip()
@@ -1699,7 +1704,7 @@ def test_corrupt_saved_failopen_nontty(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=SUBPROCESS_TIMEOUT,
     )
     key = key_result.stdout.strip()
     (state_dir / "last-layout").write_text(f"{key}=claude+bogus\n")
@@ -1742,7 +1747,7 @@ def test_name_proj_namespace_isolation(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=SUBPROCESS_TIMEOUT,
     )
     proj_key = key_result.stdout.strip()
     assert proj_key.startswith("proj:"), f"Expected proj: key, got: {proj_key!r}"
@@ -1829,7 +1834,7 @@ rm -f "$dash_tab_tmp"
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=SUBPROCESS_TIMEOUT,
     )
     assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
     kdl_out = result.stdout
@@ -1898,7 +1903,7 @@ def test_open_dashboard_no_orphan_structural_guard(tmp_path: Path) -> None:
         except OSError:
             pass
         try:
-            stdout_b, stderr_b = proc.communicate(timeout=15)
+            stdout_b, stderr_b = proc.communicate(timeout=SUBPROCESS_TIMEOUT)
         except subprocess.TimeoutExpired:
             proc.kill()
             stdout_b, stderr_b = proc.communicate()
