@@ -569,6 +569,22 @@ def test_agentdesk_help_includes_spend(tmp_path: Path) -> None:
     )
 
 
+def test_help_text_describes_attach_prompt_not_never_attaches(tmp_path: Path) -> None:
+    """agentdesk --help Behavior section describes the attach-or-new prompt (IVG-109),
+    not the old 'it never attaches' wording, and mentions the non-TTY fallback."""
+    result = _run_agentdesk("--help", tmp_path)
+    assert result.returncode == 0
+    assert "it never attaches" not in result.stdout, (
+        f"--help must not contain the stale 'it never attaches' wording: {result.stdout!r}"
+    )
+    assert "prompts to attach" in result.stdout, (
+        f"--help must describe the attach-or-new prompt: {result.stdout!r}"
+    )
+    assert "Non-interactive" in result.stdout or "no TTY" in result.stdout, (
+        f"--help must describe the non-TTY fallback: {result.stdout!r}"
+    )
+
+
 def test_agentdesk_spend_as_positional_token(tmp_path: Path) -> None:
     """agentdesk claude spend routes 'spend' as a window token (rc=0, not 'unexpected argument')."""
     result = _run_agentdesk("claude spend", tmp_path)
@@ -946,6 +962,82 @@ def _run_next_session_name(base: str, sessions: list, tmp_path: Path) -> subproc
     )
 
 
+def _make_mock_env_with_sessions_and_attach(tmp_path: Path, sessions: list) -> dict:
+    """Combined sessions + attach + fixed-layout mock env (IVG-109 collision-prompt tests).
+
+    Follows the same ordering-trap-safe pattern as _make_mock_env_with_sessions (bare
+    stubs first, controllable zellij stub last), but the single zellij stub also handles
+    'attach' (writing AGENTDESK_TEST_ATTACH_MARKER) alongside 'list-sessions'. ALSO seeds
+    a fake $HOME with the fixed-layout stub (mirroring _make_state_env) so tests whose
+    code path falls through past the collision block don't hit the "layout not found"
+    guard regardless of whether the collision/dashboard/picker fix is correct.
+    """
+    mock_bin = tmp_path / "mock_bin"
+    mock_bin.mkdir(exist_ok=True)
+
+    for name in ("claude", "codex", "ccr"):
+        stub = mock_bin / name
+        stub.write_text("#!/bin/zsh\nexit 0\n")
+        stub.chmod(0o755)
+
+    printf_lines = "".join(
+        f"  printf '%s\\n' '{s} [Created 3m ago] (EXITED - attach to resume)'\n"
+        for s in sessions
+    )
+    zellij_stub = mock_bin / "zellij"
+    zellij_stub.write_text(
+        "#!/bin/zsh\n"
+        'if [ "$1" = "list-sessions" ]; then\n'
+        + printf_lines +
+        "  exit 0\n"
+        "fi\n"
+        'if [ "$1" = "attach" ]; then\n'
+        '  printf \'%s\\n\' "$2" > "$AGENTDESK_TEST_ATTACH_MARKER"\n'
+        "  exit 0\n"
+        "fi\n"
+        "exit 0\n"
+    )
+    zellij_stub.chmod(0o755)
+
+    env = {**os.environ, "PATH": f"{mock_bin}:{os.environ['PATH']}"}
+    env["PROJECT_ROOT"] = str(tmp_path)
+    env["AGENTDESK_TEST_ATTACH_MARKER"] = str(tmp_path / "attach_called.txt")
+    env.pop("ZELLIJ", None)
+    env.pop("ZELLIJ_SESSION_NAME", None)
+
+    fake_home = tmp_path / "fake_home"
+    fake_home.mkdir(exist_ok=True)
+    env["HOME"] = str(fake_home)
+    zellij_layout_dir = fake_home / ".config" / "zellij" / "layouts"
+    zellij_layout_dir.mkdir(parents=True, exist_ok=True)
+    (zellij_layout_dir / "agent-desk.kdl").write_text("# stub layout\n")
+
+    return env
+
+
+def _run_agentdesk_with_sessions_and_attach(
+    args: str, tmp_path: Path, sessions: list, stdin: Optional[str] = None
+) -> subprocess.CompletedProcess:
+    """Source agentdesk.zsh and call agentdesk with a controllable sessions+attach mock env.
+
+    Mirrors _run_agentdesk, but built on _make_mock_env_with_sessions_and_attach instead
+    of the bare, session-blind _make_mock_env (_run_agentdesk cannot register a collision).
+    """
+    script = textwrap.dedent(f"""
+        source "{AGENTDESK_ZSH}"
+        agentdesk {args}
+    """).strip()
+    return subprocess.run(
+        ["zsh", "-c", script],
+        env=_make_mock_env_with_sessions_and_attach(tmp_path, sessions),
+        input=stdin if stdin is not None else "",
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=15,
+    )
+
+
 # ============================================================
 # Spend tab tests (agentdesk-spend-tab)
 # ============================================================
@@ -1077,6 +1169,80 @@ def test_next_session_name_decorated_line_parse(tmp_path: Path) -> None:
     assert result.stdout.strip() == "foo-agents_1", (
         f"Expected 'foo-agents_1' (decorated-line parse), got: {result.stdout.strip()!r}"
     )
+
+
+# ============================================================
+# T-01/T-03: collision-prompt (attach-or-new) tests (IVG-109)
+# ============================================================
+
+def test_collision_non_tty_preserves_prior_behavior(tmp_path: Path) -> None:
+    """Non-TTY collision path is byte-identical to the pre-fix behavior: no prompt, no hang."""
+    result = _run_agentdesk_with_sessions_and_attach(
+        "--name foo-agents", tmp_path, sessions=["foo-agents"]
+    )
+    combined = result.stdout + result.stderr
+    assert (
+        "Session 'foo-agents' already exists; starting new session 'foo-agents_1' instead."
+        in combined
+    ), f"Expected unchanged collision message: {combined!r}"
+    marker = tmp_path / "attach_called.txt"
+    assert not marker.exists(), "Non-TTY path must never call agentdesk-attach"
+    assert "Attach to it, or start a new session" not in combined, (
+        f"Non-TTY path must never show the interactive prompt: {combined!r}"
+    )
+
+
+def test_collision_tty_default_enter_attaches(tmp_path: Path) -> None:
+    """TTY collision, default (Enter) reply → attaches to the ORIGINAL (non-suffixed) session."""
+    env = _make_mock_env_with_sessions_and_attach(tmp_path, ["foo-agents"])
+    result = _run_agentdesk_with_pty("--name foo-agents", tmp_path, "\n", env=env)
+    assert "Attach to it, or start a new session 'foo-agents_1'" in result.stderr, (
+        f"Expected attach-or-new prompt on stderr: {result.stderr!r}"
+    )
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    marker = tmp_path / "attach_called.txt"
+    assert marker.exists(), "Attach marker must exist after default-Enter reply"
+    assert marker.read_text().strip() == "foo-agents", (
+        f"Must attach to the ORIGINAL name, not the suffixed one: {marker.read_text()!r}"
+    )
+
+
+def test_collision_tty_explicit_n_starts_new(tmp_path: Path) -> None:
+    """TTY collision, explicit 'n' reply → starts a new session, full launch completes."""
+    env = _make_mock_env_with_sessions_and_attach(tmp_path, ["foo-agents"])
+    result = _run_agentdesk_with_pty("--name foo-agents", tmp_path, "n\nn\n\n", env=env)
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    marker = tmp_path / "attach_called.txt"
+    assert not marker.exists(), "Attach must not be called when 'n' starts a new session"
+    assert "Starting new session 'foo-agents_1'" in (result.stdout + result.stderr), (
+        f"Expected new-session message: stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+
+
+def test_collision_tty_reply_new_word_starts_new(tmp_path: Path) -> None:
+    """TTY collision, 'new' (word form, case-insensitive) reply → same as explicit 'n'."""
+    env = _make_mock_env_with_sessions_and_attach(tmp_path, ["foo-agents"])
+    result = _run_agentdesk_with_pty("--name foo-agents", tmp_path, "new\nn\n\n", env=env)
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    marker = tmp_path / "attach_called.txt"
+    assert not marker.exists(), "Attach must not be called when 'new' starts a new session"
+    assert "Starting new session 'foo-agents_1'" in (result.stdout + result.stderr), (
+        f"Expected new-session message: stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+
+
+def test_no_collision_skips_prompt_entirely(tmp_path: Path) -> None:
+    """No existing session with this name → the collision prompt never fires."""
+    env = _make_mock_env_with_sessions_and_attach(tmp_path, [])
+    result = _run_agentdesk_with_pty("--name foo-agents", tmp_path, "n\n\n", env=env)
+    combined = result.stdout + result.stderr
+    assert result.returncode == 0, f"rc={result.returncode}, stderr={result.stderr}"
+    assert "already exists" not in combined, f"No collision text expected: {combined!r}"
+    assert "Attach to it, or start a new session" not in combined, (
+        f"No prompt expected on a fresh name: {combined!r}"
+    )
+    marker = tmp_path / "attach_called.txt"
+    assert not marker.exists(), "Attach must never be called when there is no collision"
 
 
 # ============================================================
@@ -1424,9 +1590,16 @@ def _run_agentdesk_with_pty(
     tmp_path: Path,
     input_text: str,
     timeout: int = 20,
+    env: Optional[dict] = None,
 ) -> subprocess.CompletedProcess:
-    """Run agentdesk with a real PTY as stdin so [ -t 0 ] is true (picker tests)."""
-    env = _make_state_env(tmp_path)
+    """Run agentdesk with a real PTY as stdin so [ -t 0 ] is true (picker tests).
+
+    When env is None (all existing callers — unaffected), builds the default
+    _make_state_env. Pass an explicit env (e.g. from
+    _make_mock_env_with_sessions_and_attach) to drive collision-prompt tests.
+    """
+    if env is None:
+        env = _make_state_env(tmp_path)
     script = textwrap.dedent(f"""
         source "{AGENTDESK_ZSH}"
         agentdesk {args}
