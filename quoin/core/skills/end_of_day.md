@@ -61,10 +61,22 @@ never invokes another workflow phase.
   prior daily-cache file under `daily/<YYYY-MM-DD>.md` (excluding `insights-*.md`). If no
   prior daily exists, lower_bound = today. If the most recent daily IS today, lower_bound =
   today (same-day re-run triggers merge mode per the Behavior contract below).
-- Hybrid session selection: a session file is in scope iff its date-prefix is within
-  [lower_bound, today] inclusive OR its `end_of_day_due` flag is still `yes` (catches
-  yes-flagged files from dates before lower_bound). Legacy files lacking the flag line are
-  treated as `yes`.
+- Hybrid session selection: a session file is in scope iff its date-prefix is `<= today`
+  AND its `end_of_day_due` flag is `yes` — selection is flag-authoritative; `lower_bound`
+  plays no role in the selection filter itself, only in scoping the reporting window (see
+  below). This catches yes-flagged straggler files from before `lower_bound`. Legacy files
+  lacking the flag line are treated as `yes`.
+- Authoritative single-invocation mechanism: the runtime adapter uses the shared
+  session-selection helper as the single source of truth for this run's window and file
+  list — computed ONCE per invocation and reused for both the recent-git-activity gather
+  and the daily-cache session selection, never recomputed a second time or hand-derived
+  in prose.
+- Reporting-window scoping (not a selection filter): the Cost summary and insights-scan
+  window spans `[lower_bound, today]` only — it is NOT widened to include a straggler's
+  own date. Stragglers are captured via selection (the flag-authoritative rule above), not
+  via a widened reporting window; a prior run already reported (or should have reported)
+  their own dates, so re-sweeping them here would double-count. The runtime adapter names
+  stragglers explicitly in the report instead.
 - Same-day re-run: if `daily/<today>.md` already exists, MERGE per proc:D-06 (section-by-
   section algorithm) rather than overwrite. Never replace with a smaller set. If the existing
   file is unreadable (corruption), refuse with a clear error.
@@ -87,9 +99,9 @@ never invokes another workflow phase.
   (no YAML frontmatter to skip) must contain a heading matching the regex
   `^## For human\s*$` for the file to be recognized as v3-format by downstream readers
   (notably `start_of_day`).
-- Cost summary inside the daily cache is built from per-task cost-ledger row counts
-  (today's rows only); the skill MUST NOT invoke a version-control cost-reporting CLI to
-  compute dollar amounts.
+- Cost summary inside the daily cache is built from per-task cost-ledger row counts within
+  the processed reporting window `[lower_bound, today]` (not today's rows only); the skill
+  MUST NOT invoke a version-control cost-reporting CLI to compute dollar amounts.
 - `fallback_fires` aggregation across today's session-state files MUST appear in the
   daily cache when the day total > 0.
 - The skill MUST NOT push, commit, or modify source files.

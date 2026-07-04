@@ -194,6 +194,22 @@ Optional sections: `## Decisions made` (important decisions and rationale), `## 
 
 ### Step 2: Update git-log.md
 
+**First, compute this run's processing window (once, shared with Step 3).** Run the shared helper — this is the AUTHORITATIVE, single invocation for the whole `/end_of_day` run; do not hand-compute the window and do not run it a second time in Step 3:
+
+```bash
+python3 __QUOIN_HOME__/core/scripts/select_unprocessed_sessions.py --lower-bound-source daily --project-root <root> --show-window
+```
+
+Parse the first output line `WINDOW: <lower_bound>..<today>` for `lower_bound` and `today` — the script derives both itself, so no manual date arithmetic is required. The remaining stdout lines are `script_file_list`, reused in Step 3.
+
+(`--recover-orphans` runs only) `confirmed_orphans` = the session files confirmed via Step 0's RECENT/HISTORICAL orphan prompts, treated as `end_of_day_due: yes` for THIS run only. The script structurally cannot see these — they are still `end_of_day_due: no` on disk. Define:
+
+`in_scope = script_file_list ∪ confirmed_orphans`
+
+This union — not `script_file_list` alone — is the definitive set for BOTH the Step 3 daily-cache build and the Step 3d flag-flip. On a normal run (no `--recover-orphans`, or none confirmed), `confirmed_orphans` is empty and `in_scope == script_file_list` — unchanged behavior.
+
+The script is authoritative for selection. The fallback lower_bound-discovery prose in Step 3 below is retained ONLY as an explanatory fallback for when the script is unavailable.
+
 Scan all repos in the project folder and update `.workflow_artifacts/memory/git-log.md` with recent commits. This is a rolling window — keep the last ~50 commits across all repos, newest first.
 
 ```markdown
@@ -214,8 +230,12 @@ Last updated: <datetime>
 
 To build this:
 ```bash
-# For each repo directory
+# For each repo directory — single-day window (lower_bound == today): keep the -20 cap unchanged
 git -C <repo-path> log --all --oneline --date=short --format="%h %s — %ad" -20
+
+# Multi-day window (lower_bound < today): date-bounded, no arbitrary commit-count cap,
+# so a multi-day skip cannot silently truncate commits past a 20-commit ceiling
+git -C <repo-path> log --all --since=<lower_bound> --oneline --date=short --format="%h %s — %ad"
 ```
 
 Then for each commit, briefly describe what it changed (read the diff summary, not the full diff):
@@ -229,9 +249,21 @@ The goal is to capture the *logic* of recent changes — not just file lists but
 
 ### Step 3: Produce the daily cache
 
-**Session selection — hybrid date-window + flag rule:**
+**Session selection — script-authoritative `in_scope` set:**
 
-First, discover the processing window lower bound (proc:T-03):
+`lower_bound`, `today`, and `script_file_list` were already computed ONCE at the start of Step 2 (the mandatory `select_unprocessed_sessions.py --show-window` run) — reuse them here. Do NOT invoke the script a second time in Step 3.
+
+`in_scope` (`script_file_list ∪ confirmed_orphans`, defined in Step 2) is the definitive set of session files for this run.
+
+For reference, the script's selection rule (authoritative — the fallback prose below is only for when the script is unavailable): a session file at `.workflow_artifacts/memory/sessions/<FILE>` is "unprocessed and in scope" iff ALL of:
+  (a) basename matches `^\d{4}-\d{2}-\d{2}-.+\.md$`
+  (b) `## Cost` block contains `end_of_day_due: yes` (missing field treated as `yes` per D-02)
+  (c) `file_date <= today`. Selection is otherwise flag-authoritative only — `lower_bound` plays NO role in this selection filter; it exists purely to scope the reporting window used further below (Cost / Step 3b insights). Do not wire `lower_bound` into this filter — that would reintroduce the IVG-103 regression this plan fixes.
+
+Legacy session files lacking the `end_of_day_due` line are treated as `yes` (D-02).
+Future-dated files (date > today) are excluded.
+
+**Fallback lower_bound discovery** (explanatory only — use ONLY when the script is unavailable; the script is otherwise authoritative):
 1. Scan `daily/<YYYY-MM-DD>.md` files (excluding `insights-*.md`). Find the most recent one by
    date. Call its date `last_daily_date`.
 2. If no prior daily exists → `lower_bound = today`.
@@ -242,26 +274,12 @@ First, discover the processing window lower bound (proc:T-03):
 Example: if last daily is 2026-05-13 and today is 2026-05-16, scan dates 2026-05-14,
 2026-05-15, 2026-05-16 (lower_bound = 2026-05-14).
 
-Then enumerate session files. A session file at `.workflow_artifacts/memory/sessions/<FILE>` is
-"unprocessed and in scope" iff ALL of:
-  (a) basename matches `^\d{4}-\d{2}-\d{2}-.+\.md$`
-  (b) `## Cost` block contains `end_of_day_due: yes` (missing field treated as `yes` per D-02)
-  (c) file's date prefix is within `[lower_bound, today]` inclusive OR date is before
-      `lower_bound` but flag is still `yes`
-
-Legacy session files lacking the `end_of_day_due` line are treated as `yes` (D-02).
-Future-dated files (date > today) are excluded.
-
-The shared helper `__QUOIN_HOME__/core/scripts/select_unprocessed_sessions.py`'s
-`select_unprocessed_sessions()` implements this procedure exactly and can be invoked as a
-cross-check: `python3 __QUOIN_HOME__/core/scripts/select_unprocessed_sessions.py --window LOWER..today --lower-bound-source daily`
-
-**Same-day re-run:** If `daily/<today>.md` already exists when Step 3 begins, MERGE per
-proc:D-06 (section-by-section algorithm) rather than overwrite. If unable to merge (proc:D-06
-step 12 detects unrecoverable corruption), refuse with:
+**Same-day re-run — one deterministic rule:** the script always runs exactly once per `/end_of_day` invocation (at the start of Step 2), regardless of merge vs fresh-write mode. Branching happens ONLY at the WRITE step below — there is no "skipped" or short-circuited script-invocation path:
+- `daily/<today>.md` does NOT exist → fresh write, build the daily cache from `in_scope`.
+- `daily/<today>.md` ALREADY exists → MERGE mode (`proc:D-06`, section-by-section algorithm) rather than overwrite. `in_scope` — which naturally excludes files an earlier same-day run already flipped to `no` — becomes the `new_tasks` / `new_session_rows` inputs to `merge_daily()`. `merge_daily()`'s `## Completed today` algorithm is a task-name set-union, latest wins: overwrite on same key. If unable to merge (proc:D-06 step 12 detects unrecoverable corruption), refuse with:
 `daily/<today>.md is malformed; rename to <date>.md.bak and re-run`.
 
-For each in-scope session file:
+For each file in `in_scope`:
 - If status is `completed` → note it as done, no action needed
 - If status is `in_progress` or `blocked` → include in the daily cache
 
@@ -275,7 +293,7 @@ Write the daily cache to `.workflow_artifacts/memory/daily/<date>.md`:
 <5-8 line plain-English summary: what was the day's focus; which tasks made progress; what is the biggest open blocker; what to do tomorrow. Written directly by the Haiku writer in the same generation as the body — NOT via a summary script>
 
 ## Summary
-<1-2 sentences: what was the day's focus, what got done, what's left. Include inline: "Sessions processed from <lower_bound> to <today> (<K> days, <N> session files).">
+<1-2 sentences: what was the day's focus, what got done, what's left. Include inline: "Sessions processed from <lower_bound> to <today> (<K> days, <N> session files)."; append ", including N straggler session(s) from before the window" when in_scope contains stragglers>
 
 ## Sessions processed
 
@@ -307,8 +325,8 @@ Write the daily cache to `.workflow_artifacts/memory/daily/<date>.md`:
 <All decisions made today across all sessions, with rationale>
 
 ## Git activity summary
-<High-level: N commits across M repos. Key changes: ...>
-<Reference .workflow_artifacts/memory/git-log.md for details>
+<High-level: N commits across M repos, built from this run's own Step 2 gather (the --since=<lower_bound>-bounded output for multi-day windows, or the -20 output for single-day windows) — NOT solely a reference to git-log.md. Key changes: ...>
+<git-log.md is supplementary cross-repo detail only (its own ~50-commit rolling cap is a separate, intentional, longer-lived log) — reference .workflow_artifacts/memory/git-log.md for further detail, but this run's own gather above is the source of truth for the counts here>
 
 ## Cost summary
 <!-- Session counts from cost-ledger.md files — no ccusage calls -->
@@ -322,6 +340,8 @@ Write the daily cache to `.workflow_artifacts/memory/daily/<date>.md`:
 ```
 
 To populate the **Cost summary** section: for each active task, check if `.workflow_artifacts/<task-name>/cost-ledger.md` exists. If it does, count the data lines (non-header, non-blank) where the date column falls within the processed date window (lower_bound..today, inclusive), and list the unique phase values. Do NOT run `npx ccusage` — Haiku does not orchestrate cost lookups. Just report counts and phases. Dollar amounts are computed by `/end_of_task`.
+
+If `in_scope` contains any file dated before `lower_bound` (a straggler — captured via flag-authoritative selection, not via a widened reporting window), append to the Cost summary: "; N straggler session(s) from before the window are included in Sessions processed/Completed today but excluded from this window's cost count." This makes the exclusion visible instead of silent; the straggler's own historical cost-ledger rows and insight files are not re-swept here because a prior `/end_of_day` run already reported (or should have reported) that date.
 
 Also scan all session-state files in the processed window — same selection rule as Step 3 (the set of files selected by the hybrid date-window + flag rule). For each file, read the `## Cost` block and extract the `fallback_fires:` field via regex `^- fallback_fires:\s*(\d+)\s*$`. Sum per task across the processed window. For each task with window fallback total > 0, append the suffix `; <K> fallback fires in window` to that task's Cost summary line. When the window spans more than one day, use `Window total fallback fires: <K>` at the bottom of the Cost summary block; for a single-day window, use `Day total fallback fires: <K>` (backward-compat). After the total line, add: "A non-zero fallback count indicates one or more Class B writers fell back to v2-style write (no `## For human` summary, no validator gate). Investigate which skill emitted `[format-kit-skipped]` and triage before next session." Sessions lacking the `fallback_fires` line (pre-Stage-4) are treated as 0 — no warning emitted.
 
@@ -413,9 +433,7 @@ AskUserQuestion(
 **After** the daily-cache write (Step 3) succeeds, do two things:
 
 **1. Flip `end_of_day_due: no`** in each session-state file that was rolled into the daily cache:
-- For each session file the Step 3 hybrid selection rule produced (NOT only today's files — all
-  files in the processed window that had `end_of_day_due: yes`, plus any orphan-recovery files
-  confirmed in Step 0), edit the file in place to set `end_of_day_due: no`.
+- For each session file in `in_scope` (the script's file list unioned with any Step 0 `--recover-orphans` confirmed orphans — the SAME set used for the Step 3 build; see Step 2), edit the file in place to set `end_of_day_due: no`. The build set and the flip set must never diverge — both are `in_scope`, always.
 - Use an atomic write: open the file, replace the `end_of_day_due: yes` line with `end_of_day_due: no`, write to `<path>.tmp`, then `os.rename(tmp, path)`.
 - Flip ONLY after the daily-cache write succeeded — a crashed `/end_of_day` must NOT mark sessions as processed.
 - This is one of two signals `/start_of_day` reads to detect a missing-EOD condition (the other is the existing insights-file check).

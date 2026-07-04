@@ -367,3 +367,174 @@ def test_adapter_documents_merge_keywords():
         f"Adapter SKILL.md merge contract must contain at least 3 keywords from proc:D-06. "
         f"Found: {found}"
     )
+
+
+# ---------------------------------------------------------------------------
+# IVG-103 round 3 (T-04) — multi-day skip + CLI window + lower_bound short-circuit
+# ---------------------------------------------------------------------------
+
+
+def test_multiday_skip_captures_all_intervening_sessions(tmp_path):
+    """(a) A multi-day skip must select every intervening in_progress session,
+    including a pre-lower_bound straggler (flag=yes), and exclude a flag=no
+    intervening session."""
+    root, sessions, daily = _make_project(tmp_path)
+    today = TODAY
+    last_daily = today - timedelta(days=4)
+    _write_daily(daily, str(last_daily))
+
+    straggler = today - timedelta(days=6)  # before lower_bound, still yes
+    _write_session(sessions, f"{straggler}-task-straggler.md", flag="yes")
+    for offset in range(3, -1, -1):  # the 4 intervening days incl. today
+        d = today - timedelta(days=offset)
+        _write_session(sessions, f"{d}-task-day{offset}.md", flag="yes")
+    intervening_no = today - timedelta(days=2)
+    _write_session(sessions, f"{intervening_no}-task-excluded.md", flag="no")
+
+    selected = select_unprocessed_sessions(root, today, source="daily")
+    names = {p.name for p in selected}
+    assert f"{straggler}-task-straggler.md" in names, "yes-flagged straggler must be selected"
+    for offset in range(3, -1, -1):
+        d = today - timedelta(days=offset)
+        assert f"{d}-task-day{offset}.md" in names
+    assert f"{intervening_no}-task-excluded.md" not in names
+    assert len(selected) == 5
+
+
+def test_lower_bound_param_does_not_change_selection(tmp_path):
+    """(e-i) Passing different lower_bound values must NOT change the returned
+    selection — lower_bound is a short-circuit, never a filter criterion."""
+    root, sessions, daily = _make_project(tmp_path)
+    today = TODAY
+    _write_session(sessions, f"{today}-task-a.md", flag="yes")
+    straggler = today - timedelta(days=10)
+    _write_session(sessions, f"{straggler}-task-straggler.md", flag="yes")
+
+    value_a = today
+    value_b = today - timedelta(days=10)
+
+    selected_a = select_unprocessed_sessions(root, today, source="daily", lower_bound=value_a)
+    selected_b = select_unprocessed_sessions(root, today, source="daily", lower_bound=value_b)
+
+    assert {p.name for p in selected_a} == {p.name for p in selected_b}, (
+        "lower_bound must never affect the returned selection set"
+    )
+
+
+def test_precomputed_lower_bound_skips_internal_compute(tmp_path, monkeypatch):
+    """(e-ii) A precomputed lower_bound must short-circuit the internal
+    compute_lower_bound() scan (guards the redundant-directory-scan fix)."""
+    import select_unprocessed_sessions as module
+
+    root, sessions, daily = _make_project(tmp_path)
+    today = TODAY
+    _write_session(sessions, f"{today}-task-a.md", flag="yes")
+
+    calls = []
+    original = module.compute_lower_bound
+
+    def spy(*args, **kwargs):
+        calls.append((args, kwargs))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(module, "compute_lower_bound", spy)
+
+    module.select_unprocessed_sessions(root, today, source="daily", lower_bound=today)
+    assert calls == [], "compute_lower_bound must NOT be called when lower_bound is precomputed"
+
+
+def test_show_window_emits_lower_bound(tmp_path, capsys):
+    """(b) --show-window prints WINDOW: <lower_bound>..<today> as the first line,
+    and does NOT widen for a pre-lower_bound straggler (non-widening, per D-02)."""
+    import select_unprocessed_sessions as module
+
+    root, sessions, daily = _make_project(tmp_path)
+    today = TODAY
+    last_daily = today - timedelta(days=4)
+    _write_daily(daily, str(last_daily))
+    straggler = today - timedelta(days=6)
+    _write_session(sessions, f"{straggler}-task-straggler.md", flag="yes")
+
+    rc = module.main([
+        "--window", f"{today}..{today}",
+        "--lower-bound-source", "daily",
+        "--project-root", str(root),
+        "--show-window",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    first_line = out.splitlines()[0]
+    expected_lb = last_daily + timedelta(days=1)
+    assert first_line == f"WINDOW: {expected_lb}..{today}"
+    assert str(straggler) not in first_line, "the straggler date must not appear as the emitted lower bound"
+
+
+def test_show_window_backward_compat(tmp_path, capsys):
+    """(c) Without --show-window, stdout is just the file list; with --window
+    provided, output is byte-identical to the pre-round-2 behavior."""
+    import select_unprocessed_sessions as module
+
+    root, sessions, daily = _make_project(tmp_path)
+    today = TODAY
+    _write_session(sessions, f"{today}-task-a.md", flag="yes")
+
+    rc = module.main([
+        "--window", f"{today}..{today}",
+        "--lower-bound-source", "daily",
+        "--project-root", str(root),
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "WINDOW:" not in out
+    assert out.strip().endswith(f"{today}-task-a.md")
+
+
+def test_window_omitted_defaults_to_system_today(tmp_path, monkeypatch, capsys):
+    """(d) Omitting --window entirely must not error; today defaults to the
+    system date."""
+    import select_unprocessed_sessions as module
+
+    root, sessions, daily = _make_project(tmp_path)
+    fixed_today = TODAY
+    monkeypatch.setattr(module, "date", type(
+        "FixedDate", (date,), {"today": classmethod(lambda cls: fixed_today)}
+    ))
+    _write_session(sessions, f"{fixed_today}-task-a.md", flag="yes")
+
+    rc = module.main([
+        "--lower-bound-source", "daily",
+        "--project-root", str(root),
+        "--show-window",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    first_line = out.splitlines()[0]
+    assert first_line.startswith("WINDOW: ") and first_line.endswith(f"..{fixed_today}")
+
+
+def test_show_window_emits_passed_lower_bound_verbatim(tmp_path, capsys):
+    """(e-iii) main() computes lower_bound once and threads the SAME value into
+    both the WINDOW: line and the select_unprocessed_sessions() call."""
+    import select_unprocessed_sessions as module
+
+    root, sessions, daily = _make_project(tmp_path)
+    today = TODAY
+    last_daily = today - timedelta(days=3)
+    _write_daily(daily, str(last_daily))
+    d1 = today - timedelta(days=2)
+    _write_session(sessions, f"{d1}-task-a.md", flag="yes")
+
+    rc = module.main([
+        "--window", f"{today}..{today}",
+        "--lower-bound-source", "daily",
+        "--project-root", str(root),
+        "--show-window",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    lines = out.splitlines()
+    window_line = lines[0]
+    expected_lb = last_daily + timedelta(days=1)
+    assert window_line == f"WINDOW: {expected_lb}..{today}"
+    # selection ran with the same lower_bound: d1 (>= expected_lb) is selected
+    assert any(f"{d1}-task-a.md" in line for line in lines[1:])
