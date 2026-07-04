@@ -5,11 +5,18 @@ from the eod-rollup-and-approvals plan. Stdlib-only; Python 3.8+.
 
 CLI usage:
   python3 select_unprocessed_sessions.py \\
-    --window LOWER..UPPER \\
     --lower-bound-source MODE \\
-    [--explicit-lower-bound YYYY-MM-DD]
+    --project-root PATH \\
+    [--window LOWER..UPPER] \\
+    [--explicit-lower-bound YYYY-MM-DD] \\
+    [--show-window]
 
   MODE: daily | weekly | explicit
+  --window is optional: when omitted, `today` defaults to the system date. The LOWER
+    part, when provided, is parsed but intentionally discarded — the authoritative
+    lower_bound always comes from --lower-bound-source (see main()/compute_lower_bound()).
+  --show-window prints one line `WINDOW: <lower_bound>..<today>` before the file list —
+    this is the AUTHORITATIVE selection mechanism for /end_of_day (run once per run).
   Output: one session file path per line, sorted by date then filename.
 """
 
@@ -100,17 +107,28 @@ def select_unprocessed_sessions(
     today: date,
     source: str = "daily",
     explicit_lower: str | None = None,
+    lower_bound: date | None = None,
 ) -> list[Path]:
     """Enumerate unprocessed session files in scope.
 
     A session file is in scope iff:
       (a) basename matches YYYY-MM-DD-<slug>.md
       (b) end_of_day_due is "yes" (missing field treated as "yes" per D-02)
-      (c) file_date <= today AND (file_date >= lower_bound OR flag is still "yes")
+      (c) file_date <= today. Selection is otherwise flag-authoritative only —
+          `lower_bound` plays NO role in this filter; it is accepted below purely
+          as an optional short-circuit for a caller's already-computed value
+          (avoids a redundant `compute_lower_bound()` directory scan). Passing a
+          different `lower_bound` value MUST NOT change the returned selection.
+
+    Args:
+        lower_bound: precomputed lower_bound (see `main()` / `--show-window`). When
+            provided, `compute_lower_bound()` is NOT called — this is a pure
+            short-circuit, not a new filter criterion.
 
     Returns paths sorted by (date_prefix, filename).
     """
-    lower_bound = compute_lower_bound(source, project_root, today, explicit_lower)
+    if lower_bound is None:
+        lower_bound = compute_lower_bound(source, project_root, today, explicit_lower)
     session_dir = project_root / ".workflow_artifacts" / "memory" / "sessions"
     if not session_dir.is_dir():
         return []
@@ -407,8 +425,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--window",
-        required=True,
-        help="Date range LOWER..UPPER (YYYY-MM-DD..YYYY-MM-DD)",
+        required=False,
+        default=None,
+        help=(
+            "Date range LOWER..UPPER (YYYY-MM-DD..YYYY-MM-DD). Optional — when omitted, "
+            "`today` defaults to the system date (date.today()). The LOWER part, when "
+            "provided, is parsed but intentionally discarded (see comment at the discard "
+            "site below) — the real lower_bound always comes from --lower-bound-source, "
+            "never from --window."
+        ),
     )
     parser.add_argument(
         "--lower-bound-source",
@@ -425,21 +450,43 @@ def main(argv: list[str] | None = None) -> int:
         default=".",
         help="Path to the project root (default: current directory)",
     )
+    parser.add_argument(
+        "--show-window",
+        action="store_true",
+        help=(
+            "Print exactly one line 'WINDOW: <lower_bound>..<today>' before the file list. "
+            "This is the single, non-widened lower_bound value the script already derives "
+            "internally, now surfaced instead of silently discarded."
+        ),
+    )
     args = parser.parse_args(argv)
 
-    _lower_str, upper_str = _parse_window(args.window)
-    try:
-        today = date.fromisoformat(upper_str)
-    except ValueError:
-        print(f"Error: invalid upper date in --window: {upper_str!r}", file=sys.stderr)
-        return 1
+    if args.window is not None:
+        # LOWER is parsed but intentionally unused as a filter — the real lower_bound
+        # always comes from --lower-bound-source below. Do not "fix" this by wiring
+        # _lower_str in: that would reintroduce the dead-filter trap this plan removes.
+        _lower_str, upper_str = _parse_window(args.window)
+        try:
+            today = date.fromisoformat(upper_str)
+        except ValueError:
+            print(f"Error: invalid upper date in --window: {upper_str!r}", file=sys.stderr)
+            return 1
+    else:
+        today = date.today()
 
     project_root = Path(args.project_root).resolve()
+    lower_bound = compute_lower_bound(
+        args.lower_bound_source, project_root, today, args.explicit_lower_bound
+    )
+    if args.show_window:
+        print(f"WINDOW: {lower_bound}..{today}")
+
     files = select_unprocessed_sessions(
         project_root=project_root,
         today=today,
         source=args.lower_bound_source,
         explicit_lower=args.explicit_lower_bound,
+        lower_bound=lower_bound,
     )
     for f in files:
         print(f)
