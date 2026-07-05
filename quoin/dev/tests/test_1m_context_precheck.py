@@ -75,7 +75,7 @@ def skill_md_path(skill_name: str) -> Path:
 # §0 targets: (skill_name, declared_tier, proceed_ref)
 SECTION0_TARGETS = [
     ("gate",           "sonnet", "§1"),
-    ("end_of_day",     "haiku",  "§1"),
+    ("end_of_day",     "sonnet", "§1"),
     ("start_of_day",   "haiku",  "§1"),
     ("capture_insight","haiku",  "§1"),
     ("cost_snapshot",  "haiku",  "§1"),
