@@ -62,6 +62,22 @@ def _run_help(fn: str, tmp_path: Path, drop_tools: tuple = ()) -> subprocess.Com
     )
 
 
+def _assert_tool_absent(tool: str, tmp_path: Path, drop_tools: tuple) -> None:
+    """Self-check: proves `tool` is genuinely unreachable in the hermetic PATH
+    before trusting a --help-works-without-it assertion (round-1 critic D-07)."""
+    result = subprocess.run(
+        ["zsh", "-c", f"command -v {tool}"],
+        env=_mock_env(tmp_path, drop_tools),
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=SUBPROCESS_TIMEOUT,
+    )
+    assert result.returncode != 0, (
+        f"expected {tool!r} to be absent from hermetic PATH, but found: {result.stdout!r}"
+    )
+
+
 CASES = [
     ("repos", "repos"),
     ("crepo", "crepo"),
@@ -91,6 +107,7 @@ def test_help_flag(fn, token, tmp_path):
 
 def test_crepo_help_without_fzf(tmp_path):
     """crepo --help works even when fzf is absent from PATH (guard-order proof)."""
+    _assert_tool_absent("fzf", tmp_path, drop_tools=("fzf",))
     result = _run_help("crepo", tmp_path, drop_tools=("fzf",))
     assert result.returncode == 0, result.stderr
     assert "Usage:" in result.stdout
@@ -98,6 +115,7 @@ def test_crepo_help_without_fzf(tmp_path):
 
 def test_gitreview_help_without_fzf(tmp_path):
     """gitreview --help works even when fzf is absent from PATH (guard-order proof)."""
+    _assert_tool_absent("fzf", tmp_path, drop_tools=("fzf",))
     result = _run_help("gitreview", tmp_path, drop_tools=("fzf",))
     assert result.returncode == 0, result.stderr
     assert "Usage:" in result.stdout
@@ -105,6 +123,8 @@ def test_gitreview_help_without_fzf(tmp_path):
 
 def test_codexpane_help_without_zellij_or_codex(tmp_path):
     """codexpane --help works even when zellij AND codex are absent (guard-order proof)."""
+    _assert_tool_absent("zellij", tmp_path, drop_tools=("zellij", "codex"))
+    _assert_tool_absent("codex", tmp_path, drop_tools=("zellij", "codex"))
     result = _run_help("codexpane", tmp_path, drop_tools=("zellij", "codex"))
     assert result.returncode == 0, result.stderr
     assert "Usage:" in result.stdout
@@ -112,6 +132,7 @@ def test_codexpane_help_without_zellij_or_codex(tmp_path):
 
 def test_agentdesk_sessions_help_without_zellij(tmp_path):
     """agentdesk-sessions --help works even when zellij is absent (guard-order proof)."""
+    _assert_tool_absent("zellij", tmp_path, drop_tools=("zellij",))
     result = _run_help("agentdesk-sessions", tmp_path, drop_tools=("zellij",))
     assert result.returncode == 0, result.stderr
     assert "Usage:" in result.stdout
