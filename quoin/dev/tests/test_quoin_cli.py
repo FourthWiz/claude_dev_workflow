@@ -47,25 +47,54 @@ def test_cli_version():
 
 
 def test_cli_help():
-    # Top-level help shows subcommand names
+    # Top-level help shows subcommand names + examples epilog
     result = _py("-m", "quoin", "--help")
     assert result.returncode == 0, result.stderr
     assert "install" in result.stdout
     assert "codex" in result.stdout
+    assert "Examples:" in result.stdout
+    assert "quoin router setup" in result.stdout
+    assert "quoin models set" in result.stdout
 
-    # install subcommand help shows --dev flag
+    # install subcommand help shows --dev flag + de-densified Scope epilog
     result2 = _py("-m", "quoin", "install", "--help")
     assert result2.returncode == 0, result2.stderr
     assert "--dev" in result2.stdout
     assert "--runtime" in result2.stdout
     assert "Claude installs globally to ~/.claude" in result2.stdout
     assert "repo-local AGENTS.md" in result2.stdout
+    assert "Scope" in result2.stdout
+    assert "project:/path" in result2.stdout
 
     # doctor can target Codex without replacing the default Claude check
     result3 = _py("-m", "quoin", "doctor", "--help")
     assert result3.returncode == 0, result3.stderr
     assert "--runtime" in result3.stdout
     assert "codex" in result3.stdout
+    assert "read-only" in result3.stdout
+
+    # thin subparsers now carry a description=
+    result4 = _py("-m", "quoin", "codex", "--help")
+    assert result4.returncode == 0, result4.stderr
+    assert "Codex" in result4.stdout
+
+    result5 = _py("-m", "quoin", "codex", "init", "--help")
+    assert result5.returncode == 0, result5.stderr
+    assert "AGENTS.md" in result5.stdout
+
+    result6 = _py("-m", "quoin", "dashboard", "--help")
+    assert result6.returncode == 0, result6.stderr
+    assert "127.0.0.1" in result6.stdout
+
+    result7 = _py("-m", "quoin", "router", "--help")
+    assert result7.returncode == 0, result7.stderr
+    assert "claude-code-router" in result7.stdout
+    assert "OPENROUTER_API_KEY" in result7.stdout
+
+    result8 = _py("-m", "quoin", "models", "--help")
+    assert result8.returncode == 0, result8.stderr
+    assert "tier" in result8.stdout
+    assert "claude-code-router" in result8.stdout
 
     # In-process variant (no pip install needed — pythonpath = ["src"])
     from quoin.cli import main  # noqa: PLC0415
