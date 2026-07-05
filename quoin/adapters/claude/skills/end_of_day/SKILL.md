@@ -1,7 +1,7 @@
 ---
 name: end_of_day
 description: "Consolidates all of today's work across all sessions into a daily cache for next-day resumption. Works in any session — fresh or active. Use this skill for: /end_of_day, 'wrapping up', 'done for the day', 'save my progress', 'end of day', 'EOD'. Captures what was worked on, what's unfinished, blockers, decisions made, and recent git activity. The daily cache feeds into /start_of_day for seamless resumption."
-model: haiku
+model: sonnet
 ---
 
 # End of Day
@@ -12,7 +12,7 @@ You consolidate all of today's work into a daily cache that `/start_of_day` can 
 
 ## §0 Model dispatch (FIRST STEP — execute before anything else)
 
-This skill is declared `model: haiku`. If the executing agent is running on a model
+This skill is declared `model: sonnet`. If the executing agent is running on a model
 strictly more expensive than the declared tier, you MUST self-dispatch before doing the
 skill's actual work.
 
@@ -24,7 +24,7 @@ Detection:
       * Counter form `[no-redispatch:N]` where N is a positive integer ≥ 2: ABORT (see "Abort rule" below).
       * Counter form `[no-redispatch:1]` is reserved and treated as bare `[no-redispatch]` for forward-compatibility; do not emit it.
   - If current_tier > declared_tier AND prompt does NOT start with any `[no-redispatch]` form:
-      Dispatch reason: cost-guardrail handoff. dispatched-tier: haiku.
+      Dispatch reason: cost-guardrail handoff. dispatched-tier: sonnet.
 <!-- §0-1m-decide-begin -->
 Pre-dispatch 1M check (IVG-90 Layer 1+2):
   - Run: python3 __QUOIN_HOME__/scripts/dispatch_config.py --decide --tier <declared_tier> --verbose
@@ -40,8 +40,8 @@ Pre-dispatch 1M check (IVG-90 Layer 1+2):
       Continue to the Agent dispatch call below (today's path — fail-OPEN).
 <!-- §0-1m-decide-end -->
       Spawn an Agent subagent with the following arguments:
-        model: "haiku"
-        description: "end_of_day dispatched at haiku tier"
+        model: "sonnet"
+        description: "end_of_day dispatched at sonnet tier"
         prompt: "[no-redispatch]\n<original user input verbatim>"
       Wait for the subagent.
 <!-- §0-1m-cachewrite-begin -->
@@ -177,7 +177,7 @@ work was never captured.
 
 # V-05 reminder: T-NN/D-NN/R-NN/F-NN/Q-NN/S-NN are FILE-LOCAL.
 # When referring to a sibling artifact's task or risk, use plain English (e.g., "the parent plan's T-04"), NOT a bare T-NN token. See format-kit.md §1 / glossary.md.
-Write session-state files in v3 format per the §5.4 Class A writer mechanism (reference format-kit.md / glossary.md / terse-rubric.md at the body write-site; session artifact type per format-kit §2; validate via validate_artifact.py with retry-once-then-English-fallback). Write `daily/insights-{date}.md` in v3 format per the §5.4 Class A mechanism — append-only structure (each insight as an entry per the template at Step 3 of /capture_insight); body uses caveman prose with terse-rubric for the entry content; no V-02 section-set strict-match (insights file uses the default minimal section set since each entry is its own implicit "section"); validate via validate_artifact.py and accept default fallback semantics on V-failure. `daily/{date}.md` (the rendered daily briefing) remains Class B per parent Stage 3 work — the file gets a `## For human` block prepended (composed directly by Haiku in the same generation as the body — no script invocation). The terse-rubric applies inside prose-shaped sections only (composed with format-kit per format-kit §5).
+Write session-state files in v3 format per the §5.4 Class A writer mechanism (reference format-kit.md / glossary.md / terse-rubric.md at the body write-site; session artifact type per format-kit §2; validate via validate_artifact.py with retry-once-then-English-fallback). Write `daily/insights-{date}.md` in v3 format per the §5.4 Class A mechanism — append-only structure (each insight as an entry per the template at Step 3 of /capture_insight); body uses caveman prose with terse-rubric for the entry content; no V-02 section-set strict-match (insights file uses the default minimal section set since each entry is its own implicit "section"); validate via validate_artifact.py and accept default fallback semantics on V-failure. `daily/{date}.md` (the rendered daily briefing) remains Class B per parent Stage 3 work — the file gets a `## For human` block prepended (composed directly by the dispatched model in the same generation as the body — no script invocation). The terse-rubric applies inside prose-shaped sections only (composed with format-kit per format-kit §5).
 
 **If this session has no active task** (e.g. you opened a fresh session just to run `/end_of_day`), skip the session-state write and proceed to Step 2. The existing session files on disk are the source of truth.
 
@@ -290,7 +290,7 @@ Write the daily cache to `.workflow_artifacts/memory/daily/<date>.md`:
 
 ## For human
 
-<5-8 line plain-English summary: what was the day's focus; which tasks made progress; what is the biggest open blocker; what to do tomorrow. Written directly by the Haiku writer in the same generation as the body — NOT via a summary script>
+<5-8 line plain-English summary: what was the day's focus; which tasks made progress; what is the biggest open blocker; what to do tomorrow. Written directly by the dispatched model in the same generation as the body — NOT via a summary script>
 
 ## Summary
 <1-2 sentences: what was the day's focus, what got done, what's left. Include inline: "Sessions processed from <lower_bound> to <today> (<K> days, <N> session files)."; append ", including N straggler session(s) from before the window" when in_scope contains stragglers>
@@ -339,7 +339,7 @@ Write the daily cache to `.workflow_artifacts/memory/daily/<date>.md`:
 <Based on what's unfinished, suggest what to tackle first>
 ```
 
-To populate the **Cost summary** section: for each active task, check if `.workflow_artifacts/<task-name>/cost-ledger.md` exists. If it does, count the data lines (non-header, non-blank) where the date column falls within the processed date window (lower_bound..today, inclusive), and list the unique phase values. Do NOT run `npx ccusage` — Haiku does not orchestrate cost lookups. Just report counts and phases. Dollar amounts are computed by `/end_of_task`.
+To populate the **Cost summary** section: for each active task, check if `.workflow_artifacts/<task-name>/cost-ledger.md` exists. If it does, count the data lines (non-header, non-blank) where the date column falls within the processed date window (lower_bound..today, inclusive), and list the unique phase values. Do NOT run `npx ccusage` — this skill does not orchestrate cost lookups. Just report counts and phases. Dollar amounts are computed by `/end_of_task`.
 
 If `in_scope` contains any file dated before `lower_bound` (a straggler — captured via flag-authoritative selection, not via a widened reporting window), append to the Cost summary: "; N straggler session(s) from before the window are included in Sessions processed/Completed today but excluded from this window's cost count." This makes the exclusion visible instead of silent; the straggler's own historical cost-ledger rows and insight files are not re-swept here because a prior `/end_of_day` run already reported (or should have reported) that date.
 

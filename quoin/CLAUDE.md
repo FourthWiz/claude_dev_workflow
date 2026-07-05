@@ -348,7 +348,7 @@ The full catalog of always-English Tier-1 files (hand-edited, contract-approval,
 | /rollback | Sonnet | Safe undo of implementation phases |
 | /end_of_task | Sonnet | Commit, push branch, lessons, mark complete |
 | /pr | Sonnet | Procedural automation: version bump detection, PR creation, post-merge cleanup |
-| /end_of_day | Haiku | Session state capture and daily cache consolidation (structured template work) |
+| /end_of_day | Sonnet | Session state capture, insight deduplication, and lessons-learned consolidation — Haiku was too weak to reliably dedupe similar lessons (IVG-113) |
 | /init_workflow | Opus | Project bootstrap, /discover invocation, structure creation |
 | /start_of_day | Haiku | Context restoration and git state reconciliation (structured checklist) |
 | /weekly_review | Haiku | Aggregates weekly progress, decisions, and outcomes (template-driven) |

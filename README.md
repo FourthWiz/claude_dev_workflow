@@ -240,7 +240,7 @@ workflow intent through natural-language phase requests and repo-local docs.
 | `/init_workflow` | Opus | One-time project bootstrap; creates `.workflow_artifacts/` and runs discovery |
 | `/discover` | Opus | Scans repos; maps architecture, dependencies, and git history |
 | `/start_of_day` | Haiku | Morning briefing from daily/session memory |
-| `/end_of_day` | Haiku | Saves session state and promotes insights; auto-invokes /sleep |
+| `/end_of_day` | Sonnet | Saves session state, dedupes and promotes insights; auto-invokes /sleep |
 | `/end_of_task` | Sonnet | Pushes branch, captures lessons, and finalizes task state |
 | `/checkpoint` | Sonnet | Save/restore session context mid-session; writes pending-restore sentinel |
 | `/continue_work` | Sonnet | Resume context from a prior session using the recent-sessions index |

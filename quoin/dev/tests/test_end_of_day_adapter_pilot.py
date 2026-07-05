@@ -5,7 +5,7 @@ pattern established by test_end_of_task_adapter_pilot.py and
 test_run_adapter_pilot.py.
 
 Skill parameters: (skill_name, expected_model, has_section_0)
-  - end_of_day: haiku, §0 present (cheap-tier — self-dispatches to Haiku)
+  - end_of_day: sonnet, §0 present (cheap-tier — self-dispatches to Sonnet)
 """
 import re
 from pathlib import Path
@@ -22,7 +22,7 @@ FORBIDDEN_TOKENS = ("~/.claude", "Haiku", "Sonnet", "Opus", "Agent", "gh CLI")
 REQUIRED_MENTION = ".workflow_artifacts/<task-name>/"
 
 SKILLS = [
-    ("end_of_day", "haiku", True),
+    ("end_of_day", "sonnet", True),
 ]
 
 SKILL_IDS = [s[0] for s in SKILLS]
