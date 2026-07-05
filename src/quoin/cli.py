@@ -7,6 +7,7 @@ import os
 import pathlib
 import runpy
 import sys
+import textwrap
 from typing import Optional
 
 
@@ -645,13 +646,27 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="quoin",
         description="Quoin — workflow state for stateless coding agents",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=textwrap.dedent("""\
+            Examples:
+              quoin install                  Install for Claude Code (prompts for scope)
+              quoin install --scope project  Install into ./.claude for this project only
+              quoin doctor                   Health-check an existing install (read-only)
+              quoin dashboard                Open the workflow dashboard in a browser
+              quoin router setup             Enable open-model routing (claude-code-router)
+              quoin models set opus glm      Map the opus tier to an OpenRouter model
+
+            Run 'quoin <command> --help' for command-specific options.
+            See QUICKSTART.md for the full command reference.
+        """),
     )
     parser.add_argument("--version", action="version", version=f"quoin {__version__}")
 
-    sub = parser.add_subparsers(dest="command")
+    sub = parser.add_subparsers(dest="command", title="commands", metavar="<command>")
 
     install_p = sub.add_parser(
         "install",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(
             "Install Quoin for a runtime. Claude installs globally to ~/.claude. "
             "Codex generates or checks repo-local AGENTS.md scaffold only."
@@ -660,6 +675,21 @@ def main(argv: list[str] | None = None) -> int:
             "Install Quoin for a runtime: Claude globally to ~/.claude "
             "(default), or Codex repo-local AGENTS.md scaffold"
         ),
+        epilog=textwrap.dedent("""\
+            Scope (--scope):
+              user             install to ~/.claude/ (global; default)
+              project          install to <CWD>/.claude/ (this project only)
+              project:/path    install to /path/.claude/
+            Note: for skills, Claude Code personal scope overrides project scope —
+            a prior home install shadows project skills. Run
+            'quoin doctor --scope project' to detect conflicts.
+
+            Examples:
+              quoin install
+              quoin install --dev
+              quoin install --scope project
+              quoin install --runtime codex --project-root .
+        """),
     )
     install_p.add_argument(
         "--runtime",
@@ -701,20 +731,9 @@ def main(argv: list[str] | None = None) -> int:
         help="Keep first DEV WORKFLOW marker pair; remove extra pairs",
     )
     install_p.add_argument(
-        "--scope",
-        default=None,
-        metavar="SCOPE",
-        help=(
-            "Install scope: 'user' (global, ~/.claude/) or 'project' (<CWD>/.claude/). "
-            "If omitted, the installer prompts interactively (non-interactive mode defaults to 'user'). "
-            "Values: 'user' installs to ~/.claude/, "
-            "'project' installs to <CWD>/.claude/, "
-            "'project:/path/to/repo' installs to /path/to/repo/.claude/. "
-            "All skills, scripts, hooks, and CLAUDE.md will be scoped accordingly. "
-            "Note: for skills, Claude Code personal scope overrides project scope — "
-            "a prior home install shadows project skills. "
-            "Run 'quoin doctor --scope project' to detect conflicts."
-        ),
+        "--scope", default=None, metavar="SCOPE",
+        help="Install scope: user (~/.claude, default) or project (<CWD>/.claude). "
+             "Omitted → interactive prompt. See 'Scope' below for values.",
     )
     install_p.add_argument(
         "--allow-hook-merge",
@@ -727,7 +746,14 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
 
-    doctor_p = sub.add_parser("doctor", help="Check quoin installation health (read-only)")
+    doctor_p = sub.add_parser(
+        "doctor",
+        description=(
+            "Check the health of a quoin install (read-only): prerequisites, "
+            "deployed skills/scripts/memory, CLAUDE.md markers, router state."
+        ),
+        help="Check quoin installation health (read-only)",
+    )
     doctor_p.add_argument(
         "--runtime",
         choices=("claude", "codex"),
@@ -759,11 +785,16 @@ def main(argv: list[str] | None = None) -> int:
         help="For --runtime codex, also run the deterministic repo-local smoke check.",
     )
 
-    codex_p = sub.add_parser("codex", help="Repo-local Codex setup helpers")
+    codex_p = sub.add_parser(
+        "codex",
+        description="Repo-local Codex setup helpers (generate/check AGENTS.md).",
+        help="Repo-local Codex setup helpers",
+    )
     codex_sub = codex_p.add_subparsers(dest="codex_command")
 
     codex_init_p = codex_sub.add_parser(
         "init",
+        description="Generate or check the repo-local Codex AGENTS.md scaffold.",
         help="Generate or check repo-local Codex AGENTS.md",
     )
     codex_init_p.add_argument(
@@ -784,6 +815,10 @@ def main(argv: list[str] | None = None) -> int:
 
     dashboard_p = sub.add_parser(
         "dashboard",
+        description=(
+            "Launch the quoin workflow dashboard: a local read-only HTTP "
+            "server (127.0.0.1) that visualizes .workflow_artifacts/ state."
+        ),
         help="Launch the quoin workflow dashboard (local HTTP server, 127.0.0.1)",
     )
     dashboard_p.add_argument(
@@ -805,12 +840,19 @@ def main(argv: list[str] | None = None) -> int:
 
     router_p = sub.add_parser(
         "router",
+        description=(
+            "Set up open-model routing via claude-code-router (CCR), opt-in. "
+            "Reads OPENROUTER_API_KEY from the environment."
+        ),
         help="Set up open-model routing via claude-code-router (opt-in)",
     )
-    router_sub = router_p.add_subparsers(dest="router_command")
+    router_sub = router_p.add_subparsers(
+        dest="router_command", title="router commands", metavar="<subcommand>"
+    )
 
     router_setup_p = router_sub.add_parser(
         "setup",
+        description="Install claude-code-router and scaffold an OpenRouter config.",
         help=(
             "Install claude-code-router and scaffold an OpenRouter config. "
             "Reads OPENROUTER_API_KEY from the environment."
@@ -824,17 +866,25 @@ def main(argv: list[str] | None = None) -> int:
 
     router_sub.add_parser(
         "status",
+        description="Show CCR install state, config, proxy liveness, and launch mode (read-only).",
         help="Show CCR install state, config, proxy liveness, and active launch mode (read-only).",
     )
 
     models_p = sub.add_parser(
         "models",
+        description=(
+            "Manage the tier→open-model mapping for claude-code-router (opt-in). "
+            "Bare 'quoin models' prints the current mapping."
+        ),
         help="Manage tier→open-model mapping for claude-code-router (opt-in)",
     )
-    models_sub = models_p.add_subparsers(dest="models_command")
+    models_sub = models_p.add_subparsers(
+        dest="models_command", title="models commands", metavar="<subcommand>"
+    )
 
     models_set_p = models_sub.add_parser(
         "set",
+        description="Set the OpenRouter slug (or alias flash|pro|glm) for one tier.",
         help="Set the slug for one tier (haiku, sonnet, or opus).",
     )
     models_set_p.add_argument(
@@ -851,6 +901,7 @@ def main(argv: list[str] | None = None) -> int:
 
     models_preset_p = models_sub.add_parser(
         "preset",
+        description="Apply a preset mapping (currently only 'open').",
         help="Apply a preset mapping (currently only 'open' is supported).",
     )
     models_preset_p.add_argument(
@@ -861,6 +912,7 @@ def main(argv: list[str] | None = None) -> int:
 
     models_reset_p = models_sub.add_parser(
         "reset",
+        description="Document native-launch instructions and back up the CCR config (non-destructive).",
         help="Document native-launch instructions and back up the CCR config (non-destructive).",
     )
     models_reset_p.add_argument(
