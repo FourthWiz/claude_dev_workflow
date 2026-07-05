@@ -76,9 +76,9 @@
     {
       "name": "end_of_day",
       "phase": "session-lifecycle",
-      "effort": "low",
+      "effort": "medium",
       "user_facing": true,
-      "claude_model": "haiku",
+      "claude_model": "sonnet",
       "section_0": true,
       "spawn_target": false
     },
