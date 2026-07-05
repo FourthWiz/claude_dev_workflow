@@ -1027,6 +1027,15 @@ DASHTAB
 }
 
 agentdesk-attach() {
+  case "${1:-}" in
+    -h|--help)
+      cat <<'HELP'
+Usage:
+  agentdesk-attach <session-name>    Attach to an existing Zellij session.
+HELP
+      return 0 ;;
+  esac
+
   local session_name=""
 
   if [ "$#" -eq 0 ]; then
@@ -1050,6 +1059,15 @@ agentdesk-attach() {
 }
 
 repos() {
+  case "${1:-}" in
+    -h|--help)
+      cat <<'HELP'
+Usage:
+  repos    List detected repos under PROJECT_ROOT (or $PWD).
+HELP
+      return 0 ;;
+  esac
+
   if [ -z "${PROJECT_ROOT:-}" ]; then
     export PROJECT_ROOT="$PWD"
   fi
@@ -1058,6 +1076,15 @@ repos() {
 }
 
 crepo() {
+  case "${1:-}" in
+    -h|--help)
+      cat <<'HELP'
+Usage:
+  crepo    Fuzzy-pick a repo and cd into it (needs fzf).
+HELP
+      return 0 ;;
+  esac
+
   if [ -z "${PROJECT_ROOT:-}" ]; then
     export PROJECT_ROOT="$PWD"
   fi
@@ -1077,6 +1104,15 @@ crepo() {
 }
 
 grepos() {
+  case "${1:-}" in
+    -h|--help)
+      cat <<'HELP'
+Usage:
+  grepos    git status --short for every detected repo.
+HELP
+      return 0 ;;
+  esac
+
   if [ -z "${PROJECT_ROOT:-}" ]; then
     export PROJECT_ROOT="$PWD"
   fi
@@ -1097,6 +1133,15 @@ grepos() {
 }
 
 gitreview() {
+  case "${1:-}" in
+    -h|--help)
+      cat <<'HELP'
+Usage:
+  gitreview    Fuzzy-pick a repo, open lazygit (or git status) (needs fzf).
+HELP
+      return 0 ;;
+  esac
+
   if [ -z "${PROJECT_ROOT:-}" ]; then
     export PROJECT_ROOT="$PWD"
   fi
@@ -1125,6 +1170,15 @@ gitreview() {
 }
 
 gitrootreview() {
+  case "${1:-}" in
+    -h|--help)
+      cat <<'HELP'
+Usage:
+  gitrootreview    Open lazygit (or git status) at the project-root repo.
+HELP
+      return 0 ;;
+  esac
+
   if [ -z "${PROJECT_ROOT:-}" ]; then
     export PROJECT_ROOT="$PWD"
   fi
@@ -1142,6 +1196,15 @@ gitrootreview() {
 }
 
 croot() {
+  case "${1:-}" in
+    -h|--help)
+      cat <<'HELP'
+Usage:
+  croot    cd to PROJECT_ROOT (or the enclosing git root).
+HELP
+      return 0 ;;
+  esac
+
   if [ -n "${PROJECT_ROOT:-}" ] && [ -d "$PROJECT_ROOT" ]; then
     cd "$PROJECT_ROOT" || return 1
   else
@@ -1157,6 +1220,15 @@ croot() {
 }
 
 agentdesk-sessions() {
+  case "${1:-}" in
+    -h|--help)
+      cat <<'HELP'
+Usage:
+  agentdesk-sessions    List active Zellij sessions.
+HELP
+      return 0 ;;
+  esac
+
   if ! command -v zellij >/dev/null 2>&1; then
     echo "zellij is not installed."
     return 1
@@ -1218,6 +1290,15 @@ agentdesk-kill() {
 }
 
 codexpane() {
+  case "${1:-}" in
+    -h|--help)
+      cat <<'HELP'
+Usage:
+  codexpane    Open Codex in a floating pane (needs zellij + codex).
+HELP
+      return 0 ;;
+  esac
+
   local root="${PROJECT_ROOT:-$PWD}"
 
   if ! command -v zellij >/dev/null 2>&1; then
@@ -1241,6 +1322,15 @@ codexpane() {
 }
 
 codexright() {
+  case "${1:-}" in
+    -h|--help)
+      cat <<'HELP'
+Usage:
+  codexright    Open Codex in a right-split pane (needs zellij + codex).
+HELP
+      return 0 ;;
+  esac
+
   local root="${PROJECT_ROOT:-$PWD}"
 
   if ! command -v zellij >/dev/null 2>&1; then
@@ -1260,6 +1350,15 @@ codexright() {
 }
 
 codexcritic() {
+  case "${1:-}" in
+    -h|--help)
+      cat <<'HELP'
+Usage:
+  codexcritic    Open a Codex critic in a floating pane (needs zellij + codex).
+HELP
+      return 0 ;;
+  esac
+
   local root="${PROJECT_ROOT:-$PWD}"
 
   if ! command -v zellij >/dev/null 2>&1; then
@@ -1283,6 +1382,15 @@ codexcritic() {
 }
 
 claudepane() {
+  case "${1:-}" in
+    -h|--help)
+      cat <<'HELP'
+Usage:
+  claudepane    Open Claude Code in a right-split pane (needs zellij + claude).
+HELP
+      return 0 ;;
+  esac
+
   local root="${PROJECT_ROOT:-$PWD}"
 
   if ! command -v zellij >/dev/null 2>&1; then
@@ -1302,6 +1410,16 @@ claudepane() {
 }
 
 agentprompt() {
+  case "${1:-}" in
+    -h|--help)
+      cat <<'HELP'
+Usage:
+  agentprompt    Print the standard agent bootstrap prompt to stdout.
+                 Pipe into your agent, e.g. agentprompt | pbcopy
+HELP
+      return 0 ;;
+  esac
+
   cat <<'PROMPT'
 You are working from a project root that may either be a Git repo itself or may contain several child Git repositories.
 
@@ -1330,6 +1448,16 @@ PROMPT
 }
 
 codexcriticprompt() {
+  case "${1:-}" in
+    -h|--help)
+      cat <<'HELP'
+Usage:
+  codexcriticprompt    Print the critic-agent prompt to stdout.
+                        Pipe into your agent, e.g. codexcriticprompt | pbcopy
+HELP
+      return 0 ;;
+  esac
+
   cat <<'PROMPT'
 You are the critic agent, not the primary implementation agent.
 
