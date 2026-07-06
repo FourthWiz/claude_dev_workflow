@@ -102,6 +102,7 @@ DEPLOYED_SCRIPTS = (
     "thorough_plan_checkpoint.py",   # IVG-98: phase-boundary checkpoint wrapper for /thorough_plan
     "cost_summary.py",               # IVG-96: portable cost-summary.json normalizer wrapper
     "discovery_staleness.py",        # IVG-106: discovery/Serena staleness detector wrapper
+    "verify_claims.py",              # IVG-115: §V ground-truth reconciliation engine wrapper
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -348,6 +349,7 @@ CORE_SCRIPTS = (
     "thorough_plan_checkpoint.py",  # IVG-98: phase-boundary checkpoint core impl for /thorough_plan
     "cost_summary.py",              # IVG-96: portable cost-summary.json normalizer core impl
     "discovery_staleness.py",       # IVG-106: discovery/Serena staleness detector core impl
+    "verify_claims.py",             # IVG-115: §V ground-truth reconciliation engine core impl
 )
 
 
