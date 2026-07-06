@@ -191,6 +191,16 @@ else
 # Ghostty/Zellij + Claude default + Codex on demand
 # ============================================================
 
+# IVG-135: work around upstream zellij socket-path length bug (#4211/#2817).
+# See agentdesk.zsh for the full comment; kept byte-identical in intent here
+# (literal $ZELLIJ_SOCKET_DIR / $(id -u) since this heredoc is single-quoted).
+if [ -z "${ZELLIJ_SOCKET_DIR:-}" ]; then
+  _base="${XDG_RUNTIME_DIR:-/tmp}"
+  export ZELLIJ_SOCKET_DIR="${_base}/zellij-agentdesk-$(id -u 2>/dev/null || echo 0)"
+  mkdir -p "$ZELLIJ_SOCKET_DIR" 2>/dev/null || true
+  unset _base
+fi
+
 _agentdesk_realpath() {
   python3 - "$1" <<'PY'
 import os
@@ -433,6 +443,18 @@ HELP
   echo "  REPOS:"
   cat "$project_root/.workflow_artifacts/repos.md"
   echo
+
+  # IVG-135 (T-03, required): pre-flight guard against a would-be socket path
+  # that overflows the AF_UNIX sun_path cap (~104 bytes macOS / ~108 Linux).
+  # Best-effort heuristic; see agentdesk.zsh for the full comment.
+  _sock_len=$(( ${#ZELLIJ_SOCKET_DIR} + ${#session_name} + 20 ))
+  if [ "$_sock_len" -gt 100 ]; then
+    echo "agentdesk: session socket path would be too long (~${_sock_len} bytes; limit ~104)." >&2
+    echo "  session: $session_name" >&2
+    echo "  ZELLIJ_SOCKET_DIR: $ZELLIJ_SOCKET_DIR" >&2
+    echo "  Fix: set a shorter ZELLIJ_SOCKET_DIR, or use --name <shorter-name>." >&2
+    return 1
+  fi
 
   PROJECT_ROOT="$project_root" zellij --new-session-with-layout "$layout_path" --session "$session_name"
 }

@@ -2,6 +2,12 @@
 
 All notable changes to Quoin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.11.29] — 2026-07-06
+
+### Fixed
+
+- **agentdesk: fix "session name must be less than 0 characters" error on every launch** (IVG-135). Zellij has an upstream bug (zellij-org/zellij#4211, #2817) where an overly long default socket-dir path (e.g. macOS's `$TMPDIR`, which resolves to a long `/var/folders/<hash>/<hash>/T/` path) miscomputes zellij's remaining path budget, causing it to reject session names of ANY length with a cryptic, unrelated error. `agentdesk`/`setup-agentdesk.sh` now pin a short `ZELLIJ_SOCKET_DIR` (`${XDG_RUNTIME_DIR:-/tmp}/zellij-agentdesk-$(id -u)`) at module scope, guarded so a pre-set value is never clobbered. **Blast radius, stated honestly:** because this export is module-scope and `agentdesk.zsh` is sourced unconditionally from `~/.zshrc`, it redirects the zellij socket location for ALL zellij usage in any shell where agentdesk is installed — not only agentdesk-launched sessions. Pre-existing sessions created before this fix live under the old default dir and become invisible to `agentdesk`/`zellij attach` afterward; recover them with `ZELLIJ_SOCKET_DIR= zellij attach <name>` against the old dir, or start fresh. Any independent, non-agentdesk `zellij` usage in an agentdesk-installed shell will also land in the new dir going forward. Opt out per-shell with `unset ZELLIJ_SOCKET_DIR`. Also adds a required pre-flight guard that rejects (with a clear, actionable error) a session whose resolved socket path would still overflow the ~104/108-byte `AF_UNIX` limit even with the pinned short base (e.g. a pathologically long project-directory name) — instead of calling zellij and surfacing its cryptic error. The fix is synced into `setup-agentdesk.sh`'s legacy standalone-install heredoc fallback as well as its primary copy-from-source path.
+
 ## [0.11.25] — 2026-07-04
 
 ### Fixed

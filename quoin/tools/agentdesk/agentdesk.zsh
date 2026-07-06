@@ -3,6 +3,23 @@
 # Ghostty/Zellij + Claude default + Codex on demand
 # ============================================================
 
+# IVG-135: work around upstream zellij socket-path length bug (#4211/#2817).
+# zellij's default socket dir (which can resolve to macOS's long $TMPDIR,
+# e.g. /var/folders/<hash>/<hash>/T/) can push the AF_UNIX socket path over
+# its ~104-108 byte cap, producing the cryptic "session name must be less
+# than 0 characters" error regardless of the actual session name length.
+# NOTE: this export takes effect in EVERY interactive shell that sources
+# agentdesk.zsh via ~/.zshrc, not only agentdesk invocations — see D-01 for
+# the full blast-radius statement and the rejected per-function-scoping
+# alternative. Never clobbers a pre-set ZELLIJ_SOCKET_DIR (guarded below),
+# and only creates the directory it itself chose (never a user override).
+if [ -z "${ZELLIJ_SOCKET_DIR:-}" ]; then
+  _base="${XDG_RUNTIME_DIR:-/tmp}"
+  export ZELLIJ_SOCKET_DIR="${_base}/zellij-agentdesk-$(id -u 2>/dev/null || echo 0)"
+  mkdir -p "$ZELLIJ_SOCKET_DIR" 2>/dev/null || true
+  unset _base
+fi
+
 _agentdesk_realpath() {
   python3 - "$1" <<'PY'
 import os
@@ -1021,6 +1038,22 @@ DASHTAB
         i=$((i + 1))
       done
       rm -f "$_dash_url_file" ) &  # second rm: timeout path (idempotent; rm -f on missing file is no-op)
+  fi
+
+  # IVG-135 (T-03, required): pre-flight guard against a would-be socket path
+  # that overflows the AF_UNIX sun_path cap (~104 bytes macOS / ~108 Linux).
+  # Pinning ZELLIJ_SOCKET_DIR (above) fixes the common-case miscomputation but
+  # does not bound session_name itself, so a pathologically long project
+  # basename can still overflow. Best-effort heuristic (margin, not exact) —
+  # the +20 fudges the "/<zellij-version>/" subdir + separators. Must run
+  # AFTER session_name is finalized and BEFORE the create call below.
+  _sock_len=$(( ${#ZELLIJ_SOCKET_DIR} + ${#session_name} + 20 ))
+  if [ "$_sock_len" -gt 100 ]; then
+    echo "agentdesk: session socket path would be too long (~${_sock_len} bytes; limit ~104)." >&2
+    echo "  session: $session_name" >&2
+    echo "  ZELLIJ_SOCKET_DIR: $ZELLIJ_SOCKET_DIR" >&2
+    echo "  Fix: set a shorter ZELLIJ_SOCKET_DIR, or use --name <shorter-name>." >&2
+    return 1
   fi
 
   PROJECT_ROOT="$project_root" zellij --new-session-with-layout "$layout_path" --session "$session_name"

@@ -54,6 +54,10 @@ def _make_mock_env(tmp_path: Path) -> dict:
     # (tests run from within a Zellij session on the dev machine)
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_SESSION_NAME", None)
+    # IVG-135 T-04: unset ZELLIJ_SOCKET_DIR so launch-env assertions are not
+    # coupled to whatever the test runner's shell happened to inherit
+    # (dogfooding a real agentdesk/zellij session would set this).
+    env.pop("ZELLIJ_SOCKET_DIR", None)
     return env
 
 
@@ -78,6 +82,63 @@ def _run_agentdesk(args: str, tmp_path: Path, stdin: Optional[str] = None) -> su
         cwd=str(tmp_path),
         timeout=SUBPROCESS_TIMEOUT,
     )
+
+
+def _make_mock_env_with_socket_capture(tmp_path: Path) -> dict:
+    """Extend _make_mock_env with a zellij stub that captures ZELLIJ_SOCKET_DIR
+    to $AGENTDESK_TEST_SOCKET_CAPTURE instead of a bare `exit 0` (IVG-135 T-04).
+
+    Lets tests assert what socket dir the real launch call actually saw,
+    without a real zellij ever running.
+    """
+    env = _make_mock_env(tmp_path)
+    mock_bin = tmp_path / "mock_bin"  # already exists from _make_mock_env
+
+    # Only capture on the actual session-create invocation (--new-session-with-layout),
+    # not on the earlier collision-check `zellij list-sessions` call the launch
+    # path makes first — otherwise T-04c's "zellij never invoked" assertion would
+    # be a false negative (list-sessions runs even when the length guard later
+    # rejects the create call).
+    zellij_stub = mock_bin / "zellij"
+    zellij_stub.write_text(
+        "#!/bin/zsh\n"
+        'if printf \'%s\\n\' "$@" | grep -q -- "--new-session-with-layout"; then\n'
+        '  printf \'%s\\n\' "$ZELLIJ_SOCKET_DIR" > "$AGENTDESK_TEST_SOCKET_CAPTURE"\n'
+        "fi\n"
+        "exit 0\n"
+    )
+    zellij_stub.chmod(0o755)
+
+    env["AGENTDESK_TEST_SOCKET_CAPTURE"] = str(tmp_path / "socket_capture.txt")
+    return env
+
+
+def _run_agentdesk_capture_socket(
+    args: str, tmp_path: Path, env_overrides: Optional[dict] = None
+):
+    """Run agentdesk with the socket-capture zellij stub (IVG-135 T-04).
+
+    Returns (CompletedProcess, capture_path). `env_overrides` is applied AFTER
+    the harness's default ZELLIJ_SOCKET_DIR pop, so callers can simulate a
+    pre-set user override or a forced-long value.
+    """
+    env = _make_mock_env_with_socket_capture(tmp_path)
+    if env_overrides:
+        env.update(env_overrides)
+    script = textwrap.dedent(f"""
+        source "{AGENTDESK_ZSH}"
+        agentdesk {args}
+    """).strip()
+    result = subprocess.run(
+        ["zsh", "-c", script],
+        env=env,
+        input="",
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        timeout=SUBPROCESS_TIMEOUT,
+    )
+    return result, Path(env["AGENTDESK_TEST_SOCKET_CAPTURE"])
 
 
 def _run_pick_layout(stdin_input: str, tmp_path: Path) -> subprocess.CompletedProcess:
@@ -188,6 +249,62 @@ def test_agentdesk_valid_tokens_succeed(tmp_path: Path) -> None:
     assert result.returncode == 0, (
         f"claude shell tokens should succeed (rc={result.returncode})\nstderr: {result.stderr}"
     )
+
+
+# ── IVG-135: ZELLIJ_SOCKET_DIR pin + pre-flight length guard ──────────────────
+
+def test_socket_dir_default_pinned(tmp_path: Path) -> None:
+    """T-04a: with ZELLIJ_SOCKET_DIR unset ambiently (harness pop), the launch
+    env's ZELLIJ_SOCKET_DIR is set, non-empty, and starts with the resolved
+    base ($XDG_RUNTIME_DIR or /tmp) followed by '/zellij-agentdesk-'.
+    """
+    result, capture_path = _run_agentdesk_capture_socket("claude shell", tmp_path)
+    assert result.returncode == 0, (
+        f"launch should succeed (rc={result.returncode})\nstderr: {result.stderr}"
+    )
+    assert capture_path.exists(), "mock zellij must have been invoked and captured the socket dir"
+    captured = capture_path.read_text().strip()
+    assert captured, "ZELLIJ_SOCKET_DIR must be set (non-empty) at launch"
+    base = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
+    assert captured.startswith(f"{base}/zellij-agentdesk-"), (
+        f"expected ZELLIJ_SOCKET_DIR to start with '{base}/zellij-agentdesk-', got: {captured!r}"
+    )
+
+
+def test_socket_dir_user_override_preserved(tmp_path: Path) -> None:
+    """T-04b: a pre-set ZELLIJ_SOCKET_DIR=/custom/short is preserved verbatim
+    (no clobber) — proves the guard in T-01 never overwrites a user override.
+    """
+    result, capture_path = _run_agentdesk_capture_socket(
+        "claude shell", tmp_path, env_overrides={"ZELLIJ_SOCKET_DIR": "/custom/short"}
+    )
+    assert result.returncode == 0, (
+        f"launch should succeed (rc={result.returncode})\nstderr: {result.stderr}"
+    )
+    assert capture_path.exists(), "mock zellij must have been invoked"
+    captured = capture_path.read_text().strip()
+    assert captured == "/custom/short", (
+        f"expected ZELLIJ_SOCKET_DIR to be preserved verbatim, got: {captured!r}"
+    )
+
+
+def test_socket_dir_length_guard_blocks_long_name(tmp_path: Path) -> None:
+    """T-04c (T-03, required): a forced-long ZELLIJ_SOCKET_DIR yields rc=1, a
+    clear actionable error naming the session and the resolved socket dir, and
+    zellij is never invoked (no capture file written).
+    """
+    long_base = "/tmp/" + ("x" * 90)  # long enough to overflow the ~100-byte budget
+    result, capture_path = _run_agentdesk_capture_socket(
+        "claude shell", tmp_path, env_overrides={"ZELLIJ_SOCKET_DIR": long_base}
+    )
+    assert result.returncode == 1, (
+        f"expected rc=1 for an over-length socket path (rc={result.returncode})\nstderr: {result.stderr}"
+    )
+    assert "too long" in result.stderr, f"expected clear error in stderr:\n{result.stderr}"
+    assert "ZELLIJ_SOCKET_DIR" in result.stderr, (
+        f"error must name the resolved ZELLIJ_SOCKET_DIR:\n{result.stderr}"
+    )
+    assert not capture_path.exists(), "zellij must NOT have been invoked when the guard rejects the session"
 
 
 # ── Picker tests ───────────────────────────────────────────────────────────────
@@ -949,6 +1066,9 @@ def _make_mock_env_with_sessions(tmp_path: Path, sessions: list) -> dict:
     env["PROJECT_ROOT"] = str(tmp_path)
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_SESSION_NAME", None)
+    # IVG-135 T-04: see _make_mock_env for rationale — this builder does not
+    # delegate to _make_mock_env(), so it needs its own pop.
+    env.pop("ZELLIJ_SOCKET_DIR", None)
     return env
 
 
@@ -1009,6 +1129,9 @@ def _make_mock_env_with_sessions_and_attach(tmp_path: Path, sessions: list) -> d
     env["AGENTDESK_TEST_ATTACH_MARKER"] = str(tmp_path / "attach_called.txt")
     env.pop("ZELLIJ", None)
     env.pop("ZELLIJ_SESSION_NAME", None)
+    # IVG-135 T-04: see _make_mock_env for rationale — this builder does not
+    # delegate to _make_mock_env(), so it needs its own pop.
+    env.pop("ZELLIJ_SOCKET_DIR", None)
 
     fake_home = tmp_path / "fake_home"
     fake_home.mkdir(exist_ok=True)
