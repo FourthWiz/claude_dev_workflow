@@ -258,6 +258,10 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
     # freshly-injected adapter SKILL.md is what deploy_skills copies (T-06, R-11).
     installer.regenerate_pollution_dispatch(source_dir, allow_writes=allow_writes)
 
+    # IVG-115 T-04: regenerate §V Ground-truth verification blocks BEFORE deploy_skills,
+    # same ordering rationale as regenerate_pollution_dispatch above.
+    installer.regenerate_verification_step(source_dir, allow_writes=allow_writes)
+
     # T-05
     installer.deploy_skills(source_dir, dest_root)
     installer.deploy_scripts(source_dir, dest_root)

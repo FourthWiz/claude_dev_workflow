@@ -250,6 +250,21 @@ Write the review to:
 
 Where `WNN` is the ISO week number (e.g., `2026-W12`). Create the `.workflow_artifacts/memory/weekly/` directory if it doesn't exist.
 
+## §V Ground-truth verification (execute after the skill's work, before the final report)
+
+<!-- §V-verify-begin -->
+Before Step 5 (Present to the user), reconcile the week's rollup — never on a hardcoded
+line number, always immediately before this skill's own final report step.
+
+Run `python3 __QUOIN_HOME__/scripts/verify_claims.py --reconcile-tasks --project-root
+<project-root>` (live gh). Before asserting any task "completed" or "merged" in the
+`## Completed Work` section, confirm the reconcile table agrees (`finalized: true` or
+`pr: MERGED`) — never assert completion from the daily-cache narrative alone.
+
+If the reconcile exits 8: surface each MISMATCH under `## Decisions Made` (or a dedicated
+note) rather than silently completing the rollup.
+<!-- §V-verify-end -->
+
 ### Step 5: Present to the user
 
 Display the review and ask:
