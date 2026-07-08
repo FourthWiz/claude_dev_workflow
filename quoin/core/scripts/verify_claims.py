@@ -14,6 +14,7 @@ not fail-open); 4 = usage error / missing required source.
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 from datetime import date, datetime, timedelta
@@ -165,16 +166,41 @@ def match_pr_by_canonical_ref(task_ref: str, gh_json):
     return matches[0].get("state")
 
 
-def _load_gh_json(gh_json_file, finalized_only):
-    if finalized_only or not gh_json_file:
-        return None
-    gh_path = Path(gh_json_file)
-    if not gh_path.is_file():
+def _run_gh_pr_list():
+    """Shell out to `gh pr list` once for live PR truth. Fail-open (returns
+    None) on any error — missing binary, timeout, non-zero exit, bad JSON.
+    Never raises; a gh outage must never block the caller (D-03/MAJ-A)."""
+    if not shutil.which("gh"):
         return None
     try:
-        return json.loads(gh_path.read_text())
-    except (json.JSONDecodeError, OSError):
+        proc = subprocess.run(
+            ["gh", "pr", "list", "--state", "all", "--json",
+             "number,title,state,headRefName", "--limit", "100"],
+            capture_output=True, text=True, timeout=15, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
         return None
+    if proc.returncode != 0:
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def _load_gh_json(gh_json_file, finalized_only):
+    if finalized_only:
+        return None
+    if gh_json_file:
+        gh_path = Path(gh_json_file)
+        if not gh_path.is_file():
+            return None
+        try:
+            return json.loads(gh_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return None
+    # No fixture file given -> live single gh pr list call (T-02 truth side).
+    return _run_gh_pr_list()
 
 
 # ---------------------------------------------------------------------------

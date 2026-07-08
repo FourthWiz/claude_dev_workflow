@@ -7,6 +7,9 @@ no gh call, filename_task on all three checkpoint filename shapes, and the
 window-scoped empty-manifest exit-8 rule (T-02/r5-MAJ-1).
 """
 
+import os
+import stat
+import subprocess
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -22,6 +25,8 @@ from verify_claims import (  # noqa: E402
     reconcile_tasks,
     self_test,
 )
+
+_CORE_SCRIPT = Path(__file__).parent.parent.parent / "core" / "scripts" / "verify_claims.py"
 
 
 def test_self_test_passes():
@@ -141,3 +146,87 @@ def test_parse_claims_manifest_empty_block():
 
 def test_parse_claims_manifest_absent_file(tmp_path):
     assert parse_claims_manifest(tmp_path / "does-not-exist.md") == []
+
+
+def test_ambiguous_candidate_ref_is_unmatched(tmp_path):
+    # Two folders share the same issue number but disagree on finalized truth
+    # -> len(candidates) > 1 with conflicting truth -> unmatched (fail-open),
+    # never a MISMATCH (T-02 "ambiguous" branch).
+    (tmp_path / ".workflow_artifacts" / "finalized" / "ivg-105-old-attempt").mkdir(parents=True)
+    (tmp_path / ".workflow_artifacts" / "ivg-105-retry").mkdir(parents=True)
+    claims = [{"task_ref": "IVG-105", "status": "awaiting_end_of_task"}]
+    report = reconcile_tasks(tmp_path, claims=claims, finalized_only=True)
+    assert report["exit_code"] == EXIT_OK
+    assert report["results"][0]["verdict"] == "unmatched"
+    assert report["mismatched_tasks"] == []
+
+
+def _write_stub_gh(bin_dir, marker_path, canned_json):
+    """Write a fake `gh` executable on PATH. Touches marker_path when invoked
+    and prints canned_json to stdout, so tests can assert whether the live
+    gh binary was actually shelled out to."""
+    gh_path = bin_dir / "gh"
+    gh_path.write_text(
+        "#!/usr/bin/env python3\n"
+        "import pathlib, sys\n"
+        f"pathlib.Path({str(marker_path)!r}).write_text('called')\n"
+        f"print({canned_json!r})\n"
+    )
+    gh_path.chmod(gh_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+    return gh_path
+
+
+def test_gh_json_file_bypasses_live_gh_call(tmp_path):
+    # --gh-json-file is the testable seam: when supplied, the live `gh`
+    # binary must never be invoked even if it's on PATH (T-02 acceptance).
+    (tmp_path / ".workflow_artifacts" / "ivg-999-other").mkdir(parents=True)
+    claims_file = tmp_path / "claims.md"
+    claims_file.write_text(
+        '## Claims\n```yaml\n- task_ref: "IVG-999"\n  status: awaiting_pr\n```\n'
+    )
+    gh_json_file = tmp_path / "gh.json"
+    gh_json_file.write_text('[{"headRefName": "ivg-999-other", "state": "MERGED"}]')
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    marker = tmp_path / "gh-was-called.marker"
+    _write_stub_gh(bin_dir, marker, "[]")
+
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+
+    proc = subprocess.run(
+        [sys.executable, str(_CORE_SCRIPT), "--project-root", str(tmp_path),
+         "--reconcile-tasks", "--claims-file", str(claims_file),
+         "--gh-json-file", str(gh_json_file)],
+        capture_output=True, text=True, env=env, timeout=30,
+    )
+    assert proc.returncode == EXIT_MISMATCH  # merged PR contradicts awaiting_pr
+    assert not marker.exists(), "live gh binary was invoked despite --gh-json-file being supplied"
+
+
+def test_live_gh_call_invoked_when_no_json_file(tmp_path):
+    # Without --gh-json-file and without --finalized-only, the CLI must
+    # shell out to the real `gh pr list` once (T-02 truth side).
+    (tmp_path / ".workflow_artifacts" / "ivg-999-other").mkdir(parents=True)
+    claims_file = tmp_path / "claims.md"
+    claims_file.write_text(
+        '## Claims\n```yaml\n- task_ref: "IVG-999"\n  status: awaiting_pr\n```\n'
+    )
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    marker = tmp_path / "gh-was-called.marker"
+    canned = '[{"headRefName": "ivg-999-other", "state": "MERGED"}]'
+    _write_stub_gh(bin_dir, marker, canned)
+
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+
+    proc = subprocess.run(
+        [sys.executable, str(_CORE_SCRIPT), "--project-root", str(tmp_path),
+         "--reconcile-tasks", "--claims-file", str(claims_file)],
+        capture_output=True, text=True, env=env, timeout=30,
+    )
+    assert marker.exists(), "live gh binary was never invoked"
+    assert proc.returncode == EXIT_MISMATCH  # merged PR contradicts awaiting_pr, via live gh output
