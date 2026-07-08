@@ -18,10 +18,10 @@ Note: This is a STANDALONE script (stdlib-only on the write path). It does NOT
 import from quoin/core/scripts/. Registering it in DEPLOYED_SCRIPTS only is
 correct (mirrors inject_pollution_dispatch.py — lessons 2026-05-31 / 2026-06-08).
 
-RECONCILE_LIGHT_SKILLS (status, triage, cost_snapshot) is a reserved target list
-for a future task (T-08) that wires a shorter reconcile-only block into those
-read-only reporters. render_light_block() is implemented so T-08 has no need to
-touch this generator's rendering internals — only its run_inject/run_check loops.
+RECONCILE_LIGHT_SKILLS (status, triage, cost_snapshot) carries the shorter
+reconcile-only block (T-08) — read-only reporters get a single reconcile call
+with no side-effect check, injected/refreshed/checked exactly like the late
+§V-verify block but under its own heading/markers (§V-reconcile).
 
 Exit codes:
   0  success
@@ -42,11 +42,14 @@ import sys
 
 VERIFY_HEADING = "## §V Ground-truth verification (execute after the skill's work, before the final report)"
 CLAIMS_HEADING = "## §V Claims manifest (emit as an always-run early step)"
+LIGHT_HEADING = "## §V Reconcile (read-only — no side-effect check)"
 
 VERIFY_BEGIN = "<!-- §V-verify-begin -->"
 VERIFY_END = "<!-- §V-verify-end -->"
 CLAIMS_BEGIN = "<!-- §V-claims-begin -->"
 CLAIMS_END = "<!-- §V-claims-end -->"
+LIGHT_BEGIN = "<!-- §V-reconcile-begin -->"
+LIGHT_END = "<!-- §V-reconcile-end -->"
 
 # 3 skills that carry the full late §V verify block.
 VERIFY_TARGET_SKILLS = ["end_of_day", "start_of_day", "weekly_review"]
@@ -56,9 +59,18 @@ VERIFY_TARGET_SKILLS = ["end_of_day", "start_of_day", "weekly_review"]
 # a claim source independent of whether the model's own §V step runs.
 CLAIMS_EMIT_SKILLS = ["end_of_day"]
 
-# Reserved for T-08 (not wired into run_inject/run_check by this task — T-04 only
-# defines the render path so T-08 doesn't need generator surgery).
+# T-08: read-only reporters that carry the light reconcile-only block (no
+# side-effect check — they never write task/session state).
 RECONCILE_LIGHT_SKILLS = ["status", "triage", "cost_snapshot"]
+
+# Per-skill anchor for the light block: immediately before each skill's own
+# final report/present-style step (D-07 robust anchor — heading TEXT match,
+# never a hardcoded line number).
+LIGHT_CONTRACTS = {
+    "status": {"light_anchor_regex": r"^## Important behaviors\s*$"},
+    "triage": {"light_anchor_regex": r"^### Step 5: Present proposal\s*$"},
+    "cost_snapshot": {"light_anchor_regex": r"^### Step 3: Print summary\s*$"},
+}
 
 # ─── Per-skill late §V verify-block bodies + anchor patterns ─────────────────
 # late_anchor_regex matches the skill's OWN final "Report to user"-class heading
@@ -170,17 +182,15 @@ def render_claims_block(skill: str) -> str:
 
 
 def render_light_block(skill: str) -> str:
-    """Render the light reconcile-only block for a reporter skill (reserved for T-08)."""
-    return (
-        "## §V Reconcile (read-only — no side-effect check)\n\n"
-        "<!-- §V-reconcile-begin -->\n"
-        f"Before surfacing any task/PR status, run `python3 __QUOIN_HOME__/scripts/"
-        f"verify_claims.py --reconcile-tasks --project-root <project-root>` and derive the "
-        f"displayed status from the reconcile table, not from a cached narrative alone. "
-        f"If the reconcile exits 8, surface the contradiction rather than silently reporting "
-        f"the narrative version.\n"
-        "<!-- §V-reconcile-end -->\n\n"
+    """Render the light reconcile-only block for a reporter skill (T-08)."""
+    body = (
+        "Before surfacing any task/PR status, run `python3 __QUOIN_HOME__/scripts/"
+        "verify_claims.py --reconcile-tasks --project-root <project-root>` and derive the "
+        "displayed status from the reconcile table, not from a cached narrative alone. "
+        "If the reconcile exits 8, surface the contradiction rather than silently reporting "
+        "the narrative version."
     )
+    return f"{LIGHT_HEADING}\n\n{LIGHT_BEGIN}\n{body}\n{LIGHT_END}\n\n"
 
 
 # ─── File manipulation ────────────────────────────────────────────────────────
@@ -258,6 +268,26 @@ def inject_claims_into_file(skill: str, skill_md: pathlib.Path) -> str:
     return "".join(lines)
 
 
+def inject_light_into_file(skill: str, skill_md: pathlib.Path) -> str:
+    """Return new content for skill_md with the light §V-reconcile block injected/refreshed."""
+    text = skill_md.read_text(encoding="utf-8")
+    block = render_light_block(skill)
+
+    if LIGHT_HEADING in text:
+        return _replace_existing_block(text, LIGHT_HEADING, LIGHT_END, block)
+
+    lines = text.splitlines(keepends=True)
+    anchor_regex = LIGHT_CONTRACTS[skill]["light_anchor_regex"]
+    idx = _find_anchor_line_index(lines, anchor_regex)
+    if idx == -1:
+        raise ValueError(
+            f"No line matching anchor {anchor_regex!r} found in {skill_md} — cannot "
+            "determine §V-reconcile insertion point. FAIL LOUD."
+        )
+    lines.insert(idx, block)
+    return "".join(lines)
+
+
 def _atomic_write(skill_md: pathlib.Path, content: str) -> None:
     tmp_path = skill_md.with_suffix(".md.tmp")
     tmp_path.write_text(content, encoding="utf-8")
@@ -330,6 +360,29 @@ def run_inject(*, dry_run: bool = False) -> int:
             continue
         print(f"  injected §V-verify into {skill_md}")
 
+    for skill in RECONCILE_LIGHT_SKILLS:
+        skill_md = adapter_dir / skill / "SKILL.md"
+        if not skill_md.exists():
+            errors.append(f"MISSING (§V-reconcile): {skill_md}")
+            continue
+        try:
+            new_content = inject_light_into_file(skill, skill_md)
+        except (ValueError, OSError) as e:
+            errors.append(f"ERROR processing §V-reconcile for {skill}: {e}")
+            continue
+        if dry_run:
+            print(f"=== {skill} §V-reconcile preview ===")
+            idx = new_content.find(LIGHT_HEADING)
+            end = new_content.find("\n## ", idx + len(LIGHT_HEADING))
+            print(new_content[idx : end + 1 if end != -1 else None][:800])
+            continue
+        try:
+            _atomic_write(skill_md, new_content)
+        except OSError as e:
+            errors.append(f"WRITE ERROR for §V-reconcile in {skill}: {e}")
+            continue
+        print(f"  injected §V-reconcile into {skill_md}")
+
     if errors:
         for err in errors:
             print(f"ERROR: {err}", file=sys.stderr)
@@ -355,6 +408,11 @@ def run_check() -> int:
         "## Claims",
         "memory/verification/end_of_day-<today>.md",
         "MUST NOT be written empty",
+    ]
+    light_required_tokens = [
+        "verify_claims",
+        "--reconcile-tasks",
+        "surface the contradiction",
     ]
 
     def _normalize(s: str) -> str:
@@ -429,6 +487,36 @@ def run_check() -> int:
         verify_idx = text.find(VERIFY_HEADING)
         if claims_idx != -1 and verify_idx != -1 and claims_idx >= verify_idx:
             drifted.append(f"{skill}: §V-claims appears AFTER §V-verify (ordering violation)")
+
+    for skill in RECONCILE_LIGHT_SKILLS:
+        skill_md = adapter_dir / skill / "SKILL.md"
+        if not skill_md.exists():
+            drifted.append(f"{skill}: adapter SKILL.md missing at {skill_md} (§V-reconcile check)")
+            continue
+        text = skill_md.read_text(encoding="utf-8")
+
+        if text.count(LIGHT_HEADING) == 0:
+            drifted.append(f"{skill}: §V-reconcile heading missing")
+            continue
+        if text.count(LIGHT_HEADING) > 1:
+            drifted.append(f"{skill}: §V-reconcile heading appears more than once")
+
+        for marker in (LIGHT_BEGIN, LIGHT_END):
+            if text.count(marker) != 1:
+                drifted.append(f"{skill}: §V-reconcile marker {marker!r} missing or duplicated")
+
+        block_match = re.search(
+            re.escape(LIGHT_HEADING) + r".*?" + re.escape(LIGHT_END),
+            text,
+            flags=re.DOTALL | re.MULTILINE,
+        )
+        if not block_match:
+            drifted.append(f"{skill}: §V-reconcile block could not be extracted")
+        else:
+            block = _normalize(block_match.group(0))
+            for token in light_required_tokens:
+                if _normalize(token) not in block:
+                    drifted.append(f"{skill}: missing required token {token!r} in §V-reconcile block")
 
     if drifted:
         for msg in drifted:

@@ -138,6 +138,12 @@ Optional flags the user may request:
 
 Print the script's stdout directly to the user. If the script exits with code 1, print its stderr as an error message.
 
+## §V Reconcile (read-only — no side-effect check)
+
+<!-- §V-reconcile-begin -->
+Before surfacing any task/PR status, run `python3 __QUOIN_HOME__/scripts/verify_claims.py --reconcile-tasks --project-root <project-root>` and derive the displayed status from the reconcile table, not from a cached narrative alone. If the reconcile exits 8, surface the contradiction rather than silently reporting the narrative version.
+<!-- §V-reconcile-end -->
+
 ## Important behaviors
 
 - **Read-only.** Never write any file. Never commit. Never push.

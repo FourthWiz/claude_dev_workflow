@@ -216,6 +216,12 @@ Then stop.
 
 For individual call timeouts or errors, record cost as `null` for that UUID and continue — do not abort.
 
+## §V Reconcile (read-only — no side-effect check)
+
+<!-- §V-reconcile-begin -->
+Before surfacing any task/PR status, run `python3 __QUOIN_HOME__/scripts/verify_claims.py --reconcile-tasks --project-root <project-root>` and derive the displayed status from the reconcile table, not from a cached narrative alone. If the reconcile exits 8, surface the contradiction rather than silently reporting the narrative version.
+<!-- §V-reconcile-end -->
+
 ### Step 3: Print summary
 
 Using the UUID-to-cost map from Step 2, compute:

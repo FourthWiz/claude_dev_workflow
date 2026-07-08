@@ -35,6 +35,7 @@ _ivs_spec.loader.exec_module(_ivs)
 
 VERIFY_SKILLS = _ivs.VERIFY_TARGET_SKILLS
 CLAIMS_SKILLS = _ivs.CLAIMS_EMIT_SKILLS
+LIGHT_SKILLS = _ivs.RECONCILE_LIGHT_SKILLS
 
 
 def _read(skill: str) -> str:
@@ -147,6 +148,49 @@ def test_claims_injection_idempotent(skill):
     )
 
 
+@pytest.mark.parametrize("skill", LIGHT_SKILLS)
+def test_light_heading_present_exactly_once(skill):
+    text = _read(skill)
+    assert text.count(_ivs.LIGHT_HEADING) == 1
+
+
+@pytest.mark.parametrize("skill", LIGHT_SKILLS)
+@pytest.mark.parametrize("marker", [_ivs.LIGHT_BEGIN, _ivs.LIGHT_END])
+def test_light_markers_present_exactly_once(skill, marker):
+    text = _read(skill)
+    assert text.count(marker) == 1
+
+
+@pytest.mark.parametrize("skill", LIGHT_SKILLS)
+@pytest.mark.parametrize("token", ["verify_claims", "--reconcile-tasks", "surface the contradiction"])
+def test_light_required_token_in_block(skill, token):
+    text = _read(skill)
+    idx = text.index(_ivs.LIGHT_HEADING)
+    end = text.index(_ivs.LIGHT_END, idx)
+    block = text[idx:end]
+    assert token in block, f"{skill}: missing {token!r} in §V-reconcile block"
+
+
+@pytest.mark.parametrize("skill", LIGHT_SKILLS)
+def test_light_injection_idempotent(skill):
+    """Running inject_light_into_file twice on an in-memory copy -> identical output."""
+    skill_md = ADAPTER_SKILLS_DIR / skill / "SKILL.md"
+    original_text = skill_md.read_text(encoding="utf-8")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_skill = Path(tmpdir) / "SKILL.md"
+        tmp_skill.write_text(original_text, encoding="utf-8")
+
+        after_first = _ivs.inject_light_into_file(skill, tmp_skill)
+        tmp_skill.write_text(after_first, encoding="utf-8")
+        after_second = _ivs.inject_light_into_file(skill, tmp_skill)
+
+    assert after_first == after_second, (
+        f"{skill}: inject_light_into_file is NOT idempotent — "
+        "second injection produced different output than first."
+    )
+
+
 def test_run_check_passes_on_committed_tree():
     result = _ivs.run_check()
     assert result == 0, (
@@ -157,7 +201,7 @@ def test_run_check_passes_on_committed_tree():
 
 def test_dry_run_does_not_write(capsys):
     """--dry-run must print previews without touching any adapter file on disk."""
-    before = {skill: _read(skill) for skill in set(VERIFY_SKILLS) | set(CLAIMS_SKILLS)}
+    before = {skill: _read(skill) for skill in set(VERIFY_SKILLS) | set(CLAIMS_SKILLS) | set(LIGHT_SKILLS)}
     result = _ivs.run_inject(dry_run=True)
     assert result == 0
     captured = capsys.readouterr()
