@@ -28,6 +28,7 @@ The following files are explicitly **excluded** from terse-style writing — the
 - `quoin/memory/memory-maintenance.md` (+ `__QUOIN_HOME__/memory/memory-maintenance.md` deployed copy — Tier-1 reference doc for memory lifecycle: archive/soft-forget/delete policy, pattern schema, consumer contracts; added IVG-50 S-3 2026-06-18).
 - `quoin/memory/memory-maintenance.yaml` (+ `__QUOIN_HOME__/memory/memory-maintenance.yaml` deployed copy — pattern config (ignore/archived/read_only globs) for memory_check.py and /sleep; token-free glob file; added IVG-50 S-3 2026-06-18).
 - `quoin/memory/tier1-files.md` (+ `__QUOIN_HOME__/memory/tier1-files.md` deployed copy — relocated Tier-1 catalog; extracted claude-md-trim 2026-06-25)
+- `quoin/memory/verification-guide.md` (+ `__QUOIN_HOME__/memory/verification-guide.md` deployed copy — §V ground-truth verification verbose reference, analog of `dispatch-guide.md`; added IVG-115 2026-07-09)
 
 NOTE: QUICKSTART.md sits at `quoin/` root and deploys to `__QUOIN_HOME__/QUICKSTART.md` (NOT under `memory/`) — this is intentional. Do NOT normalize paths.
 - `quoin/QUICKSTART.md` (+ `__QUOIN_HOME__/QUICKSTART.md` deployed copy).

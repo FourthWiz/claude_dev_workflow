@@ -38,6 +38,8 @@ TIER1_MEMORY_FILES = (
     "tier1-files.md",
     # Added IVG-106: discovery/Serena refresh routine recipe (Tier-1 memory file)
     "discovery-refresh-routine.md",
+    # Added IVG-115: §V ground-truth verification verbose reference (Tier-1 memory file)
+    "verification-guide.md",
 )
 
 # T-05: canonical skill list — must match quoin/skills/ on disk exactly
