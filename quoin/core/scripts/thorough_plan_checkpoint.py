@@ -106,6 +106,8 @@ def _update_session_state(
             f"- Recorded in cost ledger: no\n"
             f"- end_of_day_due: yes\n"
             f"- fallback_fires: 0\n"
+            f"- verification_ran: no\n"
+            f"- verification_mismatches: 0\n"
         )
         _atomic_write(ss_path, template)
 

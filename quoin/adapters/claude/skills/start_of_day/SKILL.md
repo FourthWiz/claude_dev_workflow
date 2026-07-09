@@ -248,6 +248,25 @@ For each unfinished task from the daily cache, run these checks and report the r
 
 Report each check result in the briefing's "## Since last session" section (matching the existing Step 5 template). If everything matches the daily cache, say "Git state matches cached state — no drift detected."
 
+## §V Ground-truth verification (execute after the skill's work, before the final report)
+
+<!-- §V-verify-begin -->
+Before Step 5 (Present the briefing), reconcile trusted state — never on a hardcoded line
+number, always immediately before this skill's own final report step.
+
+Run `python3 __QUOIN_HOME__/scripts/verify_claims.py --reconcile-tasks --project-root
+<project-root>` (live gh; this subsumes the existing Step 4 `gh pr list` call — derive any
+PR/task-status line you present in the briefing from THIS reconcile table, never from a
+daily-cache narrative alone).
+
+For every in-scope end_of_day session read in Step 1/Step 4: treat a MISSING or `no`
+`verification_ran` field as a mismatch signal to surface, not a silent pass — an
+end_of_day session whose own §V step was silently skipped upstream is itself informative.
+
+If the reconcile exits 8: surface the MISMATCH/coverage lines in the briefing rather than
+silently dropping them.
+<!-- §V-verify-end -->
+
 ### Step 5: Present the briefing
 
 Output a clear, concise briefing:

@@ -345,6 +345,25 @@ If `in_scope` contains any file dated before `lower_bound` (a straggler — capt
 
 Also scan all session-state files in the processed window — same selection rule as Step 3 (the set of files selected by the hybrid date-window + flag rule). For each file, read the `## Cost` block and extract the `fallback_fires:` field via regex `^- fallback_fires:\s*(\d+)\s*$`. Sum per task across the processed window. For each task with window fallback total > 0, append the suffix `; <K> fallback fires in window` to that task's Cost summary line. When the window spans more than one day, use `Window total fallback fires: <K>` at the bottom of the Cost summary block; for a single-day window, use `Day total fallback fires: <K>` (backward-compat). After the total line, add: "A non-zero fallback count indicates one or more Class B writers fell back to v2-style write (no `## For human` summary, no validator gate). Investigate which skill emitted `[format-kit-skipped]` and triage before next session." Sessions lacking the `fallback_fires` line (pre-Stage-4) are treated as 0 — no warning emitted.
 
+Using the same in-scope file set, also extract each file's `verification_mismatches:` field via regex `^- verification_mismatches:\s*(\d+)\s*$` and sum per task across the processed window (mirror the `fallback_fires` roll-up above — same scan, same window, same per-task/window-total shape). For each task with a window total > 0, append the suffix `; <K> verification mismatches in window` to that task's Cost summary line. When the window spans more than one day, use `Window total verification mismatches: <K>` at the bottom of the Cost summary block; for a single-day window, use `Day total verification mismatches: <K>`. After the total line, add: "A non-zero verification-mismatch count means a skill's claims contradicted re-derived ground truth (§V) — investigate which skill and re-run its verification before trusting its output." Sessions lacking the `verification_mismatches` line (pre-IVG-115) are treated as 0 — no warning emitted.
+
+## §V Claims manifest (emit as an always-run early step)
+
+<!-- §V-claims-begin -->
+This step ALWAYS runs (it is not the verification step — it is the claim source the
+SessionEnd-hook backstop reads even when the model later skips §V, CRIT-1) and runs
+immediately after the daily cache above is written, never before.
+
+Write a STRUCTURED `## Claims` manifest — a fenced `yaml` block, one entry per in-window
+task, `{task_ref: <str>, status: <enum>}` where `status` is one of `{awaiting_pr,
+awaiting_end_of_task, in_progress, merged, finalized}` — to
+`memory/verification/end_of_day-<today>.md`. Enumerate EVERY in-window task (a task
+finalized within the run window, or an in-window active task). This manifest MUST NOT be
+written empty WHEN THERE IS IN-WINDOW WORK to claim; a genuine quiet day with no in-window
+finalized/active work correctly writes a zero-claim manifest (you are NOT required to
+enumerate the full all-time `finalized/` archive).
+<!-- §V-claims-end -->
+
 ### Step 3b: Review and promote daily insights
 
 Check for insights files `daily/insights-<DATE>.md` for every DATE in the processed window
@@ -473,6 +492,33 @@ If the user selects "Nothing to add" or doesn't respond: skip silently.
 If the user selects "Yes, let me share" or uses the "Other" free-text option: capture their input and append it to `.workflow_artifacts/memory/lessons-learned.md` in the same format.
 
 Also: if any tasks were rolled back today, or if the critic-revise loop ran more than 3 rounds, auto-add a lesson capturing what made it difficult.
+
+## §V Ground-truth verification (execute after the skill's work, before the final report)
+
+<!-- §V-verify-begin -->
+Run ground-truth reconciliation before composing the Step 5 report — never on a hardcoded
+line number, always immediately before this skill's own final report step.
+
+1. Run `python3 __QUOIN_HOME__/scripts/verify_claims.py --check-side-effects --skill end_of_day
+   --project-root <project-root>` (side-effect predicates: daily cache written and non-empty;
+   every in-scope session flipped `end_of_day_due: no`; resume-cookie present and unexpired;
+   lessons-learned prune handled if oversized).
+2. Run `python3 __QUOIN_HOME__/scripts/verify_claims.py --reconcile-tasks --claims-file
+   <the manifest this skill's own §V Claims manifest step wrote> [--gh-json-file <path> if
+   available]` — the in-session model path (live gh, NOT `--finalized-only`; that flag is
+   reserved for the SessionEnd hook backstop).
+3. If either command exits 8: do NOT finalize a clean report. Surface every MISSING/MISMATCH
+   line to the user, self-correct the deterministic gaps you can before composing the report
+   (re-flip any session still `end_of_day_due: yes` — idempotent with Step 3d; re-run any
+   skipped lessons-learned prune prompt), increment `verification_mismatches` in the
+   session-state `## Cost` block, and (re-)write `memory/verification/end_of_day-<today>.md`.
+   Leave `verification_ran: no`.
+4. If both commands exit 0: set `verification_ran: yes` in the session-state `## Cost` block
+   and proceed to the Step 5 report.
+
+Consumers (`/start_of_day`, `/weekly_review`) treat an absent or `no` `verification_ran` on an
+in-scope end_of_day session as a mismatch signal — always write this field, never omit it.
+<!-- §V-verify-end -->
 
 ### Step 5: Report to user
 

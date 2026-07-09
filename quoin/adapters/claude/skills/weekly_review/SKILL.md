@@ -165,6 +165,8 @@ Read these in parallel:
 
 7. **Cost data** — from the daily caches (source 1), read the `## Cost summary` section for each day. Aggregate session counts per task across the week. Do NOT run `npx ccusage` — Haiku does not orchestrate cost lookups. Dollar amounts come from `/end_of_task` reports.
 
+   Also from the same `## Cost summary` sections, extract each day's `Day total verification mismatches: <K>` / `Window total verification mismatches: <K>` line (via regex `total verification mismatches:\s*(\d+)`, whichever label that day used) and sum `<K>` across all days in the week — `end_of_day` already computed the per-day total, so this step only adds those totals together (reuse, not re-derive). Days lacking that line contribute 0. If the week's sum is > 0, surface a `Verification mismatches this week: <N>` line in the review's Cost/Highlights area with the note "non-zero = a skill's claims contradicted live state during the week; investigate before trusting its output."
+
 ### Step 3: Build the review
 
 Produce the weekly review in this format:
@@ -249,6 +251,21 @@ Write the review to:
 ```
 
 Where `WNN` is the ISO week number (e.g., `2026-W12`). Create the `.workflow_artifacts/memory/weekly/` directory if it doesn't exist.
+
+## §V Ground-truth verification (execute after the skill's work, before the final report)
+
+<!-- §V-verify-begin -->
+Before Step 5 (Present to the user), reconcile the week's rollup — never on a hardcoded
+line number, always immediately before this skill's own final report step.
+
+Run `python3 __QUOIN_HOME__/scripts/verify_claims.py --reconcile-tasks --project-root
+<project-root>` (live gh). Before asserting any task "completed" or "merged" in the
+`## Completed Work` section, confirm the reconcile table agrees (`finalized: true` or
+`pr: MERGED`) — never assert completion from the daily-cache narrative alone.
+
+If the reconcile exits 8: surface each MISMATCH under `## Decisions Made` (or a dedicated
+note) rather than silently completing the rollup.
+<!-- §V-verify-end -->
 
 ### Step 5: Present to the user
 

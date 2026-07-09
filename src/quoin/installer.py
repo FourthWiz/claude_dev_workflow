@@ -38,6 +38,8 @@ TIER1_MEMORY_FILES = (
     "tier1-files.md",
     # Added IVG-106: discovery/Serena refresh routine recipe (Tier-1 memory file)
     "discovery-refresh-routine.md",
+    # Added IVG-115: §V ground-truth verification verbose reference (Tier-1 memory file)
+    "verification-guide.md",
 )
 
 # T-05: canonical skill list — must match quoin/skills/ on disk exactly
@@ -102,6 +104,8 @@ DEPLOYED_SCRIPTS = (
     "thorough_plan_checkpoint.py",   # IVG-98: phase-boundary checkpoint wrapper for /thorough_plan
     "cost_summary.py",               # IVG-96: portable cost-summary.json normalizer wrapper
     "discovery_staleness.py",        # IVG-106: discovery/Serena staleness detector wrapper
+    "verify_claims.py",              # IVG-115: §V ground-truth reconciliation engine wrapper
+    "inject_verification_step.py",   # IVG-115 T-04: §V block generator (standalone, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS needed)
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -348,6 +352,7 @@ CORE_SCRIPTS = (
     "thorough_plan_checkpoint.py",  # IVG-98: phase-boundary checkpoint core impl for /thorough_plan
     "cost_summary.py",              # IVG-96: portable cost-summary.json normalizer core impl
     "discovery_staleness.py",       # IVG-106: discovery/Serena staleness detector core impl
+    "verify_claims.py",             # IVG-115: §V ground-truth reconciliation engine core impl
 )
 
 
@@ -782,6 +787,39 @@ def regenerate_pollution_dispatch(source_dir: pathlib.Path, *, allow_writes: boo
     finally:
         sys.argv = old_argv
     print(f"Regenerated §0' Pollution dispatch in {source_dir}/adapters/claude/skills/*/SKILL.md")
+
+
+def regenerate_verification_step(source_dir: pathlib.Path, *, allow_writes: bool) -> None:
+    """Regenerate §V Ground-truth verification blocks (IVG-115 T-04).
+
+    Regenerates the late §V-verify block in end_of_day/start_of_day/weekly_review and
+    the early §V-claims block in end_of_day, in the adapter SKILL.md files at
+    quoin/adapters/claude/skills/*/SKILL.md.
+
+    Must be called BEFORE deploy_skills so the freshly-injected adapter SKILL.md is the
+    file that deploy_skills copies to the deploy root (mirrors regenerate_pollution_dispatch).
+
+    Note: allow_writes=False (user-mode installs) skips regeneration entirely — the
+    committed adapter SKILL.md output is the delivery vehicle for end users. The
+    --check flag (run in CI) is the guard against committed drift.
+    """
+    if not allow_writes:
+        print("Skipping §V verification-step regeneration (user mode — pass --dev to regenerate from source)")
+        return
+    import runpy
+
+    script = source_dir / "scripts" / "inject_verification_step.py"
+    # Isolate sys.argv so inject_verification_step.py's argparse sees only its own script name
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = [str(script)]
+        runpy.run_path(str(script), run_name="__main__")
+    except SystemExit as exc:
+        if exc.code != 0:
+            raise
+    finally:
+        sys.argv = old_argv
+    print(f"Regenerated §V verification blocks in {source_dir}/adapters/claude/skills/*/SKILL.md")
 
 
 def assert_no_placeholders(dest_root: pathlib.Path) -> list[str]:

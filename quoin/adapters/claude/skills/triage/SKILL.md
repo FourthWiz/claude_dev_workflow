@@ -186,6 +186,12 @@ Sort skills by total score (Signal B + Signal C) descending.
 - **Ambiguous:** Top N candidates within 1 point, N ∈ {2, 3} → ambiguous-candidate flow.
 - **Decline:** No skill scores above 1, OR N > 3 candidates tied, OR top candidates all have "High" impact with no disambiguating state signal → decline flow.
 
+## §V Reconcile (read-only — no side-effect check)
+
+<!-- §V-reconcile-begin -->
+Before surfacing any task/PR status, run `python3 __QUOIN_HOME__/scripts/verify_claims.py --reconcile-tasks --project-root <project-root>` and derive the displayed status from the reconcile table, not from a cached narrative alone. If the reconcile exits 8, surface the contradiction rather than silently reporting the narrative version.
+<!-- §V-reconcile-end -->
+
 ### Step 5: Present proposal
 
 See Section 9 (Ambiguity Handling) for the exact dialogue format.
