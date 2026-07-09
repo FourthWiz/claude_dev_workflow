@@ -288,9 +288,13 @@ The session-state template includes a `## Cost` section:
 - Recorded in cost ledger: yes/no
 - end_of_day_due: yes
 - fallback_fires: 0
+- verification_ran: no
+- verification_mismatches: 0
 ```
 
 `end_of_day_due: yes` defaults at every write; `/end_of_day` Step 3d flips to `no` for each session in the processed window (all sessions selected by the hybrid date-window + flag rule, not only today's); `sessionstart.sh` + `/start_of_day` use it as the second signal for the missing-EOD banner (36 h window). `fallback_fires` counts Class B writer Step 5 English-fallback invocations + Step 2 Haiku-dispatch retries; atomic-rename increment; never decremented; under-counts under parallel subagents (acceptable per D-03-rev2). Full semantics: `__QUOIN_HOME__/memory/lifecycle-guide.md`.
+
+`verification_ran` and `verification_mismatches` (§V, IVG-115) default to `no`/`0` at every write — omission or `no` is read as a positive failure signal, never treated as a silent pass (MAJ-1). The §V-carrying skills (`end_of_day`, `start_of_day`, `weekly_review`) flip `verification_ran: yes` only after a clean ground-truth reconcile; on a MISMATCH/MISSING they increment `verification_mismatches` (atomic-rename, mirror of `fallback_fires`; never decremented) and leave `verification_ran: no`. Consumers (`start_of_day`, `weekly_review`) treat an absent or `no` `verification_ran` on an in-scope session as a mismatch signal in its own right. `end_of_day` Step 3 Cost-summary and `weekly_review`'s Cost-data step roll up `verification_mismatches` per window (same machinery as the `fallback_fires` roll-up above) with a "non-zero = a skill's claims contradicted live state; investigate" note.
 
 The cost ledger (`.workflow_artifacts/<task-name>/cost-ledger.md`) is the source of truth for per-session costs.
 

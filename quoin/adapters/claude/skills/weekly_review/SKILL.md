@@ -165,6 +165,8 @@ Read these in parallel:
 
 7. **Cost data** — from the daily caches (source 1), read the `## Cost summary` section for each day. Aggregate session counts per task across the week. Do NOT run `npx ccusage` — Haiku does not orchestrate cost lookups. Dollar amounts come from `/end_of_task` reports.
 
+   Also from the same `## Cost summary` sections, extract each day's `Day total verification mismatches: <K>` / `Window total verification mismatches: <K>` line (via regex `total verification mismatches:\s*(\d+)`, whichever label that day used) and sum `<K>` across all days in the week — `end_of_day` already computed the per-day total, so this step only adds those totals together (reuse, not re-derive). Days lacking that line contribute 0. If the week's sum is > 0, surface a `Verification mismatches this week: <N>` line in the review's Cost/Highlights area with the note "non-zero = a skill's claims contradicted live state during the week; investigate before trusting its output."
+
 ### Step 3: Build the review
 
 Produce the weekly review in this format:

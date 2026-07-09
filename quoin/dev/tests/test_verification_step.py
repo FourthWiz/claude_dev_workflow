@@ -14,6 +14,7 @@ regression pass across all of that is T-09, not duplicated here.
 from __future__ import annotations
 
 import importlib.util
+import re
 import tempfile
 from pathlib import Path
 
@@ -222,3 +223,62 @@ def test_dry_run_does_not_write(capsys):
     assert "preview" in captured.out
     for skill, text in before.items():
         assert _read(skill) == text, f"{skill}: --dry-run modified the file on disk"
+
+
+def _sum_field_in_window(session_dir: Path, field: str) -> int:
+    """Reference implementation of the end_of_day/weekly_review Cost-summary roll-up
+    (IVG-115 T-10): regex-extract `- <field>: <N>` from each session-state file's
+    `## Cost` block and sum across the window. Mirrors the pre-existing fallback_fires
+    roll-up this skill already performs — same shape, different field name."""
+    pattern = re.compile(rf"^- {re.escape(field)}:\s*(\d+)\s*$", re.MULTILINE)
+    total = 0
+    for path in sorted(session_dir.glob("*.md")):
+        match = pattern.search(path.read_text(encoding="utf-8"))
+        if match:
+            total += int(match.group(1))
+    return total
+
+
+def test_verification_mismatches_rollup_counts_seeded_mismatch(tmp_path):
+    """IVG-115 T-10 acceptance: a seeded verification_mismatches value must be counted
+    by the roll-up algorithm end_of_day's Cost-summary step describes (window sum,
+    absent-field-treated-as-0, no error on legacy pre-IVG-115 session files)."""
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
+    (sessions_dir / "2026-07-09-task-a.md").write_text(
+        "## Cost\n- Session UUID: abc\n- Phase: implement\n"
+        "- Recorded in cost ledger: no\n- end_of_day_due: yes\n"
+        "- fallback_fires: 0\n- verification_ran: no\n- verification_mismatches: 2\n",
+        encoding="utf-8",
+    )
+    (sessions_dir / "2026-07-09-task-b.md").write_text(
+        "## Cost\n- Session UUID: def\n- Phase: plan\n"
+        "- Recorded in cost ledger: yes\n- end_of_day_due: no\n"
+        "- fallback_fires: 1\n- verification_ran: yes\n- verification_mismatches: 0\n",
+        encoding="utf-8",
+    )
+    (sessions_dir / "2026-07-08-task-c-precompact.md").write_text(
+        "## Cost\n- Session UUID: ghi\n- Phase: review\n"
+        "- Recorded in cost ledger: no\n- end_of_day_due: yes\n",
+        encoding="utf-8",
+    )  # legacy session lacking the field entirely -> counts as 0, no error
+
+    assert _sum_field_in_window(sessions_dir, "verification_mismatches") == 2
+
+
+def test_end_of_day_costsummary_describes_verification_mismatches_rollup():
+    """Drift check: end_of_day/SKILL.md's Cost-summary step must describe the same
+    regex-extraction + per-window-total shape it already uses for fallback_fires,
+    applied to verification_mismatches (IVG-115 T-10)."""
+    text = _read("end_of_day")
+    assert "verification_mismatches:" in text
+    assert "Window total verification mismatches" in text
+    assert "Day total verification mismatches" in text
+
+
+def test_weekly_review_describes_verification_mismatches_rollup():
+    """Drift check: weekly_review/SKILL.md's Cost-data step must sum the per-day
+    verification-mismatch totals end_of_day already computed (IVG-115 T-10)."""
+    weekly_text = (ADAPTER_SKILLS_DIR / "weekly_review" / "SKILL.md").read_text(encoding="utf-8")
+    assert "verification mismatches" in weekly_text.lower()
+    assert "Verification mismatches this week" in weekly_text
