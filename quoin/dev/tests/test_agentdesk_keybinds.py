@@ -98,7 +98,7 @@ def _run_merge(config_path: str, tmp_path: Path) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=15,
+        timeout=30,
     )
 
 

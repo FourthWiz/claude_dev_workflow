@@ -154,7 +154,7 @@ def _run_pick_layout(stdin_input: str, tmp_path: Path) -> subprocess.CompletedPr
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=10,
+        timeout=SUBPROCESS_TIMEOUT,
     )
 
 
@@ -177,7 +177,7 @@ def _gen_layout(tokens: str, tmp_path: Path) -> str:
         capture_output=True,
         text=True,
         cwd=str(tmp_path),
-        timeout=10,
+        timeout=SUBPROCESS_TIMEOUT,
     )
     assert result.returncode == 0, f"gen_layout failed: {result.stderr}"
     return result.stdout
@@ -771,7 +771,7 @@ def _run_dashboard_fn_with_pty(
     env: dict,
     input_text: str,
     tmp_path: Path,
-    timeout: int = 25,
+    timeout: int = SUBPROCESS_TIMEOUT,
 ) -> subprocess.CompletedProcess:
     """Run _agentdesk_open_dashboard with a real PTY as stdin.
 
@@ -1717,7 +1717,7 @@ def _run_agentdesk_with_pty(
     args: str,
     tmp_path: Path,
     input_text: str,
-    timeout: int = 20,
+    timeout: int = SUBPROCESS_TIMEOUT,
     env: Optional[dict] = None,
 ) -> subprocess.CompletedProcess:
     """Run agentdesk with a real PTY as stdin so [ -t 0 ] is true (picker tests).
@@ -1776,7 +1776,7 @@ def test_picker_option1_saves_fixed_sentinel(tmp_path: Path) -> None:
     """TTY picker run with option 1 (empty/default) → state file line is =__FIXED__, NOT empty string."""
     # T-03/CRIT-1 fix: dashboard prompt now comes BEFORE the layout picker.
     # Input order: 'n\n' to decline the dashboard prompt, then '\n' (empty = option 1 = standard layout).
-    result = _run_agentdesk_with_pty("", tmp_path, "n\n\n", timeout=20)
+    result = _run_agentdesk_with_pty("", tmp_path, "n\n\n", timeout=SUBPROCESS_TIMEOUT)
     env = _make_state_env(tmp_path)
     state_file = Path(env["HOME"]) / ".config" / "agentdesk" / "last-layout"
     assert state_file.exists(), (
@@ -1795,7 +1795,7 @@ def test_picker_token_saves_joined_string(tmp_path: Path) -> None:
     """TTY picker run with option 2 (claude shell) → state file contains =claude+shell."""
     # T-03/CRIT-1 fix: dashboard prompt now comes BEFORE the layout picker.
     # Input order: 'n\n' to decline the dashboard prompt, then '2\n' to select option 2.
-    result = _run_agentdesk_with_pty("", tmp_path, "n\n2\n", timeout=20)
+    result = _run_agentdesk_with_pty("", tmp_path, "n\n2\n", timeout=SUBPROCESS_TIMEOUT)
     env = _make_state_env(tmp_path)
     state_file = Path(env["HOME"]) / ".config" / "agentdesk" / "last-layout"
     assert state_file.exists(), (

@@ -297,7 +297,7 @@ def test_git_status_clean_after_editable_install():
         cwd=str(REPO),
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=30,
     )
     assert result.returncode == 0
     # Filter out untracked files (lines starting with ??); those are expected

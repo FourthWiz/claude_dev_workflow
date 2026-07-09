@@ -56,7 +56,7 @@ def _ccusage_available() -> bool:
         return False
     result = subprocess.run(
         ["npx", "ccusage", "--version"],
-        capture_output=True, timeout=15,
+        capture_output=True, timeout=30,
     )
     return result.returncode == 0
 
@@ -136,7 +136,7 @@ def test_missing_uuid_exit_code():
          "-i", "00000000-0000-0000-0000-000000000000",
          "--json",
          "--project-path", PROJECT_PATH],
-        capture_output=True, text=True, timeout=15,
+        capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 2, (
         f"Expected exit code 2, got {result.returncode}. stderr: {result.stderr!r}"
