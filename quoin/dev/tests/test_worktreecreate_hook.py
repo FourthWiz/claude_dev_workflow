@@ -31,8 +31,17 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def run_hook(hook_input: dict, sidecar: dict | None, project_root: Path, tmp_path: Path) -> tuple[int, str, str]:
+def run_hook(
+    hook_input: dict,
+    sidecar: dict | None,
+    project_root: Path,
+    tmp_path: Path,
+    extra_env: dict | None = None,
+) -> tuple[int, str, str]:
     """Run the hook script with hook_input on stdin; optionally write sidecar.
+
+    extra_env, if given, is merged into the child environment (e.g. to set
+    QUOIN_WORKTREE_SELFGEN, TMPDIR, or a PATH shim for a fake `timeout`).
 
     Returns (returncode, stdout, stderr).
     """
@@ -49,6 +58,8 @@ def run_hook(hook_input: dict, sidecar: dict | None, project_root: Path, tmp_pat
     (fake_home / ".claude" / "scripts").mkdir(parents=True, exist_ok=True)
     shutil.copy(GIT_ROOT_SCRIPT, fake_home / ".claude" / "scripts" / "git_root_for_dispatch.py")
     env["HOME"] = str(fake_home)
+    if extra_env:
+        env.update(extra_env)
 
     result = subprocess.run(
         ["bash", str(HOOK_SCRIPT)],
@@ -352,3 +363,140 @@ def test_hook_no_op_when_sidecar_absent(tmp_path):
     )
     assert result.returncode == 0, f"Expected exit 0, got {result.returncode}"
     assert result.stdout.strip() == "", f"Expected no stdout, got: {result.stdout!r}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T-11 (IVG-116) — self-generation, opt-out, timeout bounding, and hook-mirror equality
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The adapter mirror copy that must stay byte-identical to HOOK_SCRIPT.
+ADAPTER_HOOK_SCRIPT = (
+    Path(__file__).parent.parent.parent / "adapters" / "claude" / "hooks" / "worktreecreate.sh"
+)
+
+
+def test_hook_selfgen_when_harness_omits_path_and_branch(tmp_path):
+    """(a) Sidecar present, single nested repo, harness omits worktree_path/branch_name,
+    QUOIN_WORKTREE_SELFGEN default (on) → hook self-generates, runs git worktree add,
+    prints a path, and records selfgen=1 in the audit log."""
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    repo = make_git_repo(project_root / "repo-a")
+    (repo / "main.py").write_text("# main")
+    plan = make_v3_plan(project_root, ["repo-a/main.py"])
+
+    sidecar = {
+        "skill_name": "implement",
+        "project_root": str(project_root),
+        "plan_path": str(plan),
+        "session_id": "test-sid",
+        "written_at": "2026-07-09T00:00:00Z",
+    }
+    # NOTE: no worktree_path / branch_name — the observed harness-omission case.
+    hook_input = {
+        "cwd": str(project_root),
+        "session_id": "test-sid",
+        "hook_event_name": "WorktreeCreate",
+    }
+    # Anchor self-generated worktrees under tmp_path (via TMPDIR) so pytest cleans them up.
+    wt_base = tmp_path / "wtbase"
+    wt_base.mkdir()
+
+    rc, stdout, stderr = run_hook(
+        hook_input, sidecar, project_root, tmp_path, extra_env={"TMPDIR": str(wt_base)}
+    )
+    assert rc == 0, f"Hook exited {rc}. stderr: {stderr}"
+    assert stdout, "Expected a self-generated worktree path on stdout"
+    assert Path(stdout).exists(), f"Self-generated worktree dir not created: {stdout!r}"
+    # Path anchored outside the project (under TMPDIR), not inside the Drive-synced tree.
+    assert str(project_root) not in stdout, "Self-gen worktree should be anchored outside the project root"
+
+    audit = (project_root / ".workflow_artifacts" / "memory" / "worktree-hook-audit.log").read_text()
+    assert "selfgen=1" in audit, f"Audit log missing selfgen=1 marker:\n{audit}"
+
+
+def test_hook_selfgen_opt_out_restores_skip(tmp_path):
+    """(b) QUOIN_WORKTREE_SELFGEN=0 → old skip path: no stdout, audit records selfgen=0."""
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    repo = make_git_repo(project_root / "repo-a")
+    (repo / "main.py").write_text("# main")
+    plan = make_v3_plan(project_root, ["repo-a/main.py"])
+
+    sidecar = {
+        "skill_name": "implement",
+        "project_root": str(project_root),
+        "plan_path": str(plan),
+        "session_id": "test-sid",
+        "written_at": "2026-07-09T00:00:00Z",
+    }
+    hook_input = {
+        "cwd": str(project_root),
+        "session_id": "test-sid",
+        "hook_event_name": "WorktreeCreate",
+    }
+
+    rc, stdout, stderr = run_hook(
+        hook_input, sidecar, project_root, tmp_path, extra_env={"QUOIN_WORKTREE_SELFGEN": "0"}
+    )
+    assert rc == 0, f"Hook should fail-OPEN (exit 0), got {rc}. stderr: {stderr}"
+    assert stdout == "", f"Expected no stdout with selfgen disabled, got: {stdout!r}"
+
+    audit = (project_root / ".workflow_artifacts" / "memory" / "worktree-hook-audit.log").read_text()
+    assert "missing-worktree-path-or-branch selfgen=0" in audit, f"Audit missing skip marker:\n{audit}"
+
+
+def test_hook_bounds_git_worktree_add_with_timeout(tmp_path):
+    """(c) `git worktree add` is wrapped in `timeout`: when the timeout binary reports
+    expiry (exit 124), the hook fails-OPEN (exit 0, no stdout). A fake `timeout` shim
+    proves the wrapper is active — unwrapped git would have succeeded and printed a path."""
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    repo = make_git_repo(project_root / "repo-a")
+    (repo / "main.py").write_text("# main")
+    plan = make_v3_plan(project_root, ["repo-a/main.py"])
+
+    # Fake `timeout` binary that simulates expiry (exit 124) without running the command.
+    shim_dir = tmp_path / "shimbin"
+    shim_dir.mkdir()
+    fake_timeout = shim_dir / "timeout"
+    fake_timeout.write_text("#!/usr/bin/env bash\nexit 124\n")
+    fake_timeout.chmod(fake_timeout.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+
+    sidecar = {
+        "skill_name": "implement",
+        "project_root": str(project_root),
+        "plan_path": str(plan),
+        "session_id": "test-sid",
+        "written_at": "2026-07-09T00:00:00Z",
+    }
+    hook_input = {
+        "cwd": str(project_root),
+        "worktree_path": str(tmp_path / "wt-timeout"),
+        "branch_name": "timeout-branch",
+        "session_id": "test-sid",
+        "hook_event_name": "WorktreeCreate",
+    }
+
+    rc, stdout, stderr = run_hook(
+        hook_input,
+        sidecar,
+        project_root,
+        tmp_path,
+        extra_env={"PATH": f"{shim_dir}:{os.environ.get('PATH', '')}", "QUOIN_SUBPROCESS_TIMEOUT": "1"},
+    )
+    assert rc == 0, f"Hook should fail-OPEN on git-worktree-add timeout, got {rc}. stderr: {stderr}"
+    assert stdout == "", f"Expected no stdout when git worktree add times out, got: {stdout!r}"
+    assert not Path(str(tmp_path / "wt-timeout")).exists(), "No worktree should exist after a timed-out add"
+
+
+def test_worktreecreate_hook_copies_byte_identical():
+    """MAJ-4: the authoritative hook and the Claude adapter mirror must be byte-identical.
+    Would FAIL if only one copy were edited."""
+    assert HOOK_SCRIPT.exists(), f"authoritative hook missing: {HOOK_SCRIPT}"
+    assert ADAPTER_HOOK_SCRIPT.exists(), f"adapter mirror missing: {ADAPTER_HOOK_SCRIPT}"
+    assert HOOK_SCRIPT.read_bytes() == ADAPTER_HOOK_SCRIPT.read_bytes(), (
+        "worktreecreate.sh copies have diverged: "
+        f"{HOOK_SCRIPT} != {ADAPTER_HOOK_SCRIPT}. "
+        "Edit both copies identically (authoritative = quoin/quoin/hooks/)."
+    )

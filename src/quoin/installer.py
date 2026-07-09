@@ -99,6 +99,7 @@ DEPLOYED_SCRIPTS = (
     "memory_check.py",               # IVG-50: auto-memory referential-integrity checker wrapper
     "memory_select.py",              # IVG-50 S-1: selective lessons retrieval wrapper
     "dispatch_config.py",            # IVG-90: 1M-dispatch config+cache reader/writer wrapper
+    "worktree_isolation.py",         # IVG-116: worktree-dispatch decider+probe reader/writer wrapper
     "generate_discovery_map.py",     # /discover optional hook — silently skips without deploy
     "select_unprocessed_sessions.py",  # authoritative session-selection helper for end_of_day/weekly_review
     "thorough_plan_checkpoint.py",   # IVG-98: phase-boundary checkpoint wrapper for /thorough_plan
@@ -347,6 +348,7 @@ CORE_SCRIPTS = (
     "memory_check.py",            # IVG-50: auto-memory referential-integrity checker core impl
     "memory_select.py",           # IVG-50 S-1: selective lessons retrieval core impl
     "dispatch_config.py",         # IVG-90: 1M-dispatch config+cache reader core impl; required by ~/.claude/scripts/dispatch_config.py parents[1] loader
+    "worktree_isolation.py",      # IVG-116: worktree-dispatch decider+probe core impl; required by ~/.claude/scripts/worktree_isolation.py parents[1] loader
     "generate_discovery_map.py",  # /discover optional hook — builds discovery-map.json post-scan
     "select_unprocessed_sessions.py",  # session-selection helper for end_of_day/weekly_review
     "thorough_plan_checkpoint.py",  # IVG-98: phase-boundary checkpoint core impl for /thorough_plan
@@ -467,7 +469,7 @@ def deploy_hooks(
         _copy_with_substitution(src, dst, dest_root)
         print(f"Copied hook {fname} to {dest_root}/hooks/")
 
-    # Merge 6 hook stanzas into settings.json using Python json module
+    # Merge 7 hook stanzas into settings.json using Python json module
     # settings.json lives inside dest_root (~/.claude/settings.json)
     settings_path = dest_root / "settings.json"
 
