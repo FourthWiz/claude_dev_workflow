@@ -17,6 +17,18 @@ GATE_SKILL = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "gate" / "
 CHECK_NAME = "Deploy drift"
 SCRIPT = "deploy_drift_check.py"
 
+# The three post-implement/post-review sub-regions are delimited by bold text, not
+# real markdown headings, so `^#{2,3} ` alone does not isolate them from each other
+# (they all fall before the next real heading, "### Step 3a: ..."). _region() must
+# also stop at the next sibling boundary in this list (round-2 MINOR-4 fix — the
+# lesson 2026-06-04 "per-region two-slicer" only isolated real headings, not these
+# bold sub-region markers).
+_REGION_BOUNDARIES = (
+    "*Standard gate (Small and Medium tasks):*",
+    "*Full gate (Large tasks) — includes everything in Standard, plus:*",
+    "**After /review → before /end_of_task (Full gate — always, all task sizes):**",
+)
+
 
 def _load() -> str:
     return GATE_SKILL.read_text(encoding="utf-8")
@@ -27,7 +39,14 @@ def _region(text: str, header: str) -> str:
     assert start != -1, f"Region header not found in gate SKILL.md: {header!r}"
     after = text[start + len(header):]
     m = re.search(r"^#{2,3} ", after, re.MULTILINE)
-    return after[: m.start()] if m else after
+    end = m.start() if m else len(after)
+    for boundary in _REGION_BOUNDARIES:
+        if boundary == header:
+            continue
+        idx = after.find(boundary)
+        if idx != -1 and idx < end:
+            end = idx
+    return after[:end]
 
 
 def test_script_referenced():
@@ -82,3 +101,43 @@ def test_coverage_qualifier_present():
     # The "not covered" qualifier from T-03/T-05 must be present in at least one region.
     assert "not covered" in _load(), (
         "gate/SKILL.md must carry the checked/not-covered coverage qualifier verbatim")
+
+
+def test_subregions_do_not_leak_into_each_other():
+    # Round-2 MINOR-4 regression guard: before the fix, _region("*Standard gate...")
+    # engulfed the Full-gate and post-review bold sub-regions too (all three sit before
+    # the next REAL markdown heading). Assert each region's exclusive content stays put.
+    text = _load()
+    standard = _region(text, "*Standard gate (Small and Medium tasks):*")
+    full = _region(text, "*Full gate (Large tasks)")
+    post_review = _region(text, "**After /review → before /end_of_task")
+
+    # "All planned tasks are implemented" only appears in the Full gate checklist.
+    assert "All planned tasks are implemented" not in standard
+    assert "All planned tasks are implemented" in full
+
+    # "pre-merge gate" only appears in the post-review Deploy drift row's framing text.
+    assert "pre-merge gate" not in standard
+    assert "pre-merge gate" not in full
+    assert "pre-merge gate" in post_review
+
+
+def test_region_isolation_catches_single_region_row_drop():
+    # Synthetic reproduction of the round-1 gap: with the old (unfixed) _region, a
+    # Deploy-drift row dropped from ONLY the Full-gate sub-region would still make
+    # test_token_in_full_gate pass, because the region slice leaked content from the
+    # sibling post-review sub-region below it. The fixed _region must isolate the
+    # Full-gate region so the drop is actually visible.
+    synthetic = (
+        "**After /implement -> before /review:**\n\n"
+        "*Standard gate (Small and Medium tasks):*\n"
+        "- [ ] Deploy drift check\n\n"
+        "*Full gate (Large tasks) — includes everything in Standard, plus:*\n"
+        "- [ ] some other unrelated check\n\n"  # Deploy drift row dropped here only
+        "**After /review → before /end_of_task (Full gate — always, all task sizes):**\n"
+        "- [ ] Deploy drift check\n\n"
+        "### Step 3a: next real heading\n"
+    )
+    full = _region(synthetic, "*Full gate (Large tasks) — includes everything in Standard, plus:*")
+    assert CHECK_NAME not in full, (
+        "region isolation must expose a row dropped from only the Full-gate sub-region")

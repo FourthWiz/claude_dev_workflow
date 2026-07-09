@@ -187,6 +187,19 @@ def test_compute_drift_j_absent_source_skill_does_not_raise(installer, tmp_path,
     assert isinstance(drift, list)
 
 
+def test_compute_drift_n_undecodable_source_does_not_raise(installer, tmp_path, monkeypatch):
+    # Round-2 MINOR-1: a source .md file that is NOT valid UTF-8 makes
+    # expected_deployed_content's read_text(encoding="utf-8") raise UnicodeDecodeError,
+    # which is not an OSError. compute_drift's documented "never raises" contract must
+    # hold — the file degrades to "no drift for this file" rather than propagating.
+    src, dest = _build_trees(installer, tmp_path, monkeypatch)
+    (src / "memory" / "m1.md").write_bytes(b"\xff\xfe not valid utf-8 \x80\x81")
+    drift = installer.compute_drift(src, dest)  # must not raise UnicodeDecodeError
+    assert isinstance(drift, list)
+    assert not any(d.category == "memory" for d in drift), (
+        "undecodable source degrades to no-drift, not a false 'stale' report")
+
+
 # ---------------------------------------------------------------------------
 # Manifest registration (T-04)
 # ---------------------------------------------------------------------------
@@ -276,6 +289,44 @@ def test_cli_scope_out_exit0(ddc, monkeypatch, tmp_path):
 def test_cli_git_error_exit3(ddc, monkeypatch, tmp_path):
     # Deferred MINOR (1): scope-gate git-error → exit 3 (WARN), never a false exit-0 PASS.
     monkeypatch.setattr(ddc, "_scope_is_in", lambda pr, nsc: (False, "git-error"))
+    rc = ddc.main(["--project-root", str(tmp_path)])
+    assert rc == 3
+
+
+# ---------------------------------------------------------------------------
+# Round-2 MINOR-5: the three tests above (and test_cli_git_error_exit3) drive
+# _scope_is_in only at the mapping level (main() given a pre-mocked reason
+# token). These drive the REAL _scope_is_in — only the underlying
+# affected_tests.resolve_repo/changed_files calls it makes are simulated —
+# so the "diff_reason == 'git-error'" / RuntimeError / None-repo branches
+# inside _scope_is_in itself are actually exercised end-to-end.
+# ---------------------------------------------------------------------------
+
+def test_scope_gate_real_multiple_repos_exit3(ddc, monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        ddc._affected_tests, "resolve_repo",
+        lambda project_root: (_ for _ in ()).throw(RuntimeError("multiple git repos found")))
+    scope_in, reason = ddc._scope_is_in(tmp_path, no_scope_check=False)
+    assert (scope_in, reason) == (False, "multiple-repos")
+    rc = ddc.main(["--project-root", str(tmp_path)])
+    assert rc == 3
+
+
+def test_scope_gate_real_zero_repos_exit3(ddc, monkeypatch, tmp_path):
+    monkeypatch.setattr(ddc._affected_tests, "resolve_repo", lambda project_root: None)
+    scope_in, reason = ddc._scope_is_in(tmp_path, no_scope_check=False)
+    assert (scope_in, reason) == (False, "no-repo")
+    rc = ddc.main(["--project-root", str(tmp_path)])
+    assert rc == 3
+
+
+def test_scope_gate_real_git_error_exit3(ddc, monkeypatch, tmp_path):
+    fake_repo = tmp_path / "repo"
+    fake_repo.mkdir()
+    monkeypatch.setattr(ddc._affected_tests, "resolve_repo", lambda project_root: fake_repo)
+    monkeypatch.setattr(ddc._affected_tests, "changed_files", lambda repo: ([], "git-error"))
+    scope_in, reason = ddc._scope_is_in(tmp_path, no_scope_check=False)
+    assert (scope_in, reason) == (False, "git-error")
     rc = ddc.main(["--project-root", str(tmp_path)])
     assert rc == 3
 

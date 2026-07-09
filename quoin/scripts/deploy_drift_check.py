@@ -62,8 +62,9 @@ _AT_SPEC.loader.exec_module(_affected_tests)
 # Categories compute_drift compares vs. the full deploy surface (plan D-07/D-09).
 # Kept as a literal here (not imported from quoin.installer) so the coverage
 # qualifier can be emitted even on the scope=out / import-failure paths that must
-# never touch the quoin package.
-_CHECKED_CATEGORIES = ("skills", "scripts", "core-scripts", "memory-tier1")
+# never touch the quoin package. Spelling matches installer.DRIFT_CATEGORIES verbatim
+# (review MINOR-2: previously "memory-tier1" here vs "memory" in the installer).
+_CHECKED_CATEGORIES = ("skills", "scripts", "core-scripts", "memory")
 _UNCOVERED_CATEGORIES = (
     "hooks",
     "CLAUDE.md",

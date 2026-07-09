@@ -213,6 +213,13 @@ def _copy_with_substitution(
     """
     new_bytes = expected_deployed_content(src, dest_root)
     if not (dst.exists() and dst.read_bytes() == new_bytes):
+        # write_bytes (not write_text) is deliberate: expected_deployed_content already
+        # returns the exact bytes compute_drift compares against, and write_text's
+        # newline=None default would translate "\n" -> os.linesep on write (a no-op on
+        # macOS/Linux where os.linesep == "\n", but CRLF on Windows) — that would make
+        # a freshly-deployed file NOT byte-equal to expected_deployed_content's output,
+        # breaking both drift-check parity and the mtime-preservation skip above on a
+        # future Windows target. Do not "helpfully" revert this to write_text.
         dst.write_bytes(new_bytes)
     if src.suffix in (".py", ".sh"):
         os.chmod(dst, 0o755)
@@ -480,7 +487,10 @@ def compute_drift(
         try:
             expected = expected_deployed_content(src, dest_root)
             actual = deployed.read_bytes()
-        except OSError:
+        except (OSError, UnicodeDecodeError):
+            # UnicodeDecodeError: expected_deployed_content calls read_text(encoding="utf-8")
+            # for substitute-extension sources; a non-UTF-8 source file raises here, not OSError.
+            # Caught alongside OSError to honor the "never raises" contract (review MINOR-1).
             return  # unreadable — degrade to "no drift for this file"
         if expected != actual:
             drift.append(DriftEntry(category, str(src), str(deployed), "stale"))
