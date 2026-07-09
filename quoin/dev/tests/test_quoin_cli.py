@@ -414,11 +414,36 @@ def test_deploy_hooks_stanza_placement():
         assert len(hooks.get("PreCompact", [])) == 1
         assert len(hooks.get("SessionStart", [])) == 2  # startup + resume
         assert len(hooks.get("SessionEnd", [])) == 1
+        assert len(hooks.get("WorktreeCreate", [])) == 1  # IVG-116
 
         # Commands must use absolute paths, not tilde
         cmd = hooks["UserPromptSubmit"][0]["hooks"][0]["command"]
         assert not cmd.startswith("~"), f"tilde path in command: {cmd}"
         assert "userpromptsubmit.sh" in cmd
+
+
+def test_deploy_hooks_worktreecreate_stanza():
+    """IVG-116: deploy_hooks must register the WorktreeCreate stanza (matcher '*',
+    command ending in worktreecreate.sh). Locks the nested-git worktree-isolation hook."""
+    from quoin import installer  # noqa: PLC0415
+    import json as _json
+
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = Path(tmp_str)
+        src = _fake_source_dir(tmp / "src")
+        dest = tmp / ".claude"
+
+        installer.deploy_hooks(src, dest)
+
+        settings = _json.loads((dest / "settings.json").read_text())
+        wt_stanzas = settings.get("hooks", {}).get("WorktreeCreate", [])
+        assert len(wt_stanzas) == 1, "WorktreeCreate stanza not registered"
+
+        stanza = wt_stanzas[0]
+        assert stanza.get("matcher") == "*", f"unexpected matcher: {stanza.get('matcher')}"
+        cmd = stanza["hooks"][0]["command"]
+        assert cmd.endswith("worktreecreate.sh"), f"unexpected command: {cmd}"
+        assert not cmd.startswith("~"), f"tilde path in command: {cmd}"
 
 
 def test_deploy_hooks_idempotent():

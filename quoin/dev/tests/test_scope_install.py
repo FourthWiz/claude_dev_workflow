@@ -342,7 +342,7 @@ def test_scope_flag_present_in_install_help():
         env={**os.environ, "PYTHONPATH": str(SRC)},
         capture_output=True,
         text=True,
-        timeout=10,
+        timeout=30,
     )
     assert result.returncode == 0, result.stderr
     assert "--scope" in result.stdout

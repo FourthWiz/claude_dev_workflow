@@ -13,6 +13,7 @@ not fail-open); 4 = usage error / missing required source.
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -166,6 +167,18 @@ def match_pr_by_canonical_ref(task_ref: str, gh_json):
     return matches[0].get("state")
 
 
+def _subprocess_timeout() -> int:
+    """Read QUOIN_SUBPROCESS_TIMEOUT (seconds); default 30; bad values fall back to 30.
+
+    Self-contained local copy (D-06) — do NOT cross-import; each touched core
+    script owns its own copy per the repo's copy-not-import convention.
+    """
+    try:
+        return int(os.environ.get("QUOIN_SUBPROCESS_TIMEOUT", "30"))
+    except (TypeError, ValueError):
+        return 30
+
+
 def _run_gh_pr_list():
     """Shell out to `gh pr list` once for live PR truth. Fail-open (returns
     None) on any error — missing binary, timeout, non-zero exit, bad JSON.
@@ -176,7 +189,7 @@ def _run_gh_pr_list():
         proc = subprocess.run(
             ["gh", "pr", "list", "--state", "all", "--json",
              "number,title,state,headRefName", "--limit", "100"],
-            capture_output=True, text=True, timeout=15, check=False,
+            capture_output=True, text=True, timeout=_subprocess_timeout(), check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None

@@ -43,6 +43,9 @@ BRANCH_NAME="$(printf '%s' "$HOOK_INPUT" | jq -r '.branch_name // empty' 2>/dev/
 BASE_REF=""
 BASE_REF="$(printf '%s' "$HOOK_INPUT" | jq -r '.base_ref // empty' 2>/dev/null)" || true
 
+# Set to 1 when we synthesize worktree_path/branch_name the harness omitted (audit signal).
+SELFGEN=0
+
 # ── read sidecar ──────────────────────────────────────────────────────────────
 SIDECAR="$PROJECT_ROOT/.workflow_artifacts/.dispatch-hint.json"
 [[ ! -f "$SIDECAR" ]] && exit 0
@@ -90,6 +93,20 @@ rm -f "$SIDECAR" 2>/dev/null || true
 # ── log audit entry ───────────────────────────────────────────────────────────
 echo "$(date -u +%FT%TZ) rc=$RC result=${RESOLVED_GIT_ROOT:-skip}" >> "$AUDIT" 2>/dev/null || true
 
+# ── bound git worktree add with QUOIN_SUBPROCESS_TIMEOUT ─────────────────────
+# Wrap git in `timeout` so a hung git-worktree-add on a slow Drive mount cannot stall
+# the hook indefinitely. Fail-OPEN: if the `timeout` binary is absent (e.g. stock
+# macOS ships `gtimeout` under coreutils), run git unwrapped rather than failing.
+WT_TIMEOUT="${QUOIN_SUBPROCESS_TIMEOUT:-30}"
+GIT_TIMEOUT_BIN="$(command -v timeout 2>/dev/null || true)"
+git_wt() {
+    if [[ -n "$GIT_TIMEOUT_BIN" ]]; then
+        "$GIT_TIMEOUT_BIN" "${WT_TIMEOUT}s" git "$@"
+    else
+        git "$@"
+    fi
+}
+
 # ── act on result ────────────────────────────────────────────────────────────
 case "$RC" in
   0)
@@ -97,9 +114,28 @@ case "$RC" in
     # The harness has already generated WORKTREE_PATH and BRANCH_NAME; we use them
     # but anchor the worktree inside the nested repo (RESOLVED_GIT_ROOT).
     if [[ -z "$WORKTREE_PATH" ]] || [[ -z "$BRANCH_NAME" ]]; then
-        # Cannot create worktree without path/branch — skip
-        echo "$(date -u +%FT%TZ) rc=skip result=missing-worktree-path-or-branch" >> "$AUDIT" 2>/dev/null || true
-        exit 0
+        # The harness omitted worktree_path/branch_name — the observed 100%-failure case on
+        # Google-Drive-synced nested-git layouts (T-01 spike root cause). Self-generate them so
+        # isolation actually works, unless explicitly disabled via QUOIN_WORKTREE_SELFGEN=0
+        # (which restores the old skip behaviour).
+        if [[ "${QUOIN_WORKTREE_SELFGEN:-1}" == "0" ]]; then
+            echo "$(date -u +%FT%TZ) rc=skip result=missing-worktree-path-or-branch selfgen=0" >> "$AUDIT" 2>/dev/null || true
+            exit 0
+        fi
+        SELFGEN=1
+        SELFGEN_TOKEN="$(date +%s 2>/dev/null)-$$"
+        [[ -z "$BRANCH_NAME" ]] && BRANCH_NAME="quoin/wt-${SELFGEN_TOKEN}"
+        if [[ -z "$WORKTREE_PATH" ]]; then
+            # Anchor OUTSIDE the Drive-synced tree — validated in the T-01 spike: a /tmp-based
+            # path works and avoids Drive bloat/GC concerns (R-06). Fall back to a project-local
+            # .worktrees/ dir only if no temp base is writable.
+            WT_BASE="${TMPDIR:-/tmp}/quoin-worktrees"
+            if ! mkdir -p "$WT_BASE" 2>/dev/null; then
+                WT_BASE="$PROJECT_ROOT/.worktrees"
+                mkdir -p "$WT_BASE" 2>/dev/null || true
+            fi
+            WORKTREE_PATH="$WT_BASE/wt-${SELFGEN_TOKEN}"
+        fi
     fi
 
     # Build the git worktree add command.
@@ -108,19 +144,19 @@ case "$RC" in
     GIT_OUTPUT=""
     if [[ -n "$BASE_REF" ]]; then
         # With base ref: create new branch from base ref
-        GIT_OUTPUT="$(git -C "$RESOLVED_GIT_ROOT" worktree add -b "$BRANCH_NAME" "$WORKTREE_PATH" "$BASE_REF" 2>&1)" || GIT_RC=$?
+        GIT_OUTPUT="$(git_wt -C "$RESOLVED_GIT_ROOT" worktree add -b "$BRANCH_NAME" "$WORKTREE_PATH" "$BASE_REF" 2>&1)" || GIT_RC=$?
     else
         # Without base ref: try -b first (new branch from HEAD), then bare checkout (branch exists)
-        GIT_OUTPUT="$(git -C "$RESOLVED_GIT_ROOT" worktree add -b "$BRANCH_NAME" "$WORKTREE_PATH" 2>&1)"
+        GIT_OUTPUT="$(git_wt -C "$RESOLVED_GIT_ROOT" worktree add -b "$BRANCH_NAME" "$WORKTREE_PATH" 2>&1)"
         GIT_RC=$?
         if [[ "$GIT_RC" -ne 0 ]]; then
             # Branch may already exist — try without -b
             GIT_RC=0
-            GIT_OUTPUT="$(git -C "$RESOLVED_GIT_ROOT" worktree add "$WORKTREE_PATH" "$BRANCH_NAME" 2>&1)" || GIT_RC=$?
+            GIT_OUTPUT="$(git_wt -C "$RESOLVED_GIT_ROOT" worktree add "$WORKTREE_PATH" "$BRANCH_NAME" 2>&1)" || GIT_RC=$?
         fi
     fi
 
-    echo "$(date -u +%FT%TZ) git-rc=$GIT_RC git-root=$RESOLVED_GIT_ROOT worktree=$WORKTREE_PATH" >> "$AUDIT" 2>/dev/null || true
+    echo "$(date -u +%FT%TZ) git-rc=$GIT_RC git-root=$RESOLVED_GIT_ROOT worktree=$WORKTREE_PATH selfgen=$SELFGEN" >> "$AUDIT" 2>/dev/null || true
 
     if [[ "$GIT_RC" -ne 0 ]]; then
         # git worktree add failed — log and skip (Phase 2 retry handles it)

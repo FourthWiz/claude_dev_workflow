@@ -1,6 +1,6 @@
 # Hooks deployed by quoin — full reference table
 
-`bash install.sh` deploys hook scripts to `__QUOIN_HOME__/hooks/` and registers six (event, matcher) stanzas in `__QUOIN_HOME__/settings.json`:
+`bash install.sh` deploys hook scripts to `__QUOIN_HOME__/hooks/` and registers seven (event, matcher) stanzas in `__QUOIN_HOME__/settings.json`:
 
 | Event | Matcher | Script | Timeout | Contract |
 |-------|---------|--------|---------|----------|
@@ -10,6 +10,7 @@
 | SessionStart | `startup` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) |
 | SessionStart | `resume` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) |
 | SessionEnd | `*` | `sessionend.sh` | 5s | EOD nudge if `end_of_day_due: yes` |
+| WorktreeCreate | `*` | `worktreecreate.sh` | 10s | Nested-git worktree isolation for source-mutating skills. Reads the dispatch sidecar; when a single nested repo resolves and the harness omits path/branch, self-generates `quoin/wt-<ts>-<pid>` + a worktree under `${TMPDIR:-/tmp}/quoin-worktrees` (outside the Drive tree; project `.worktrees/` fallback) and runs `git worktree add` (bounded by `QUOIN_SUBPROCESS_TIMEOUT`), printing the path to stdout. Fail-OPEN (exits 0, no stdout on any skip/error); audit log records `selfgen=1`. Opt-out: `QUOIN_WORKTREE_SELFGEN=0`. |
 
 All hooks fail-OPEN (exit 0 on any error). jq is a soft-required dependency (`brew install jq`). Tunable constants (`QUOIN_BYTES_PER_TOKEN`, `QUOIN_EFFECTIVE_CONTEXT_LIMIT`, `QUOIN_STOP_BPS`, `QUOIN_BLOCK_BPS`, `QUOIN_COMPACT_FIRST_BPS`, `QUOIN_PANIC_BPS`, etc.) use `${QUOIN_*:-default}` expansion; thresholds use integer basis-points arithmetic (e.g., `8500` = 85.00%, `9000` = 90.00%).
 

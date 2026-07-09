@@ -100,6 +100,17 @@ Fail-graceful path with error-class triage (per architecture I-01):
 <!-- §0-sidecar-begin -->
   Source-mutating dispatch — two-phase worktree isolation (D-08):
 
+  STEP A0 — Consult the worktree-isolation decider FIRST (default is skip):
+     Run via Bash:
+       python3 __QUOIN_HOME__/scripts/worktree_isolation.py --decide
+     Isolation is opt-in (D-04): the decider prints `skip` unless
+     QUOIN_WORKTREE_ISOLATION=on, the dispatch.json config opts in, or a prior probe
+     wrote a `works` sentinel. If the output is `skip`, DO NOT write the sidecar and
+     DO NOT dispatch with isolation: "worktree" — skip STEP A / STEP B / STEP C and go
+     straight to a PLAIN Agent dispatch at the declared cheap-tier model (sonnet), with
+     no sidecar write and no worktree round-trip. Only when the output is `attempt` do
+     STEP A / STEP B / STEP C run.
+
   STEP A — Write the dispatch sidecar BEFORE calling the Agent tool:
      Run via Bash:
        PROJECT_ROOT="$(python3 __QUOIN_HOME__/scripts/path_resolve.py --project-root)"
@@ -115,6 +126,11 @@ Fail-graceful path with error-class triage (per architecture I-01):
      __QUOIN_HOME__/hooks/worktreecreate.sh reads the sidecar, runs
      git_root_for_dispatch.py, and (when a single nested repo resolves)
      creates a worktree IN the nested git root and returns its path.
+     One-time probe (opt-in path only): when the probe sentinel is still unknown,
+     instruct the child to record its working directory to a marker; after the Agent
+     returns, compare it to the created worktree path and persist the result exactly
+     once via
+       python3 __QUOIN_HOME__/scripts/worktree_isolation.py --write-probe --result works|broken
 
   STEP C — Phase 2 retry WITHOUT isolation (on Worktree-class error):
      If Phase 1 fails with a Worktree-class error (regex above), the hook

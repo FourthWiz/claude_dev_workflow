@@ -57,19 +57,31 @@ def _has_glob(filenames: list[str], prefix: str) -> bool:
     return any(f.startswith(prefix) for f in filenames)
 
 
+def _subprocess_timeout() -> int:
+    """Read QUOIN_SUBPROCESS_TIMEOUT (seconds); default 30; bad values fall back to 30.
+
+    Self-contained local copy (D-06) — do NOT cross-import; each touched core
+    script owns its own copy per the repo's copy-not-import convention.
+    """
+    try:
+        return int(os.environ.get("QUOIN_SUBPROCESS_TIMEOUT", "30"))
+    except (TypeError, ValueError):
+        return 30
+
+
 def _git_diff_nonempty(task_dir: Path) -> bool:
     """Return True if there are uncommitted or committed changes on the task branch."""
     try:
         root_result = subprocess.run(
             ["git", "-C", str(task_dir), "rev-parse", "--show-toplevel"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True, text=True, timeout=_subprocess_timeout(),
         )
         if root_result.returncode != 0:
             return False
         git_root = root_result.stdout.strip()
         diff_result = subprocess.run(
             ["git", "-C", git_root, "diff", "--quiet", "HEAD"],
-            capture_output=True, timeout=15,
+            capture_output=True, timeout=_subprocess_timeout(),
         )
         return diff_result.returncode != 0
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):

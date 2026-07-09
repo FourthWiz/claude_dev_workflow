@@ -47,6 +47,9 @@ MIGRATED_TO_ADAPTER = {
     "checkpoint",
     "next_steps",
     "sleep",
+    # pr's authoritative SKILL.md is the Claude adapter copy (installer prefers the
+    # adapter path); it carries the §0-sidecar block (T-05 / SOURCE_MUTATING set).
+    "pr",
 }
 
 
@@ -102,6 +105,13 @@ WORKTREE_FALLBACK_SKILLS = [
 
 SENTINEL_BEGIN = "<!-- §0-worktree-fallback-begin -->"
 SENTINEL_END = "<!-- §0-worktree-fallback-end -->"
+
+# Source-mutating skills requiring the §0-sidecar block (D-08 scope).
+# Defined here (near the fallback-skill list) as the SINGLE source of truth so the
+# artifact-only exclusion below and Tests 7-11 all reference the same set — no stale
+# hand-copied literal. `pr` carries a sidecar (T-05) and so is included here; it is
+# therefore excluded from the artifact-only fallback byte-equal set below.
+SOURCE_MUTATING_WORKTREE_SKILLS = {"implement", "rollback", "end_of_task", "pr"}
 
 
 def extract_worktree_block(skill_path: Path) -> str:
@@ -237,14 +247,16 @@ def test_bare_warning_present_in_wider_skillset(skill):
 # CI-enforced byte-equality guardrail per lesson-2026-05-11 and D-09.
 # Sentinel comments are the SOLE extraction anchor; prose-anchor fallback removed.
 #
-# NOTE: The 3 source-mutating skills (implement, rollback, end_of_task) now carry
+# NOTE: The 4 source-mutating skills (implement, rollback, end_of_task, pr) now carry
 # an additional §0-sidecar block inside the worktree-fallback sentinel (D-08,
 # nested-git-worktree-dispatch task). They are intentionally distinct and are
 # checked separately by test_sidecar_block_byte_equal_across_source_mutating_skills.
+# (pr is not in WORKTREE_FALLBACK_SKILLS, so it never appears in this list regardless;
+# referencing the shared constant keeps the exclusion in lock-step with Tests 7-11.)
 # -------------------------------------------------------------------------
 _ARTIFACT_ONLY_WORKTREE_FALLBACK_SKILLS = [
     s for s in WORKTREE_FALLBACK_SKILLS
-    if s not in {"implement", "rollback", "end_of_task"}
+    if s not in SOURCE_MUTATING_WORKTREE_SKILLS
 ]
 
 
@@ -312,9 +324,8 @@ def test_worktree_retry_grammar_pinned(skill):
 # Tests 7-11 — D-08 WorktreeCreate hook: sidecar block invariants (nested-git-worktree-dispatch)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Source-mutating skills requiring the §0-sidecar block (D-08 scope)
-SOURCE_MUTATING_WORKTREE_SKILLS = {"implement", "rollback", "end_of_task"}
-
+# SOURCE_MUTATING_WORKTREE_SKILLS defined once near the top (single source of truth;
+# now includes "pr" per T-05). Tests 7-11 below parametrize over it.
 SIDECAR_SENTINEL_BEGIN = "<!-- §0-sidecar-begin -->"
 SIDECAR_SENTINEL_END = "<!-- §0-sidecar-end -->"
 
