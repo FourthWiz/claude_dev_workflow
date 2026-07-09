@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+from typing import NamedTuple, Optional
 
 # T-04: single source of truth for wheel-bundled memory files (8 Tier-1 files)
 TIER1_MEMORY_FILES = (
@@ -107,6 +108,7 @@ DEPLOYED_SCRIPTS = (
     "discovery_staleness.py",        # IVG-106: discovery/Serena staleness detector wrapper
     "verify_claims.py",              # IVG-115: §V ground-truth reconciliation engine wrapper
     "inject_verification_step.py",   # IVG-115 T-04: §V block generator (standalone, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS needed)
+    "deploy_drift_check.py",         # IVG-136: post-merge deploy-drift guard (adapter-only, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS twin, see D-05)
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -175,6 +177,23 @@ def substitute_quoin_home(text: str, dest_root: pathlib.Path) -> str:
     return text.replace(QUOIN_HOME_PLACEHOLDER, str(dest_root.resolve()))
 
 
+def expected_deployed_content(src: pathlib.Path, dest_root: pathlib.Path) -> bytes:
+    """Return the exact bytes that _copy_with_substitution WOULD write for src.
+
+    Text files (_SUBSTITUTE_EXTS) have __QUOIN_HOME__ substituted with dest_root
+    and are returned as UTF-8 bytes; all other extensions are byte-copied verbatim.
+    This is the single source of truth for "what does deploy produce for this file"
+    — both _copy_with_substitution (T-01 refactor) and compute_drift (T-02) call it,
+    so the drift checker can never disagree with what install actually writes.
+    Pure: reads src only, never writes.
+    """
+    if src.suffix in _SUBSTITUTE_EXTS:
+        return substitute_quoin_home(
+            src.read_text(encoding="utf-8"), dest_root
+        ).encode("utf-8")
+    return src.read_bytes()
+
+
 def _copy_with_substitution(
     src: pathlib.Path,
     dst: pathlib.Path,
@@ -186,23 +205,15 @@ def _copy_with_substitution(
     Sets +x for .py and .sh files.
     Skips the write when the destination already contains identical content
     so that re-installs preserve file mtimes (CRIT-1 round-2).
+
+    Behaviour-preserving delegation (T-01): the deployed bytes are computed by
+    expected_deployed_content so the drift checker and the deploy path agree
+    byte-for-byte. Writing bytes (rather than text) yields identical output for
+    valid UTF-8 while keeping the substitution/byte-copy split intact.
     """
-    if src.suffix in _SUBSTITUTE_EXTS:
-        new_content = substitute_quoin_home(src.read_text(encoding="utf-8"), dest_root)
-        if dst.exists() and dst.read_text(encoding="utf-8") == new_content:
-            # Still fix permissions even when content unchanged
-            if src.suffix in (".py", ".sh"):
-                os.chmod(dst, 0o755)
-            return
-        dst.write_text(new_content, encoding="utf-8")
-    else:
-        src_bytes = src.read_bytes()
-        if dst.exists() and dst.read_bytes() == src_bytes:
-            # Still fix permissions even when content unchanged
-            if src.suffix in (".py", ".sh"):
-                os.chmod(dst, 0o755)
-            return
-        dst.write_bytes(src_bytes)
+    new_bytes = expected_deployed_content(src, dest_root)
+    if not (dst.exists() and dst.read_bytes() == new_bytes):
+        dst.write_bytes(new_bytes)
     if src.suffix in (".py", ".sh"):
         os.chmod(dst, 0o755)
 
@@ -290,6 +301,26 @@ def _assert_not_deprecated_skill(skill_name: str, skill_md: pathlib.Path) -> Non
             sys.exit(1)
 
 
+def resolve_skill_source_md(
+    src_skills: pathlib.Path,
+    src_adapter: pathlib.Path,
+    name: str,
+) -> pathlib.Path:
+    """Return the SKILL.md source path for skill `name`: adapter-preferred, else stub.
+
+    Encodes the single source-selection rule shared by deploy_skills (T-01) and
+    compute_drift (T-02): the Claude adapter SKILL.md at
+    src_adapter/<name>/SKILL.md wins when it exists; otherwise fall back to the
+    legacy stub at src_skills/<name>/SKILL.md. Returning the stub path even when
+    it does not exist on disk is intentional — callers decide how to handle a
+    missing source (deploy_skills aborts; compute_drift skips, never raises).
+    """
+    adapter_md = src_adapter / name / "SKILL.md"
+    if adapter_md.exists():
+        return adapter_md
+    return src_skills / name / "SKILL.md"
+
+
 def deploy_skills(source_dir: pathlib.Path, dest_root: pathlib.Path) -> int:
     """Copy skills from source_dir/skills/ to dest_root/skills/. Returns count copied.
 
@@ -313,8 +344,10 @@ def deploy_skills(source_dir: pathlib.Path, dest_root: pathlib.Path) -> int:
         dst_skill = dst_skills / skill_name
         dst_skill.mkdir(parents=True, exist_ok=True)
         # Prefer Claude adapter path when available (runtime-portability migration).
+        # T-01: source-selection rule lives in resolve_skill_source_md so deploy
+        # and drift-detection share ONE rule.
         adapter_md = src_adapter / skill_name / "SKILL.md"
-        skill_md = adapter_md if adapter_md.exists() else skill_dir / "SKILL.md"
+        skill_md = resolve_skill_source_md(src_skills, src_adapter, skill_name)
         if not skill_md.exists():
             print(f"quoin: Expected SKILL.md at {skill_md} but not found", file=sys.stderr)
             sys.exit(1)
@@ -386,6 +419,102 @@ def deploy_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
         dst = dst_scripts / fname
         _copy_with_substitution(src, dst, dest_root)
         print(f"Copied {fname} to {dest_root}/scripts/")
+
+
+# ── IVG-136: read-only deploy-drift detection ────────────────────────────────
+
+# Category names compute_drift knows how to compare. Kept in sync with the
+# deploy manifests above. The CLI (deploy_drift_check.py) surfaces this list as
+# `checked_categories` and names everything NOT here as `uncovered_categories`.
+DRIFT_CATEGORIES: tuple[str, ...] = ("skills", "scripts", "core-scripts", "memory")
+
+
+class DriftEntry(NamedTuple):
+    """One drifted deployed file.
+
+    reason is "missing" (source present, deployed copy absent) or "stale"
+    (deployed bytes differ from what deploy would write).
+    """
+    category: str
+    source_path: str
+    deployed_path: str
+    reason: str  # "missing" | "stale"
+
+
+def compute_drift(
+    source_dir: pathlib.Path,
+    dest_root: pathlib.Path,
+    categories: Optional[tuple[str, ...]] = None,
+) -> list[DriftEntry]:
+    """Return the list of deployed files that drifted from source_dir (T-02).
+
+    Iterates the SAME manifest tuples the deploy functions use — TIER1_MEMORY_FILES,
+    CANONICAL_SKILLS (via resolve_skill_source_md, + preamble.md when the source stub
+    carries one), DEPLOYED_SCRIPTS, CORE_SCRIPTS — and compares each deployed file
+    under dest_root against expected_deployed_content(src, dest_root). Per file:
+      * deployed copy absent            -> DriftEntry(..., reason="missing")
+      * deployed bytes != expected      -> DriftEntry(..., reason="stale")
+      * __QUOIN_HOME__ substitution parity is preserved because the comparison goes
+        through expected_deployed_content (which substitutes), so a source file
+        holding the placeholder is NOT flagged against its substituted deployed copy.
+
+    Pure and total: never writes, never raises. A canonical skill whose SOURCE
+    SKILL.md is entirely absent on disk (MIN-3) is SILENTLY SKIPPED — it cannot be
+    compared, and deploy_skills would have aborted the install before it ever
+    deployed, so an absent source is not a deploy-drift condition. Unreadable files
+    degrade to "no drift for this file" (OSError swallowed). D-08's main() exception
+    wrapper in the CLI is the second line of defense if this contract is violated.
+
+    categories: restrict the comparison to a subset of DRIFT_CATEGORIES; None (default)
+    checks all of them.
+    """
+    selected = set(categories) if categories is not None else set(DRIFT_CATEGORIES)
+    drift: list[DriftEntry] = []
+
+    def _check(category: str, src: pathlib.Path, deployed: pathlib.Path) -> None:
+        if not src.exists():
+            return  # source absent: cannot compare, never raise (MIN-3)
+        if not deployed.exists():
+            drift.append(DriftEntry(category, str(src), str(deployed), "missing"))
+            return
+        try:
+            expected = expected_deployed_content(src, dest_root)
+            actual = deployed.read_bytes()
+        except OSError:
+            return  # unreadable — degrade to "no drift for this file"
+        if expected != actual:
+            drift.append(DriftEntry(category, str(src), str(deployed), "stale"))
+
+    if "memory" in selected:
+        src_mem = source_dir / "memory"
+        dst_mem = dest_root / "memory"
+        for fname in TIER1_MEMORY_FILES:
+            _check("memory", src_mem / fname, dst_mem / fname)
+
+    if "skills" in selected:
+        src_skills = source_dir / "skills"
+        src_adapter = source_dir / "adapters" / "claude" / "skills"
+        dst_skills = dest_root / "skills"
+        for name in CANONICAL_SKILLS:
+            skill_md = resolve_skill_source_md(src_skills, src_adapter, name)
+            _check("skills", skill_md, dst_skills / name / "SKILL.md")
+            preamble = src_skills / name / "preamble.md"
+            if preamble.exists():
+                _check("skills", preamble, dst_skills / name / "preamble.md")
+
+    if "scripts" in selected:
+        src_scripts = source_dir / "scripts"
+        dst_scripts = dest_root / "scripts"
+        for fname in DEPLOYED_SCRIPTS:
+            _check("scripts", src_scripts / fname, dst_scripts / fname)
+
+    if "core-scripts" in selected:
+        src_core = source_dir / "core" / "scripts"
+        dst_core = dest_root / "core" / "scripts"
+        for fname in CORE_SCRIPTS:
+            _check("core-scripts", src_core / fname, dst_core / fname)
+
+    return drift
 
 
 # T-12: Dashboard asset directory — fixed set of SPA files

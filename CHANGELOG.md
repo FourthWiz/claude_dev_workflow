@@ -2,6 +2,12 @@
 
 All notable changes to Quoin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **post-merge deploy-drift guard: `/gate` detects stale deployed `~/.claude` copies vs quoin source** (IVG-136). A new adapter CLI `deploy_drift_check.py` (deployed to `~/.claude/scripts/`) compares the deployed skills / scripts / core-scripts / Tier-1 memory files against what `bash quoin/install.sh` would write, reusing the installer's own manifest tuples and substitution logic (`compute_drift` + `expected_deployed_content` in `installer.py`) so the checker can never disagree with the deploy path. It fires only when the diff touches `quoin/**` or `src/quoin/**` (out-of-scope diffs exit 0 without importing the `quoin` package at all). `/gate` wires it into three checklist regions: post-implement it is a non-blocking ⚠️ WARN; post-review it is a **blocking FAIL** (stale deployed copies at the pre-merge gate mean review smoke-testing ran against old code). Exit-code contract is strictly fail-OPEN — only exit 1 (drift found) can ever block; quoin-unimportable, unresolvable source, git errors, and any unexpected exception all degrade to exit 3 (WARN). A clean PASS names exactly which categories were checked vs. NOT covered (hooks, `CLAUDE.md`, `settings.json`, dashboard assets, `QUICKSTART.md` are out of v1 scope) so a broad-trigger PASS can't be misread as full deploy-tree parity. Opt out with `QUOIN_DISABLE_DEPLOY_DRIFT=1`.
+
 ## [0.11.29] — 2026-07-06
 
 ### Fixed
