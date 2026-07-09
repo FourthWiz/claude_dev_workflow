@@ -191,6 +191,20 @@ def test_light_injection_idempotent(skill):
     )
 
 
+def test_absent_verification_ran_is_mismatch():
+    """T-06/MAJ-1 consumer-side defense: start_of_day's §V-verify block must instruct
+    treating a missing/`no` `verification_ran` field on an in-scope end_of_day session
+    as a mismatch signal (not a silent pass) — catches a §V that was silently skipped
+    upstream. This is a prose contract (no verify_claims.py function owns it), so it's
+    drift-tested here rather than in test_verify_claims.py."""
+    text = _read("start_of_day")
+    idx = text.index(_ivs.VERIFY_HEADING)
+    end = text.index(_ivs.VERIFY_END, idx)
+    block = text[idx:end]
+    assert "verification_ran" in block
+    assert "mismatch" in block.lower()
+
+
 def test_run_check_passes_on_committed_tree():
     result = _ivs.run_check()
     assert result == 0, (

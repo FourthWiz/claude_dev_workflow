@@ -19,6 +19,7 @@ from verify_claims import (  # noqa: E402
     EXIT_MISMATCH,
     EXIT_OK,
     canonical_ref,
+    check_side_effects,
     filename_task,
     match_task,
     parse_claims_manifest,
@@ -230,3 +231,128 @@ def test_live_gh_call_invoked_when_no_json_file(tmp_path):
     )
     assert marker.exists(), "live gh binary was never invoked"
     assert proc.returncode == EXIT_MISMATCH  # merged PR contradicts awaiting_pr, via live gh output
+
+
+# ---------------------------------------------------------------------------
+# T-09 regression + coverage additions
+# ---------------------------------------------------------------------------
+
+
+def test_merged_pr_flagged_when_claimed_awaiting_pr(tmp_path):
+    # T-02 acceptance: {task_ref: "IVG-103", status: awaiting_pr} + a gh fixture
+    # showing a MERGED PR whose headRefName canonical-refs to ivg-103 -> exit 8.
+    (tmp_path / ".workflow_artifacts" / "ivg-103-thing").mkdir(parents=True)
+    gh_json = [{"headRefName": "ivg-103-thing", "state": "MERGED"}]
+    claims = [{"task_ref": "IVG-103", "status": "awaiting_pr"}]
+    report = reconcile_tasks(tmp_path, claims=claims, gh_json=gh_json, finalized_only=False)
+    assert report["exit_code"] == EXIT_MISMATCH
+    assert "ivg-103-thing" in report["mismatched_tasks"]
+
+
+def test_claim_ref_normalization(tmp_path):
+    # 0-match -> unmatched (no signal)
+    report = reconcile_tasks(
+        tmp_path,
+        claims=[{"task_ref": "IVG-777", "status": "awaiting_end_of_task"}],
+        finalized_only=True,
+    )
+    assert report["results"][0]["verdict"] == "unmatched"
+    assert report["exit_code"] == EXIT_OK
+
+    # >1-match, same issue number, agreeing truth -> union'd, not ambiguous
+    (tmp_path / ".workflow_artifacts" / "finalized" / "ivg-105-part-a").mkdir(parents=True)
+    (tmp_path / ".workflow_artifacts" / "finalized" / "ivg-105-part-b").mkdir(parents=True)
+    report = reconcile_tasks(
+        tmp_path,
+        claims=[{"task_ref": "IVG-105", "status": "awaiting_end_of_task"}],
+        finalized_only=True,
+    )
+    assert report["results"][0]["verdict"] == "MISMATCH"
+    assert set(report["mismatched_tasks"]) & {"ivg-105-part-a", "ivg-105-part-b"}
+
+    # >1-match, conflicting truth -> ambiguous, treated as unmatched (fail-open)
+    (tmp_path / ".workflow_artifacts" / "ivg-200-retry").mkdir(parents=True)
+    (tmp_path / ".workflow_artifacts" / "finalized" / "ivg-200-old").mkdir(parents=True)
+    report = reconcile_tasks(
+        tmp_path,
+        claims=[{"task_ref": "IVG-200", "status": "awaiting_end_of_task"}],
+        finalized_only=True,
+    )
+    assert report["results"][0]["verdict"] == "unmatched"
+
+
+def test_gh_absent_fail_open(tmp_path):
+    # gh binary truly absent from PATH, no --gh-json-file, no --finalized-only:
+    # _run_gh_pr_list() must return None and pr_status stays gh-unavailable,
+    # never a false MISMATCH (D-03 fail-open).
+    (tmp_path / ".workflow_artifacts" / "ivg-999-other").mkdir(parents=True)
+    claims_file = tmp_path / "claims.md"
+    claims_file.write_text(
+        '## Claims\n```yaml\n- task_ref: "IVG-999"\n  status: awaiting_pr\n```\n'
+    )
+    empty_bin = tmp_path / "empty-bin"
+    empty_bin.mkdir()
+    env = dict(os.environ)
+    env["PATH"] = str(empty_bin)  # no `gh` reachable anywhere
+
+    proc = subprocess.run(
+        [sys.executable, str(_CORE_SCRIPT), "--project-root", str(tmp_path),
+         "--reconcile-tasks", "--claims-file", str(claims_file), "--json"],
+        capture_output=True, text=True, env=env, timeout=30,
+    )
+    assert proc.returncode == EXIT_OK
+    import json as _json
+    report = _json.loads(proc.stdout)
+    assert report["truth"]["ivg-999-other"]["pr_status"] == "gh-unavailable"
+
+
+def test_end_of_day_missing_flag_flip_detected(tmp_path):
+    today = date.today()
+    daily_dir = tmp_path / ".workflow_artifacts" / "memory" / "daily"
+    daily_dir.mkdir(parents=True)
+    (daily_dir / f"{today.isoformat()}.md").write_text("cache content")
+    (tmp_path / ".workflow_artifacts" / "memory" / "resume-cookie.md").write_text("x")
+    sessions_dir = tmp_path / ".workflow_artifacts" / "memory" / "sessions"
+    sessions_dir.mkdir(parents=True)
+    (sessions_dir / f"{today.isoformat()}-mytask.md").write_text(
+        "## Cost\n- end_of_day_due: yes\n"
+    )
+    report = check_side_effects(tmp_path, "end_of_day", today=today)
+    assert report["ok"] is False
+    assert any(m.startswith("flags_flipped:") for m in report["missing"])
+
+
+def test_end_of_day_missing_prune_when_oversized(tmp_path):
+    today = date.today()
+    daily_dir = tmp_path / ".workflow_artifacts" / "memory" / "daily"
+    daily_dir.mkdir(parents=True)
+    (daily_dir / f"{today.isoformat()}.md").write_text("cache content")
+    (tmp_path / ".workflow_artifacts" / "memory" / "resume-cookie.md").write_text("x")
+    lessons = tmp_path / ".workflow_artifacts" / "memory" / "lessons-learned.md"
+    entries = "\n".join(f"## 2026-01-{i:02d} — task-{i}\n**What happened:** x\n" for i in range(1, 32))
+    lessons.write_text(entries)
+    report = check_side_effects(tmp_path, "end_of_day", today=today)
+    assert report["ok"] is False
+    assert "prune_handled" in report["missing"]
+
+
+def test_checkpoint_inflight_artifact_missing(tmp_path):
+    cp = tmp_path / "2026-07-09T0900-mytask.md"
+    cp.write_text(
+        "## In-flight artifacts\n"
+        "- current-plan.md: /nonexistent/path/current-plan.md\n"
+    )
+    report = check_side_effects(tmp_path, "checkpoint", checkpoint_file=cp)
+    assert report["ok"] is False
+    assert any(m.startswith("inflight_missing:") for m in report["missing"])
+
+
+def test_checkpoint_filename_task_mismatch(tmp_path):
+    sessions_dir = tmp_path / ".workflow_artifacts" / "memory" / "sessions"
+    sessions_dir.mkdir(parents=True)
+    (sessions_dir / "2026-07-09-othertask.md").write_text("state")
+    cp = tmp_path / "2026-07-09T0900-mytask.md"
+    cp.write_text("## In-flight artifacts\n- current-plan.md: (none found)\n")
+    report = check_side_effects(tmp_path, "checkpoint", checkpoint_file=cp)
+    assert report["ok"] is False
+    assert any(m.startswith("task_backstop:") for m in report["missing"])

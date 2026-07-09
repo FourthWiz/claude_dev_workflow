@@ -151,3 +151,47 @@ def test_deployed_wrapper_self_test_passes(tmp_path):
     assert run.returncode == 0, (
         f"Deployed wrapper --self-test failed (rc={run.returncode}): {run.stdout[:500]} {run.stderr[:500]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# T-09 extension: inject_verification_step.py must also deploy (DEPLOYED-only,
+# standalone generator — no CORE_SCRIPTS counterpart, per T-04).
+# ---------------------------------------------------------------------------
+
+GENERATOR_SRC = REPO_ROOT / "quoin" / "scripts" / "inject_verification_step.py"
+
+
+def test_installer_deployed_scripts_contains_inject_verification_step():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("installer", INSTALLER_PY)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    assert "inject_verification_step.py" in mod.DEPLOYED_SCRIPTS, (
+        "installer.py DEPLOYED_SCRIPTS must contain 'inject_verification_step.py'. "
+        "Missing entry means install.sh won't deploy the §V block generator to "
+        "~/.claude/scripts/inject_verification_step.py."
+    )
+
+
+def test_generator_source_file_exists():
+    assert GENERATOR_SRC.is_file(), (
+        f"Generator source not found at {GENERATOR_SRC}. "
+        "This file must exist for install.sh to deploy it."
+    )
+
+
+@_dev_machine_only
+def test_install_deploys_inject_verification_step(tmp_path):
+    """install.sh must deploy inject_verification_step.py to scripts/."""
+    result = _run_install(tmp_path)
+    assert result.returncode == 0, (
+        f"install.sh failed: rc={result.returncode}\n"
+        f"stdout: {result.stdout[:1500]}\nstderr: {result.stderr[:1500]}"
+    )
+
+    deployed = tmp_path / ".claude" / "scripts" / "inject_verification_step.py"
+    assert deployed.exists(), (
+        f"install.sh did not deploy inject_verification_step.py — expected at {deployed}"
+    )
