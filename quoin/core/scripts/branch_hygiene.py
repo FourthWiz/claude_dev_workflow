@@ -15,6 +15,11 @@ Exit codes:
 Env:
   QUOIN_PROTECTED_BRANCHES — csv, default "main,master"
   QUOIN_DISABLE_BRANCH_HYGIENE=1 — exit 0 immediately (global opt-out)
+  QUOIN_SUBPROCESS_TIMEOUT — seconds, default 30; bounds every git subprocess run
+      by this module (see _subprocess_timeout()).
+  QUOIN_DISABLE_CHILD_REPO_SCAN=1 — skip the depth-1 child-.git discovery scan in
+      discover_repos(); single-repo view only. Distinct from QUOIN_DISABLE_DISPATCH_CWD
+      (a different concern scoped to dispatch-site detection, see D-08).
 """
 from __future__ import annotations
 
@@ -62,6 +67,18 @@ class RepoResult:
 # Core logic
 # ---------------------------------------------------------------------------
 
+def _subprocess_timeout() -> int:
+    """Read QUOIN_SUBPROCESS_TIMEOUT (seconds); default 30; bad values fall back to 30.
+
+    Self-contained local copy (D-06) — do NOT cross-import; each touched core
+    script owns its own copy per the repo's copy-not-import convention.
+    """
+    try:
+        return int(os.environ.get("QUOIN_SUBPROCESS_TIMEOUT", "30"))
+    except (TypeError, ValueError):
+        return 30
+
+
 def _run(args: list[str]) -> tuple[str, str, int]:
     """Run a subprocess and return (stdout, stderr, returncode)."""
     try:
@@ -69,8 +86,11 @@ def _run(args: list[str]) -> tuple[str, str, int]:
             args,
             capture_output=True,
             text=True,
+            timeout=_subprocess_timeout(),
         )
         return proc.stdout.strip(), proc.stderr.strip(), proc.returncode
+    except subprocess.TimeoutExpired:
+        return "", "timeout", 1
     except FileNotFoundError:
         return "", "git not found", 1
     except Exception as exc:  # noqa: BLE001
@@ -195,7 +215,22 @@ def discover_repos(project_root: Path) -> list[Path]:
       collapse to one entry (MIN-1).
     - Returns sorted, deduplicated absolute Path list.
     - On OSError, returns [] (never raises).
+
+    D-08 / T-08: when QUOIN_DISABLE_CHILD_REPO_SCAN=1, the depth-1 per-child
+    .git stat loop is skipped entirely and this returns a single-repo view
+    ([root] if root/.git exists, else []). This is a DISTINCT knob from
+    QUOIN_DISABLE_DISPATCH_CWD (git_root_for_dispatch._resolve_cwd_scan_only) —
+    disabling dispatch-cwd scanning must never silently narrow /gate's
+    multi-repo sibling discovery. Default (unset) is byte-identical to the
+    pre-existing behavior below.
     """
+    if os.environ.get("QUOIN_DISABLE_CHILD_REPO_SCAN") == "1":
+        try:
+            root = project_root.resolve()
+        except OSError:
+            return []
+        return [root] if (root / ".git").exists() else []
+
     repos: list[Path] = []
     seen: set[str] = set()
 

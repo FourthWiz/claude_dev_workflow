@@ -33,6 +33,15 @@ Env:
   QUOIN_DISABLE_AFFECTED_TESTS=1 — exit 3 immediately (fail-CLOSED opt-out)
   QUOIN_BASE_BRANCH — override the base branch probe order (default: tries
       origin/main, origin/master, main, master in order).
+  QUOIN_SUBPROCESS_TIMEOUT — seconds, default 30; bounds every SHORT git
+      subprocess run by this module (see _subprocess_timeout()). The pytest
+      subprocess gets a generous DERIVED bound max(600, QUOIN_SUBPROCESS_TIMEOUT)
+      instead (D-05) — a TimeoutExpired there maps to exit 3 with
+      exit_reason="pytest-timeout" (BLOCKING-SURFACE, never a silent GREEN,
+      never a hard-RED false block; see proc P-03).
+  QUOIN_DISABLE_CHILD_REPO_SCAN=1 — skip the depth-1 child-.git discovery scan
+      in discover_repos(); single-repo view only. Distinct from
+      QUOIN_DISABLE_DISPATCH_CWD (a different concern, see D-08).
 
 Git-root resolution note (CRIT-1 / IVG-70 remedy):
   The outer quoin project root is NOT a git repo; only the quoin/ subtree is.
@@ -152,6 +161,18 @@ class Selection:
 # Git helpers
 # ---------------------------------------------------------------------------
 
+def _subprocess_timeout() -> int:
+    """Read QUOIN_SUBPROCESS_TIMEOUT (seconds); default 30; bad values fall back to 30.
+
+    Self-contained local copy (D-06) — do NOT cross-import; each touched core
+    script owns its own copy per the repo's copy-not-import convention.
+    """
+    try:
+        return int(os.environ.get("QUOIN_SUBPROCESS_TIMEOUT", "30"))
+    except (TypeError, ValueError):
+        return 30
+
+
 def _run(args: list[str]) -> tuple[str, str, int]:
     """Run a subprocess and return (stdout, stderr, returncode)."""
     try:
@@ -159,8 +180,11 @@ def _run(args: list[str]) -> tuple[str, str, int]:
             args,
             capture_output=True,
             text=True,
+            timeout=_subprocess_timeout(),
         )
         return proc.stdout.strip(), proc.stderr.strip(), proc.returncode
+    except subprocess.TimeoutExpired:
+        return "", "timeout", 1
     except FileNotFoundError:
         return "", "git not found", 1
     except Exception as exc:  # noqa: BLE001
@@ -175,7 +199,20 @@ def discover_repos(project_root: Path) -> list[Path]:
     - Iterate depth-1 children; include any child dir with .git not in _EXCLUDE_NAMES.
     - Returns sorted, deduplicated absolute Path list.
     - On OSError, returns [].
+
+    D-08 / T-08: when QUOIN_DISABLE_CHILD_REPO_SCAN=1, the depth-1 per-child
+    .git stat loop is skipped entirely and this returns a single-repo view
+    ([root] if root/.git exists, else []). Distinct from
+    QUOIN_DISABLE_DISPATCH_CWD; default (unset) is byte-identical to the
+    pre-existing behavior below.
     """
+    if os.environ.get("QUOIN_DISABLE_CHILD_REPO_SCAN") == "1":
+        try:
+            root = project_root.resolve()
+        except OSError:
+            return []
+        return [root] if (root / ".git").exists() else []
+
     repos: list[Path] = []
     seen: set[str] = set()
 
@@ -770,6 +807,7 @@ def main(argv: list[str] | None = None) -> int:
         proc = subprocess.run(
             [sys.executable, "-m", "pytest", *selectors, *args.pytest_args],
             cwd=str(repo_root),
+            timeout=max(600, _subprocess_timeout()),
         )
         rc = proc.returncode
     except FileNotFoundError:
@@ -782,6 +820,25 @@ def main(argv: list[str] | None = None) -> int:
             ran_pytest=False,
             pytest_returncode=None,
             exit_reason="pytest-missing",
+            unmatched_warning=bool(unmatched_sources and args.allow_unmatched),
+        )
+        if fmt == "text":
+            print(_format_text(sel))
+        else:
+            print(json.dumps(sel.to_dict(), indent=2))
+        return 3
+    except subprocess.TimeoutExpired:
+        # pytest subprocess exceeded the derived bound → exit 3 (undeterminable,
+        # BLOCKING-SURFACE at the gate). NEITHER a false-GREEN (exit 0) NOR a
+        # hard false-RED (exit 1) — the human decides (MAJ-3 / D-05 / proc P-03).
+        sel = Selection(
+            changed=changed,
+            selectors=selectors,
+            unmatched_sources=unmatched_sources,
+            ignored=ignored,
+            ran_pytest=False,
+            pytest_returncode=None,
+            exit_reason="pytest-timeout",
             unmatched_warning=bool(unmatched_sources and args.allow_unmatched),
         )
         if fmt == "text":

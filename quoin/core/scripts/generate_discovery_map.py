@@ -50,6 +50,18 @@ _RESERVED_TASK_NAMES: frozenset = frozenset({"finalized", "memory", "cache", "tr
 
 # ── Git helpers ───────────────────────────────────────────────────────────────
 
+def _subprocess_timeout() -> int:
+    """Read QUOIN_SUBPROCESS_TIMEOUT (seconds); default 30; bad values fall back to 30.
+
+    Self-contained local copy (D-06) — do NOT cross-import; each touched core
+    script owns its own copy per the repo's copy-not-import convention.
+    """
+    try:
+        return int(os.environ.get("QUOIN_SUBPROCESS_TIMEOUT", "30"))
+    except (TypeError, ValueError):
+        return 30
+
+
 def _read_git_head(repo_dir: Path) -> str:
     """
     Return the 40-char git HEAD SHA for repo_dir.
@@ -75,7 +87,7 @@ def _read_git_head(repo_dir: Path) -> str:
             cwd=str(repo_dir),
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=_subprocess_timeout(),
             env=env,
         )
         if result.returncode == 0:

@@ -60,14 +60,33 @@ STUB_NOTE = (
 )
 
 
+def _subprocess_timeout() -> int:
+    """Read QUOIN_SUBPROCESS_TIMEOUT (seconds); default 30; bad values fall back to 30.
+
+    Self-contained local copy (D-06) — do NOT cross-import; each touched core
+    script owns its own copy per the repo's copy-not-import convention.
+    """
+    try:
+        return int(os.environ.get("QUOIN_SUBPROCESS_TIMEOUT", "30"))
+    except (TypeError, ValueError):
+        return 30
+
+
 def git_hash_object(path: pathlib.Path) -> str:
     """Return the git hash-object SHA for a file (NOT the index — working tree)."""
-    result = subprocess.run(
-        ["git", "hash-object", str(path)],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "hash-object", str(path)],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=_subprocess_timeout(),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"git hash-object timed out after {_subprocess_timeout()}s for {path} "
+            f"(override with QUOIN_SUBPROCESS_TIMEOUT)"
+        ) from exc
     return result.stdout.strip()
 
 
