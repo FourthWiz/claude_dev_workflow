@@ -140,6 +140,14 @@ for Small and Medium tasks.
   Recovery: use the canonical safe reset-to-origin recipe at
   `memory/branch-recovery.md` (deployed Tier-1 memory file) — move
   mis-placed commits to a feature branch first, then run the recipe.
+- For non-Python deliverables (e.g., a TypeScript package with its own CI
+  job), run the same correctness steps the CI job runs — compile, typecheck,
+  lint, test (excluding packaging/publish/upload) — and treat a failing or
+  unverifiable result as a blocking failure.
+
+Inability to verify a correctness step (missing toolchain, or the check
+disabled) is fail-CLOSED / blocking-surface — the workflow MUST surface it
+for explicit human acknowledgment, never treat it as a silent pass.
 
 ### Full gate
 
@@ -156,6 +164,14 @@ review for all task sizes.
 - No task commits on a protected branch (main/master): same rule as Standard
   gate — a repo with task commits ahead of its upstream on a protected branch
   is a blocking failure; a clean on-main state is not.
+- For non-Python deliverables (e.g., a TypeScript package with its own CI
+  job), run the same correctness steps the CI job runs — compile, typecheck,
+  lint, test (excluding packaging/publish/upload) — and treat a failing or
+  unverifiable result as a blocking failure (same rule as Standard gate,
+  re-verified here since review fixes may have changed code).
+
+Inability to verify a correctness step (missing toolchain, or the check
+disabled) is fail-CLOSED / blocking-surface here too — never a silent pass.
 
 ## Gate checkpoints
 
