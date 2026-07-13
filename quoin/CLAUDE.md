@@ -186,6 +186,7 @@ Before starting any new task on a repo, always:
 Clean working state before each task avoids mixing unrelated changes and working on stale code. At the start of every implementation task, run `git status` + `git branch` on each affected repo. Handle any dirty state before proceeding. This applies to ALL repos involved, not just the primary one.
 
 This rule is enforced at three layers: (1) `/implement` §0b branch-hygiene precheck prompts to create a feature branch if any repo is on a protected branch before the first commit; (2) `/gate` FAILS if task commits (commits ahead of upstream on main/master, i.e., `has_task_commits: true`) are detected on a protected branch post-implement; (3) `/review` flags it as a diff-independent backstop. The gate keys on the commits-ahead signal, NOT bare on-main status — a clean repo sitting on main with no ahead commits is NOT a violation. Env knobs: `QUOIN_PROTECTED_BRANCHES` (csv, default `main,master`), `QUOIN_DISABLE_BRANCH_HYGIENE=1` (global opt-out). If recovery is needed (mis-placed commits on a protected branch), the canonical safe reset-main-to-origin recipe is at `__QUOIN_HOME__/memory/branch-recovery.md`.
+- **Reinstall (`bash quoin/install.sh`) after a `quoin/**`/`src/quoin/**` diff** — `/gate` `deploy_drift_check.py` flags drift (`QUOIN_DISABLE_DEPLOY_DRIFT=1`; IVG-136).
 
 #### Commit messages
 

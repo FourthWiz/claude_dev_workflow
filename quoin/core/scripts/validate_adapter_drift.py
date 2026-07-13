@@ -465,19 +465,54 @@ def _install_sh_delegates_to_python_installer(install_sh_content: str) -> bool:
 
 
 def _python_installer_prefers_claude_adapter(repo_root: Path) -> bool:
-    """Return True when src/quoin/installer.py owns adapter-path skill routing."""
+    """Return True when src/quoin/installer.py owns adapter-path skill routing.
+
+    Two accepted forms for the skill_md selection line inside deploy_skills:
+
+    1. Legacy inline form: an inline ternary
+       `skill_md = adapter_md if adapter_md.exists() else skill_dir / "SKILL.md"`.
+    2. Delegation form (post-T-01 refactor, IVG-136 review round 5): deploy_skills
+       calls `resolve_skill_source_md(...)` instead of inlining the ternary. In
+       this form we don't just trust the call-site text — we also read the body
+       of resolve_skill_source_md itself and confirm it still implements the
+       adapter-preferred `.exists()` branch. That keeps the heuristic honest: a
+       future change that silently broke adapter preference *inside*
+       resolve_skill_source_md would still be caught here, even though the call
+       site text at the deploy_skills call would look unchanged.
+    """
     installer_path = repo_root / "src" / "quoin" / "installer.py"
     try:
         content = installer_path.read_text(encoding="utf-8")
     except OSError:
         return False
 
-    required_tokens = [
+    base_tokens = [
         'source_dir / "adapters" / "claude" / "skills"',
         'adapter_md = src_adapter / skill_name / "SKILL.md"',
-        "skill_md = adapter_md if adapter_md.exists() else skill_dir / \"SKILL.md\"",
     ]
-    return all(token in content for token in required_tokens)
+    if not all(token in content for token in base_tokens):
+        return False
+
+    inline_token = "skill_md = adapter_md if adapter_md.exists() else skill_dir / \"SKILL.md\""
+    if inline_token in content:
+        return True
+
+    delegation_call = "skill_md = resolve_skill_source_md(src_skills, src_adapter, skill_name)"
+    if delegation_call not in content:
+        return False
+
+    func_start = content.find("def resolve_skill_source_md(")
+    if func_start == -1:
+        return False
+    next_def = content.find("\ndef ", func_start + 1)
+    func_body = content[func_start:next_def] if next_def != -1 else content[func_start:]
+
+    callee_tokens = [
+        'adapter_md = src_adapter / name / "SKILL.md"',
+        "if adapter_md.exists():",
+        "return adapter_md",
+    ]
+    return all(token in func_body for token in callee_tokens)
 
 
 # ---------------------------------------------------------------------------
