@@ -109,6 +109,7 @@ DEPLOYED_SCRIPTS = (
     "verify_claims.py",              # IVG-115: §V ground-truth reconciliation engine wrapper
     "inject_verification_step.py",   # IVG-115 T-04: §V block generator (standalone, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS needed)
     "deploy_drift_check.py",         # IVG-136: post-merge deploy-drift guard (adapter-only, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS twin, see D-05)
+    "ci_mirror.py",  # IVG-138: CI-parity gate check for non-Python deliverables
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -395,6 +396,7 @@ CORE_SCRIPTS = (
     "cost_summary.py",              # IVG-96: portable cost-summary.json normalizer core impl
     "discovery_staleness.py",       # IVG-106: discovery/Serena staleness detector core impl
     "verify_claims.py",             # IVG-115: §V ground-truth reconciliation engine core impl
+    "ci_mirror.py",  # IVG-138: wrapped impl; required by ~/.claude/scripts/ci_mirror.py parents[1] loader
 )
 
 
