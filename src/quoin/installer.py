@@ -41,6 +41,8 @@ TIER1_MEMORY_FILES = (
     "discovery-refresh-routine.md",
     # Added IVG-115: §V ground-truth verification verbose reference (Tier-1 memory file)
     "verification-guide.md",
+    # Added checkpoint-spec-harness: /checkpoint subsystem behavior spec (Tier-1 memory file)
+    "checkpoint-spec.md",
 )
 
 # T-05: canonical skill list — must match quoin/skills/ on disk exactly
