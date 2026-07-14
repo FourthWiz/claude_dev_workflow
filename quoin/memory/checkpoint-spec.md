@@ -305,10 +305,24 @@ awk '/^## Active task[[:space:]]*$/{getline; gsub(/\r$/,""); print; exit}' "$can
 ```
 `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:892]` (identical pattern also at
 `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:776]` for the Tier-1 fast path). This
-value is compared against `freshest_task`, itself derived from the freshest
-`sessions/*.md` filename with the `YYYY-MM-DD-` prefix stripped
-`[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:884-890]`. A mismatch here suppresses
-silent auto-pick and routes to B3 synthesis.
+value is compared against a `freshest_task` baseline whose derivation differs by tier:
+
+- **Tier-3 combined auto-pick gate** (the numbered-picker / single-candidate path): the
+  baseline is `freshest_task="${_anchor_task}"` FIRST — the Tier-2 pending-prompt
+  cross-reference's seeded task, when Tier-2 found an in-window anchor — and only falls
+  back to the freshest-`sessions/*.md` filename-derived task (`YYYY-MM-DD-` prefix
+  stripped) when `_anchor_task` is empty
+  `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:884-890]`. This anchor-first
+  precedence is exactly the fix for the 2026-05-30 incident: a fresh pending-prompt
+  cross-reference found today must out-rank a stale cross-task checkpoint that happens to
+  be the sole Tier-3 candidate.
+- **Tier-1 fast path**: uses the freshest-`sessions/*.md` filename-derived task directly,
+  with no `_anchor_task` fallback, because the Tier-2 loop that assigns `_anchor_task` has
+  not yet run at this execution position
+  `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:779-782]`.
+
+A mismatch against the applicable baseline suppresses silent auto-pick and routes to B3
+synthesis.
 
 By contrast, `verify_claims.py`'s `check_side_effects()` for `skill == "checkpoint"` computes
 its own `task_backstop` by comparing `filename_task(cp_path.name)` (parsed from the
