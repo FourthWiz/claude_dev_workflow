@@ -82,6 +82,7 @@ _DEFAULT_RESTORE_SENTINEL_WINDOW = 7
 _DEFAULT_SESSION_FALLBACK_WINDOW = 7
 _DEFAULT_PICKER_DEDUP_WINDOW = 7
 _DEFAULT_CHECKPOINT_ENUM_WINDOW = 30  # SKILL.md:823, not env-tunable in prose
+_MIN_CHECKPOINT_BYTES = 100  # SKILL.md:823 corrupt/0-byte guard, not env-tunable in prose
 
 # ---------------------------------------------------------------------------
 # Reason machine-tags (non-exhaustive — the plan's list is "e.g.")
@@ -333,6 +334,15 @@ def _collect_candidates(memory_dir: Path, checkpoints_dir: Path, now: float,
         key = str(cp)
         if key in candidates:
             continue
+        # Byte-size guard against 0-byte / corrupt entries in the disk-only
+        # 30-day enumeration (mirror SKILL.md:823 `[ $(wc -c < "$cp") -ge 100 ]
+        # || continue`). Applies here, not to sentinel-backed candidates, to
+        # match the prose's placement exactly.
+        try:
+            if cp.stat().st_size < _MIN_CHECKPOINT_BYTES:
+                continue
+        except OSError:
+            continue
         text = _read_text(cp)
         candidates[key] = {
             "path": cp,
@@ -343,6 +353,12 @@ def _collect_candidates(memory_dir: Path, checkpoints_dir: Path, now: float,
             "sentinel_path": "",
             "kind": _classify_kind(cp),
         }
+
+    # Parse-failure drop (mirror SKILL.md:839 step-2 annotation): if
+    # `## Active task` cannot be extracted from a candidate, drop it silently.
+    # Applies to the merged candidate set (both sentinel-backed and disk-only),
+    # matching the prose, which annotates every candidate before selection.
+    candidates = {k: c for k, c in candidates.items() if c["task"]}
 
     cand_list = list(candidates.values())
     by_path = {c["path"]: c for c in cand_list}

@@ -895,3 +895,44 @@ def test_dated_fixture_session_as_b3_baseline(tmp_path, monkeypatch):
     assert verdict["derived_task"] == "personal-site-sim-embed", verdict
     assert verdict["b3_prompt"] is not None
     assert "personal-site-sim-embed" in verdict["b3_prompt"]
+
+
+def test_corrupt_and_headless_checkpoints_dropped(tmp_path, monkeypatch):
+    # authority:prose "[ $(wc -c < \"$cp\") -ge 100 ] || continue" [SKILL.md:823]
+    #                 "drop the candidate silently" (parse failure) [SKILL.md:839]
+    # Fidelity gap closed post-review (review-1 MINOR-1): the disk-only 30-day
+    # enumeration must skip <100-byte corrupt entries and drop candidates whose
+    # `## Active task` cannot be extracted. Both would otherwise be selectable.
+    monkeypatch.setenv("QUOIN_RESTORE_STALE_DAYS", "1")
+    task = "zephyr"
+    memory_dir = _build_memory(tmp_path, {
+        "sessions": [{"name": f"2026-07-14-{task}.md", "mtime": NOW, "task": task}],
+    })
+    ck_dir = memory_dir / "checkpoints"
+    # (a) <100-byte same-task checkpoint that WOULD tier-3 auto-pick if not skipped.
+    tiny = _write(ck_dir / f"2026-07-14T1000-{task}.md", f"## Active task\n{task}\n", NOW)
+    assert tiny.stat().st_size < 100  # fixture invariant: actually under the guard
+    # (b) >=100-byte checkpoint with NO `## Active task` heading -> parse-failure drop.
+    headless = _write(
+        ck_dir / f"2026-07-14T1100-{task}.md",
+        "## Status\nvoluntary\n" + ("padding line to exceed one hundred bytes\n" * 4),
+        NOW,
+    )
+    assert headless.stat().st_size >= 100  # fixture invariant: passes the byte guard
+
+    verdict = _MOD.select_restore(memory_dir, "unknown", NOW)
+    # Both candidates dropped -> nothing selectable -> B3 fallback (NOT the corrupt files).
+    assert verdict["selected_path"] is None, verdict
+    assert verdict["tier"] == "4-B3", verdict
+    assert verdict["reason"].startswith("b3:"), verdict
+
+    # Positive control: a VALID >=100-byte same-task checkpoint IS auto-picked,
+    # proving the byte/parse guards are what forced B3 above (not some other cause).
+    mem2 = _build_memory(tmp_path / "ctrl", {
+        "sessions": [{"name": f"2026-07-14-{task}.md", "mtime": NOW, "task": task}],
+        "checkpoints": [{"name": f"2026-07-14T1000-{task}.md", "mtime": NOW, "task": task}],
+    })
+    v2 = _MOD.select_restore(mem2, "unknown", NOW)
+    assert v2["selected_path"] is not None, v2
+    assert v2["tier"] == 3, v2
+    assert v2["reason"] == "tier3:autopick", v2
