@@ -46,6 +46,11 @@ Three modes, selected by `--mode` flag:
   (written on `--mode restore`; absent on other modes).
 - On `--restore`: reads the sentinel, re-hydrates the named session file, presents
   the user with a summary of what was in progress, and removes the sentinel.
+- The restore-candidate DECISION (which checkpoint/session-state to select) is
+  delegated to `checkpoint_picker.py` (a pure, deterministic Verdict-returning
+  module); the adapter SKILL only renders the Verdict and drives the interactive
+  surfacing (same-session warning, Read re-fire, pending-prompt rehydrate) —
+  it does not re-implement the selection logic.
 
 ## Behavior contract
 

@@ -51,6 +51,76 @@ class TestCrossTaskGuard:
         )
 
 
+class TestPrimaryPickerDelegation:
+    """T-05 (IVG-139 S-3): the restore section's PRIMARY decision path now delegates
+    to checkpoint_picker.py; the prose tiers above (still asserted by this file's
+    other test classes) are retained only as the fail-OPEN fallback.
+
+    Decision-equivalence argument (T-06, two parts, since SKILL.md is
+    LLM-interpreted prose and not executable):
+      1. Module boundary: `test_checkpoint_picker_roundtrip.py` proves
+         `checkpoint_picker.py`'s Verdict matches `checkpoint-spec.md` across the
+         named incident/prose/spec-anchored fixtures (tier-1 same-task fastpath,
+         tier-1 cross-task->B3, tier-2 anchor precedence, tier-3 autopick,
+         tier-3 gate-suppressed stale/cross-task, B3 clause-A/clause-B,
+         thorough-plan-progress routing, same-session detection, and the new
+         multi-candidate mixed-validity fixture below).
+      2. Delegation: THIS file's tests (above) prove the SKILL correctly
+         delegates to that module boundary -- it shells out with the right
+         flags, parses the Verdict without re-deriving the decision, and falls
+         back to the (unchanged, still-tested) prose tiers on any failure.
+
+      Together these two parts establish equivalence WITHOUT re-testing
+      SKILL.md's un-executable prose against the incident corpus directly.
+
+      OUT OF SCOPE (spec blind spot, NOT proven equivalent): the interactive
+      2+-candidate numbered-picker UX (SKILL.md:865-877), where a human can
+      explicitly select an older, valid, same-task candidate over the
+      auto-suppressed freshest one. `test_multi_candidate_freshest_suppressed_
+      bypasses_valid_older_same_task` in the roundtrip harness characterizes
+      (does not endorse) the module-driven path's behavior in that scenario --
+      it bypasses the valid older candidate rather than offering the numbered
+      choice. See Q-01 in the S-3 plan for the gate ruling accepting this as a
+      conscious, documented outcome change.
+    """
+
+    def test_invokes_checkpoint_picker_module(self):
+        """SKILL.md restore section must shell out to checkpoint_picker.py."""
+        text = _text()
+        assert "checkpoint_picker.py" in text, (
+            "checkpoint/SKILL.md restore section must invoke checkpoint_picker.py "
+            "as the primary restore-decision path (IVG-139 S-3)."
+        )
+        assert "--memory-dir" in text and "--sid" in text, (
+            "checkpoint_picker.py invocation must pass --memory-dir and --sid flags."
+        )
+
+    def test_parses_json_verdict_without_jq(self):
+        """The Verdict JSON must be parsed via python3 -c (not jq — D-04)."""
+        text = _text()
+        assert "json.loads" in text, (
+            "checkpoint/SKILL.md must parse the picker's JSON Verdict via a python3 "
+            "json.loads one-liner, not jq."
+        )
+        assert "\\x1f" in text, (
+            "checkpoint/SKILL.md must split the parsed Verdict fields on the ASCII Unit "
+            "Separator (\\x1f), not tab (CRIT-1 — tab collapses empty fields on bash 3.2)."
+        )
+
+    def test_fallback_picker_retained(self):
+        """The fail-OPEN prose fallback must still be present and clearly labelled."""
+        text = _text()
+        assert "Fallback picker" in text and "fail-OPEN" in text, (
+            "checkpoint/SKILL.md must retain the prose picker as a labelled fail-OPEN "
+            "fallback for when checkpoint_picker.py is unavailable (D-03)."
+        )
+        # Fallback must still be reachable via the same Tier-1..4 anchors the other
+        # tests in this file assert on — i.e. it is not merely referenced, it is present.
+        assert "Tier 1 — Fast path" in text and "Tier 2 —" in text, (
+            "The fallback picker must retain the original Tier-1..4 prose verbatim."
+        )
+
+
 class TestStalenessGuard:
     """T-05: staleness guard (age-based)."""
 

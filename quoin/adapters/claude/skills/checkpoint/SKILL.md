@@ -699,6 +699,129 @@ ALL subsequent path derivations in restore mode MUST use `${_PROJECT_ROOT}` — 
 
 Use a unified picker that covers both pending-restore sentinels and recent checkpoint files on disk.
 
+**Step 1.0a — Primary picker: `checkpoint_picker.py` delegation (IVG-139 S-3)**
+
+Before falling into the fallback anchor-selection tiers below, delegate the restore DECISION
+to the deployed `checkpoint_picker.py` module. `$_mem_dir` = `${_PROJECT_ROOT}/.workflow_artifacts/memory`;
+`$current_session_id` = the value already obtained by the Step 1.1 UUID-acquisition procedure
+(harness-provided UUID; else most recently modified JSONL filename stem).
+
+```sh
+_mem_dir="${_PROJECT_ROOT}/.workflow_artifacts/memory"
+_verdict_json=$(python3 __QUOIN_HOME__/scripts/checkpoint_picker.py --memory-dir "$_mem_dir" --sid "$current_session_id" 2>/dev/null)
+_picker_rc=$?
+_parsed=$(python3 -c '
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(1)
+if not isinstance(d, dict) or not d.get("tier"):
+    sys.exit(1)   # covers the {"error": ...} fail-OPEN shape and any empty/malformed payload
+def b(v):
+    if v is None: return ""
+    if v is True: return "true"
+    if v is False: return "false"
+    return str(v)
+fields = ["tier","kind","selected_path","derived_task","b3_prompt",
+          "consumed_sentinel_path","cross_task_ok","stale","same_session","reason"]
+sys.stdout.write("\x1f".join(b(d.get(k)) for k in fields))
+' "$_verdict_json" 2>/dev/null)
+_parse_rc=$?
+if [ "$_picker_rc" -eq 0 ] && [ -n "$_verdict_json" ] && [ "$_parse_rc" -eq 0 ] && [ -n "$_parsed" ]; then
+  # NOTE (load-bearing): field delimiter is the ASCII Unit Separator (\x1f), NOT tab.
+  # TAB is an IFS *whitespace* character, so on bash 3.2.57 (the macOS default)
+  # `IFS=$'\t' read` collapses runs of tabs and drops empty fields — every real
+  # Verdict has b3_prompt=null on tier-1/2/3 and often other empty fields, so a
+  # tab-delimited read silently shifts the field->variable mapping. \x1f is a
+  # non-whitespace IFS character: bash never collapses consecutive non-whitespace
+  # IFS delimiters and never trims empty fields between them, so positions cannot
+  # shift regardless of bash version. Do NOT change this back to a tab delimiter.
+  IFS=$'\x1f' read -r tier kind selected_path derived_task b3_prompt consumed_sentinel_path \
+    cross_task_ok stale same_session reason <<< "$_parsed"
+fi
+```
+
+Field types (compare as strings, never as booleans): `tier` is the literal string `"1"`, `"2"`,
+`"3"`, or `"4-B3"` (e.g. `[ "$tier" = "4-B3" ]`). `same_session`/`cross_task_ok`/`stale` are the
+literal strings `true`/`false`, or `""` when the underlying JSON value was `null` (e.g.
+`[ "$same_session" = "true" ]`). `selected_path`/`b3_prompt`/`kind` are `""` when JSON `null`.
+
+**Fail-OPEN routing (any of):** the picker CALL fails (`_picker_rc != 0` — should never happen,
+the module always exits 0, but guard anyway), the script is absent, picker stdout is empty, OR
+the PARSE step itself fails (`_parse_rc != 0` — malformed JSON, the `{"error": ...}` fail-OPEN
+shape, empty dict, or a `tier` field that is missing/falsy), OR `_parsed` is empty after
+extraction. On any of these: print one line
+`[checkpoint] restore-picker module unavailable ($reason); using prose fallback` and drop into
+the retained "Fallback picker" prose below (skip Step 1.0b entirely — the Fallback picker
+tiers run in its place and produce `cp_path` + `consumed_sentinel_path` exactly as before).
+
+**On a successful parse:** proceed to Step 1.0b below. Do NOT run the Fallback picker tiers in
+this case — they are the fail-OPEN path only.
+
+**Step 1.0b — Verdict → step mapping (module-driven path only; runs after a successful Step 1.0a parse)**
+
+0. **`kind` check FIRST — for ALL tiers, before anything else below:** immediately after the
+   Verdict is parsed and BEFORE binding `cp_path`, BEFORE running Step 1.5, and BEFORE entering
+   the B3 branch: if `kind` equals the literal string `thorough-plan-progress`, print
+   `[checkpoint] A thorough-plan progress file is pending — resume via /thorough_plan, not /checkpoint --restore.`
+   and STOP — do not proceed to bullet 1. This applies uniformly across tiers `1`, `2`, `3`, and
+   `4-B3` (the check is a no-op for `4-B3`, since B3 routes always carry `kind=""`, but it must
+   still run unconditionally so evaluation order stays uniform).
+1. `selected_path` → bind `cp_path` (the variable Step 1.5 and Step 2 already consume). Leave
+   Step 1.5, Step 2, Step 3, Step 4 byte-for-byte unchanged so the interactive UX (same-session
+   `AskUserQuestion`, `Re-fire reads on artifacts now? [y/n]`, Read re-fire, pending-prompt
+   rehydrate) is preserved.
+2. `consumed_sentinel_path` → assign directly to the `consumed_sentinel_path` shell var that
+   Step 5's cleanup reads (module returns `""` when no orphan sentinel was consumed — the
+   Tier-1 current-session cleanup at Step 5 keys off `current_session_id`, independent of this
+   value, so an empty `consumed_sentinel_path` on a Tier-1 Verdict is expected and correct).
+3. `tier == "4-B3"` → enter the same interactive B3 branch as the Fallback picker: surface the
+   synthesize `[y / n]` prompt (see "B3 session-state fallback" below). On `y`, proceed to Step 2
+   with:
+   - `TASK = derived_task` (pure delegation to the module's field — the same freshest-
+     `sessions/*.md`-filename-derived value the Fallback picker's own B3 lookup computes).
+   - `INTENT` — do NOT use `b3_prompt` (it is a fixed synthesis-instruction template, not the
+     extracted next-step, and must never be rendered into the "Last intent" slot). Instead,
+     independently locate the freshest `${_mem_dir}/sessions/*.md` file — the SAME lookup the
+     Fallback picker performs, using the same `QUOIN_SESSION_FALLBACK_WINDOW` (default 7d) — and
+     run the EXISTING `## Unfinished work` extraction + strip pipeline verbatim (see "B3
+     session-state fallback" below) to produce `INTENT`.
+   - `BRANCH = "(unknown — session-state has no branch field)"`.
+   - `IN_FLIGHT_ARTIFACTS = []`.
+
+   **Fall-through:** if the SKILL's own windowed freshest-`sessions/*.md` lookup (the same
+   lookup used to derive `INTENT` above) finds no file, fall through to the existing Step 3
+   graceful "no checkpoints found" path. Key this fall-through on the SKILL's own lookup result,
+   NOT on the module's `reason` field — a gate-suppressed B3 route with no in-window session can
+   carry `reason == "tier3:gate-suppressed:cross-task"` or `":stale"` while `b3_prompt` is still
+   null, so `reason` and "no in-window session" are not strictly equivalent signals.
+4. `reason` (machine tag) → on any suppression reason (`tier3:gate-suppressed:stale`,
+   `tier3:gate-suppressed:cross-task`, `tier1:cross-task->b3`), print a generic warning:
+   `[checkpoint] WARNING: auto-pick suppressed (${reason}). Routing to session-state synthesis (B3). Run /checkpoint --restore and choose 'y' to synthesize.`
+   Detail is intentionally REDUCED in the module-driven path — do NOT attempt to reconstruct the
+   Fallback picker's `task='X' vs 'Y'` / `Nd old` detail; the module discards the suppressed
+   candidate's task/path/age on every B3 route, so that detail is not recoverable from the
+   Verdict alone. The Fallback picker (used only when the module is unavailable) still prints
+   the full-detail warning.
+5. `same_session`: do NOT remove Step 1.5, and the SKILL MUST NOT independently surface a
+   same-session warning from the Verdict's `same_session` field — only Step 1.5's own
+   `_SAME_SESSION` computation (which has `ckpt_sid` plus the compact-happened override) may
+   trigger the `AskUserQuestion`. The Verdict's `same_session` is available as a cross-check
+   only and must never independently fire a second same-session prompt.
+
+After bullet 0-5 resolve (and the process did not STOP or fall through), `cp_path` and
+`consumed_sentinel_path` are bound; proceed to Step 1.5 exactly as the Fallback picker path
+does.
+
+---
+
+#### Fallback picker (fail-OPEN — used only when `checkpoint_picker.py` is unavailable; slated for removal one release after S3 per Q-02)
+
+This prose duplicates `checkpoint_picker.py:select_restore`; the module is authoritative. Do not
+diverge — see `quoin/memory/checkpoint-spec.md`. This block is reached from Step 1.0a's
+fail-OPEN routing above, or (defensively) if the module is not installed at all.
+
 **Step 1.0 — Anchor selection (priority order)**
 
 Before enumerating disk checkpoints, attempt to resolve a restore anchor from higher-priority signals. Proceed through tiers in order; stop at the first anchor found. Tier-1 applies a cross-task guard before returning (fast validation); Tier-2 cross-references pending-prompt sentinels; Tier-3 runs full enumeration with the combined cross-task + staleness gate.
