@@ -252,6 +252,15 @@
       "claude_model": "haiku",
       "section_0": true,
       "spawn_target": false
+    },
+    {
+      "name": "specify",
+      "phase": "specify",
+      "effort": "max",
+      "user_facing": true,
+      "claude_model": "opus",
+      "section_0": false,
+      "spawn_target": true
     }
   ]
 }
