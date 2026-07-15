@@ -85,7 +85,7 @@ Skills resolve the artifact path via `quoin/scripts/path_resolve.py`. Resolution
 2. **By name:** stage descriptive name + `## Stage decomposition` in architecture.md → resolver looks up stage number → `<task-name>/stage-N/`.
 3. **Default:** `<task-name>/` (legacy / single-stage / mixed-layout grandfathering).
 
-**Grandfathering:** existing folders with root-level `current-plan.md` and no `## Stage decomposition` continue using root-level layout. Resolver does NOT auto-migrate — migration is opt-in via a future `/thorough_plan stage N of <task>`. Two artifacts always stay at task root: `architecture.md` and `cost-ledger.md`.
+**Grandfathering:** existing folders with root-level `current-plan.md` and no `## Stage decomposition` continue using root-level layout. Resolver does NOT auto-migrate — migration is opt-in via a future `/thorough_plan stage N of <task>`. Three artifacts always stay at task root: `architecture.md`, `cost-ledger.md`, and the per-task `spec.md`. The REPO-level `spec.md` is distinct — it lives at the `.workflow_artifacts/` root, not any task root.
 
 ### Archiving completed work
 

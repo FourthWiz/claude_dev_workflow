@@ -165,6 +165,8 @@ def detect_type(filepath, type_override):
         return 'dependencies-map'
     if re.match(r'^git-log', name):
         return 'git-log'
+    if re.match(r'^spec', name):
+        return 'spec'
     return 'default'
 
 
