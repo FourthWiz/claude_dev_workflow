@@ -742,3 +742,91 @@ def test_validate_artifact_uses_quoin_home_placeholder():
         "validate_artifact.py source is missing __QUOIN_HOME__ placeholder — "
         "deploy-time substitution will not work in project-scope installs (MAJ-4)"
     )
+
+
+# ── T-06 (specify-skill stage 1): spec artifact type ──────────────────────────
+# Class A — no ## For human — shared-minimal required_sections cover both the
+# per-task feature-spec and repo-root project-spec variants. See T-01..T-03 in
+# .workflow_artifacts/specify-skill/stage-1/current-plan.md.
+
+def test_spec_task_valid_fixture_autodetects_and_passes():
+    """spec-task-valid.md auto-detects as `spec` (no --type) and passes validation."""
+    rc, stderr = run_validator(artifact=fixture('spec-task-valid.md'))
+    assert rc == 0, f'Expected validator pass; stderr: {stderr}'
+    assert 'FAIL' not in stderr
+
+
+def test_spec_repo_valid_fixture_autodetects_and_passes():
+    """spec-repo-valid.md auto-detects as `spec` (no --type) and passes validation."""
+    rc, stderr = run_validator(artifact=fixture('spec-repo-valid.md'))
+    assert rc == 0, f'Expected validator pass; stderr: {stderr}'
+    assert 'FAIL' not in stderr
+
+
+def test_spec_missing_acceptance_fails_v07():
+    """spec-missing-acceptance.md (no ## Acceptance criteria) must FAIL V-07."""
+    rc, stderr = run_validator(artifact=fixture('spec-missing-acceptance.md'))
+    assert rc == 1
+    assert 'FAIL V-07' in stderr
+    assert '## Acceptance criteria' in stderr
+
+
+def test_spec_valid_fixture_has_no_v06_failure():
+    """A valid spec (no ## For human) must NOT fail V-06 — proves Class A (V-06 skipped)."""
+    rc, stderr = run_validator(artifact=fixture('spec-task-valid.md'))
+    assert rc == 0
+    assert 'FAIL V-06' not in stderr
+
+
+def test_check_v06_class_a_spec_leaves_failures_empty():
+    """Direct unit: check_v06 on Class A text (no ## For human) must not append failures."""
+    mod = _load_validator_module()
+    failures = []
+    text = (
+        '---\ntask: sample\n---\n\n'
+        '## Context\nbody\n\n'
+        '## Acceptance criteria\n- a bullet\n'
+    )
+    mod.check_v06(text, 'A', failures)
+    assert failures == [], (
+        f'check_v06 must skip Class A artifacts entirely; got: {failures}'
+    )
+
+
+def test_detect_type_spec_cases():
+    """detect_type must route spec.md (any parent dir) to `spec`, and leave existing
+    types (current-plan, architecture) unaffected — per T-01 acceptance criteria."""
+    mod = _load_validator_module()
+    assert mod.detect_type('spec.md', None) == 'spec'
+    assert mod.detect_type('sample-task/spec.md', None) == 'spec'
+    assert mod.detect_type('.workflow_artifacts/spec.md', None) == 'spec'
+    assert mod.detect_type('current-plan.md', None) == 'current-plan'
+    assert mod.detect_type('architecture.md', None) == 'architecture'
+
+
+def test_grandfather_task_without_spec_no_error():
+    """A task with a valid current-plan.md and no spec.md must never error — the
+    spec type is opt-in per-file, never a resolver/validator requirement (R-03/R-09)."""
+    import shutil
+    import tempfile
+
+    tmp_root = tempfile.mkdtemp(prefix='quoin-spec-grandfather-')
+    try:
+        task_dir = os.path.join(tmp_root, '.workflow_artifacts', 'legacy-task')
+        os.makedirs(task_dir)
+        plan_path = os.path.join(task_dir, 'current-plan.md')
+        shutil.copyfile(fixture('v3-current-plan.md'), plan_path)
+
+        # (i) validating the existing current-plan.md still passes
+        rc, stderr = run_validator(artifact=plan_path)
+        assert rc == 0, f'Expected validator pass on legacy current-plan.md; stderr: {stderr}'
+
+        # (ii) detect_type never routes current-plan.md to `spec`
+        mod = _load_validator_module()
+        assert mod.detect_type(plan_path, None) == 'current-plan'
+
+        # (iii) no spec.md present, and nothing raises when checking for it
+        spec_path = os.path.join(task_dir, 'spec.md')
+        assert os.path.exists(spec_path) is False
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)
