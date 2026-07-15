@@ -71,6 +71,7 @@ MINTIER_SKILLS = [
     "review",
     "init_workflow",
     "discover",
+    "specify",
 ]
 
 # mintier_required_tokens (MIN-1): 9 content tokens checked INSIDE the §0″ block.
@@ -360,3 +361,37 @@ def test_spike_result_comment_present():
         "inject_pollution_dispatch.py missing '# Spike result' comment near _MINTIER_BLOCK_BODY. "
         "T-00 spike result must be documented per plan requirement (T-00 ack)."
     )
+
+
+# ─── T-10: /specify adapter carries exactly one §0' + one §0″, correctly ordered ──
+# Dedicated presence test (specify-skill stage 2, IVG-127). MINTIER_HEADING and
+# POLLUTION_HEADING are imported from the generator above for byte-identity —
+# this test fails if either block is removed from the specify adapter SKILL.md.
+
+def test_specify_carries_exactly_one_pollution_and_mintier_block():
+    """(T-10) specify/SKILL.md has exactly one §0' heading and one §0″ heading,
+    §0″ appears after §0', and both §0doubleprime HTML markers are present.
+    """
+    text = _read_skill("specify")
+
+    pollution_count = text.count(POLLUTION_HEADING)
+    assert pollution_count == 1, (
+        f"specify/SKILL.md: §0' heading appears {pollution_count} time(s); expected exactly 1."
+    )
+
+    mintier_count = text.count(MINTIER_HEADING)
+    assert mintier_count == 1, (
+        f"specify/SKILL.md: §0″ heading appears {mintier_count} time(s); expected exactly 1."
+    )
+
+    p_idx = text.find(POLLUTION_HEADING)
+    m_idx = text.find(MINTIER_HEADING)
+    assert m_idx > p_idx, (
+        "specify/SKILL.md: §0″ must appear AFTER §0' (ordering violation)."
+    )
+
+    for marker in ("<!-- §0doubleprime-begin -->", "<!-- §0doubleprime-end -->"):
+        assert text.count(marker) == 1, (
+            f"specify/SKILL.md: marker {marker!r} missing or duplicated "
+            f"(count={text.count(marker)})."
+        )

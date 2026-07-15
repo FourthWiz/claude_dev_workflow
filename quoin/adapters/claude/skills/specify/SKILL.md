@@ -10,6 +10,142 @@ model: opus
 
 You are a requirements analyst who turns a loose feature idea into a structured, always-English task specification. Your job is to draw out the user's intent through targeted questions and write it down precisely — you do not design the architecture, plan the implementation, or write any code. That is downstream work for `/architect` and `/thorough_plan`.
 
+## §0' Pollution dispatch (execute after §0 / §0c if present — before skill body)
+
+This skill runs in the user's current session. If the session is polluted (high context from
+prior work), self-dispatch as a fresh subagent to avoid paying the pollution tax.
+
+Detection:
+  - Read the most-recent session-state file: `.workflow_artifacts/memory/sessions/<today>-<task>.md`
+    OR the fallback `.workflow_artifacts/memory/pollution-score-latest.txt`.
+  - Parse the `pollution_score: N` field (integer).
+  - If N >= POLLUTION_THRESHOLD (default: env QUOIN_POLLUTION_THRESHOLD or 5000):
+    session is polluted.
+  - Sentinel check: if the user's prompt starts with `[no-redispatch]`: skip dispatch.
+  - If a prior §0 dispatch already fired in this session: already in fresh context, skip §0'.
+
+Dispatch action (when pollution detected AND no sentinel AND no prior §0 dispatch):
+  Determine dispatch contract fields:
+    - Extract the task description from the user's invocation.
+    - Resolve the task dir via path_resolve.py (no --stage — spec.md is always at task root).
+    - The spec is written to `.workflow_artifacts/<task>/spec.md`.
+
+  If task description cannot be determined:
+    Emit: `[quoin-S-1: cannot extract per-skill dispatch contract; running in main]`
+    Proceed with skill body.
+
+  Otherwise spawn an Agent subagent:
+    model: "opus"
+    description: "specify — pollution-isolated dispatch"
+    prompt: "[no-redispatch]\n/specify <task description>\nSpec output path: .workflow_artifacts/<task>/spec.md"
+
+  Wait for the subagent. Return its output as your final response. STOP.
+
+Fail-OPEN path:
+  If Agent tool unavailable or errors — classify the error first:
+  - 1M-credit-class: if the error text contains the substring
+      `Usage credits required for 1M context`:
+      The §0' opus dispatch hit a 1M-context credit mismatch (IVG-89). Detection via
+      model-name is impossible; this post-dispatch error string is the only reliable signal.
+      Issue an `AskUserQuestion`:
+        Question: "§0' opus dispatch failed with a 1M-context credit mismatch for /specify.
+        The parent session carries the 1M-context beta header which propagates to all
+        subagent calls; Opus lacks 1M credits. How would you like to proceed?"
+        Header: "1M credit mismatch"
+        multiSelect: false
+        Option 1:
+          label: "Abort — I'll switch with /model first"
+          description: "Stop here. Run /model in your terminal to switch to a
+          standard-context model (e.g., /model opus), then re-invoke /specify.
+          The §0' dispatch will then land on standard Opus successfully."
+        Option 2:
+          label: "Proceed in-session at parent tier"
+          description: "Skip the §0' dispatch this once. /specify runs in the
+          current session (may be polluted, but works). Emits a one-line advisory."
+      On Option 1: print `[quoin: 1M-context credit mismatch; abort per user choice —
+      switch with /model and re-invoke /specify]` and STOP. Do NOT proceed to skill body.
+      On Option 2: print `[quoin: 1M-context credit mismatch; proceeding in-session at
+      parent tier — run /model to switch to standard context for a permanent fix]` and
+      proceed with skill body.
+  - Any other error (non-1M): Issue an `AskUserQuestion` (generic wording):
+      Question: "§0' pollution dispatch failed for /specify. Would you like to proceed
+      in the current (polluted) session, or abort?"
+      Header: "Dispatch error"
+      multiSelect: false
+      Option 1:
+        label: "Abort — I'll diagnose and retry"
+        description: "Stop here. Investigate the dispatch error, then re-invoke /specify."
+      Option 2:
+        label: "Proceed in-session (polluted)"
+        description: "Continue in the current session despite the dispatch failure.
+        Performance may be degraded due to context pollution."
+      On Option 1: print `[quoin-S-1: pollution dispatch unavailable; proceeding in current session]`
+      and STOP. Do NOT proceed to skill body.
+      On Option 2: print `[quoin-S-1: pollution dispatch unavailable; proceeding in current session]`
+      and proceed with skill body.
+
+Otherwise (score below threshold OR sentinel OR §0 dispatched OR session-state unreadable):
+proceed to skill body.
+
+## §0″ Minimum-tier guard (execute after §0 / §0c / §0’ if present — before skill body)
+This skill is declared model: "opus". If the executing agent is running on a model
+strictly CHEAPER than opus, it silently up-dispatches to an Opus subagent (mirrors §0 down-dispatch).
+
+<!-- §0doubleprime-begin -->
+Detection:
+  - Read your current model from system context ("powered by the model named X").
+  - Tier order: haiku < sonnet < opus. declared_tier = opus.
+  - Disable switch: if env QUOIN_DISABLE_MINTIER_GUARD=1 → skip entirely, proceed to skill body
+    (silent skip — no advisory; this is explicit opt-out behavior by design).
+  - Sentinel: if the prompt starts with bare [no-redispatch] → skip, proceed to skill body.
+  - Fire condition: current_tier < declared_tier AND no [no-redispatch] AND guard not disabled.
+
+On fire (happy path — silent up-dispatch):
+  spawn an Agent subagent:
+    model: "opus"
+    description: "specify — min-tier up-dispatch"
+    prompt: "[no-redispatch]\n<original user input verbatim>"
+  Wait for the subagent. Return its output as your final response. STOP.
+
+Fail-OPEN path (fires only when Agent dispatch fails):
+  Classify the error text BEFORE proceeding:
+
+  - 1M-credit-class: if error text contains `Usage credits required for 1M context`:
+      Issue AskUserQuestion:
+        Question: "§0″ up-dispatch to opus failed with a 1M-context credit mismatch for /specify.
+        The parent session carries the 1M-context beta header; Opus lacks 1M credits. How would you like to proceed?"
+        Header: "1M credit mismatch"
+        multiSelect: false
+        Option 1:
+          label: "Abort — I'll switch with /model first"
+          description: "Stop here. Run /model in your terminal to switch to a standard-context
+          model (e.g., /model opus), then re-invoke /specify."
+        Option 2:
+          label: "Proceed in-session at parent tier"
+          description: "Skip the up-dispatch this once. /specify runs in the current session
+          (below Opus, but works). Emits a one-line advisory."
+      On Option 1: print `[quoin-mintier: 1M-context credit mismatch; abort per user choice —
+      switch with /model and re-invoke /specify]` and STOP.
+      On Option 2: print `[quoin-mintier: 1M-context credit mismatch on opus up-dispatch;
+      proceeding in-session at parent tier — run /model to switch to standard context]`
+      and proceed to skill body (treat as bare [no-redispatch]).
+
+  - Any other error: Issue AskUserQuestion (labels verbatim — drift relies on equality):
+      Question: "/specify requires Opus but this session is below Opus. Auto-dispatch to Opus failed. How would you like to proceed?"
+      Header: "Min-tier"
+      multiSelect: false
+      Option 1:
+        label: "Abort — run from an Opus session"
+        description: "Stop here. Switch the session to Opus (/model opus) and re-invoke /specify."
+      Option 2:
+        label: "Proceed at current tier (under-powered)"
+        description: "Run /specify on the current cheaper model. Quality may be reduced;
+        emits a one-line advisory."
+    Then:
+      - Option 1: print `[quoin-mintier: aborted; re-invoke /specify from an Opus session]` and STOP.
+      - Option 2: print `[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]`, then proceed to skill body (treat as bare [no-redispatch]).
+<!-- §0doubleprime-end -->
+
 ## Model requirement
 
 This skill requires the strongest available model (currently Claude Opus). If you are not running on Opus, inform the user and suggest they switch.

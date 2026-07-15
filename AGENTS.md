@@ -49,7 +49,7 @@ User-facing workflow skills with effort levels (from `quoin/core/workflow/skills
 | `cost_snapshot` | cost | low |
 | `critic` | critic | high |
 | `discover` | discovery | high |
-| `end_of_day` | session-lifecycle | low |
+| `end_of_day` | session-lifecycle | medium |
 | `end_of_task` | task-finalization | medium |
 | `expand` | utility | medium |
 | `gate` | gate | medium |
@@ -68,6 +68,7 @@ User-facing workflow skills with effort levels (from `quoin/core/workflow/skills
 | `thorough_plan` | planning | max |
 | `triage` | routing | low |
 | `weekly_review` | session-lifecycle | low |
+| `specify` | specify | max |
 
 Codex performs each phase natively using its own planning and reasoning capabilities.
 Use native Codex behavior for planning, progress tracking, approvals, sandboxing,

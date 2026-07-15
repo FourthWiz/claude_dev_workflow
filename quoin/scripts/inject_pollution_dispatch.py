@@ -3,7 +3,7 @@
 inject_pollution_dispatch.py — Generator for §0' Pollution dispatch AND §0″ Minimum-tier guard.
 
 Inserts/refreshes the §0' Pollution dispatch block (and §0c Pidfile lifecycle for
-architect + review) AND the §0″ Minimum-tier guard block into the 7 Opus-tier
+architect + review) AND the §0″ Minimum-tier guard block into the 8 Opus-tier
 Claude adapter SKILL.md files at:
   quoin/adapters/claude/skills/<skill>/SKILL.md
 
@@ -41,7 +41,7 @@ ZC_HEADING = "## §0c Pidfile lifecycle"
 # template, --check regex, and drift test. Copy-paste from here; do not retype.
 MINTIER_HEADING = "## §0″ Minimum-tier guard (execute after §0 / §0c / §0’ if present — before skill body)"
 
-# 7 Opus-tier target skills — must carry §0'.
+# 8 Opus-tier target skills — must carry §0'.
 POLLUTION_TARGET_SKILLS = [
     "architect",
     "plan",
@@ -50,9 +50,10 @@ POLLUTION_TARGET_SKILLS = [
     "review",
     "init_workflow",
     "discover",
+    "specify",
 ]
 
-# 7 Opus-tier target skills — must carry §0″ (same set as POLLUTION_TARGET_SKILLS).
+# 8 Opus-tier target skills — must carry §0″ (same set as POLLUTION_TARGET_SKILLS).
 # Orchestrators /run and /thorough_plan are deliberately excluded (D-04):
 # orchestrators carry no §0/§0'/§0c today and route to correctly-tiered children.
 MINTIER_TARGET_SKILLS = [
@@ -63,6 +64,7 @@ MINTIER_TARGET_SKILLS = [
     "review",
     "init_workflow",
     "discover",
+    "specify",
 ]
 
 # Skills that also need §0c Pidfile lifecycle (inserted BEFORE §0').
@@ -374,6 +376,16 @@ DISPATCH_CONTRACTS = {
     - Use the current working directory as the project root absolute path.
 """,
         "[no-redispatch]\\n/discover <project root absolute path>",
+    ),
+    "specify": (
+        """\
+  Determine dispatch contract fields:
+    - Extract the task description from the user's invocation.
+    - Resolve the task dir via path_resolve.py (no --stage — spec.md is always at task root).
+    - The spec is written to `.workflow_artifacts/<task>/spec.md`.
+""",
+        "[no-redispatch]\\n/specify <task description>\\n"
+        "Spec output path: .workflow_artifacts/<task>/spec.md",
     ),
 }
 

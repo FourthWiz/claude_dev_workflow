@@ -18,7 +18,7 @@ mechanics.
 | [`cost_snapshot`](cost_snapshot/README.md) | cost | low | yes |
 | [`critic`](critic/README.md) | critic | high | yes |
 | [`discover`](discover/README.md) | discovery | high | yes |
-| [`end_of_day`](end_of_day/README.md) | session-lifecycle | low | yes |
+| [`end_of_day`](end_of_day/README.md) | session-lifecycle | medium | yes |
 | [`end_of_task`](end_of_task/README.md) | task-finalization | medium | yes |
 | [`expand`](expand/README.md) | utility | medium | yes |
 | [`gate`](gate/README.md) | gate | medium | yes |
@@ -38,3 +38,4 @@ mechanics.
 | [`thorough_plan`](thorough_plan/README.md) | planning | max | yes |
 | [`triage`](triage/README.md) | routing | low | yes |
 | [`weekly_review`](weekly_review/README.md) | session-lifecycle | low | yes |
+| [`specify`](specify/README.md) | specify | max | yes |
