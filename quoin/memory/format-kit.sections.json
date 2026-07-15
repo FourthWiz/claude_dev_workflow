@@ -189,6 +189,25 @@
       "required_sections": ["## V-04", "## V-05", "## V-06"],
       "allowed_sections": ["## V-04", "## V-05", "## V-06"],
       "notes": "Tier 1 hand-edited memory file; pre-write reminders for Class B writers (per Stage 4 of pipeline-efficiency-improvements). V-04/V-05/V-06 are the V-NN section headings — required and allowed; no other top-level H2 permitted."
+    },
+    "spec": {
+      "class": "A",
+      "match_paths": ["spec.md", "**/spec.md"],
+      "required_sections": [
+        "## Context",
+        "## Acceptance criteria"
+      ],
+      "allowed_sections": [
+        "## Context",
+        "## User stories",
+        "## Functional requirements",
+        "## Acceptance criteria",
+        "## Out of scope",
+        "## Goals",
+        "## Capabilities",
+        "## Non-goals"
+      ],
+      "notes": "Class A — no For human block. Shared-minimal required_sections cover both the per-task spec.md (feature spec) and the repo-root spec.md (project spec) variants; variant-specific headings live in allowed_sections only. Grandfathering: absence of spec.md is never an error — detect_type only routes files actually named spec*, and the resolver never enumerates filenames."
     }
   },
   "default": {

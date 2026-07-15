@@ -38,6 +38,8 @@ NOTE: QUICKSTART.md sits at `quoin/` root and deploys to `__QUOIN_HOME__/QUICKST
 - `<task>/architecture.md` — has an English `## For human` summary block at the top (read by humans and `/gate`); body is format-aware structured per `quoin/memory/format-kit.md` (read by skills).
 - `<task>/review-<round>.md` — same v3 format as architecture.md.
 - `<task>/cost-ledger.md` (structured, not prose; no v3 changes — append-only row format only).
+- `<task>/spec.md` — per-task FEATURE spec (Class A always-English; headings `## Context`, `## User stories`, `## Functional requirements`, `## Acceptance criteria`, `## Out of scope`; NO `## For human` block).
+- `.workflow_artifacts/spec.md` — REPO main spec (Class A; headings `## Context`, `## Goals`, `## Capabilities`, `## Acceptance criteria`, `## Non-goals`).
 
 **Rendered briefings:** `memory/weekly/*.md`; `memory/daily/<date>.md` (NOT `daily/insights-<date>.md`, which is Tier 3).
 
