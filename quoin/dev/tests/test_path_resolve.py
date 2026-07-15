@@ -382,3 +382,16 @@ def test_cli_verify_root_no_flag_ignores_nesting(tmp_path):
         f"Expected exit 0 without flag, got {result.returncode}; stderr={result.stderr!r}"
     )
 # FAILS if check fires unconditionally (breaks existing callers that don't pass --verify-root).
+
+
+def test_task_root_resolves_without_spec_md(tmp_path):
+    """R-09 grandfather canary (specify-skill stage 1, T-07): a task directory with
+    no spec.md must resolve cleanly — task_path() never enumerates artifact
+    filenames, so absence of spec.md cannot raise or otherwise affect resolution."""
+    task_dir = tmp_path / ".workflow_artifacts" / "legacy-task"
+    task_dir.mkdir(parents=True)
+
+    result = task_path("legacy-task", stage=None, project_root=tmp_path)
+
+    assert result == task_dir
+    assert not (task_dir / "spec.md").exists()
