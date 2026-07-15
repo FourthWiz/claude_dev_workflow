@@ -2,7 +2,7 @@
 
 ## Open-model routing (opt-in)
 
-Two launch modes exist for quoin users who have set up claude-code-router (CCR):
+Two launch modes exist for quoin users running claude-code-router (CCR):
 
 - **Open models via CCR:** `ccr code` — auto-starts the local proxy and launches the
   real `claude` binary in your terminal. Quoin's slash commands and skills work normally
@@ -11,18 +11,17 @@ Two launch modes exist for quoin users who have set up claude-code-router (CCR):
 
 **Sanity-check:** inside a `ccr code` session, type `/help`. The quoin skill list should
 resolve. If it doesn't, run `quoin router status` and check proxy liveness.
-The model shown in the Claude Code header (e.g. "Sonnet 4.6") remains unchanged — CCR
-routes requests transparently at the HTTP layer; the Claude Code UI has no visibility
-into the substitution. The actual invoked model is what CCR maps to.
+The Claude Code header model (e.g. "Sonnet 4.6") stays unchanged — CCR routes
+transparently at the HTTP layer, so the UI never sees the substitution.
 
 Setup: `export OPENROUTER_API_KEY=sk-or-... && quoin router setup`
 
-Note: the `__QUOIN_HOME__` placeholder refers to the quoin deploy root (installed by
-`quoin install`). CCR's own config lives in `$HOME/.claude-code-router/` and quoin's
-model defaults are in `$HOME/.config/quoin/models.json` — these are NOT deploy-tree
-paths and are never substituted by the installer.
+Note: `__QUOIN_HOME__` is the quoin deploy root (installed by `quoin install`). CCR's
+config lives in `$HOME/.claude-code-router/`; quoin's model defaults live in
+`$HOME/.config/quoin/models.json` — neither is deploy-tree, neither is substituted
+by the installer.
 
-This file defines the common rules and behaviors shared across all development workflow skills: `/init_workflow`, `/discover`, `/architect`, `/plan`, `/critic`, `/revise`, `/thorough_plan` (orchestrator), `/run` (end-to-end orchestrator), `/gate`, `/implement`, `/review`, `/rollback`, `/end_of_task`, `/pr`, `/end_of_day`, `/start_of_day`, `/weekly_review`, `/cost_snapshot`, `/capture_insight`, `/next-steps`, `/triage`, and `/continue_work`.
+This file defines the common rules and behaviors shared across all development workflow skills: `/init_workflow`, `/discover`, `/architect`, `/specify`, `/plan`, `/critic`, `/revise`, `/thorough_plan` (orchestrator), `/run` (end-to-end orchestrator), `/gate`, `/implement`, `/review`, `/rollback`, `/end_of_task`, `/pr`, `/end_of_day`, `/start_of_day`, `/weekly_review`, `/cost_snapshot`, `/capture_insight`, `/next-steps`, `/triage`, and `/continue_work`.
 
 Runtime portability note: shared workflow semantics are being extracted under `quoin/core/workflow/` (`rules.md`, `task-layout.md`, `session-state.md`, `cost-ledger.md`). This file remains the active Claude Code runtime rules file installed by `bash quoin/install.sh`; do not treat it as generated yet.
 
@@ -305,7 +304,7 @@ Every skill records its session to the task's cost ledger at session start.
 
 **Ledger path:** `.workflow_artifacts/<task-name>/cost-ledger.md`. Create with header `# Cost Ledger — <task-name>` if new. Columns: `UUID | DATE | PHASE | MODEL | task | NOTE | FALLBACK_FIRES` (7-col); 6-col rows (no FALLBACK_FIRES) remain valid forever — readers tolerate both. Append-only; never delete or rewrite rows.
 
-**Phase values:** `discover`, `architect`, `plan`, `critic`, `revise`, `implement`, `review`, `gate`, `end-of-task`, `pr`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `triage`, `expand`, `checkpoint`, `cleanup`, `sleep`, `session-close-hook`, `next-steps`, `ad-hoc`
+**Phase values:** `discover`, `architect`, `plan`, `critic`, `revise`, `specify`, `implement`, `review`, `gate`, `end-of-task`, `pr`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `triage`, `expand`, `checkpoint`, `cleanup`, `sleep`, `session-close-hook`, `next-steps`, `ad-hoc`
 
 Note: `/thorough_plan` writes phase-boundary session-state updates (IVG-98) to a DEDICATED
 orchestrator file (`{date}-{task}-orchestrator.md`) at each planning-loop boundary, with
@@ -341,6 +340,7 @@ The full catalog of always-English Tier-1 files (hand-edited, contract-approval,
 |-------|-------|-----------|
 | /discover | Opus | Cross-repo scanning, understanding how services connect |
 | /architect | Opus | Deep exploration, complex reasoning, cross-repo analysis |
+| /specify | Opus | Interactive intent elicitation → task spec (upstream of /architect) |
 | /plan | Opus | Detailed planning requires strong reasoning (always Opus — strong foundation reduces iteration) |
 | /critic | Opus | Finding real issues requires deep understanding (never tiered) |
 | /revise | Opus | Addressing critic feedback requires strong reasoning (used in strict mode) |
@@ -367,21 +367,21 @@ The full catalog of always-English Tier-1 files (hand-edited, contract-approval,
 
 ### Subagent preamble (Stage 2 of pipeline-efficiency-improvements)
 
-Purely additive prompt-cache warm-up for 7 spawn-target skills; generated by `build_preambles.py`; never hand-edit. Full details: `__QUOIN_HOME__/memory/preamble-guide.md`.
+Purely additive prompt-cache warm-up for 8 spawn-target skills; generated by `build_preambles.py`; never hand-edit. Full details: `__QUOIN_HOME__/memory/preamble-guide.md`.
 
 ### §0 Model dispatch preamble
 
-The 19 cheap-tier skills (gate, end_of_day, start_of_day, triage, capture_insight, cleanup, cost_snapshot, weekly_review, end_of_task, implement, rollback, expand, revise-fast, sleep, next_steps, checkpoint, continue_work, pr, status) carry a `## §0 Model dispatch` block as the first body H2 after the H1. When invoked from a session running on a model strictly more expensive than the declared tier, the skill self-dispatches via the Agent tool to its declared model and prefixes the child prompt with `[no-redispatch]` to prevent recursion. Counter form `[no-redispatch:N]` (N≥2) is an abort signal. The 9 Opus-tier skills do NOT carry §0. The 7 Opus-tier leaf skills (architect, plan, critic, revise, review, init_workflow, discover) carry `## §0″ Minimum-tier guard` (under-tier protection) instead; orchestrators `/run` and `/thorough_plan` carry neither.
+The 19 cheap-tier skills (gate, end_of_day, start_of_day, triage, capture_insight, cleanup, cost_snapshot, weekly_review, end_of_task, implement, rollback, expand, revise-fast, sleep, next_steps, checkpoint, continue_work, pr, status) carry a `## §0 Model dispatch` block as the first body H2 after the H1. When invoked from a session running on a model strictly more expensive than the declared tier, the skill self-dispatches via the Agent tool to its declared model and prefixes the child prompt with `[no-redispatch]` to prevent recursion. Counter form `[no-redispatch:N]` (N≥2) is an abort signal. The 10 Opus-tier skills do NOT carry §0. The 8 Opus-tier leaf skills (architect, plan, critic, revise, review, init_workflow, discover, specify) carry `## §0″ Minimum-tier guard` (under-tier protection) instead; orchestrators `/run` and `/thorough_plan` carry neither.
 
 Fail-OPEN on Agent unavailable (one-line `[quoin-stage-1: subagent dispatch unavailable; ...]` warning); architecture I-01 = best-effort cost guardrail. Worktree-class errors → AskUserQuestion recovery prompt. Manual override: prefix slash invocation with `[no-redispatch]`. Drift detection: `quoin/dev/tests/test_quoin_stage1_preamble.py`, `quoin/dev/tests/test_quoin_stage1_recursion_abort.py`. Verbose details (worktree-error classification, sentinel forms, recovery options): `__QUOIN_HOME__/memory/dispatch-guide.md`. 1M handling (IVG-89 recovery + IVG-90 proactive precheck): see dispatch-guide.md.
 
 ### §0' Pollution dispatch
 
-The 7 Opus-tier non-orchestrator skills (architect, plan, critic, revise, review, init_workflow, discover) carry a `## §0' Pollution dispatch` block. Fires when `pollution_score >= QUOIN_POLLUTION_THRESHOLD` (default 5000) AND no `[no-redispatch]` AND no prior §0 dispatch. Score = `transcript_kb + (agent_returns × 5) + (read_calls × 1) + (bash_calls × 1)`; written by `userpromptsubmit.sh` STEP 0.5. Dispatches a fresh Agent subagent carrying per-skill paths (not content). §0 fires first; §0' fires only if no §0 dispatch. Excluded: `/run`, `/thorough_plan`. Fail-OPEN on Agent unavailable. Drift: `quoin/dev/tests/test_quoin_pollution_preamble.py`. Per-skill dispatch contract + verbose detection rules: `__QUOIN_HOME__/memory/dispatch-guide.md`. 1M-credit recovery (IVG-89): post-dispatch in §0' Fail-OPEN path; AskUserQuestion on 1M or any error (D-06); see dispatch-guide.md.
+The 8 Opus-tier non-orchestrator skills (architect, plan, critic, revise, review, init_workflow, discover, specify) carry a `## §0' Pollution dispatch` block. Fires when `pollution_score >= QUOIN_POLLUTION_THRESHOLD` (default 5000) AND no `[no-redispatch]` AND no prior §0 dispatch. Score = `transcript_kb + (agent_returns × 5) + (read_calls × 1) + (bash_calls × 1)`; written by `userpromptsubmit.sh` STEP 0.5. Dispatches a fresh Agent subagent carrying per-skill paths (not content). §0 fires first; §0' fires only if no §0 dispatch. Excluded: `/run`, `/thorough_plan`. Fail-OPEN on Agent unavailable. Drift: `quoin/dev/tests/test_quoin_pollution_preamble.py`. Per-skill dispatch contract + verbose detection rules: `__QUOIN_HOME__/memory/dispatch-guide.md`. 1M-credit recovery (IVG-89): post-dispatch in §0' Fail-OPEN path; AskUserQuestion on 1M or any error (D-06); see dispatch-guide.md.
 
 ### §0″ Minimum-tier guard
 
-The 7 Opus-tier leaf skills (architect, plan, critic, revise, review, init_workflow, discover) carry a `## §0″ Minimum-tier guard` block. Fires when `current_tier < declared_tier` (inverse of §0); up-dispatches to Opus (mirrors §0). AskUserQuestion fallback on failure; 1M-credit → 1M-specific AskUserQuestion (mirroring §0'). Env knob `QUOIN_DISABLE_MINTIER_GUARD=1` → silent skip (explicit opt-out by design). Generated by `inject_pollution_dispatch.py`; drift test `quoin/dev/tests/test_mintier_guard.py`. Orchestrators `/run`, `/thorough_plan` excluded (D-04). Full decision tree and precheck details: `__QUOIN_HOME__/memory/dispatch-guide.md`.
+The 8 Opus-tier leaf skills (architect, plan, critic, revise, review, init_workflow, discover, specify) carry a `## §0″ Minimum-tier guard` block. Fires when `current_tier < declared_tier` (inverse of §0); up-dispatches to Opus (mirrors §0). AskUserQuestion fallback on failure; 1M-credit → 1M-specific AskUserQuestion (mirroring §0'). Env knob `QUOIN_DISABLE_MINTIER_GUARD=1` → silent skip (explicit opt-out by design). Generated by `inject_pollution_dispatch.py`; drift test `quoin/dev/tests/test_mintier_guard.py`. Orchestrators `/run`, `/thorough_plan` excluded (D-04). Full decision tree and precheck details: `__QUOIN_HOME__/memory/dispatch-guide.md`.
 
 ### §V Ground-truth verification
 

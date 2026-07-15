@@ -26,7 +26,7 @@ SESSION_BOOTSTRAP_HEADING = "## Session bootstrap"
 MODEL_REQ_HEADING = "## Model requirement"
 ZC_PIDFILE_HEADING = "## §0c Pidfile lifecycle"
 
-# 7 Opus-tier target skills — must carry §0'.
+# 8 Opus-tier target skills — must carry §0'.
 POLLUTION_TARGET_SKILLS = [
     "architect",
     "plan",
@@ -35,6 +35,7 @@ POLLUTION_TARGET_SKILLS = [
     "review",
     "init_workflow",
     "discover",
+    "specify",
 ]
 
 # 12 cheap-tier skills — must NOT carry §0'.
@@ -75,6 +76,7 @@ SKILL_DISTINCTIVE_TOKENS = {
     "review": "Branch:",
     "init_workflow": "project root",
     "discover": "project root",
+    "specify": "spec.md",
 }
 
 

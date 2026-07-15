@@ -2,7 +2,7 @@
 """
 build_preambles.py — Preamble builder for subagent prompt-cache warming.
 
-Generates preamble.md files for 7 spawn-target skills under quoin/skills/<skill>/.
+Generates preamble.md files for 8 spawn-target skills under quoin/skills/<skill>/.
 Each full preamble contains:
   - YAML frontmatter (path, kind, source_files, source_hashes, generated_at, generated_by, total_bytes)
   - [format-kit-§3-slice] marker + lines 189-207 of format-kit.md
@@ -39,6 +39,7 @@ SPAWN_TARGETS = {
     "review": "full",
     "architect": "full",
     "gate": "stub",
+    "specify": "stub",
 }
 
 PREAMBLE_SIZE_BUDGET = 6144  # bytes

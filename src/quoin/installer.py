@@ -70,6 +70,7 @@ CANONICAL_SKILLS = (
     "rollback",
     "run",
     "sleep",
+    "specify",
     "start_of_day",
     "status",
     "thorough_plan",
@@ -132,6 +133,7 @@ SKILL_OVERRIDES: dict[str, str] = {
     "gate": "on",
     "triage": "on",
     "checkpoint": "on",
+    "specify": "on",
     # Lifecycle / one-shot skills — invocable by name, no description in auto-suggest
     "pr": "name-only",
     "init_workflow": "name-only",

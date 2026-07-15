@@ -1,24 +1,24 @@
-# end_of_day Codex Adapter
+# specify Codex Adapter
 
 Generated/scaffolded from portable Quoin metadata.
 
 Portable source:
 
-- `quoin/core/skills/end_of_day.md`
+- `quoin/core/skills/specify.md`
 - `quoin/core/workflow/skills.json`
 
 ## Codex invocation
 
 Ask for this workflow phase in natural language. Codex does not get a generated
-command file for `end_of_day` in this phase.
+command file for `specify` in this phase.
 
 ## Portable workflow contract
 
-Follow the runtime-neutral contract in `quoin/core/skills/end_of_day.md`. Preserve Quoin artifact
+Follow the runtime-neutral contract in `quoin/core/skills/specify.md`. Preserve Quoin artifact
 semantics under the project-root `.workflow_artifacts/` directory:
 
-- phase: `session-lifecycle`
-- effort: `medium`
+- phase: `specify`
+- effort: `max`
 - user-facing: `yes`
 
 Use `quoin/core/workflow/` for shared task layout, session state, cost-ledger,
