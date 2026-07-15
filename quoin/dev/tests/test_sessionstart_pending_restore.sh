@@ -511,6 +511,109 @@ else
   ok "(l-2) D-08 narrowing → (skipped: date -v not supported)"
 fi
 
+# ─── T-03 (IVG-139): restore ground-truth backstop — WARN / silent / never-block /
+# advisory / shared-namespace-skip. No existing `command -v python3` skip idiom exists
+# in this file to mirror (critic round-1 m-2) — this guard is written fresh, following
+# only the file's generic `ok "... skipped: ..."` message shape.
+
+if command -v python3 >/dev/null 2>&1; then
+  T139_SESSIONS_DIR="$MEMORY_DIR/sessions"
+  T139_CPDIR="$MEMORY_DIR/cpdir"
+  mkdir -p "$T139_SESSIONS_DIR" "$T139_CPDIR"
+
+  # (m1) MISMATCH → WARN present, exit 0 (never-block)
+  rm -f "$T139_SESSIONS_DIR"/*.md "$T139_CPDIR"/*.md "$MEMORY_DIR/pending-restore-"*.txt 2>/dev/null || true
+  printf 'state\n' > "$T139_SESSIONS_DIR/2026-07-09-othertask.md"
+  printf '## Active task\nmytask\n' > "$T139_CPDIR/2026-07-09T0900-mytask.md"
+  SID_M1="sess-ivg139-m1"
+  printf '%s\n' "$T139_CPDIR/2026-07-09T0900-mytask.md" > "$MEMORY_DIR/pending-restore-${SID_M1}.txt"
+  stdin_m1=$(make_stdin "startup" "$SID_M1")
+  out_m1=$(printf '%s' "$stdin_m1" | sh "$HOOK" 2>/dev/null); rc_m1=$?
+  if printf '%s' "$out_m1" | grep -q 'Pending restore detected' 2>/dev/null && \
+     printf '%s' "$out_m1" | grep -q 'task-context mismatch' 2>/dev/null && \
+     [ "$rc_m1" -eq 0 ]; then
+    ok "(m1) IVG-139 task-context MISMATCH → WARN present, never-block (rc=0)"
+  else
+    fail "(m1) IVG-139 mismatch → expected WARN+rc0, got rc=$rc_m1 out: $out_m1"
+  fi
+  rm -f "$MEMORY_DIR/pending-restore-${SID_M1}.txt"
+
+  # (m2) MATCH → silent (no WARN)
+  rm -f "$T139_SESSIONS_DIR"/*.md "$T139_CPDIR"/*.md 2>/dev/null || true
+  printf 'state\n' > "$T139_SESSIONS_DIR/2026-07-09-mytask.md"
+  printf '## Active task\nmytask\n' > "$T139_CPDIR/2026-07-09T0900-mytask.md"
+  SID_M2="sess-ivg139-m2"
+  printf '%s\n' "$T139_CPDIR/2026-07-09T0900-mytask.md" > "$MEMORY_DIR/pending-restore-${SID_M2}.txt"
+  stdin_m2=$(make_stdin "startup" "$SID_M2")
+  out_m2=$(printf '%s' "$stdin_m2" | sh "$HOOK" 2>/dev/null)
+  if printf '%s' "$out_m2" | grep -q 'Pending restore detected' 2>/dev/null && \
+     ! printf '%s' "$out_m2" | grep -q 'task-context mismatch' 2>/dev/null; then
+    ok "(m2) IVG-139 task-context MATCH → no WARN (silent)"
+  else
+    fail "(m2) IVG-139 match → expected no WARN, got: $out_m2"
+  fi
+  rm -f "$MEMORY_DIR/pending-restore-${SID_M2}.txt"
+
+  # (m3) advisory / does-not-override: mismatch state still recommends restore
+  rm -f "$T139_SESSIONS_DIR"/*.md "$T139_CPDIR"/*.md 2>/dev/null || true
+  printf 'state\n' > "$T139_SESSIONS_DIR/2026-07-09-othertask.md"
+  printf '## Active task\nmytask\n' > "$T139_CPDIR/2026-07-09T0900-mytask.md"
+  SID_M3="sess-ivg139-m3"
+  printf '%s\n' "$T139_CPDIR/2026-07-09T0900-mytask.md" > "$MEMORY_DIR/pending-restore-${SID_M3}.txt"
+  stdin_m3=$(make_stdin "startup" "$SID_M3")
+  out_m3=$(printf '%s' "$stdin_m3" | sh "$HOOK" 2>/dev/null)
+  if printf '%s' "$out_m3" | grep -q '/checkpoint --restore is recommended' 2>/dev/null && \
+     printf '%s' "$out_m3" | grep -q 'task-context mismatch' 2>/dev/null; then
+    ok "(m3) IVG-139 advisory: WARN augments, restore recommendation still present"
+  else
+    fail "(m3) IVG-139 advisory → expected both restore-recommendation and WARN, got: $out_m3"
+  fi
+  rm -f "$MEMORY_DIR/pending-restore-${SID_M3}.txt"
+
+  # (m4) fail-OPEN on absent checkpoint file (R-04 pre-guard: [ -f "$_gt_cp" ])
+  rm -f "$T139_SESSIONS_DIR"/*.md "$T139_CPDIR"/*.md 2>/dev/null || true
+  printf 'state\n' > "$T139_SESSIONS_DIR/2026-07-09-othertask.md"
+  SID_M4="sess-ivg139-m4"
+  printf '%s\n' "$T139_CPDIR/nonexistent-2026-07-09T0900-mytask.md" > "$MEMORY_DIR/pending-restore-${SID_M4}.txt"
+  stdin_m4=$(make_stdin "startup" "$SID_M4")
+  out_m4=$(printf '%s' "$stdin_m4" | sh "$HOOK" 2>/dev/null)
+  if printf '%s' "$out_m4" | grep -q 'Pending restore detected' 2>/dev/null && \
+     ! printf '%s' "$out_m4" | grep -q 'task-context mismatch' 2>/dev/null; then
+    ok "(m4) IVG-139 fail-OPEN: absent checkpoint file → no WARN"
+  else
+    fail "(m4) IVG-139 fail-OPEN → expected no WARN on absent file, got: $out_m4"
+  fi
+  rm -f "$MEMORY_DIR/pending-restore-${SID_M4}.txt"
+
+  # (m5) shared-namespace guard (critic round-1 M-1) — regression test constructed so it
+  # FAILS without the T-01 basename guard: freshest session has a genuinely different task,
+  # which would trigger task_backstop: if the predicate ran on a thorough-plan-progress-*
+  # candidate.
+  rm -f "$T139_SESSIONS_DIR"/*.md "$T139_CPDIR"/*.md 2>/dev/null || true
+  printf 'state\n' > "$T139_SESSIONS_DIR/2026-07-09-othertask.md"
+  SID_M5="sess-ivg139-m5"
+  printf 'irrelevant\n' > "$T139_CPDIR/thorough-plan-progress-${SID_M5}.md"
+  printf '%s\n' "$T139_CPDIR/thorough-plan-progress-${SID_M5}.md" > "$MEMORY_DIR/pending-restore-${SID_M5}.txt"
+  stdin_m5=$(make_stdin "startup" "$SID_M5")
+  out_m5=$(printf '%s' "$stdin_m5" | sh "$HOOK" 2>/dev/null)
+  if printf '%s' "$out_m5" | grep -q 'Pending restore detected' 2>/dev/null && \
+     ! printf '%s' "$out_m5" | grep -q 'task-context mismatch' 2>/dev/null; then
+    ok "(m5) IVG-139 shared-namespace guard: thorough-plan-progress-* checkpoint never WARNs"
+  else
+    fail "(m5) IVG-139 shared-namespace guard → expected no WARN for thorough-plan-progress-*, got: $out_m5"
+  fi
+  rm -f "$MEMORY_DIR/pending-restore-${SID_M5}.txt"
+
+  rm -rf "$T139_CPDIR" 2>/dev/null || true
+  rm -f "$T139_SESSIONS_DIR"/*.md 2>/dev/null || true
+else
+  ok "(m1) IVG-139 task-context mismatch → (skipped: no python3)"
+  ok "(m2) IVG-139 task-context match → (skipped: no python3)"
+  ok "(m3) IVG-139 advisory/does-not-override → (skipped: no python3)"
+  ok "(m4) IVG-139 fail-OPEN absent checkpoint → (skipped: no python3)"
+  ok "(m5) IVG-139 shared-namespace guard → (skipped: no python3)"
+fi
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 
 printf '\n'

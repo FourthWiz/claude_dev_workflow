@@ -337,7 +337,16 @@ decision-making.
 what actually *decides* whether a checkpoint is auto-picked or routed to synthesis at
 restore time, whereas `verify_claims.py`'s filename-derived `task_backstop` is a
 purely advisory, after-the-fact signal that can flag a mismatch for audit purposes but never
-itself decides or blocks a restore.
+itself decides or blocks a restore. As of S-4 (IVG-139), this advisory is now SURFACED at
+session start: `sessionstart.sh`'s pending-restore banner (STEP 5) invokes this same
+`check_side_effects(skill="checkpoint")` predicate and appends a `[quoin-IVG-139 WARN:
+task-context mismatch …]` suffix when `task_backstop` fires — WARN-not-block, it never
+alters the restore recommendation, and the picker's `## Active task`-body comparison
+remains the sole decision authority. The predicate is deliberately SKIPPED (not just
+non-warning) for `thorough-plan-progress-*` checkpoints, since that sentinel shape is
+shared with `/thorough_plan`'s own resume mechanism and is not a `/checkpoint`
+task-mismatch signal (critic round-1 M-1)
+`[src: quoin/hooks/sessionstart.sh (restore ground-truth backstop, IVG-139)]`.
 
 ---
 

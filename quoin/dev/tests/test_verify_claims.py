@@ -356,3 +356,46 @@ def test_checkpoint_filename_task_mismatch(tmp_path):
     report = check_side_effects(tmp_path, "checkpoint", checkpoint_file=cp)
     assert report["ok"] is False
     assert any(m.startswith("task_backstop:") for m in report["missing"])
+
+
+def test_checkpoint_task_backstop_match(tmp_path):
+    """MATCH case (IVG-139 S-4, T-02): freshest session and checkpoint filename agree
+    on task -> no task_backstop entry, report is ok."""
+    sessions_dir = tmp_path / ".workflow_artifacts" / "memory" / "sessions"
+    sessions_dir.mkdir(parents=True)
+    (sessions_dir / "2026-07-09-mytask.md").write_text("state")
+    cp = tmp_path / "2026-07-09T0900-mytask.md"
+    cp.write_text("## In-flight artifacts\n- current-plan.md: (none found)\n")
+    report = check_side_effects(tmp_path, "checkpoint", checkpoint_file=cp)
+    assert report["ok"] is True
+    assert not any(m.startswith("task_backstop:") for m in report["missing"])
+
+
+def test_checkpoint_task_backstop_mismatch_surfacing(tmp_path):
+    """MISMATCH case (IVG-139 S-4, T-02): pins the exact <ckpt>!=<freshest> token shape
+    the sessionstart.sh hook greps for."""
+    sessions_dir = tmp_path / ".workflow_artifacts" / "memory" / "sessions"
+    sessions_dir.mkdir(parents=True)
+    (sessions_dir / "2026-07-09-othertask.md").write_text("state")
+    cp = tmp_path / "2026-07-09T0900-mytask.md"
+    cp.write_text("## In-flight artifacts\n- current-plan.md: (none found)\n")
+    report = check_side_effects(tmp_path, "checkpoint", checkpoint_file=cp)
+    assert report["ok"] is False
+    assert "task_backstop:mytask!=othertask" in report["missing"]
+
+
+def test_check_side_effects_cli_emits_task_backstop_token(tmp_path):
+    """CLI-level guard (IVG-139 S-4, T-02): locks the (rc==8, 'task_backstop:') pair the
+    sessionstart.sh hook's grep keys on — a predicate-tag rename must break this test."""
+    sessions_dir = tmp_path / ".workflow_artifacts" / "memory" / "sessions"
+    sessions_dir.mkdir(parents=True)
+    (sessions_dir / "2026-07-09-othertask.md").write_text("state")
+    cp = tmp_path / "2026-07-09T0900-mytask.md"
+    cp.write_text("## In-flight artifacts\n- current-plan.md: (none found)\n")
+    proc = subprocess.run(
+        [sys.executable, str(_CORE_SCRIPT), "--check-side-effects", "--skill",
+         "checkpoint", "--checkpoint-file", str(cp), "--project-root", str(tmp_path), "--json"],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert proc.returncode == 8
+    assert "task_backstop:" in proc.stdout

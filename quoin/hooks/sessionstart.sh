@@ -189,6 +189,41 @@ if [ -n "$pending_restore" ]; then
   if [ -n "$sentinel_content" ]; then
     banner_text="Pending restore detected. A /checkpoint --restore is recommended (checkpoint: ${sentinel_content} — session-id match: ${session_id_match})"
     banner_type="pending-restore"
+
+    # === restore ground-truth backstop (IVG-139) ===
+    # NOTE: intentionally NOT labeled "S-4"/"S-5" — this file already has an internal
+    # "=== S-4 missing-EOD banner ===" block (:30) and "=== S-5 discovery-staleness banner ==="
+    # block (:79) whose numbering is unrelated to architecture stage IDs; reusing either token
+    # here would make it mean three different things in one file (critic round-1 m-1).
+    # Advisory-only: append a task-context-mismatch WARN to the pending-restore banner by
+    # reusing verify_claims.py check_side_effects(skill=checkpoint) UNCHANGED. WARN-not-block.
+    # Fail-OPEN: any error/other-rc -> no suffix (SessionStart cannot block regardless).
+    # Shared-namespace guard (critic round-1 M-1): the pending-restore sentinel family is
+    # SHARED with /thorough_plan (thorough_plan_checkpoint.py:190-191 writes this same
+    # sentinel, pointing at a fixed thorough-plan-progress-{sid}.md filename, :131). The
+    # reused predicate is kind-blind and filename_task() on that filename shape NEVER equals
+    # a real sessions/*.md task, so calling the predicate on it would ALWAYS emit
+    # task_backstop: and ALWAYS warn — a false positive on every normal /thorough_plan
+    # resume. Skip the predicate call entirely for that filename shape instead.
+    _gt_cp=$(printf '%s' "$sentinel_content" | head -1)
+    if [ -n "$_gt_cp" ] && [ -f "$_gt_cp" ] && command -v python3 >/dev/null 2>&1; then
+      case "$(basename "$_gt_cp")" in
+        thorough-plan-progress-*)
+          : ;;  # /thorough_plan owns its own resume; not a /checkpoint task-mismatch signal
+        *)
+          _gt_json=$(python3 "$(dirname "$0")/../scripts/verify_claims.py" \
+            --check-side-effects --skill checkpoint \
+            --checkpoint-file "$_gt_cp" --project-root "$cwd" --json 2>/dev/null)
+          _gt_rc=$?
+          # WARN ONLY on a genuine task-context mismatch (task_backstop predicate) — never on
+          # inflight_missing / checkpoint_file_missing / usage errors (R-04 false-positive guard).
+          if [ "$_gt_rc" -eq 8 ] && printf '%s' "$_gt_json" | grep -q 'task_backstop:'; then
+            banner_text="${banner_text} [quoin-IVG-139 WARN: task-context mismatch — this checkpoint's task differs from your freshest session-state; verify before /checkpoint --restore (advisory only; the /checkpoint picker makes the actual decision)]"
+          fi
+          ;;
+      esac
+    fi
+    # === end restore ground-truth backstop (IVG-139) ===
   fi
 elif [ -n "$pending_resume_ref" ]; then
   # Read prior_session_uuid and checkpoint_path from the sentinel
