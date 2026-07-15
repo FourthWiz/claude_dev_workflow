@@ -91,6 +91,7 @@ SKILL_DISTINCTIVE_TOKENS = {
     "review": "Branch:",
     "init_workflow": "project root",
     "discover": "project root",
+    "specify": "spec.md",
 }
 
 # MIN-A: literal default threshold value
