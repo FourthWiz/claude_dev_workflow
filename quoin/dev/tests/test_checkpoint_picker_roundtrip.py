@@ -629,6 +629,74 @@ def test_cross_task_rejection_no_anchor(tmp_path, monkeypatch):
     assert verdict["reason"] == "tier3:gate-suppressed:cross-task", verdict
 
 
+def test_multi_candidate_freshest_suppressed_bypasses_valid_older_same_task(tmp_path, monkeypatch):
+    # authority:spec-blind-spot -- S-3 plan T-06 / MAJ-2 characterization fixture.
+    #
+    # This fixture documents an ACCEPTED OUTCOME CHANGE (Q-01), it does NOT prove
+    # module == spec for this scenario. checkpoint-spec.md (~lines 300-310) folds
+    # the numbered-picker / multi-candidate path into a single-candidate combined
+    # -gate description and never models the prose's interactive 2+-candidate
+    # user-override (SKILL.md:865-877, the "Two or more" numbered-picker branch).
+    # This test exists so the module's actual, current behavior is documented and
+    # regression-guarded, not silently untested: this harness's own
+    # module==spec equivalence claim does NOT extend to this scenario.
+    #
+    # Scenario: 2+ candidates exist. The FRESHEST is CROSS-TASK (suppressed by
+    # the combined gate). An OLDER candidate is a valid SAME-TASK checkpoint that
+    # a human using the Fallback picker's interactive numbered list could select
+    # directly. The module only ever evaluates the single freshest candidate
+    # overall for the combined gate -- it does not fall back to the next-best
+    # (older, valid, same-task) candidate. It picks the freshest, the gate
+    # suppresses it, and it routes to B3 (session-state synthesis), bypassing
+    # the valid older candidate entirely.
+    #
+    # MIN-2 (round 2 critic): the suppressed freshest candidate's mtime is
+    # deliberately NEWER than the freshest in-window sessions/*.md mtime, so
+    # Tier-3 Clause-B (`max_cand_mtime < max_session_mtime`) cannot pre-empt and
+    # this fixture actually exercises the freshest-suppressed-bypasses-older
+    # -valid path it is meant to characterize (not an unrelated Clause-B route).
+    _default_knobs(monkeypatch)
+
+    t_session = "multi-cand-real-task"
+    t_wrong = "multi-cand-stale-wrong-task"
+    current_sid = "SID-MULTI-CAND-MISS"
+
+    memory_dir = _build_memory(tmp_path, {
+        "sessions": [
+            {"name": "2026-07-12-multi-cand-real-task.md", "mtime": NOW - 2 * DAY,
+             "task": t_session},
+        ],
+        "checkpoints": [
+            # Freshest candidate: CROSS-TASK, mtime NEWER than the session above
+            # so Clause B cannot pre-empt (MIN-2).
+            {"name": "2026-07-14T0000-multi-cand-stale-wrong-task.md", "mtime": NOW,
+             "task": t_wrong, "sid": "unknown"},
+            # Older candidate: SAME-TASK as the session -- a genuinely valid,
+            # restorable checkpoint present in the same candidate pool
+            # (the `_build_memory` fixture builder supports two `checkpoints`
+            # entries directly), but never reconsidered once the freshest
+            # overall candidate is suppressed.
+            {"name": "2026-07-11T0000-multi-cand-real-task.md", "mtime": NOW - 3 * DAY,
+             "task": t_session, "sid": "unknown"},
+        ],
+    })
+
+    verdict = _MOD.select_restore(memory_dir, current_sid, NOW)
+
+    # The module evaluates only the SINGLE freshest candidate for the combined
+    # gate; it is cross-task, so it is suppressed and routed to B3 -- the valid
+    # older same-task candidate is present in the candidate pool the fixture
+    # built (two `checkpoints` entries) but is never selected or reconsidered.
+    assert verdict["tier"] == "4-B3", verdict
+    assert verdict["cross_task_ok"] is False, verdict
+    assert verdict["reason"] == "tier3:gate-suppressed:cross-task", verdict
+    assert not verdict["selected_path"], (
+        "B3 route must not select any checkpoint file -- confirms the valid "
+        "older same-task candidate was bypassed entirely, not silently chosen: "
+        f"{verdict}"
+    )
+
+
 def test_staleness_suppresses_tier3_autopick_without_clause_b(tmp_path, monkeypatch):
     # authority:incident IVG-30 (staleness window)
     _default_knobs(monkeypatch)
