@@ -416,6 +416,44 @@ Spawn an Agent subagent:
        ```
     3. Update `.workflow_artifacts/memory/sessions/<date>-<task_name>.md`:
        set status to `completed`, record branch name and commit hash from eot-preflights.json.
+    3a. **Flip finalized-task session flags (single invocation; primary survival mechanism for
+        IVG-137; opt-out via `QUOIN_DISABLE_EOT_FLAG_FLIP=1`).** Runs AFTER Step 3 (session-state
+        marked completed) and AFTER Sub-phase A's commit/push already succeeded (mirrors
+        crash-safety ordering — a finalized-task marker on an un-pushed task would be premature).
+        Unless `QUOIN_DISABLE_EOT_FLAG_FLIP=1` is set, run:
+        ```bash
+        python3 __QUOIN_HOME__/core/scripts/select_unprocessed_sessions.py \
+            --flip-finalized-task <task_name> \
+            --finalization-date <today, YYYY-MM-DD> \
+            --project-root <project-root>
+        ```
+        ONE Bash tool-use, regardless of how many dated session files the task touched — this
+        invokes `flip_finalized_task_sessions()`, which scans ALL session files under `sessions/`
+        (all dates, no window restriction) for a raw slug EXACTLY equal to `<task_name>` OR
+        `<task_name>-orchestrator` (direct string equality — matches base sessions plus the
+        orchestrator sibling, if one exists), atomically flips each matched file to
+        `end_of_day_due: no`, and writes a `finalized_by_end_of_task: <today>` marker on each in
+        the same write (idempotent — safe to re-run; re-running only refreshes the date). Print
+        the flipped-file-path list from stdout in the Step 6 report below. The exact-equality
+        match means this step never touches another task's sessions, even one whose slug happens
+        to end in `-orchestrator`. Round 4 scope note: this exact-equality match does NOT reach
+        phase/stage-suffixed sessions of the same task (e.g. `<task_name>-review.md`,
+        `<task_name>-implement.md`) — same documented residual as `/end_of_day`'s reconciliation
+        pre-pass, not a new gap; those sessions remain `end_of_day_due: yes` and surface as
+        ordinary backlog exactly as they do today.
+
+        The `finalized_by_end_of_task` marker is read-only provenance metadata — it does NOT
+        change `end_of_day_due` flag-authoritative selection semantics (IVG-103 unchanged). It is
+        consumed only by `/end_of_day`'s `find_finalized_marked()` producer (via
+        `--include-finalized-marked`, riding the same `--show-window` call), which unions
+        same-window marked sessions into `in_scope` so finalized-task work still appears in that
+        day's "Completed today" digest even though the flag is already `no` by the time
+        `/end_of_day` next runs.
+
+        If the script is unavailable or errors, fail-OPEN: emit `[quoin: end_of_task flag-flip
+        unavailable; sessions remain end_of_day_due: yes — will surface as ordinary backlog on the
+        next /end_of_day]` and continue — this is best-effort, not load-bearing for finalization
+        (the task is still fully finalized: committed, pushed, archived).
     4. Cost aggregation — read cost-ledger.md and compute:
        a. Binary check: `command -v npx` — if unavailable, skip ccusage and use
           cost_from_jsonl.py fallback for ALL UUIDs (see below).
@@ -456,7 +494,9 @@ Spawn an Agent subagent:
        consumed only by `costService.ts` (extension). `/cost_snapshot` and
        `dashboard_model.py` consume `cost-ledger.md` instead — do NOT wire them to
        this file.
-    6. Report: lessons appended (yes/no), session state updated, cost summary written.
+    6. Report: lessons appended (yes/no), session state updated, finalized-task sessions flipped
+       (count, or "skipped — QUOIN_DISABLE_EOT_FLAG_FLIP set" / "skipped — script unavailable"),
+       cost summary written.
 
     Scope cap: at most ~15 tool uses. If blocked on cost aggregation, write partial
     data to cost-summary.json and return — partial cost data is better than none.
