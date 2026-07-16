@@ -174,9 +174,22 @@ This skill may run in a fresh chat session with no prior context. On start:
 2. Run `python3 __QUOIN_HOME__/scripts/memory_select.py --task-text "<task description>"` to read only task-relevant lessons from `.workflow_artifacts/memory/lessons-learned.md`. If the script is absent, errors, or reports `fellback_to_wholesale`, read the whole `.workflow_artifacts/memory/lessons-learned.md` as the fallback (the wholesale read is preserved as the explicit fallback). Apply relevant lessons.
 3. Read `.workflow_artifacts/memory/sessions/` for any active session state for this task
 4. Read the task subfolder if it exists: architecture.md is ALWAYS at task root (`<task-root>/architecture.md`); for `current-plan.md`, resolve via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` and read `<task_dir>/current-plan.md`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md` (line 5 — NOT edited per D-03).
-5. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `architect`
-6. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`.
-7. Then proceed with the work below
+5. Read `<task-root>/spec.md` if present (task feature spec — ALWAYS at task root, read-if-exists; absence is normal/grandfather). Treat its `## Acceptance criteria` as a binding design input — the synthesis (Phase 2/3) MUST satisfy them. When present, spec.md is the preferred first input, upstream of architecture.md.
+6. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `architect`
+7. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`.
+8. Then proceed with the work below
+
+## Spec pre-flight (advisory, non-blocking)
+
+If NO `<task-root>/spec.md` exists AND the task is Medium or Large (Small tasks skip this offer entirely, per the resolved Small-task-skip policy), offer via `AskUserQuestion` to run `/specify` first:
+
+- Question: "Produce a task spec before architecting?"
+- Header: "Spec pre-flight"
+- multiSelect: false
+- Option 1: label: "Run /specify first" — description: "Elicit intent and write a task feature spec (spec.md) before this architecture session proceeds."
+- Option 2: label: "Proceed without a spec" — description: "Continue architecting now. A spec can always be added later; its absence is a normal, non-blocking outcome (grandfather)."
+
+This is ADVISORY / NON-BLOCKING — proceeding without a spec is always allowed (grandfather); never block, never hard-require. Small tasks skip the offer entirely.
 
 ## How you work
 
