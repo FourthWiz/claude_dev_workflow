@@ -69,9 +69,14 @@ The closed top-level section set is:
   ledger lives at `.workflow_artifacts/<task-name>/cost-ledger.md`.
 - The skill MUST validate the written spec against the `spec` artifact
   type before considering the task complete.
-- Detecting whether an existing repo-level main spec needs updating as a
-  result of this task spec is explicitly OUT OF SCOPE for this skill (a
-  later stage of the specify-skill work).
+- The skill MUST, after writing the task spec, check whether the task shifts
+  the repo's overall purpose against the repo main spec
+  (`.workflow_artifacts/spec.md`, distinct from the task's own `spec.md`).
+  When a repo main spec exists and a shift is detected, the skill MUST
+  propose a gated, user-approved, diff-surfaced update to it. The skill
+  MUST NOT write the repo spec automatically, and MUST NOT create one when
+  absent — creating a repo spec from nothing is out of scope for this
+  skill (owned by the init-workflow and discover skills).
 - When requirements are ambiguous the skill MUST ask the user before
   proceeding.
 
@@ -79,7 +84,9 @@ The closed top-level section set is:
 
 - Implementation of any code.
 - Architecture, planning, critic, or review decisions.
-- Repo-level main spec detection or update (a later stage).
+- The diff/merge UI mechanism for repo-spec updates — adapter-specific.
+  Creating a repo main spec from nothing stays with the init-workflow and
+  discover skills, not this skill.
 - Runtime-specific dispatch mechanism, model tier choice, or interactive
   elicitation UI — all adapter-specific.
 - Consumers of `spec.md` (how `/architect` or `/thorough_plan` read it) —

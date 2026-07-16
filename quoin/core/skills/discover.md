@@ -89,6 +89,11 @@ The cost-ledger row at `.workflow_artifacts/<task-name>/cost-ledger.md` is
 written ONLY when a task context is active for this invocation (see
 "Behavior contract" — conditional cost recording).
 
+- `.workflow_artifacts/spec.md` (the repo main spec) — CONDITIONAL. The
+  skill MAY produce or refresh this file when the user accepts an optional
+  post-scan offer (draft if absent, refresh-with-diff if present). It is
+  never produced unprompted.
+
 ## Discovery map (optional structured output)
 
 Adapters MAY invoke `quoin/scripts/generate_discovery_map.py` after the four
@@ -127,6 +132,15 @@ fails; the markdown outputs remain the authoritative source.
   planning, gating, implementation, review, finalization, or any other
   workflow step). After producing output and the user-facing summary,
   control returns to the user.
+- After writing the four memory artifacts, the skill MAY offer to draft
+  (when `.workflow_artifacts/spec.md` is absent) or refresh (when present,
+  diff-surfaced) the repo main spec. The offer is suppressed whenever the
+  bootstrap marker `.workflow_artifacts/.init-bootstrap-active` is present,
+  and the skill MUST self-clear (delete) that marker when it honors it, so
+  the marker survives at most one discovery and an aborted bootstrap can
+  never suppress the offer permanently. Declining the offer is a valid
+  no-op. A refresh MUST surface a diff and require confirmation before
+  overwriting the existing file.
 - The knowledge cache obeys three universal rules: cache is advisory and
   never authoritative; any skill that modifies source files MUST update
   the corresponding cache entry (enforced per-skill, not by discover);

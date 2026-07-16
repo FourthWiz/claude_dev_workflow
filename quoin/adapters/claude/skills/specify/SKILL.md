@@ -206,13 +206,35 @@ Do NOT include a `## For human` heading — `spec.md` has no summary/body split;
 3. Validate: run `python3 __QUOIN_HOME__/scripts/validate_artifact.py <task-root>/spec.md`. Filename auto-detection identifies the type as `spec`. Expect exit code 0.
 4. If validation fails, re-read the failing invariant from the tool output, fix the specific section(s) named, rewrite via the same `.tmp` + atomic-rename mechanism, and re-validate once. If it still fails after one retry, tell the user which invariant is failing and ask whether to proceed with the file as-is or keep iterating — do not silently ship an invalid spec.
 
+## Repo main spec update check
+
+**Precondition:** the task `spec.md` has already been written and validated (per "Writing the spec" above). This check never blocks or gates the task-spec flow — it runs after, as a side effect.
+
+**Grandfather/scope gate FIRST:** read `.workflow_artifacts/spec.md` (the REPO main spec, at the project root — distinct from `<task-root>/spec.md`, the task spec this skill just wrote). If `.workflow_artifacts/spec.md` is ABSENT, skip this check silently (print nothing user-blocking) and do NOT create a repo spec here — creation of a repo spec is `/init_workflow`'s and `/discover`'s job, not this skill's. This is never an error.
+
+If `.workflow_artifacts/spec.md` is PRESENT: compare the new task spec's goals/functional scope against the repo spec's `## Goals` / `## Capabilities` / `## Non-goals`. A repo-purpose SHIFT triggers the proposal below when the task introduces a goal or capability that is (a) not covered by the repo spec's `## Goals`/`## Capabilities`, OR (b) directly contradicts an entry in `## Non-goals`.
+
+This trigger is BEST-EFFORT / ADVISORY judgment — there is no numeric threshold and no deterministic contract, and none is required: correctness is guaranteed by the mandatory human gate below, NOT by the heuristic. A false positive (a spurious proposal the user rejects) and a false negative (a missed shift, so the repo spec simply stays as-is) are both harmless.
+
+**On a detected shift ONLY:**
+1. DRAFT a proposed updated repo spec (the five repo-spec headings: `## Context`, `## Goals`, `## Capabilities`, `## Acceptance criteria`, `## Non-goals`).
+2. Surface a DIFF against the current `.workflow_artifacts/spec.md`.
+3. Gate with `AskUserQuestion`:
+   - Option 1: "Approve — merge the update" — writes the drafted repo spec.
+   - Option 2: "Reject — keep repo spec as-is" — leaves the repo spec untouched.
+   - Option 3: "Edit before merging" — let the user adjust the draft before writing.
+
+NEVER write automatically — this gate is the safety guarantee (never auto-writes; always diff + approve).
+
+On Approve: write via `<path>.tmp` + atomic `mv` to `.workflow_artifacts/spec.md`, then `python3 __QUOIN_HOME__/scripts/validate_artifact.py .workflow_artifacts/spec.md` → expect exit 0. On Reject: leave the repo spec untouched. Either way, the task spec written earlier is unaffected.
+
 ## Important behaviors
 
 - **Never auto-invoke downstream phases.** This skill produces `spec.md` and stops. It does NOT invoke `/architect`, `/thorough_plan`, `/plan`, `/implement`, or any other skill on the user's behalf.
 - **Don't design the solution.** If the user starts describing implementation details unprompted, capture them as context/constraints in `## Context`, not as architecture — that's `/architect`'s job, not this skill's.
 - **Ask, don't assume.** Every section of `spec.md` should trace back to something the user actually said, not an inference you made on their behalf.
 - **Tolerate missing inputs.** No prior session state, no prior spec, no task folder yet — all of these are fine starting conditions; create what's needed as you go.
-- **Repo-level main spec is out of scope.** This skill does not check or update any repository-wide spec document — that is a later stage of the specify-skill work, not part of this skill's contract.
+- **Repo-spec updates are detection-driven, gated, diff-surfaced, and never automatic.** After writing the task spec, this skill checks for a repo-purpose shift against `.workflow_artifacts/spec.md` (see "Repo main spec update check" above). When a shift is detected, it proposes a diff-surfaced, user-approved update — it never writes the repo spec without explicit approval, and never creates one when absent. When no repo spec exists, the check is a silent no-op.
 
 ## Save session state
 

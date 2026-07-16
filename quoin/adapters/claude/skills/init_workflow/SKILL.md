@@ -396,6 +396,12 @@ This ensures `.workflow_artifacts/` is gitignored in every project.
 
 ### Step 6: Run /discover
 
+Before invoking `/discover`, handle the bootstrap marker (crash-safe de-dup with `/discover`'s repo-spec offer, D-05):
+1. **Stale pre-clear:** drop any marker left by a prior aborted bootstrap: `rm -f .workflow_artifacts/.init-bootstrap-active`
+2. **Write a fresh marker:** `: > .workflow_artifacts/.init-bootstrap-active` (create empty; `.workflow_artifacts/` is already gitignored)
+
+This marker signals to `/discover` that repo-spec seeding is owned by `/init_workflow` Step 6.7, so `/discover` MUST suppress its own repo-spec draft/refresh offer while the marker is present AND self-clear it after honoring — the concrete, crash-safe de-dup mechanism for R-04/R-31/R-38 (see D-05). The marker path is the shared signal both skills key on.
+
 Automatically invoke `/discover` to scan all repositories in the project folder. This populates:
 - `.workflow_artifacts/memory/repos-inventory.md`
 - `.workflow_artifacts/memory/architecture-overview.md`
@@ -519,6 +525,52 @@ fi
 ```
 Serena config and memories are machine-local; they should not be committed to the project repo by default.
 
+### Step 6.7: Seed the repo main spec
+
+**Idempotency/grandfather gate FIRST:** if `.workflow_artifacts/spec.md` already exists, do NOT re-prompt from scratch — print one line noting a repo spec is already present and skip this step (a refresh is offered by `/discover` when run standalone). Only proceed when `.workflow_artifacts/spec.md` is absent.
+
+Use `AskUserQuestion` to ask "What is this repo about?":
+
+```
+AskUserQuestion(
+  header="Repo spec",
+  question="What is this repo about? A short repo-level spec helps future planning sessions understand context and non-goals at a glance.",
+  multiSelect=false,
+  options=[
+    {label: "Describe it now", description: "Answer a few questions about this repo's purpose, goals, and capabilities now."},
+    {label: "Skip — seed later with /discover", description: "Skip for now. /discover offers to draft the repo spec again on a later standalone run."}
+  ]
+)
+```
+
+On **"Skip"**: print a one-line advisory (e.g. `[quoin: repo spec seeding skipped — /discover will offer again later]`) and proceed. No file is created, no error.
+
+On **"Describe it now"**: elicit the repo's purpose, goals, core capabilities, and non-goals in plain prose. Draw on the just-written `repos-inventory.md` and `architecture-overview.md` (from Step 6) to ground the draft in what was actually discovered. Compose `.workflow_artifacts/spec.md` as a Class A doc:
+
+- YAML frontmatter: `title`, `scope: repo`, `date`, `status: draft`
+- Body: EXACTLY these five headings, in this order, and no `## For human` block:
+  - `## Context`
+  - `## Goals`
+  - `## Capabilities`
+  - `## Acceptance criteria`
+  - `## Non-goals`
+
+Write via `<path>.tmp` + atomic `mv` to `.workflow_artifacts/spec.md`, then validate:
+
+```bash
+python3 __QUOIN_HOME__/scripts/validate_artifact.py .workflow_artifacts/spec.md
+```
+
+Expect exit 0 — this auto-detects artifact type `spec` (required sections `[## Context, ## Acceptance criteria]`; all 5 headings are within the allowed union).
+
+**Marker cleanup (last action of Step 6.7, run on EVERY branch — describe, skip, or already-exists):**
+
+```bash
+rm -f .workflow_artifacts/.init-bootstrap-active
+```
+
+This is a belt-and-suspenders no-op: `/discover` self-clears the marker when it honors it during Step 6, so the marker is normally already gone by the time Step 6.7 runs. `rm -f` is safe when the file is already absent.
+
 ### Step 7: Copy quickstart guide + legacy detection
 
 **Legacy QUICKSTART detection (run before copying):**
@@ -608,6 +660,8 @@ Workflow initialized in <project-root>/.workflow_artifacts/
 🔍 /discover completed:
   - Found <N> repositories
   - <brief summary of what was found>
+
+📝 Repo main spec: <seeded at .workflow_artifacts/spec.md | skipped — already existed | skipped per user choice>
 
 Ready to go. Start with:
   - /start_of_day — if resuming existing work
