@@ -54,22 +54,45 @@ if [ "$EOD_BANNER_FIRED" -eq 0 ] && [ -d "$SESSIONS_DIR" ]; then
   _EOD_TMPFILE=$(mktemp 2>/dev/null) || _EOD_TMPFILE="${TMPDIR:-/tmp}/quoin-s4-eod-tmp-$$"
   find "$SESSIONS_DIR" -maxdepth 1 -name '*.md' -mtime -2 2>/dev/null > "$_EOD_TMPFILE"
 
+  # T-04: same-day/cross-day branch — ISO-date filename prefix vs today, compared as
+  # integers (portable on bash 3.2 / dash; avoids the non-POSIX `[ a \< b ]` string op).
+  # LOCAL date (not -u): session filenames are stamped with the writer's local
+  # calendar date, and this must agree with sessionend.sh's pre-existing local
+  # `today` (used for its daily-cache path check) so both surfaces classify the
+  # same file the same way.
+  TODAY_NUM=$(date +%Y%m%d)
+  ANY_PAST_DAY=0
+
   UNFINISHED_TASKS=""
   while IFS= read -r session_file; do
     [ -f "$session_file" ] || continue
     if grep -q 'end_of_day_due: yes' "$session_file" 2>/dev/null; then
       # Extract task name from filename: <date>-<task-name>.md → task-name
-      task_name=$(basename "$session_file" .md | sed 's/^[0-9]*-[0-9]*-[0-9]*-//')
+      _fname=$(basename "$session_file" .md)
+      task_name=$(printf '%s' "$_fname" | sed 's/^[0-9]*-[0-9]*-[0-9]*-//')
       UNFINISHED_TASKS="${UNFINISHED_TASKS}${task_name} "
+      # First 10 chars of the filename are the YYYY-MM-DD date prefix
+      _session_date_num=$(printf '%s' "$_fname" | cut -c1-10 | tr -d '-')
+      case "$_session_date_num" in
+        ''|*[!0-9]*) ;;  # malformed prefix — skip date comparison, don't misclassify
+        *) [ "$_session_date_num" -lt "$TODAY_NUM" ] 2>/dev/null && ANY_PAST_DAY=1 ;;
+      esac
     fi
   done < "$_EOD_TMPFILE"
   rm -f "$_EOD_TMPFILE" 2>/dev/null || true
 
   UNFINISHED_TASKS="${UNFINISHED_TASKS% }"
-  # banner shape mirrors quoin/skills/start_of_day/SKILL.md Step 1 — keep in sync
+  # banner shape mirrors quoin/adapters/claude/skills/start_of_day/SKILL.md Step 1 — keep in sync
+  # Same-day (all flagged sessions dated today) -> /checkpoint; cross-day (any predates
+  # today) -> /end_of_day, per T-04 (IVG-137).
   if [ -n "$UNFINISHED_TASKS" ]; then
-    printf '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "[quoin-S-4] Unfinished /end_of_day detected for task(s): %s — run /checkpoint to save your place (or /end_of_day to wrap up the workday)."}}\n' \
-      "$UNFINISHED_TASKS"
+    if [ "$ANY_PAST_DAY" -eq 1 ]; then
+      _eod_action="a prior day was never wrapped up — run /end_of_day to wrap up the workday."
+    else
+      _eod_action="run /checkpoint to save your place (or /end_of_day to wrap up the workday)."
+    fi
+    printf '{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "[quoin-S-4] Unfinished /end_of_day detected for task(s): %s — %s"}}\n' \
+      "$UNFINISHED_TASKS" "$_eod_action"
     # Write dedup sentinel
     touch "$EOD_SENTINEL" 2>/dev/null || true
   fi
