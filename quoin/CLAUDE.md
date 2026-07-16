@@ -97,10 +97,10 @@ The intended flow depends on the task profile (Small / Medium / Large). `/thorou
 ### Canonical flow
 
 ```
-/discover → /architect → GATE → /thorough_plan → GATE → /implement → GATE → /review → GATE → /end_of_task
+/discover → /specify → GATE → /architect → GATE → /thorough_plan → GATE → /implement → GATE → /review → GATE → /end_of_task
 ```
 
-Variations: (a) Small tasks skip `/architect` and the critic loop — `/thorough_plan` auto-routes to a single `/plan` pass. (b) `/run` chains every phase automatically, each phase in its own subagent session, pausing at each GATE for confirmation; accepts the same profile tags as `/thorough_plan`. (c) Discover is skipped if a recent (<7 days) discovery file exists.
+Variations: (a) Small tasks skip `/architect` and the critic loop — `/thorough_plan` auto-routes to a single `/plan` pass. (b) `/run` chains every phase automatically, each phase in its own subagent session, pausing at each GATE for confirmation; accepts the same profile tags as `/thorough_plan`. (c) Discover is skipped if a recent (<7 days) discovery file exists. (d) Small tasks may skip `/specify`, mirroring the `/architect` skip; `/specify` is advisory when no task spec exists.
 
 **Discovery/Serena refresh policy:** The `<7 days` skip threshold mirrors the `QUOIN_DISCOVERY_STALE_DAYS` default (7). Session-start staleness is surfaced via the `S-5` hook banner in `sessionstart.sh` and `/start_of_day` Step 1c. Automated weekly refresh: `discovery-refresh-routine.md` documents the `/schedule` cron recipe. Environment knobs: `QUOIN_DISCOVERY_STALE_DAYS` (default 7), `QUOIN_SERENA_STALE_DAYS` (default 30), `QUOIN_DISCOVERY_AUTOREFRESH` (auto-run /discover on SOD, off by default), `QUOIN_DISCOVERY_REFRESH_DISABLE` (master off switch), `QUOIN_DISCOVERY_REFRESH_CRON` (cron schedule, default `0 6 * * 1`).
 
@@ -124,14 +124,16 @@ When in doubt, default to Medium. The user can always override with an explicit 
 Each stage feeds into the next, with `/gate` checkpoints requiring explicit human approval:
 - `/init_workflow` bootstraps the workflow in a new project. Creates `.workflow_artifacts/` structure, configures permissions, runs `/discover`, generates quickstart guide. Run once per project. (Skills and rules are installed separately via `bash install.sh`.)
 - `/discover` scans all repos and saves inventory, architecture overview, and dependency map to `.workflow_artifacts/memory/`. Run once on setup, re-run when repos change.
-- `/architect` produces `architecture.md` with stages decomposed for planning (uses `/discover` output as baseline context); runs an internal Phase 4 critic loop (max 2 rounds default, 4 in strict mode) before returning architecture.md as final
+- `/specify` (Medium/Large; Small may skip) elicits intent and writes the task feature spec at the task-root spec.md (user stories, functional requirements, acceptance criteria, out-of-scope); advisory — offered when no task spec exists, never blocking.
+- **GATE** — user reviews the spec, explicitly approves
+- `/architect` produces `architecture.md` with stages decomposed for planning (uses `/discover` output as baseline context); reads the task-root spec.md if present as upstream intent; runs an internal Phase 4 critic loop (max 2 rounds default, 4 in strict mode) before returning architecture.md as final
 - **GATE** — user reviews architecture, explicitly approves
 - `/thorough_plan` triages the task and routes accordingly:
   - **Small:** runs `/plan` (Opus) as a single pass → produces `current-plan.md` → smoke gate → done
   - **Medium:** runs the plan→critic→revise convergence loop (Opus plan, Sonnet revise, Opus critic, max 4 rounds)
   - **Large:** runs the convergence loop in strict mode (all Opus, max 5 rounds)
   - Override with `max_rounds: N` for any profile (ignored for Small)
-- `/run` chains the entire workflow end-to-end: discover (if stale) → architect (if not Small) → thorough_plan → implement → review → end_of_task. Pauses at each gate for user confirmation. Accepts same profile tags as `/thorough_plan`. Use when you want the full pipeline in one command.
+- `/run` chains the entire workflow end-to-end: discover (if stale) → specify (if not Small and no task spec) → architect (if not Small) → thorough_plan → implement → review → end_of_task. Pauses at each gate for user confirmation. Accepts same profile tags as `/thorough_plan`. Use when you want the full pipeline in one command.
 - **GATE** — automated checks (plan completeness, risk coverage), user reviews plan, explicitly approves
 - `/implement` executes tasks from the converged plan, writing code and tests
 - **GATE** — automated checks (scope depends on task profile — Standard for Small/Medium, Full for Large)

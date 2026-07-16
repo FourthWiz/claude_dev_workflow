@@ -15,7 +15,7 @@ These are runtime-neutral Quoin workflow rules. Runtime adapters may translate i
 The full workflow is:
 
 ```text
-discover -> architect -> gate -> plan -> gate -> implement -> gate -> review -> gate -> end-of-task
+discover -> specify -> gate -> architect -> gate -> plan -> gate -> implement -> gate -> review -> gate -> end-of-task
 ```
 
 Small tasks may skip architecture and critic loops. Medium and large tasks use stronger planning and review discipline. Gates preserve the human approval boundary between phases.
