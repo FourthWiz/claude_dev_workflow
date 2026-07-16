@@ -82,6 +82,11 @@ Additional output:
 - `.gitignore` augmentation — `.workflow_artifacts/` is added to the project's
   `.gitignore` if not already present; the file is created if it does not
   exist.
+- `.workflow_artifacts/spec.md` (the repo main spec) — CONDITIONAL. Created
+  ONLY when the user chooses to describe the repo during the post-discover
+  seeding prompt ("what is this repo about?"). Its absence is a valid
+  outcome — the skill never creates it unprompted, and never overwrites it
+  if it already exists from a prior run.
 
 The cost-ledger row at `.workflow_artifacts/<task-name>/cost-ledger.md` is
 written ONLY when a task context is active for this invocation (see "Behavior
@@ -127,6 +132,22 @@ the mandatory handoff at the end of bootstrap — NOT by this skill directly.
   skill, planning, gating, implementation, review, finalization, or any other
   workflow step). After the discover handoff completes, control returns to the
   user.
+- SHOULD, after the mandatory discover handoff, offer to seed the repo main
+  spec ("what is this repo about?"). Seeding is opt-in and gated by an
+  explicit user choice. The skill MUST NOT create `.workflow_artifacts/spec.md`
+  without the user electing to describe the repo, and on re-init where the
+  repo spec already exists it MUST NOT overwrite it (grandfather/idempotency
+  gate, mirroring the memory-preservation rule above).
+- De-dup with the discover skill's own repo-spec offer: before running
+  discovery, the skill clears any stale marker left by a prior aborted
+  bootstrap, then writes a fresh bootstrap marker
+  (`.workflow_artifacts/.init-bootstrap-active`) that suppresses discover's
+  own repo-spec offer for that invocation. The crash-safety guarantee is that
+  the discover skill SELF-CLEARS the marker when it honors it, bounding the
+  marker's lifetime to that single discovery — so an aborted bootstrap can
+  never silently disable the offer forever. This skill ALSO removes the
+  marker at the end of its own seeding step as a belt-and-suspenders no-op,
+  so a later standalone discovery still offers normally.
 - Cost-ledger writes are CONDITIONAL. The skill MAY run standalone (no task
   context — invoked by a user setting up the workflow for the first time) or
   as part of an active task (invoked by the run orchestrator or by a user
