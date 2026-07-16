@@ -5,9 +5,11 @@ Codex, …) that implements this skill should match the contract described here.
 
 ## Purpose
 
-Trash-move stale workflow sentinels and old checkpoint files into a recoverable
-`trash/<date>/` archive so the session state directory stays navigable and stale
-sentinels do not cause false-positive lifecycle events.
+Trash-move stale workflow sentinels, old checkpoint files, and stale session
+temp-write leftovers (`sessions/*.body.tmp`, `sessions/*.tmp` — crashed
+atomic-writer artifacts, IVG-137 T-06) into a recoverable `trash/<date>/`
+archive so the session state directory stays navigable and stale sentinels do
+not cause false-positive lifecycle events.
 
 ## When to use
 

@@ -180,8 +180,15 @@ find "${MEMORY_DIR}/checkpoints" -maxdepth 1 -name '*.md' ! -name '*.tmp' \
 For each candidate: `trash_move "<path>" "$MEMORY_DIR"`.
 (No UUID protection needed: the 30d age window already excludes the just-written checkpoint and any same-day or recent checkpoints.)
 
+**Step 5b. Session temp-file sweep (IVG-137 T-06, data hygiene).** Crashed Class-A-writer leftovers: the session-state atomic-write mechanism (`implement`/`end_of_day`/etc.) composes a body to `<session-path>.body.tmp`, validates it, then atomically renames to `<session-path>`. A process that crashes or is interrupted mid-write leaves the `.body.tmp` (or a bare `.tmp`) file behind. These are NOT selected by any real reader (`select_unprocessed_sessions.py`'s `file_pattern` is anchored `\.md$`, so `.body.tmp`/`.tmp` files are already excluded from selection today) but they pollute manual `ls`/`grep end_of_day_due: yes` inspection of `sessions/`. Find candidates:
+```sh
+find "${MEMORY_DIR}/sessions" -maxdepth 1 \( -name '*.body.tmp' -o -name '*.tmp' \) \
+  -mtime +${QUOIN_CLEANUP_SENTINEL_WINDOW:-1} -print0
+```
+Reuses the same `QUOIN_CLEANUP_SENTINEL_WINDOW` (default 1 day) age threshold as the sentinel sweep — a legitimate write completes (write → validate → rename) in well under a second, so any survivor older than the window is a crash artifact, never an in-flight write. For each candidate: `trash_move "<path>" "$MEMORY_DIR"`. **Never** matches a real `*.md` session file (the glob is `*.body.tmp` / `*.tmp` only) — no UUID protection needed since these files have no "current session" concept (a session's own live write is always fresher than the age window).
+
 **Step 6. Emit summary:**
-- If any files were trashed: `[cleanup] trashed <S> sentinel(s) -> .workflow_artifacts/memory/, <C> checkpoint(s) -> .workflow_artifacts/memory/checkpoints/ (recover via: mv .workflow_artifacts/memory/trash/<date>/<file> <original-dir>)`. NOTE: do NOT say "recoverable via /sleep --restore" — `/sleep --restore` only searches `forgotten/` text entries, not `trash/` files.
+- If any files were trashed: `[cleanup] trashed <S> sentinel(s) -> .workflow_artifacts/memory/, <T> session temp-file(s) -> .workflow_artifacts/memory/sessions/, <C> checkpoint(s) -> .workflow_artifacts/memory/checkpoints/ (recover via: mv .workflow_artifacts/memory/trash/<date>/<file> <original-dir>)`. NOTE: do NOT say "recoverable via /sleep --restore" — `/sleep --restore` only searches `forgotten/` text entries, not `trash/` files.
 - If zero files trashed: `[cleanup] nothing stale to clean`.
 
 **Step 7. Append cost-ledger row** (phase `cleanup`) IF task context is active: a `.workflow_artifacts/<task>/cost-ledger.md` exists at cwd. Skip if no task context (per Q-02: no ledger write when no task).
@@ -193,11 +200,14 @@ For each candidate: `trash_move "<path>" "$MEMORY_DIR"`.
 When `/cleanup --dry-run` is invoked:
 
 1. Run steps 1–3 (resolve MEMORY_DIR, source helpers, acquire UUID).
-2. Run the sentinel and checkpoint enumeration (steps 4–5 `find` commands) but make NO trash-moves.
+2. Run the sentinel, session temp-file, and checkpoint enumeration (steps 4–5b `find` commands) but make NO trash-moves.
 3. Print the would-trash list:
    ```
    [cleanup --dry-run] would trash:
      SENTINELS (<S>):
+       - <path>
+       ...
+     SESSION TEMP FILES (<T>):
        - <path>
        ...
      CHECKPOINTS (<C>):
@@ -246,6 +256,6 @@ Use `/sleep --purge --sentinels --older-than Nd` for explicit permanent purge of
 
 ## Write-target / delete-target restriction
 
-**/cleanup ONLY trash-moves files under `.workflow_artifacts/memory/` matching the 9 sentinel families listed above or `checkpoints/*.md`; it never touches `lessons-learned.md`, `forgotten/`, or any source file.**
+**/cleanup ONLY trash-moves files under `.workflow_artifacts/memory/` matching the 9 sentinel families listed above, `sessions/*.body.tmp` / `sessions/*.tmp` (IVG-137 T-06), or `checkpoints/*.md`; it never touches `lessons-learned.md`, `forgotten/`, or any real `*.md` session file.**
 
 Any other trash-move or write is a bug.
