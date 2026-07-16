@@ -186,7 +186,7 @@ Before starting any new task on a repo, always:
 
 Clean working state before each task avoids mixing unrelated changes and working on stale code. At the start of every implementation task, run `git status` + `git branch` on each affected repo. Handle any dirty state before proceeding. This applies to ALL repos involved, not just the primary one.
 
-This rule is enforced at three layers: (1) `/implement` §0b branch-hygiene precheck prompts to create a feature branch if any repo is on a protected branch before the first commit; (2) `/gate` FAILS if task commits (commits ahead of upstream on main/master, i.e., `has_task_commits: true`) are detected on a protected branch post-implement; (3) `/review` flags it as a diff-independent backstop. The gate keys on the commits-ahead signal, NOT bare on-main status — a clean repo sitting on main with no ahead commits is NOT a violation. Env knobs: `QUOIN_PROTECTED_BRANCHES` (csv, default `main,master`), `QUOIN_DISABLE_BRANCH_HYGIENE=1` (global opt-out). If recovery is needed (mis-placed commits on a protected branch), the canonical safe reset-main-to-origin recipe is at `__QUOIN_HOME__/memory/branch-recovery.md`.
+This rule is enforced at three layers: (1) `/implement` §0b branch-hygiene precheck (prompts to create a feature branch if on a protected branch pre-first-commit); (2) `/gate` FAILS if task commits (`has_task_commits: true` — commits ahead of upstream on main/master) land on a protected branch; (3) `/review` flags it as a backstop. Keys on the commits-ahead signal, NOT bare on-main status — a clean repo on main with no ahead commits is NOT a violation. Env knobs: `QUOIN_PROTECTED_BRANCHES` (csv, default `main,master`), `QUOIN_DISABLE_BRANCH_HYGIENE=1` (opt-out). Recovery recipe (mis-placed commits): `__QUOIN_HOME__/memory/branch-recovery.md`.
 - **Reinstall (`bash quoin/install.sh`) after a `quoin/**`/`src/quoin/**` diff** — `/gate` `deploy_drift_check.py` flags drift (`QUOIN_DISABLE_DEPLOY_DRIFT=1`; IVG-136).
 
 #### Commit messages
@@ -294,9 +294,9 @@ The session-state template includes a `## Cost` section:
 - verification_mismatches: 0
 ```
 
-`end_of_day_due: yes` defaults at every write; `/end_of_day` Step 3d flips to `no` for each session in the processed window (all sessions selected by the hybrid date-window + flag rule, not only today's); `sessionstart.sh` + `/start_of_day` use it as the second signal for the missing-EOD banner (36 h window). `fallback_fires` counts Class B writer Step 5 English-fallback invocations + Step 2 Haiku-dispatch retries; atomic-rename increment; never decremented; under-counts under parallel subagents (acceptable per D-03-rev2). Full semantics: `__QUOIN_HOME__/memory/lifecycle-guide.md`.
+`end_of_day_due: yes` defaults at every write; `/end_of_day` Step 3d flips to `no` per processed session (hybrid date-window + flag rule, not only today's); `sessionstart.sh`/`/start_of_day` use it as the second missing-EOD-banner signal (36 h window). `fallback_fires` counts Class B English-fallback + Haiku-dispatch retries (atomic-rename increment, never decremented; under-counts under parallel subagents, acceptable per D-03-rev2). Full semantics: `__QUOIN_HOME__/memory/lifecycle-guide.md`.
 
-`verification_ran` and `verification_mismatches` (§V, IVG-115) default to `no`/`0` at every write — omission or `no` is read as a positive failure signal, never treated as a silent pass (MAJ-1). The §V-carrying skills (`end_of_day`, `start_of_day`, `weekly_review`) flip `verification_ran: yes` only after a clean ground-truth reconcile; on a MISMATCH/MISSING they increment `verification_mismatches` (atomic-rename, mirror of `fallback_fires`; never decremented) and leave `verification_ran: no`. Consumers (`start_of_day`, `weekly_review`) treat an absent or `no` `verification_ran` on an in-scope session as a mismatch signal in its own right. `end_of_day` Step 3 Cost-summary and `weekly_review`'s Cost-data step roll up `verification_mismatches` per window (same machinery as the `fallback_fires` roll-up above) with a "non-zero = a skill's claims contradicted live state; investigate" note.
+`verification_ran`/`verification_mismatches` (§V, IVG-115) default to `no`/`0` at every write — omission or `no` reads as a failure signal, never a silent pass (MAJ-1). §V-carrying skills (`end_of_day`, `start_of_day`, `weekly_review`) flip `verification_ran: yes` only after a clean reconcile; on MISMATCH/MISSING they increment `verification_mismatches` (atomic-rename, mirrors `fallback_fires`; never decremented) and leave `verification_ran: no`. Consumers treat an absent/`no` `verification_ran` as a mismatch signal in its own right. `end_of_day`/`weekly_review` roll up `verification_mismatches` per window (same machinery as `fallback_fires`) — non-zero means a skill's claims contradicted live state.
 
 The cost ledger (`.workflow_artifacts/<task-name>/cost-ledger.md`) is the source of truth for per-session costs.
 
@@ -308,18 +308,13 @@ Every skill records its session to the task's cost ledger at session start.
 
 **Phase values:** `discover`, `architect`, `plan`, `critic`, `revise`, `specify`, `implement`, `review`, `gate`, `end-of-task`, `pr`, `run-orchestrator`, `thorough-plan`, `rollback`, `init-workflow`, `start-of-day`, `end-of-day`, `weekly-review`, `capture-insight`, `triage`, `expand`, `checkpoint`, `cleanup`, `sleep`, `session-close-hook`, `next-steps`, `ad-hoc`
 
-Note: `/thorough_plan` writes phase-boundary session-state updates (IVG-98) to a DEDICATED
-orchestrator file (`{date}-{task}-orchestrator.md`) at each planning-loop boundary, with
-`## Current stage: thorough-plan:round-{N}-{phase}` (phase ∈ {plan, critic, revise}). This token is
-a recognized `## Current stage` value consumed by `/start_of_day`, `/end_of_day`, and `/status`.
-Subagents write only to the standard `{date}-{task}.md`; the orchestrator file is fully owned by
-the orchestrator and subagents never touch it (M-02/D-07, see lifecycle-guide.md).
+Note: `/thorough_plan` writes phase-boundary session-state updates (IVG-98) to a dedicated orchestrator file (`{date}-{task}-orchestrator.md`) at each planning-loop boundary, using `## Current stage: thorough-plan:round-{N}-{phase}` (phase ∈ {plan, critic, revise}) — recognized by `/start_of_day`, `/end_of_day`, `/status`. Subagents write only the standard `{date}-{task}.md`; the orchestrator file is owned solely by the orchestrator (M-02/D-07, see lifecycle-guide.md).
 
 **Category:** Always write `task`.
 
 **Conditional skills:** `/discover`, `/gate`, `/start_of_day`, `/capture_insight`, and `/triage` skip cost recording if no task context is active.
 
-Bash one-liner (7-col + 6-col), UUID acquisition rules, writer guidance, NOTE-quoting requirement, and parser tolerance details: `__QUOIN_HOME__/memory/cost-ledger-format.md` (and portable shape in `quoin/core/workflow/cost-ledger.md`).
+Bash one-liner, UUID rules, writer guidance, NOTE-quoting, and parser-tolerance details: `__QUOIN_HOME__/memory/cost-ledger-format.md` (portable shape: `quoin/core/workflow/cost-ledger.md`).
 
 ### Knowledge cache
 
@@ -328,13 +323,13 @@ Cache lives under `.workflow_artifacts/cache/`. Three rules:
 - **(b)** Any skill that modifies source files MUST update the corresponding cache entry.
 - **(c)** Rollback by deletion — deleting `.workflow_artifacts/cache/` fully restores pre-cache behavior.
 
-Directory structure, entry format, and staleness tracking: see `__QUOIN_HOME__/memory/cache-guide.md` (deployed by install.sh from `quoin/memory/cache-guide.md`).
+Directory structure, entry format, staleness tracking: `__QUOIN_HOME__/memory/cache-guide.md` (source: `quoin/memory/cache-guide.md`).
 
 Per-skill patterns: cache-read bootstrap and write-through live inline in each skill's SKILL.md. Do not replace inline copies with a pointer — see lessons-learned 2026-04-13.
 
 ### Tier 1 — files that always stay English (caveman-token-optimization carve-out)
 
-The full catalog of always-English Tier-1 files (hand-edited, contract-approval, rendered briefings, source files) lives at `__QUOIN_HOME__/memory/tier1-files.md` (source: `quoin/memory/tier1-files.md`). When deciding whether a file is exempt from terse-style writing, consult that catalog.
+The full catalog of always-English Tier-1 files (hand-edited, contract-approval, rendered briefings, source files) lives at `__QUOIN_HOME__/memory/tier1-files.md` (source: `quoin/memory/tier1-files.md`) — consult it when deciding if a file is exempt from terse-style writing.
 
 ## Model assignments
 
