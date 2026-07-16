@@ -153,9 +153,10 @@ This skill may run in a fresh chat session. On start:
 2. Run `python3 __QUOIN_HOME__/scripts/memory_select.py --task-text "<task description>"` to read only task-relevant lessons from `.workflow_artifacts/memory/lessons-learned.md`. If the script is absent, errors, or reports `fellback_to_wholesale`, read the whole `.workflow_artifacts/memory/lessons-learned.md` as the fallback (the wholesale read is preserved as the explicit fallback). Apply relevant lessons.
 3. Read `.workflow_artifacts/memory/sessions/` for active session state
 4. Read the task subfolder using `task_path(<task-name>, stage=<N>)` from `__QUOIN_HOME__/scripts/path_resolve.py` (or pass `stage=None` for legacy/default-root tasks); read `architecture.md` from the TASK ROOT, `current-plan.md` from the resolved path. Call pattern: `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate with integer form. architecture.md path: ALWAYS `<task-root>/architecture.md` (never under stage-N/). cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md`.
-5. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `plan`
-6. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`
-7. Then proceed with planning
+5. Read `<task-root>/spec.md` if present (task feature spec — ALWAYS at task root, read-if-exists; absence is normal/grandfather). Its `## Acceptance criteria` are a binding planning input — the plan MUST satisfy them.
+6. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `plan`
+7. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`
+8. Then proceed with planning
 
 ## Model requirement
 
@@ -181,6 +182,7 @@ Before writing anything:
 
 - Run `python3 __QUOIN_HOME__/scripts/memory_select.py --task-text "<task description>"` to read only task-relevant lessons. If the script is absent or errors, read `.workflow_artifacts/memory/lessons-learned.md` wholesale (the wholesale read is the explicit fallback). Apply past insights to avoid repeating mistakes.
 - Read architecture docs if they exist (`.workflow_artifacts/<task-name>/architecture.md`)
+- Read `<task-root>/spec.md` if it exists — the plan's tasks must collectively satisfy its acceptance criteria.
 - **Check the knowledge cache** (if `.workflow_artifacts/cache/_index.md` exists):
   - Read `_staleness.md` (if it exists, otherwise fall back to `.workflow_artifacts/memory/repo-heads.md`) — compare each relevant repo's HEAD against cached hash
   - For non-stale repos: load `cache/<repo>/_index.md`, `cache/<repo>/_deps.md`, and module `_index.md` files for task-relevant directories. Load in this order (root → repo → module) for prompt cache efficiency.

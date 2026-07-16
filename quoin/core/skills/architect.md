@@ -35,6 +35,8 @@ decomposition, and open questions.
   to detect prior scan context and avoid redundant work.
 - Optional prior `architecture.md` at `<task-root>/architecture.md` — when
   present, the skill revises rather than creates from scratch.
+- Optional task feature spec at `<task-root>/spec.md` (read-if-exists;
+  upstream intent whose acceptance criteria the design must satisfy).
 
 All reads MUST tolerate missing files. The skill MUST ask the user for
 clarification when the problem space is ambiguous before proceeding.
@@ -83,6 +85,9 @@ The skill also updates a session-state file under
 - The skill MUST produce a `## Stage decomposition` section that downstream
   planning and critic phases can consume. Each stage must be independently
   reviewable and provide incremental value.
+- The skill MUST read the task feature spec when present and satisfy its
+  acceptance criteria in the synthesis; it MAY offer to produce one when
+  absent (advisory, non-blocking); it MUST tolerate its absence.
 - After producing `architecture.md`, the skill MUST run an internal critic
   loop (Phase 4) to verify the architecture before returning it as final.
   The runtime adapter controls the convergence policy (max rounds, strict

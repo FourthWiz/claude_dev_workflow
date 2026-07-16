@@ -82,6 +82,9 @@ convergence, and updates a session-state file under
       rounds, triggering escalation to the user.
 - The skill MUST NOT auto-invoke the implementation phase. After convergence
   and gate, the skill STOPS and waits for an explicit user command to proceed.
+- The skill MAY offer to produce a task feature spec when none exists (Medium/
+  Large only, advisory/non-blocking); it passes the task spec path to the
+  planner when present.
 - Cost-ledger writes are mandatory when a task context is active.
   The ledger lives at `.workflow_artifacts/<task-name>/cost-ledger.md`.
 - After the phase completes, the skill MUST emit a concise human-readable

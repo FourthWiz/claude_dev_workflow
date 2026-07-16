@@ -27,6 +27,8 @@ phases (implementation, review, gate) execute against.
 
 - `<task-root>/architecture.md` — when present, the authoritative stage
   decomposition; missing file is a no-op.
+- `<task-root>/spec.md` — the task feature spec, when present; read-if-exists,
+  absence is a valid, non-blocking outcome.
 - Active session state under `.workflow_artifacts/memory/sessions/` — used
   to detect the current round and avoid re-reading stale information.
 - `.workflow_artifacts/memory/lessons-learned.md` — past insights that
@@ -66,6 +68,9 @@ The skill also updates a session-state file under
   implementing `process(id: str) -> Result`" is a task.
 - The plan MUST read actual source code — not just the architecture doc.
   Assumptions about file structure or API shapes must be verified.
+- The plan reads the task feature spec at `<task-root>/spec.md` when present;
+  the plan must satisfy its acceptance criteria; absence is a valid,
+  non-blocking outcome.
 - For exploratory tasks, the plan MUST verify that a proposed feature does not already exist (searching source and recent history) before planning to build it, and MUST verify project conventions against real files before relying on them.
 - Integration points MUST receive extra scrutiny; trace data flows end-to-end.
 - Each task MUST be independently reviewable and produce a testable unit.

@@ -162,6 +162,7 @@ Read the task profile from the convergence summary at the top of `current-plan.m
 
 | Previous phase | Next phase | Small | Medium | Large |
 |---------------|-----------|-------|--------|-------|
+| /specify | /architect | (spec doc gate — no test level) | (spec doc gate) | (spec doc gate) |
 | /thorough_plan (or /plan) | /implement | Smoke | Smoke | Smoke |
 | /implement | /review | Standard | Standard | Full |
 | /review | /end_of_task | Full | Full | Full |
@@ -173,7 +174,7 @@ If the task profile cannot be determined, default to **Full** (safe fallback).
 Gates are invoked between every major phase transition:
 
 ```
-/discover → GATE → /architect → GATE → /thorough_plan → GATE → /implement → GATE → /review → GATE → merge
+/discover → /specify → GATE → /architect → GATE → /thorough_plan → GATE → /implement → GATE → /review → GATE → merge
 ```
 
 Within `/thorough_plan`, the orchestrator handles its own internal loop (plan→critic→revise), but the final converged plan still hits a gate before `/implement` can start.
@@ -183,7 +184,7 @@ Within `/thorough_plan`, the orchestrator handles its own internal loop (plan→
 ### Step 1: Detect context
 
 Determine which phase just completed by reading:
-- The task root for parent-level artifacts: `<task-root>/architecture.md`, `<task-root>/architecture-critic-<N>.md`, `<task-root>/cost-ledger.md` (these always live at the task root regardless of stage layout — D-03).
+- The task root for parent-level artifacts: `<task-root>/spec.md`, `<task-root>/architecture.md`, `<task-root>/architecture-critic-<N>.md`, `<task-root>/cost-ledger.md` (these always live at the task root regardless of stage layout — D-03). `spec.md` is read-if-exists: a fresh `spec.md` with no `architecture.md` yet present indicates the specify→architect phase boundary.
 - The resolved task subfolder for stage-scoped artifacts: `<task_dir>/current-plan.md`, `<task_dir>/critic-response-<round>.md`, `<task_dir>/review-<round>.md`, `<task_dir>/gate-*.md` — where `<task_dir>` is computed via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` (see "Multi-stage tasks" in CLAUDE.md). For legacy / single-stage tasks, `<task_dir>` equals `<task-root>`.
 - On `path_resolve.py` exit code 2, display the stderr message verbatim, fall back to `<task-root>`, and ask the user to disambiguate by re-invoking with `stage <N> of <task>` (per the per-file edit template's error-handling clause).
 - Git state (branches, uncommitted changes, recent commits)
@@ -194,6 +195,12 @@ Identify what the *next* phase would be.
 ### Step 2: Run automated checks
 
 Based on what exists and what's next, run the appropriate checks:
+
+**After /specify → before /architect (spec gate — no gate level concept — always full spec check):**
+- [ ] `spec.md` exists and is non-empty
+- [ ] spec.md has the required sections (`## Context`, `## Acceptance criteria`)
+- [ ] Read spec.md for display (spec is **Class A** — NO `## For human` block; display the `## Acceptance criteria` section, or the first 2 KB, as the "Summary of what was produced").
+- [ ] GRANDFATHER: if `spec.md` is ABSENT, this transition is not applicable — skip silently (never fail on a missing spec).
 
 **After /architect → before /thorough_plan (no gate level concept — always full architecture check):**
 - [ ] `architecture.md` exists and is non-empty
@@ -280,6 +287,7 @@ Based on what exists and what's next, run the appropriate checks:
 ### Step 3a: Read summary for display (Checkpoints A, B, C, D)
 
 For Checkpoints A, B, C, and D, determine the relevant Class B artifact's format and extract the human-facing summary using the §5.7.1 detection rule below.
+- Checkpoint A0 (post-`/specify` → pre-`/architect`): read `spec.md`. spec is Class A (no `## For human` block) — display the `## Acceptance criteria` section (or first 2 KB) as the summary; if `spec.md` does not exist (Small-task / grandfather), skip the spec read and proceed.
 - Checkpoint A (post-`/architect` → pre-`/thorough_plan`): read `architecture.md`.
 - Checkpoint B (post-`/plan` → pre-`/implement`): read `current-plan.md`.
 - Checkpoint C (post-`/implement` → pre-`/review`): read `architecture.md` if it exists on disk AND has a `## For human` block within the first 50 lines after frontmatter (file-existence + format-presence fallback for gitignored `architecture.md`; git log signal is no longer required because tasks living entirely under `.workflow_artifacts/` are gitignored and git log returns empty).
@@ -384,7 +392,7 @@ If automated checks failed:
 - **Post-architect and post-plan boundaries:** subagent dispatch is the **default** (the parent has just completed a multi-phase loop and the post-gate checks operate against a different context shape).
 - **There is no `/gate` invocation after `/discover`** — discover feeds directly into architect (per `run/SKILL.md:87`).
 
-Regardless of invocation mode, Step 5 audit-log persistence is **mandatory**: every `/gate` invocation **MUST write** a `gate-{phase}-{date}.md` **audit log** before yielding control. This requirement applies whether invoked inline or as a subagent. **audit log persistence** is non-skippable on approval.
+Regardless of invocation mode, Step 5 audit-log persistence is **mandatory**: every `/gate` invocation **MUST write** a `gate-{phase}-{date}.md` **audit log** before yielding control. This requirement applies whether invoked inline or as a subagent. **audit log persistence** is non-skippable on approval. `specify` is a valid `{phase}` token for the spec→architect gate boundary (writes `gate-specify-<date>.md`), alongside the existing architect/plan/implement/review boundaries.
 
 **Inline mode note:** when invoked inline (post-implement, post-review), the executing agent skips both:
 - The `__QUOIN_HOME__/skills/gate/preamble.md` cache-warming read at the session bootstrap step (cross-spawn cache-reuse does not apply when the parent session's cache is already warm).

@@ -53,8 +53,15 @@ be honored when locating per-stage artifacts.
 ## Behavior contract
 
 - The skill MUST chain phases in this order: discover (conditional —
-  skip if recent), architect (conditional — skip if Small profile),
+  skip if recent), spec (conditional — skip if Small or if a task spec
+  already exists), architect (conditional — skip if Small profile),
   planning (always), implementation, review, finalization.
+- After discovery, when no task feature spec exists at
+  `<task-root>/spec.md` and the task is not Small, the skill SHOULD
+  offer/run the spec phase, gated at its own checkpoint; the skill
+  MUST forward the task spec path to the downstream design and review
+  phases when present; absence of a spec is always a valid,
+  non-blocking outcome (grandfather).
 - The skill MUST pause at every phase boundary and wait for explicit
   user confirmation before advancing to the next phase.
 - The skill MUST treat each phase as a separate session; the

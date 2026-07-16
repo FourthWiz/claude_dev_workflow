@@ -201,6 +201,18 @@ Use these criteria when auto-classifying a task (step 1c above) or when verifyin
 
 **When the classification is ambiguous, choose the more cautious (larger) profile.** A Medium task that runs the full critic loop costs a few extra dollars; a Large task misclassified as Small can ship bugs.
 
+### 3c. Spec pre-flight (advisory, non-blocking)
+
+If NO `<task-root>/spec.md` exists AND the task profile (determined in step 3/3b above) is Medium or Large (Small tasks skip this offer entirely, per the resolved Small-task-skip policy), offer via `AskUserQuestion` to run `/specify` first:
+
+- Question: "Produce a task spec before planning?"
+- Header: "Spec pre-flight"
+- multiSelect: false
+- Option 1: label: "Run /specify first" — description: "Elicit intent and write a task feature spec (spec.md) before the planning loop starts."
+- Option 2: label: "Proceed without a spec" — description: "Continue planning now. A spec can always be added later; its absence is a normal, non-blocking outcome (grandfather)."
+
+This is ADVISORY / NON-BLOCKING — the loop proceeds regardless of the answer; grandfather preserved. Small tasks skip the offer entirely.
+
 ### 4. Model selection per round
 
 The orchestrator selects which skill variant to spawn based on the round number and whether strict mode is active:
@@ -255,6 +267,7 @@ Round 2:
 **`/plan` (Round 1 only)**
 - Always spawn `/plan` (Opus) — the initial plan is always Opus-quality regardless of mode
 - Pass all context: architecture docs, user requirements, repo paths
+- Pass path to `<task-root>/spec.md` if it exists (read-if-exists).
 - Output: `<task_dir>/current-plan.md` (where `<task_dir>` was resolved in Setup §1 via `path_resolve.py`)
 
 **`/critic` (every round)**
