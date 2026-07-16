@@ -400,6 +400,8 @@ Four skills handle session lifecycle at different granularities (v3 lifecycle se
 
 Session hooks (S-4): `sessionstart.sh` + `sessionend.sh` check `end_of_day_due: yes` (36 h window); non-blocking informational banners; 5-min sentinel dedup. Full subcommand contracts, mode auto-detection rules, restore-picker logic, and `--after-compact`/`--defer` semantics: `__QUOIN_HOME__/memory/lifecycle-guide.md`.
 
+**Optional automated `/end_of_day` refresh:** `/end_of_task`'s session flag-flip (IVG-137) is the primary, reliable mechanism for keeping session state from accumulating as unflushed orphans. `eod-refresh-routine.md` documents an OPT-IN, off-by-default `/schedule` cron recipe as a secondary backstop (same cloud-sandbox-cannot-read-Drive caveat as `discovery-refresh-routine.md`). Env knobs: `QUOIN_EOD_REFRESH_CRON` (cron schedule, default `0 22 * * *`), `QUOIN_DISABLE_EOD_RECONCILE`, `QUOIN_DISABLE_EOT_FLAG_FLIP`.
+
 ### /sleep importance signals
 
 `/sleep` reads signals from `__QUOIN_HOME__/memory/sleep-signals.yaml` (source: `quoin/memory/sleep-signals.yaml`). Thresholds override via `QUOIN_SLEEP_<KEY>` env vars. Fallback if YAML absent: `sleep_score.py` parses this section, then hardcoded defaults.
