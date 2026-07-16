@@ -29,6 +29,8 @@ code, never pushes to a remote, and never invokes a downstream workflow phase.
   missing file = no-op).
 - Prior `critic-response-*.md` files in the resolved task path (used to verify
   issues were addressed; missing files = no-op).
+- The task feature spec at `.workflow_artifacts/<task-name>/spec.md` (always at
+  the task root; read-if-exists — absence is a normal, non-blocking outcome).
 - The version-control diff against the merge base — the exact set of files
   changed by the implementation.
 - Prior `review-*.md` siblings for context on earlier verdicts.
@@ -42,9 +44,9 @@ All reads MUST tolerate missing files except the plan, which is required.
 A single artifact under `.workflow_artifacts/<task-name>/`, named with the
 pattern `review-N.md` where N is the round number starting at 1 (path resolved
 by the runtime adapter's path resolver). Closed section set: Summary, Verdict,
-Plan Compliance, Issues Found, Integration Safety, Test Coverage, Risk
-Assessment, Recommendations. The skill also updates a session-state file under
-`.workflow_artifacts/memory/sessions/`.
+Plan Compliance, Spec Compliance, Issues Found, Integration Safety, Test
+Coverage, Risk Assessment, Recommendations. The skill also updates a
+session-state file under `.workflow_artifacts/memory/sessions/`.
 
 Verdict is one of three closed values: `APPROVED`, `CHANGES_REQUESTED`,
 `BLOCKED`.
@@ -57,6 +59,10 @@ Verdict is one of three closed values: `APPROVED`, `CHANGES_REQUESTED`,
 - The skill MUST NOT auto-create a pull request, push to a remote, or invoke a
   finalization phase.
 - Each issue MUST cite a specific file:line reference and propose a fix.
+- The skill produces a Spec Compliance assessment checking the implementation
+  against the task feature spec's acceptance criteria; when no spec exists, it
+  records that verification was against the plan only (grandfather). The skill
+  reads `.workflow_artifacts/<task-name>/spec.md` at bootstrap when present.
 - Verdict-conditional behavior: on `APPROVED`, the skill yields control to the
   post-review gate via the runtime adapter's mechanism; on `CHANGES_REQUESTED`
   or `BLOCKED`, control returns to the implementation phase.

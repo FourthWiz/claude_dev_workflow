@@ -528,6 +528,7 @@ def test_review_allowed_section_set_matches_sidecar():
         '## Summary',
         '## Verdict',
         '## Plan Compliance',
+        '## Spec Compliance',
         '## Issues Found',
         '## Integration Safety',
         '## Test Coverage',

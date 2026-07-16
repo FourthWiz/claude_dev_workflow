@@ -6,12 +6,13 @@ source_files:
 - quoin/memory/format-kit.md
 - quoin/memory/glossary.md
 source_hashes:
-  quoin/memory/format-kit.md: 286c4ae6bc0a040b3f3b1fd09cfa59bb0cfbab2d
+  quoin/memory/format-kit.md: 61c6308dd9e110b92d191e26b6b5314b3d6b3a5c
   quoin/memory/glossary.md: 1dc852b1f090c7cd2c75fb60b468221d6415de17
-total_bytes: 4388
+total_bytes: 4385
 ---
 
 [format-kit-§3-slice]
+
 ## §3 Pick rules for ambiguous content (the hard cases)
 
 Three rules for situations where the primitive choice is non-obvious:
@@ -30,7 +31,6 @@ Three rules for situations where the primitive choice is non-obvious:
 
 3. **A risk with a long mitigation procedure** — the risk table row references a Procedure entry (`see proc:R-02`) that lives in the Procedures section. Do not embed multi-step procedures inside a table cell. Keep the table cell to one line.
 
----
 
 [glossary]
 # Glossary — v3 Workflow Abbreviation Whitelist

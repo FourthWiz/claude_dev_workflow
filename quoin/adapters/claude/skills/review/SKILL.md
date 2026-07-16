@@ -189,20 +189,21 @@ This skill should run in a fresh session for unbiased review (similar to /critic
 
 If v3-format: read the body sections per format-kit.md §2 — ## Tasks is the spec to review against; the ## For human block is the user-facing summary (informational, not a review target). If v2-format: read the whole file as the v2 mechanism did.
 4. Read `.workflow_artifacts/<task-name>/architecture.md` if it exists (ALWAYS at task root per D-03 — corollary: architecture-critic-N.md also at task root)
-5. Read prior `<task_dir>/critic-response-*.md` to verify those issues were addressed
-6. **Check the knowledge cache** (if `.workflow_artifacts/cache/_index.md` exists):
+5. Read `<task-root>/spec.md` if present (task feature spec — read-if-exists; absence normal/grandfather).
+6. Read prior `<task_dir>/critic-response-*.md` to verify those issues were addressed
+7. **Check the knowledge cache** (if `.workflow_artifacts/cache/_index.md` exists):
    - Read `.workflow_artifacts/cache/_staleness.md` (if it exists, otherwise fall back to `.workflow_artifacts/memory/repo-heads.md`) — compare each relevant repo's HEAD against cached hash
-   - Run `git diff --name-only <base-branch>...HEAD` to get the review's scope — the exact set of files changed by this implementation. (This is the same set step 7 reads diffs for, computed ahead of time so cache loads are precise.)
+   - Run `git diff --name-only <base-branch>...HEAD` to get the review's scope — the exact set of files changed by this implementation. (This is the same set step 8 reads diffs for, computed ahead of time so cache loads are precise.)
    - Load cache entries in deterministic order for prompt cache efficiency: root `_index.md` → repo `_index.md` → module `_index.md` → file `<stem>.md`. Specifically:
      - For each repo containing at least one changed file: read `cache/<repo>/_index.md` and `cache/<repo>/_deps.md` if not stale
      - For each directory containing at least one changed file: read `cache/<repo>/<dir>/_index.md` (Tier 2 — surrounding module context) if not stale
-     - For each changed file: read `cache/<repo>/<dir>/<file-stem>.md` (Tier 3 — per-file summary) if it exists and the repo is not stale. If the repo IS stale and the file appears in `git diff --name-only <cached-head> <current-head>`, skip its cache entry — the source read in step 7 is authoritative for changed files.
+     - For each changed file: read `cache/<repo>/<dir>/<file-stem>.md` (Tier 3 — per-file summary) if it exists and the repo is not stale. If the repo IS stale and the file appears in `git diff --name-only <cached-head> <current-head>`, skip its cache entry — the source read in step 8 is authoritative for changed files.
    - Cache entries are **context only**. They describe what the module/file normally does. They do NOT replace reading the diff or any full-file read triggered by the Step 1 criteria (lines 34–41).
-   - If no cache exists, skip this step — fall through to step 7 (current behavior preserved).
-7. Read the git diff (`git diff <base-branch>...HEAD`) — every line. Then selectively read full files per Step 1 criteria below. Do NOT read all modified files unconditionally.
-8. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `review`
-9. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`.
-10. Then proceed with review
+   - If no cache exists, skip this step — fall through to step 8 (current behavior preserved).
+8. Read the git diff (`git diff <base-branch>...HEAD`) — every line. Then selectively read full files per Step 1 criteria below. Do NOT read all modified files unconditionally.
+9. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `review`
+10. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`.
+11. Then proceed with review
 
 ## Model requirement
 
@@ -234,6 +235,10 @@ For each task in the plan, verify:
 - [ ] **Acceptance criteria** — does the implementation meet every acceptance criterion listed in the plan?
 - [ ] **File accuracy** — were the correct files modified? Are there unexpected file changes?
 - [ ] **Deviations** — if the implementation deviated from the plan, is the deviation documented and justified?
+
+### Step 2b: Verify against the spec
+
+If `<task-root>/spec.md` exists, check the implementation against EACH item in its `## Acceptance criteria` section — verify the implementation satisfies that criterion, and note any gaps. If `spec.md` is absent, this step is a no-op (grandfather) — proceed directly to Step 3.
 
 ### Step 3: Code quality review
 
@@ -362,6 +367,7 @@ Compose the format-aware body per the `review` artifact-type sections in format-
 - `## Summary` — caveman prose: 2-3 sentence review outcome summary.
 - `## Verdict` — one line: `APPROVED`, `CHANGES_REQUESTED`, or `BLOCKED`. An `APPROVED` verdict asserts that the affected-area test suite is green (or N/A — no affected tests for a docs-only changeset), per the Step 6b hard precondition. Do NOT write `APPROVED` unless Step 6b was run and returned exit 0.
 - `## Plan Compliance` — caveman prose: how well implementation matches the plan; gaps.
+- `## Spec Compliance` — caveman prose: how well the implementation satisfies the task spec's acceptance criteria; GRANDFATHERED wording when no spec exists — write exactly `No spec — verified against plan only.`
 - `## Issues Found` — terse numbered list per severity (CRITICAL / MAJOR / MINOR), each item: description + Location (file:line) + Impact + Fix.
 - `## Integration Safety` — caveman prose: integration risk assessment.
 - `## Test Coverage` — caveman prose: test adequacy assessment.

@@ -144,6 +144,7 @@ Machine-readable sidecar: `quoin/memory/format-kit.sections.json` (consumed by `
 | `## Summary` | REQUIRED | Caveman prose, 2–3 sentences | Overall review outcome |
 | `## Verdict` | REQUIRED | XML tag `<verdict>APPROVED\|CHANGES_REQUESTED\|BLOCKED</verdict>` | Machine-extractable verdict |
 | `## Plan Compliance` | REQUIRED | Caveman prose | How well implementation matches the plan |
+| `## Spec Compliance` | OPTIONAL | Caveman prose | How well the implementation satisfies the task spec's acceptance criteria (grandfathered "No spec — verified against plan only" when absent) |
 | `## Issues Found` | REQUIRED | Terse numbered list with severity tags | Critical, major, minor issues with location and fix |
 | `## Integration Safety` | REQUIRED | Caveman prose | Assessment of integration risks |
 | `## Test Coverage` | REQUIRED | Caveman prose | Adequacy of tests for new code |
