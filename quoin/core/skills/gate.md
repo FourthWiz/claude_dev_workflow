@@ -66,8 +66,8 @@ The skill also updates the session-state file under
 - The skill MUST NOT invoke the next workflow phase — it stops and waits.
 - Cost-ledger writes are conditional: record only when a task context is
   determinable from the surrounding artifacts.
-- The skill MUST tolerate missing optional inputs (architecture.md, session
-  state, lessons-learned) without aborting.
+- The skill MUST tolerate missing optional inputs (architecture.md, spec.md,
+  session state, lessons-learned) without aborting.
 - When automated checks fail, the skill MUST present failures clearly with
   suggested remediation, then wait for the user to fix them or acknowledge
   them before re-running.
@@ -175,8 +175,14 @@ disabled) is fail-CLOSED / blocking-surface here too — never a silent pass.
 
 ## Gate checkpoints
 
-Four checkpoints occur in the canonical workflow:
+Four checkpoints occur in the canonical workflow, plus one optional
+pre-architecture checkpoint when a task feature spec is produced:
 
+0. **Post-specify → pre-architecture.** Verify the task feature spec
+   (`<task-root>/spec.md`) is present, non-empty, and carries its required
+   sections (Context + Acceptance criteria); no formal gate level — a full
+   spec check; a missing spec is not applicable and MUST be tolerated
+   (grandfather).
 1. **Post-architecture → pre-planning.** Verify architecture.md is present,
    non-empty, and covers the required sections. No formal gate level — always
    a full architecture check.

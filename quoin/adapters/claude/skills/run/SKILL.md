@@ -90,6 +90,8 @@ Before any work begins:
 
 ```
 Phase 1: DISCOVER     (conditional — skip if recent)
+Phase 1.5: SPECIFY    (conditional — skip if Small OR task spec.md exists)
+          ↓ Checkpoint A0: user confirms spec
 Phase 2: ARCHITECT    (conditional — skip if Small)
           ↓ Checkpoint A: user confirms architecture
 Phase 3: THOROUGH_PLAN
@@ -114,12 +116,37 @@ Also check for `repos-inventory.md` (plural) as secondary confirmation.
 
 After the phase, verify the cost ledger has a new entry for the `discover` phase. If not (subagent didn't record), append a best-effort entry: `unknown-discover-<timestamp> | <date> | discover | opus | task | /run subagent (no UUID recorded)`.
 
+## Phase 1.5 — Specify (conditional)
+
+**Skip condition:** Task profile is Small OR `<task-root>/spec.md` already exists.
+
+- **If skipping:** tell the user "Skipping /specify (Small task | spec already exists)."
+- **If running:** spawn `/specify` as a subagent session (same mechanism as the Phase 2 architect spawn). Pass the task description and the task folder path.
+
+After the phase, verify the cost ledger has a new entry for the `specify` phase. If not (subagent didn't record), append a best-effort entry: `unknown-specify-<timestamp> | <date> | specify | opus | task | /run subagent (no UUID recorded)` (mirrors the Phase 1/Phase 2 best-effort append pattern).
+
+After specify completes, spawn `/gate` as a subagent session (spec→architect boundary — subagent dispatch, mirrors the post-architect gate at Phase 2; audit-log persistence mandatory).
+
+**Checkpoint A0:**
+```
+Phase complete: Specify
+Artifact: .workflow_artifacts/{task-name}/spec.md   (task feature spec — task root)
+
+Summary:
+- {goals / user stories — 2-3 bullets}
+- {key acceptance criteria}
+
+Gate: PASSED / FAILED
+
+Continue to architecture? (yes / no / show spec)
+```
+
 ## Phase 2 — Architect (conditional)
 
 **Skip condition:** Task profile is Small.
 
 - **If Small:** tell the user "Small task — skipping /architect, proceeding directly to planning."
-- **If running:** spawn `/architect` as a subagent session, passing the task description and paths to discovery output files (`repos-inventory.md`, `architecture-overview.md`, `dependencies-map.md`).
+- **If running:** spawn `/architect` as a subagent session, passing the task description, paths to discovery output files (`repos-inventory.md`, `architecture-overview.md`, `dependencies-map.md`), and the path to `<task-root>/spec.md` if it exists (read-if-exists).
   - **Note:** `/architect` now includes a Phase 4 critic loop (max 2 rounds default, 4 in strict mode); expect 1-2 additional `critic` phase rows in the cost ledger per round. If Phase 4 triggers the cost-guard confirmation (pre-round-2), the architect subagent will pause for user input — watch for the prompt `[critic round 2 starting — ~$10-30 estimated based on body size]` in the subagent output.
 
 After the phase, verify the cost ledger has a new entry for the `architect` phase. If not, append a best-effort entry with `unknown-architect-<timestamp>`. Also check for `critic` phase rows from Phase 4 (1-2 expected; accept their absence if Phase 4 was skipped via `max_rounds: 0`).
@@ -148,6 +175,7 @@ Spawn `/thorough_plan` as a subagent session, passing:
 - Task profile and max_rounds
 - Task description (with tokens stripped)
 - Path to `architecture.md` (if it exists)
+- Path to `spec.md` (if it exists)
 - Repo paths
 
 `/thorough_plan` handles its own internal plan→critic→revise loop and runs its own post-plan smoke gate.
@@ -199,7 +227,7 @@ If the user says "show changes": run `git diff --stat` and display, then re-ask.
 
 ## Phase 5 — Review
 
-Spawn `/review` as a **fresh subagent session** (unbiased assessment requires clean context). Pass plan path, architecture path, and repo paths.
+Spawn `/review` as a **fresh subagent session** (unbiased assessment requires clean context). Pass plan path, architecture path, spec path (if it exists), and repo paths.
 
 Read the review output (`review-*.md`) and check the verdict.
 
@@ -253,7 +281,7 @@ At every checkpoint, the orchestrator presents a concise summary and waits for e
 | `yes` / `y` / `continue` / `go` | Proceed to next phase |
 | `no` / `n` / `stop` | Halt workflow; preserve all artifacts; tell user how to resume manually |
 | `show <artifact>` | Display the artifact (architecture / plan / changes / review / discover), then re-ask |
-| `skip` | Skip the next phase (only valid for optional phases: discover, architect) |
+| `skip` | Skip the next phase (only valid for optional phases: discover, specify, architect) |
 | Any other input | Treat as feedback or clarification; answer and re-ask |
 
 **Never proceed without explicit confirmation.** Ambiguous responses → ask for clarification.
@@ -325,7 +353,7 @@ These are rough estimates based on typical usage. Actual costs are computed by `
 
 ## Gate boundaries reference
 
-**Post-architect (line 101):** subagent dispatch (not modified by Stage 3). **Post-implement (line 151 primary, lines 169 + 185 recursive recovery):** all inline — preserve the parent's prompt cache. **Post-review (line 182):** inline. **Post-plan (handled by `/thorough_plan/SKILL.md`):** subagent dispatch. **There is no `/gate` invocation after `/discover`** (per line 87 — discover feeds directly into architect). Audit-log persistence (`gate-{phase}-{date}.md`) is mandatory at every boundary regardless of mode per `/gate/SKILL.md`.
+**Post-architect (Phase 2 boundary):** subagent dispatch (not modified by Stage 3). **Post-implement (Phase 4 boundary primary; recursive recovery paths in the same phase):** all inline — preserve the parent's prompt cache. **Post-review (Phase 5 boundary):** inline. **Post-plan (handled by `/thorough_plan/SKILL.md`):** subagent dispatch. **Post-specify (Phase 1.5 boundary):** subagent dispatch (mirrors post-architect). **There is no `/gate` invocation after `/discover`** (discover feeds directly into specify/architect). (Line numbers above are approximate — see the named Phase sections for the authoritative boundaries.) Audit-log persistence (`gate-{phase}-{date}.md`) is mandatory at every boundary regardless of mode per `/gate/SKILL.md`.
 
 ## Important behaviors
 
