@@ -22,6 +22,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 from select_unprocessed_sessions import (  # noqa: E402
     compute_lower_bound,
+    find_covered_due_sessions,
     find_orphans,
     merge_daily,
     select_unprocessed_sessions,
@@ -218,6 +219,105 @@ def test_orphan_slug_word_boundary_no_prefix_collision(tmp_path):
     )
     assert f"{shorter_slug_date}-json-discovery-map-review.md" not in recent_names, (
         "'json-discovery-map-review' slug IS in the daily body → must NOT be an orphan."
+    )
+
+
+def test_orphan_orchestrator_suffixed_covered_when_base_covered(tmp_path):
+    """(Round 3 / MAJ-1, T-01(b)) A flag=no '<task>-orchestrator' session is
+    covered (excluded from orphan lists) when the BASE task's slug appears in
+    a daily body — find_orphans() now shares the guarded _base_slug()
+    derivation with find_covered_due_sessions()."""
+    root, sessions, daily = _make_project(tmp_path)
+    today = TODAY
+    _write_daily(daily, str(today - timedelta(days=1)), body="Completed ivg-137-eod work today.")
+    _write_session(sessions, f"{today}-ivg-137-eod.md", flag="no")
+    _write_session(sessions, f"{today}-ivg-137-eod-orchestrator.md", flag="no")
+
+    recent, historical = find_orphans(root, today, window_days=7)
+    recent_names = {p.name for p in recent}
+    hist_names = {p.name for p in historical}
+    all_names = recent_names | hist_names
+
+    assert f"{today}-ivg-137-eod.md" not in all_names
+    assert f"{today}-ivg-137-eod-orchestrator.md" not in all_names, (
+        "the -orchestrator sibling must be covered when the base slug is covered"
+    )
+
+
+def test_orphan_orchestrator_suffixed_orphan_when_base_uncovered(tmp_path):
+    """(Round 3 / MAJ-1, T-01(b)) A flag=no '<task>-orchestrator' session is
+    a genuine orphan when the BASE task's slug is NOT covered by any daily body."""
+    root, sessions, daily = _make_project(tmp_path)
+    today = TODAY
+    _write_daily(daily, str(today - timedelta(days=1)), body="Completed something-unrelated today.")
+    _write_session(sessions, f"{today}-ivg-137-eod.md", flag="no")
+    _write_session(sessions, f"{today}-ivg-137-eod-orchestrator.md", flag="no")
+
+    recent, historical = find_orphans(root, today, window_days=7)
+    recent_names = {p.name for p in recent}
+
+    assert f"{today}-ivg-137-eod.md" in recent_names
+    assert f"{today}-ivg-137-eod-orchestrator.md" in recent_names, (
+        "the -orchestrator sibling must remain an orphan when the base slug is uncovered"
+    )
+
+
+def test_orphan_same_run_no_re_surface_after_covered_flip(tmp_path):
+    """(Round 3 / MAJ-1) Same-run non-regression: a covered '<task>-orchestrator'
+    session flipped flag=yes -> no by find_covered_due_sessions() must NOT be
+    re-surfaced as an orphan by an immediately-following find_orphans() call
+    over the same files — both functions must agree on base-slug coverage."""
+    root, sessions, daily = _make_project(tmp_path)
+    today = TODAY
+    _write_daily(daily, str(today), body="Completed ivg-137-eod work today.")
+    base_file = _write_session(sessions, f"{today}-ivg-137-eod.md", flag="yes")
+    orchestrator_file = _write_session(
+        sessions, f"{today}-ivg-137-eod-orchestrator.md", flag="yes"
+    )
+
+    # Step 0a equivalent: find covered-but-due sessions and flip them to no.
+    covered, _uncovered = find_covered_due_sessions(root, today)
+    covered_paths = set(covered)
+    assert base_file in covered_paths
+    assert orchestrator_file in covered_paths
+
+    for p in covered:
+        content = p.read_text(encoding="utf-8")
+        p.write_text(content.replace("end_of_day_due: yes", "end_of_day_due: no"), encoding="utf-8")
+
+    # Step 0 equivalent: find_orphans() runs immediately after, over the same files.
+    recent, historical = find_orphans(root, today, window_days=7)
+    all_orphan_names = {p.name for p in recent} | {p.name for p in historical}
+
+    assert f"{today}-ivg-137-eod.md" not in all_orphan_names, (
+        "just-flipped covered base session must not be re-surfaced as an orphan in the same run"
+    )
+    assert f"{today}-ivg-137-eod-orchestrator.md" not in all_orphan_names, (
+        "just-flipped covered orchestrator session must not be re-surfaced as an orphan in the same run"
+    )
+
+
+def test_orphan_phase_suffixed_slug_stays_orphan_even_when_root_covered(tmp_path):
+    """(Round 4 / MAJ-1 scope boundary) A flag=no phase/stage-suffixed slug
+    (e.g. 'foo-review') whose ROOT task IS covered in a daily body must STILL
+    surface as an orphan — _base_slug() only strips '-orchestrator'. This is
+    documented, intended behavior for this round (see plan Decisions), not a
+    regression; the test guards against an accidental future widening of
+    _base_slug() that isn't paired with the collision-safety analysis."""
+    root, sessions, daily = _make_project(tmp_path)
+    today = TODAY
+    _write_daily(daily, str(today), body="Completed foo work today.")
+    _write_session(sessions, f"{today}-foo-review.md", flag="no")
+    _write_session(sessions, f"{today}-foo-s3-implement.md", flag="no")
+
+    recent, historical = find_orphans(root, today, window_days=7)
+    recent_names = {p.name for p in recent}
+
+    assert f"{today}-foo-review.md" in recent_names, (
+        "phase-suffixed slug must remain orphan-eligible even though its root is covered"
+    )
+    assert f"{today}-foo-s3-implement.md" in recent_names, (
+        "stage-suffixed slug must remain orphan-eligible even though its root is covered"
     )
 
 

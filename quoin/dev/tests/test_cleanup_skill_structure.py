@@ -229,3 +229,50 @@ def test_no_literal_tilde_claude():
 
 def test_deployed_copy_sync():
     print("  SKIP  test_deployed_copy_sync — requires install.sh to have run; verify via: diff quoin/skills/cleanup/SKILL.md ~/.claude/skills/cleanup/SKILL.md")
+
+
+# ── 15. IVG-137 T-06: session temp-file sweep (sessions/*.body.tmp, *.tmp) ────
+
+def test_session_temp_file_sweep_step_present():
+    text = _text()
+    assert "## Step 5b" in text or "Step 5b." in text, (
+        "cleanup/SKILL.md is missing the Step 5b session temp-file sweep block (IVG-137 T-06)."
+    )
+
+
+def test_session_temp_file_globs_present():
+    text = _text()
+    assert "*.body.tmp" in text, (
+        "cleanup/SKILL.md must reference the '*.body.tmp' glob for the session temp-file sweep."
+    )
+    assert "sessions" in text and "*.tmp" in text, (
+        "cleanup/SKILL.md must reference the 'sessions/*.tmp' glob for the session temp-file sweep."
+    )
+
+
+def test_session_temp_file_sweep_never_touches_md():
+    text = _text()
+    assert "real `*.md`" in text or "no .md session file" in text.lower() or (
+        "never touches" in text.lower() and "session" in text.lower()
+    ), (
+        "cleanup/SKILL.md must state the session temp-file sweep never touches real .md session files."
+    )
+
+
+def test_session_temp_file_sweep_uses_trash_move():
+    """The Step 5b block itself must call trash_move (not just mention it elsewhere)."""
+    lines = _lines()
+    step5b_idx = _line_index(lines, "Step 5b")
+    assert step5b_idx is not None, "cleanup/SKILL.md missing Step 5b heading"
+    # trash_move should appear within a reasonable window after Step 5b's heading
+    window = "\n".join(lines[step5b_idx:step5b_idx + 15])
+    assert "trash_move" in window, (
+        "cleanup/SKILL.md Step 5b must call trash_move for session temp-file candidates."
+    )
+
+
+def test_dry_run_mentions_session_temp_files():
+    text = _text()
+    assert "SESSION TEMP FILES" in text, (
+        "cleanup/SKILL.md --dry-run report must include a SESSION TEMP FILES section (IVG-137 T-06)."
+    )

@@ -85,6 +85,20 @@ never invokes another workflow phase.
   word-boundary-aware check). Two prompt groups: RECENT (within last 7 days) and HISTORICAL
   (older). User confirms each group separately. Confirmed orphans are treated as `yes` for
   this run only; the flag is permanently flipped to `no` after the daily-cache write succeeds.
+- Covered-but-due reconciliation: BEFORE orphan recovery runs, `--recover-orphans` invocations
+  auto-flip sessions where `end_of_day_due: yes` AND the task-name slug (via the same
+  word-boundary/base-slug technique as orphan detection) IS already present in a daily file body
+  — the mirror-image case of an orphan. These flips complete before the run's authoritative
+  session-selection window is computed, and are outside the daily-cache build set (that work was
+  already captured). Opt-out via a runtime-specific disable knob. Deliberately scoped to a
+  documented subset of the slug space this round (e.g. auto-generated orchestrator-suffixed
+  sessions) — a broader suffix-family reconciliation is out of scope and must not be silently
+  widened without a dedicated collision-safety pass.
+- Finalized-task digest preservation: a session already flipped to `end_of_day_due: no` by the
+  end_of_task skill (see that skill's contract) but carrying a same-provenance marker dated within
+  the current processing window is still included in the daily-cache build (so finalized-task work
+  remains visible in "Completed today") even though its flag is already `no`; the flip step for
+  such a session is a no-op.
 - Crash safety: the `end_of_day_due: yes` → `no` flip happens ONLY after the daily-cache
   write succeeds. A crashed run MUST NOT mark sessions as processed.
 - Resume-cookie discipline: writer MUST refuse to include any field outside the allowlist

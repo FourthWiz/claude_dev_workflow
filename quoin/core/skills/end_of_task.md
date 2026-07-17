@@ -43,6 +43,11 @@ stage-aware resolver.
   user supplied non-empty text.
 - The per-task session-state file updated to status `completed` with branch and
   commit metadata.
+- The finalized task's own session-state files (base task slug, and its
+  orchestrator-sibling file if one exists) rewritten with `end_of_day_due: no`
+  and a `finalized_by_end_of_task: <date>` provenance marker, via one
+  deterministic operation (not a per-file loop). Opt-out via a runtime-specific
+  disable knob.
 - An aggregated cost summary at `.workflow_artifacts/<task-name>/cost-summary.json`
   recording per-phase, per-model, and grand totals.
 - A finalization preflight record at `.workflow_artifacts/<task-name>/eot-preflights.json`
@@ -90,6 +95,14 @@ stage-aware resolver.
   at session open per shared cost-tracking rules.
 - The skill MUST tolerate missing optional inputs (missing prior lessons file,
   missing prior session state, empty cost ledger) without aborting.
+- The skill MUST flip `end_of_day_due: no` and write a `finalized_by_end_of_task`
+  provenance marker on the finalized task's own session-state files (exact slug
+  match on the task's own name, and its `-orchestrator`-suffixed sibling if one
+  exists — never another task's sessions), AFTER the branch has been pushed and
+  the session-state file marked completed. This step is best-effort: a runtime
+  MAY skip it via a disable knob or on tooling failure without aborting
+  finalization; a skipped flip leaves those sessions to surface as ordinary
+  backlog on the next end_of_day run instead of being silently lost.
 
 ## Out of scope
 

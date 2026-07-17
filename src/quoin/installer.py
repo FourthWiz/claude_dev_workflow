@@ -43,6 +43,8 @@ TIER1_MEMORY_FILES = (
     "verification-guide.md",
     # Added checkpoint-spec-harness: /checkpoint subsystem behavior spec (Tier-1 memory file)
     "checkpoint-spec.md",
+    # Added IVG-137: opt-in /schedule EOD cron recipe (Tier-1 memory file)
+    "eod-refresh-routine.md",
 )
 
 # T-05: canonical skill list — must match quoin/skills/ on disk exactly

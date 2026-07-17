@@ -27,4 +27,11 @@ Skill-side picker knobs (read inline in `checkpoint/SKILL.md`, NOT hook constant
 - `QUOIN_RESTORE_STALE_DAYS` (default 1 day) — maximum age for a checkpoint to be silently auto-picked; candidates older than this trigger a loud warning and prefer B3 synthesis. **NOT a hook constant** — read inline at the picker site in `checkpoint/SKILL.md` as `${QUOIN_RESTORE_STALE_DAYS:-1}`; no hook reads it; do NOT add to `_lib.sh`.
 - `QUOIN_PICKER_DEDUP_WINDOW` (default 7 days) — window for deduplicating voluntary vs precompact checkpoint pairs.
 
+Skill-side opt-out knobs (IVG-137, read inline in `end_of_day/SKILL.md` / `end_of_task/SKILL.md`, NOT hook constants — do NOT add to `_lib.sh`):
+- `QUOIN_DISABLE_EOD_RECONCILE=1` — skips `/end_of_day --recover-orphans`'s Step 0a covered-but-due
+  auto-flip pre-pass (falls through to today's Step 0 orphan-only behavior).
+- `QUOIN_DISABLE_EOT_FLAG_FLIP=1` — skips `/end_of_task` Sub-phase B's single-invocation
+  `--flip-finalized-task` flag-flip + `finalized_by_end_of_task` marker step (finalized sessions
+  remain `end_of_day_due: yes` and surface as ordinary backlog on the next `/end_of_day`).
+
 Verbose details: `quoin/docs/hooks-guide.md`.

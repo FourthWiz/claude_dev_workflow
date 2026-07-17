@@ -147,6 +147,54 @@ the normal session-selection (Step 3). The procedure identifies session files th
 NEVER appeared in any daily-cache file body — these sessions were silently skipped and their
 work was never captured.
 
+**Step 0a: Reconcile covered-but-due sessions (runs BEFORE orphan detection below; mirror image of the orphan procedure — orphans are flag=no-but-uncovered, this is flag=yes-but-already-covered):**
+
+If `QUOIN_DISABLE_EOD_RECONCILE=1` is set, skip this step entirely and proceed straight to the
+orphan detection procedure below (fail-OPEN default — today's Step 0 behavior, unchanged). If the
+shared helper script is unavailable for any reason, also skip Step 0a and fall through unchanged.
+
+1. Run (dry-run — the script makes no writes for this flag):
+   ```bash
+   python3 __QUOIN_HOME__/core/scripts/select_unprocessed_sessions.py --reconcile-covered --project-root <root>
+   ```
+   Parse two labelled lists from stdout: `COVERED:` (sessions with `end_of_day_due: yes` whose
+   slug — via the same guarded base-slug derivation `find_orphans()` uses — is already present in
+   a daily-cache body, i.e. should have been flipped to `no` already but wasn't) and `UNCOVERED:`
+   (genuine backlog, unchanged from today's classification). Round 4 scope note: a phase/stage-
+   suffixed slug (e.g. `foo-review`, `foo-s3-implement`) whose root task IS covered still classifies
+   `UNCOVERED` here — this is documented, intended behavior for this round (only the `-orchestrator`
+   suffix is reconciled), not a bug.
+2. For each file in `COVERED:`, atomically flip `end_of_day_due: no` — same mechanism as Step 3d:
+   open the file, replace the `end_of_day_due: yes` line with `end_of_day_due: no`, write to
+   `<path>.tmp`, then `os.rename(tmp, path)`.
+3. Print the flipped list for audit: "Reconciled N already-captured sessions: <paths>." If N is 0,
+   print "No covered-but-due sessions to reconcile."
+4. **Hard ordering rule:** every `COVERED:` file's flip MUST complete on disk BEFORE the mandatory
+   `select_unprocessed_sessions.py --show-window` invocation that opens Step 2 below — otherwise a
+   covered-but-still-`yes` file would leak into `script_file_list`/`in_scope` and get built into
+   that day's daily cache a second time.
+5. Covered auto-flips from this step are OUTSIDE `in_scope` for the Step 3 build — that work was
+   already captured in an earlier daily body, so these files do NOT enter the Step 3 daily-cache
+   build and do NOT enter the §V side-effect predicate (which only inspects `in_scope`).
+6. This reconciliation runs ONLY inside `--recover-orphans` invocations, not on every `/end_of_day`
+   run (kept opt-in per the plan's "one-time reconciliation mode" framing — see Open questions).
+7. Because `find_orphans()` (used by the orphan-detection procedure immediately below) shares the
+   same guarded base-slug derivation as this step's `find_covered_due_sessions()`, a covered
+   `<task>-orchestrator` session just flipped to `no` here is never re-surfaced as an orphan by the
+   orphan-detection procedure that runs next in the same `--recover-orphans` invocation — both
+   procedures agree on the same base-slug coverage verdict.
+
+**One-time validation before relying on this by default:** run
+`python3 __QUOIN_HOME__/core/scripts/select_unprocessed_sessions.py --reconcile-covered
+--project-root <root>` (dry-run, no writes) against the real backlog and manually eyeball the
+`COVERED:`/`UNCOVERED:` partition — specifically confirm `-orchestrator.md` files classify
+correctly. Separately count, from the same dry-run pass, how many `UNCOVERED:` files are
+phase/stage-suffixed (`-review`, `-implement`, `-pr`, `-critic-rN`, `-plan`, `-revise`, `-stageN`,
+`-sN`, letter-indexed sub-stages, etc.) versus how many are `-orchestrator`-suffixed — report both
+counts separately in the session-state file. These two populations are NOT reconciled the same way
+this round (only `-orchestrator` is fixed); recording the phase/stage-suffixed count explicitly
+keeps that residual visible rather than silently folded into a single aggregate number.
+
 **Orphan detection procedure (proc:T-19):**
 1. Scan all session files under `.workflow_artifacts/memory/sessions/`. For each with
    `end_of_day_due: no`, extract the slug (the portion of the filename AFTER the date prefix
@@ -197,16 +245,16 @@ Optional sections: `## Decisions made` (important decisions and rationale), `## 
 **First, compute this run's processing window (once, shared with Step 3).** Run the shared helper — this is the AUTHORITATIVE, single invocation for the whole `/end_of_day` run; do not hand-compute the window and do not run it a second time in Step 3:
 
 ```bash
-python3 __QUOIN_HOME__/core/scripts/select_unprocessed_sessions.py --lower-bound-source daily --project-root <root> --show-window
+python3 __QUOIN_HOME__/core/scripts/select_unprocessed_sessions.py --lower-bound-source daily --project-root <root> --show-window --include-finalized-marked
 ```
 
-Parse the first output line `WINDOW: <lower_bound>..<today>` for `lower_bound` and `today` — the script derives both itself, so no manual date arithmetic is required. The remaining stdout lines are `script_file_list`, reused in Step 3.
+Parse the first output line `WINDOW: <lower_bound>..<today>` for `lower_bound` and `today` — the script derives both itself, so no manual date arithmetic is required. **Stdout parse rule (amended):** lines prefixed neither `WINDOW:` nor `FINALIZED:` are `script_file_list`, reused in Step 3. Lines prefixed `FINALIZED: <path>` are `finalized_marked` — in-window sessions that a prior `/end_of_task` run already flipped to `end_of_day_due: no` via its `--flip-finalized-task` step (see end_of_task SKILL.md Sub-phase B), but which still need to appear in THIS run's "Completed today" digest since it hasn't run since. Do NOT fold `FINALIZED:` lines into `script_file_list` — a literal reading of the old wording ("the remaining stdout lines are script_file_list") would incorrectly include them, and the `FINALIZED: ` prefix makes those lines invalid paths if mis-parsed that way.
 
 (`--recover-orphans` runs only) `confirmed_orphans` = the session files confirmed via Step 0's RECENT/HISTORICAL orphan prompts, treated as `end_of_day_due: yes` for THIS run only. The script structurally cannot see these — they are still `end_of_day_due: no` on disk. Define:
 
-`in_scope = script_file_list ∪ confirmed_orphans`
+`in_scope = script_file_list ∪ confirmed_orphans ∪ finalized_marked`
 
-This union — not `script_file_list` alone — is the definitive set for BOTH the Step 3 daily-cache build and the Step 3d flag-flip. On a normal run (no `--recover-orphans`, or none confirmed), `confirmed_orphans` is empty and `in_scope == script_file_list` — unchanged behavior.
+This union — not `script_file_list` alone — is the definitive set for BOTH the Step 3 daily-cache build and the Step 3d flag-flip. `finalized_marked` sessions are `end_of_day_due: no` by construction (flipped by `/end_of_task`'s single-invocation flip step) — they enter the Step 3 build (so finalized-task work still appears in "Completed today") but Step 3d's flip is a no-op on them (already `no` — idempotent, no special-casing needed). On a normal run (no `--recover-orphans`, none confirmed, and no finalized-marked sessions in window), `confirmed_orphans` and `finalized_marked` are both empty and `in_scope == script_file_list` — unchanged behavior. The `finalized_marked` union does not affect §V's side-effect predicate: those sessions are treated identically to any other already-`no` file.
 
 The script is authoritative for selection. The fallback lower_bound-discovery prose in Step 3 below is retained ONLY as an explanatory fallback for when the script is unavailable.
 

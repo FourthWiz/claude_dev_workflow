@@ -123,7 +123,7 @@ Read `<project-root>/.workflow_artifacts/memory/resume-cookie.md` if present.
 - **If present, check `expires` field:** if `expires` < now (ISO comparison), the cookie is stale — ignore it and continue to Step 1.
 - **If present and fresh:** use the cookie's `task`, `last_skill`, `branch`, `dirty_count`, and body ("what's next" hint) to seed the Step 5 briefing. Note the task and branch at the start of the briefing so the user knows what was active yesterday.
 
-**Banner check (compose with Step 1 — signal B):** while reading session files for the briefing, also check `.workflow_artifacts/memory/sessions/` for any session-state files written within the last 36 hours that have `end_of_day_due: yes`. Count them as M. If M > 0, signal B is positive. Signal B is combined with signal A (the insights-file check in Step 1) in a unified banner — see Step 1 for the combined rule.
+**Banner check (compose with Step 1 — signal B):** while reading session files for the briefing, also check `.workflow_artifacts/memory/sessions/` for any session-state files written within the last 36 hours that have `end_of_day_due: yes`. Count them as M. If M > 0, signal B is positive, and also compute `all_today` (T-04): compare each flagged file's `<YYYY-MM-DD>` filename-prefix date against today's date as plain ISO strings — `all_today = true` only if every flagged file's prefix equals today's date. Signal B (with `all_today`) is combined with signal A (the insights-file check in Step 1) in a unified banner — see Step 1 for the combined rule.
 
 ### Step 1b: Sentinel-health check (read-only, lightweight)
 
@@ -187,12 +187,22 @@ If a task context is active: append your session to `.workflow_artifacts/<task-n
 
 **Signal A:** look for `.workflow_artifacts/memory/daily/insights-<yesterday>.md` (yesterday's date). If it exists, count entries tagged `Promote?: yes` or `Promote?: maybe`. Let N = that count (0 if none or file absent).
 
-**Signal B:** (set in Step 1a) — count of session-state files written in the last 36 hours with `end_of_day_due: yes`. Let M = that count.
+**Signal B:** (set in Step 1a) — count of session-state files written in the last 36 hours with `end_of_day_due: yes`. Let M = that count. When M > 0, also compute `all_today`: true iff EVERY flagged session's filename date prefix (`<YYYY-MM-DD>-<task>.md`) equals today's date (ISO string compare — ISO date prefixes sort/compare correctly as plain strings, no arithmetic needed); false if any flagged session's date prefix predates today.
 
-**Unified banner (fire if A OR B is positive, i.e. N > 0 OR M > 0):**
-> "⚠ Yesterday's `/end_of_day` did not fire — [N insight(s) pending and/or M session(s) unflushed]. Recommend running `/end_of_day` before continuing."
-> "Want to run `/end_of_day` now or skip?"
-- If they want to run it: invoke `/end_of_day` inline before continuing (promotion flow from `/end_of_day` Step 3b)
+**Unified banner composition (T-04 / Round 2 MIN-2 — fire if A OR B is positive, i.e. N > 0 OR M > 0):**
+- **Signal A alone (N > 0, M = 0):** no flagged session exists, so there is no date to branch on — keep the existing unconditional recommendation unchanged (do NOT attempt a same-day/cross-day branch with nothing to compare):
+  > "⚠ Yesterday's `/end_of_day` did not fire — N insight(s) pending. Recommend running `/end_of_day` before continuing."
+  > "Want to run `/end_of_day` now or skip?"
+- **Signal B alone (M > 0, N = 0), `all_today = true`** (every flagged session dated today — same-day case):
+  > "⚠ M session(s) unflushed today. Recommend running `/checkpoint` to save your place."
+  > "Want to run `/checkpoint` now or skip?"
+- **Signal B alone (M > 0, N = 0), `all_today = false`** (a flagged session predates today — cross-day case, a prior day was never wrapped up):
+  > "⚠ M session(s) unflushed — a prior day was never wrapped up. Recommend running `/end_of_day` before continuing."
+  > "Want to run `/end_of_day` now or skip?"
+- **Both signals positive (N > 0 AND M > 0):** the banner follows signal B's branch (a flagged session's date is available to branch on) and separately still mentions the pending insights:
+  > "⚠ Yesterday's `/end_of_day` did not fire — N insight(s) pending and M session(s) unflushed [today | since a prior day]. Recommend running `/checkpoint` [or `/end_of_day` before continuing, if `all_today = false`]."
+  > "Want to run it now or skip?"
+- If they want to run the recommended command: invoke it inline before continuing (the promotion flow from `/end_of_day` Step 3b applies whenever `/end_of_day` is the recommendation, including the `/checkpoint`-recommended paths where the user chooses to run `/end_of_day` instead)
 - If they skip: proceed normally
 
 If neither signal is positive (N = 0 AND M = 0), skip this step silently.

@@ -133,15 +133,30 @@ except Exception:
 fi
 
 # STEP 6: Extract task name for the nudge message
-task_name=$(basename "$RECENT_FILE" .md | sed 's/^[0-9]*-[0-9]*-[0-9]*-//')
+_recent_fname=$(basename "$RECENT_FILE" .md)
+task_name=$(printf '%s' "$_recent_fname" | sed 's/^[0-9]*-[0-9]*-[0-9]*-//')
 
-# Banner shape mirrors quoin/hooks/sessionstart.sh:69 and quoin/skills/start_of_day/SKILL.md Step 1 — keep in sync; drift test: quoin/dev/tests/test_lifecycle_banner_drift.sh
+# T-04: same-day/cross-day branch — ISO-date filename prefix vs today (reuses STEP 5b's
+# `today`, already computed above), compared as integers (portable on bash 3.2 / dash).
+_recent_date_num=$(printf '%s' "$_recent_fname" | cut -c1-10 | tr -d '-')
+_today_num=$(printf '%s' "$today" | tr -d '-')
+_past_day=0
+case "$_recent_date_num" in
+  ''|*[!0-9]*) ;;  # malformed prefix — skip date comparison, don't misclassify
+  *) [ "$_recent_date_num" -lt "$_today_num" ] 2>/dev/null && _past_day=1 ;;
+esac
+
+# Banner shape mirrors quoin/hooks/sessionstart.sh and quoin/adapters/claude/skills/start_of_day/SKILL.md Step 1 — keep in sync; drift test: quoin/dev/tests/test_lifecycle_banner_drift.sh
 # STEP 7: Compose and emit ONE systemMessage from the two independent signals
 # (S-4 nudge + §V banner) — preserves the single-object hook-output contract (MAJ-B).
 # SessionEnd output channel is systemMessage (not additionalContext — confirmed by T-00 spike).
 nudge=""
 if [ "$eod_due" = 1 ]; then
-  nudge="[quoin-S-4] Session ending with unfinished task: ${task_name} — run /checkpoint to save your place (resume next session) or /end_of_day to wrap up the workday."
+  if [ "$_past_day" -eq 1 ]; then
+    nudge="[quoin-S-4] Session ending with unfinished task: ${task_name} — a prior day was never wrapped up; run /end_of_day to wrap up the workday."
+  else
+    nudge="[quoin-S-4] Session ending with unfinished task: ${task_name} — run /checkpoint to save your place (resume next session) or /end_of_day to wrap up the workday."
+  fi
 fi
 msg="$nudge"
 if [ -n "$verify_msg" ]; then
