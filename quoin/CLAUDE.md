@@ -394,13 +394,11 @@ All hooks fail-OPEN (exit 0 on any error). jq is a soft-required dependency. Tun
 
 Four skills handle session lifecycle at different granularities (v3 lifecycle separation):
 - `/checkpoint` — general-purpose state-save (mid-session, between tasks, between sessions). Three save modes: `--mode restore` (default), `--mode load-as-reference`, `--mode mid-agent`. Auto-detects compact-already-ran (auto-compact+pending-restore skip path) and high-util state (save immediately + surface fresh-session-or-compact options); see lifecycle-guide.md for full rules. Paths-not-content rule (D-04). `/checkpoint --restore` re-hydrates in fresh session.
-- `/end_of_day` — rolls up daily session state into `.workflow_artifacts/memory/daily/<date>.md`. Touches `lessons-learned.md` if insights promoted. Auto-invokes `/sleep`.
+- `/end_of_day` — rolls up daily session state into `.workflow_artifacts/memory/daily/<date>.md`. Touches `lessons-learned.md` if insights promoted. Auto-invokes `/sleep`. Opt-in cron backstop (IVG-137): `eod-refresh-routine.md`.
 - `/sleep` — Haiku-tier. Scans daily insights + session files (30-day window). Three-bucket decisions: Promote → `lessons-learned.md`; Soft-Forget → `forgotten/<date>.md`; Middle-Band → deferred. Subcommands: `--restore <pattern>`, `--purge --older-than 90d`, `--escalate`, `--dry-run`. Writes ONLY to `lessons-learned.md` + `forgotten/`; never touches `~/.claude/projects/<hash>/memory/`.
 - `/cleanup` — Haiku-tier. Trash-moves stale sentinels (all sessions except freshest/current, identified by UUID-suffix skip before any age check) and old checkpoints into recoverable `trash/<date>/` archive. Recovery via manual `mv` from `.workflow_artifacts/memory/trash/<date>/` — NOT `/sleep --restore` (which only reads `forgotten/` text entries). Auto-fires as the FIRST sub-block of `/checkpoint` Step 1.5 (default-on, `--no-cleanup` opt-out; skipped at high-util/mid-agent for compress-first ordering). Env knobs: `QUOIN_CLEANUP_SENTINEL_WINDOW` (default 1d), `QUOIN_CLEANUP_CKPT_WINDOW` (default 30d).
 
 Session hooks (S-4): `sessionstart.sh` + `sessionend.sh` check `end_of_day_due: yes` (36 h window); non-blocking informational banners; 5-min sentinel dedup. Full subcommand contracts, mode auto-detection rules, restore-picker logic, and `--after-compact`/`--defer` semantics: `__QUOIN_HOME__/memory/lifecycle-guide.md`.
-
-**Optional automated `/end_of_day` refresh:** `/end_of_task`'s session flag-flip (IVG-137) is the primary, reliable mechanism for keeping session state from accumulating as unflushed orphans. `eod-refresh-routine.md` documents an OPT-IN, off-by-default `/schedule` cron recipe as a secondary backstop (same cloud-sandbox-cannot-read-Drive caveat as `discovery-refresh-routine.md`). Env knobs: `QUOIN_EOD_REFRESH_CRON` (cron schedule, default `0 22 * * *`), `QUOIN_DISABLE_EOD_RECONCILE`, `QUOIN_DISABLE_EOT_FLAG_FLIP`.
 
 ### /sleep importance signals
 
