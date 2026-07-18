@@ -138,6 +138,32 @@ STOP, flag the discovery to the user with impact assessment, and let the user
 decide whether to re-plan or proceed with a minor adjustment. The skill MUST
 NOT silently deviate.
 
+## Automated verify-fix loop
+
+After a task's code and tests are written, and before marking the task
+complete, the skill MUST run a bounded verify-and-fix loop:
+
+- Run linters and the tests covering the affected area for that task.
+- If the affected-area check reports a real failure, feed the structured
+  diagnostic output (file/line-numbered linter findings, test failure detail)
+  back to the implementer and retry with a targeted fix, bounded by a
+  configurable retry count.
+- If the affected-area check itself is undeterminable (e.g. an ambiguous or
+  unresolvable repository state) rather than reporting a genuine failure,
+  degrade gracefully — emit a one-line warning and proceed without consuming
+  a retry attempt.
+- If no linter or test runner is available at all, fail-OPEN: emit a one-line
+  warning and degrade to the skill's prior (pre-loop) behavior.
+- When retries are exhausted without a clean result, the skill MUST NOT
+  silently mark the task complete. It MUST record the unfixed failures in
+  session state and surface them in the phase's final summary to the user.
+- Each retry attempt MUST be logged to the cost ledger so retry cost stays
+  visible.
+
+This loop runs per task, not once per implementation session, so it must
+scope its checks to the current task's changes rather than the full
+accumulated diff of a multi-task run.
+
 ## Out of scope
 
 - The specific model tier used for code generation — adapter-specific.
@@ -158,6 +184,9 @@ NOT silently deviate.
   dispatches).
 - Cost-ledger row format — adapter-specific plumbing.
 - Pull-request creation tooling — adapter-specific.
+- The verify-fix loop's retry-count env-knob name, the affected-area helper
+  script name, its exit-code plumbing, and the touched-files diff mechanism —
+  all adapter-specific.
 
 ## v3-format detection rule
 

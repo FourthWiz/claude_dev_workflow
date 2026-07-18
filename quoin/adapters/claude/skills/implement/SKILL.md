@@ -342,6 +342,7 @@ This matches the §0 dispatch fail-OPEN pattern (architecture I-01): cost guardr
 - Integration tests for changed interaction points
 - Run existing tests after your changes to catch regressions
 - If tests fail, fix the issue before moving on
+- After each task's code+tests are written, run the automated verify-fix loop (below) before marking the task ✓
 
 ### Integration safety
 - When modifying shared code (utilities, base classes, interfaces), check all callers
@@ -422,6 +423,89 @@ After committing changes for a task, update the knowledge cache for files you mo
 - If the repo doesn't have a row, add one
 
 **Error handling:** Cache writes are best-effort. If any cache write fails (disk error, permission issue, unexpected format), warn the user and continue. Implementation is the priority — a missed cache update is corrected on the next `/discover` run. Never fail a task or skip a commit because of a cache write error.
+
+### Automated verify-fix loop (post-task)
+
+After a task's code and tests are written, and BEFORE marking the task ✓ and committing, run this bounded verify-fix loop. It orchestrates the existing `__QUOIN_HOME__/scripts/affected_tests.py` — no new wrapped script is added.
+
+**Retry bound:** `QUOIN_VERIFY_RETRIES` (env knob, default `3`).
+
+**Step 1 — Resolve PROJECT_ROOT.** Reuse the §0b walk-up idiom exactly: walk up from cwd to the nearest ancestor containing `.workflow_artifacts/`.
+
+**Step 2 — Resolve REPO_ROOT (anchored SEPARATELY from PROJECT_ROOT — never conflate the two).**
+
+```bash
+REPO_ROOT=""
+if git -C "$PROJECT_ROOT" rev-parse --show-toplevel >/dev/null 2>&1; then
+  REPO_ROOT="$(git -C "$PROJECT_ROOT" rev-parse --show-toplevel)"
+else
+  # depth-1 scan for the single directory holding .git — mirrors
+  # affected_tests.py's own resolve_repo()/discover_repos() depth-1 scan;
+  # do not re-derive new resolution logic.
+  candidates=()
+  for d in "$PROJECT_ROOT"/*/; do
+    [ -d "${d}.git" ] && candidates+=("${d%/}")
+  done
+  if [ "${#candidates[@]}" -eq 1 ]; then
+    REPO_ROOT="${candidates[0]}"
+  else
+    echo "[quoin-verify: ambiguous or missing git repo under PROJECT_ROOT; skipping verify-fix loop for this task]"
+    # skip the verify-fix loop entirely for this task (degrade, do NOT retry)
+  fi
+fi
+```
+
+This is a single-repo-scope boundary: 0 or >1 candidate `.git` directories under `PROJECT_ROOT` is ambiguous and out of scope for disambiguation — degrade with the warning above and proceed without the loop for that task (do not consume a retry).
+
+**Step 3 — Retry loop (only when REPO_ROOT resolved).**
+
+```
+attempt = 0
+while attempt <= QUOIN_VERIFY_RETRIES:
+    tracked   = git -C "$REPO_ROOT" diff --name-only HEAD
+    staged    = git -C "$REPO_ROOT" diff --name-only --cached
+    untracked = git -C "$REPO_ROOT" ls-files --others --exclude-standard
+    touched   = dedup(tracked + staged + untracked)
+
+    if touched is empty:
+        echo "[quoin-verify: no touched files detected; skipping]"
+        break   # nothing to verify — distinct from a degrade/failure note
+
+    # best-effort linter (fail-OPEN, D-03)
+    if a linter is discoverable (config file present AND binary importable/on PATH):
+        run it; treat file:line findings like a failure below
+    else:
+        echo "[quoin-verify: no linter configured; skipping lint]"   # once per task
+
+    run: python3 __QUOIN_HOME__/scripts/affected_tests.py --files "${touched[@]}" --repo-root "$REPO_ROOT" --format text
+    code=$?
+
+    if code == 0:       # affected suite green / docs-only / clean tree
+        break            # mark task ✓, commit, proceed
+    if code == 1:        # affected suite RED — the ONLY retry trigger
+        if attempt == QUOIN_VERIFY_RETRIES:
+            record the unfixed failures in session-state ## Unfinished work
+            surface them in the inline step summary
+            break         # stop; do NOT silently continue or commit a known-RED task
+        # read the pytest failure detail from THIS tool result — affected_tests.py
+        # runs pytest with inherited stdout, so diagnostics are already visible; no
+        # separate feedback-capture step is needed
+        apply a targeted fix
+        uuid = python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$PROJECT_ROOT" --phase implement
+        append to cost-ledger.md: "<uuid> | <date> | implement | sonnet | task | \"verify-retry <attempt+1>/<QUOIN_VERIFY_RETRIES> on <task-id>\" | 0"
+        attempt += 1
+        continue
+    # code in {2,3,4}, or FileNotFoundError (script missing) — undeterminable/absent,
+    # NOT a test failure — degrade, do NOT consume a retry
+    echo "[quoin-verify: affected_tests.py exit <code> (<exit_reason>); degrading to current behavior]"
+    break
+```
+
+**Exit-code map (D-02):** exit `0` → suite green (or docs-only/clean tree) → proceed to mark the task ✓. Exit `1` → affected suite RED → the only code that enters the retry loop above. Exit `2`/`3`/`4` (argparse error, undeterminable git state such as a stacked branch with no upstream, unmatched sources, or a missing/timed-out pytest) → emit the one-line fail-OPEN warning above and degrade — do NOT consume a retry; the post-implement `/gate` remains the hard backstop. `affected_tests.py` missing entirely (`FileNotFoundError`) → same fail-OPEN degrade path.
+
+**Cost-ledger rows:** each retry appends an informational row reusing the ACTIVE `/implement` session's own UUID (obtained via `get_session_uuid.py --project-path "$PROJECT_ROOT" --phase implement` — the path is pinned explicitly, never left to default to `$(pwd)`), in the standard 7-column shape: `<uuid> | <date> | implement | sonnet | task | "verify-retry <n>/<QUOIN_VERIFY_RETRIES> on <task-id>" | 0`. These are audit rows, not separate cost-bearing sessions.
+
+**Exhausted retries:** stop (do not commit the task in a known-RED state), list the unfixed failures both in the session-state `## Unfinished work` section and in the final inline step summary, and let the user or a follow-up `/implement` dispatch decide how to proceed.
 
 ## Commit messages
 
