@@ -33,6 +33,16 @@ and a post-implementation checkpoint.
    keep changes scoped to the current plan.
 7. Run relevant tests and static checks as tasks complete. Broaden checks when
    the change touches shared contracts or cross-module behavior.
+7a. After each task's code and tests are written, and before marking the task
+    complete, run a bounded verify-fix loop per the portable contract in
+    `quoin/core/skills/implement.md` (`## Automated verify-fix loop`): run
+    Codex-native linters and the tests covering the task's affected area;
+    on a real failure, retry with a targeted fix up to a bounded number of
+    attempts; if no linter or test runner is available, fail-OPEN and degrade
+    to the prior behavior with a one-line note; if retries are exhausted
+    without a clean result, do not mark the task complete — record the
+    residual failures in session state and the handoff so the next session
+    sees them.
 8. Update `<task-dir>/current-plan.md` task statuses as work completes.
 9. Update affected advisory cache entries under `.workflow_artifacts/cache/`
    when a cache exists. Cache updates are best-effort.
