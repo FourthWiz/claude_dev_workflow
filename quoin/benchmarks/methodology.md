@@ -247,3 +247,22 @@ are labeled "below minimum detectable effect."
 10. Claude Code vs Codex CLI 2026 comparison —
     https://www.morphllm.com/comparisons/codex-vs-claude-code (informs cross-agent
     comparison caveats)
+
+## Verify-Fix Loop Evidence (IVG-126)
+
+The automated post-task verify-fix loop added to `/implement` (see
+`### Automated verify-fix loop (post-task)` in
+`quoin/adapters/claude/skills/implement/SKILL.md`, and the portable contract
+in `quoin/core/skills/implement.md`) is expected to reduce how often a task
+reaches the post-implement `/gate` in a red state, since fixable failures are
+caught and repaired before the task is marked complete rather than surfacing
+only at the gate checkpoint.
+
+Reading this effect is an empirical benchmark-run comparison, not a
+code-level assertion: it requires running the `verify-fix-loop` scenario
+(see `scenarios/verify-fix-loop.md`) across a set of tasks with the loop
+enabled versus disabled (`QUOIN_VERIFY_RETRIES=0` disables it) and comparing
+the post-implement gate-failure rate between the two configurations. No such
+comparison run has been conducted yet; this section documents the intended
+evaluation procedure for a future calibration run, following the same
+pre-registration discipline as the pass-rate-per-dollar methodology above.
