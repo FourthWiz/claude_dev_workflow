@@ -149,6 +149,8 @@ def detect_type(filepath, type_override):
         return 'architecture-overview'
     if re.match(r'^architecture', name):
         return 'architecture'
+    if re.match(r'^security-review-', name):
+        return 'security-review'
     if re.match(r'^review-', name):
         return 'review'
     if re.match(r'^critic-response-', name):
