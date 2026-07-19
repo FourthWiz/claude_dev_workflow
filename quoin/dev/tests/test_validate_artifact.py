@@ -534,6 +534,7 @@ def test_review_allowed_section_set_matches_sidecar():
         '## Test Coverage',
         '## Risk Assessment',
         '## Recommendations',
+        '## Dimension Verdicts',
     ]
     assert review['allowed_sections'] == expected_allowed, (
         f"review allowed_sections drifted from expected:\n"

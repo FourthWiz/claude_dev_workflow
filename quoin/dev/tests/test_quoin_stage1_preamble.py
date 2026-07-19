@@ -97,7 +97,7 @@ CHEAP_TIER_SKILLS = [
 # file's parametrized lists (it is covered separately via MIGRATED_TO_ADAPTER paths).
 # Do NOT add `continue_work` here to "fix" the count — the gap is by design.
 
-# 10 Opus-tier skills — must NOT carry §0.
+# 11 Opus-tier skills — must NOT carry §0.
 OPUS_TIER_SKILLS = [
     "architect",
     "plan",
@@ -109,6 +109,7 @@ OPUS_TIER_SKILLS = [
     "discover",
     "review",
     "specify",
+    "security_review",
 ]
 
 YAML_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
@@ -233,7 +234,7 @@ def test_each_skill_preamble_substitutes_declared_model(skill):
 
 
 # -----------------------------------------------------------------------------
-# (d) None of the 9 Opus-tier skills carry §0 (catches accidental over-application).
+# (d) None of the 11 Opus-tier skills carry §0 (catches accidental over-application).
 # -----------------------------------------------------------------------------
 @pytest.mark.parametrize("skill", OPUS_TIER_SKILLS)
 def test_no_opus_tier_skill_has_preamble(skill):

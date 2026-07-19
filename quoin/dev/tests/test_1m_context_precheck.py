@@ -1,10 +1,10 @@
 """Parametrized regression tests for the post-dispatch 1M-credit recovery mechanism
-across all 19 §0 cheap-tier skills and all 7 §0' opus-tier skills.
+across all 19 §0 cheap-tier skills and all 9 §0' opus-tier skills.
 
 Background
 ----------
 IVG-73 introduced a §0-1m-context-precheck block (pre-dispatch model-name detection) to
-all 19 §0 skills and all 7 §0' skills. IVG-89 found this detection is dead code — the
+all 19 §0 skills and all 9 §0' skills. IVG-89 found this detection is dead code — the
 1M-context status is undetectable from inside the model (the model name never contains
 '1m'). The pre-dispatch precheck blocks have been deleted.
 
@@ -17,7 +17,7 @@ correctly:
   - §0' opus-tier: issue AskUserQuestion (abort/proceed) for the 1M-credit-class error,
     and also for any other non-1M dispatch error (D-06 — §0' never silently loses recovery).
 
-After IVG-89, the following are TRUE for all 26 skills:
+After IVG-89, the following are TRUE for all 28 skills:
   - No §0-1m-context-precheck-begin/end markers (deleted — Option A per gate D-03).
   - No §0prime-1m-context-precheck-begin/end markers (deleted from generator template).
   - No model-name substring detection ("if model_name contains '1m'" pattern).
@@ -57,7 +57,7 @@ MIGRATED_TO_ADAPTER: frozenset[str] = frozenset({
     # Phase 22 migrations
     "checkpoint", "cleanup", "continue_work", "next_steps", "sleep",
     # §0' targets — all adapter-path
-    "architect", "review", "init_workflow", "discover", "specify",
+    "architect", "review", "init_workflow", "discover", "specify", "security_review",
 })
 
 
@@ -109,6 +109,7 @@ SECTION0PRIME_TARGETS = [
     "init_workflow",
     "discover",
     "specify",
+    "security_review",
 ]
 
 # ---------------------------------------------------------------------------
@@ -614,7 +615,7 @@ class TestClassificationLogic:
         assert not missing, "Canonical-body equality failures:\n" + "\n".join(missing)
 
     def test_all_7_s0p_files_contain_core_substring(self):
-        """All 7 §0' Fail-OPEN paths contain the 1M core substring."""
+        """All 9 §0' Fail-OPEN paths contain the 1M core substring."""
         missing = []
         for skill_name in SECTION0PRIME_TARGETS:
             path = skill_md_path(skill_name)
