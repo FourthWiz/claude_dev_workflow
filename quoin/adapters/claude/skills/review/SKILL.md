@@ -209,6 +209,35 @@ If v3-format: read the body sections per format-kit.md §2 — ## Tasks is the s
 
 This skill requires the strongest available model (currently Claude Opus). Reviews demand the same depth of thinking as architecture and planning.
 
+## Profile detection and fan-out
+
+Read the task profile from the convergence summary at the top of `current-plan.md` (look for "Task profile: Small/Medium/Large"), or from the session-state file if the plan is unavailable. If the task profile cannot be determined, default to **Medium fan-out** (D-02) — an undetermined profile means MORE review, not less, mirroring `/gate`'s own default-to-Full fallback. A genuine Small task must be positively detected (`Task profile: Small` present) to skip fan-out.
+
+**Small — unchanged single-pass review.** Run the entire Review process below exactly as today: zero extra subagents, one `review-N.md` write. This branch is byte-path-identical to the pre-fan-out single-pass flow.
+
+**Medium/Large — parallel dimension fan-out.** Gather shared context ONCE at Step 1 of the Review process below (plan, architecture, diff via `git diff <base-branch>...HEAD`, changed-file set), then dispatch three parallel `model: "opus"` Agent subagents — one per dimension: **security**, **performance**, **architecture/integration**. Each subagent's prompt is focused to its dimension only, and carries the plan path, branch, and diff scope. Each subagent returns a structured block: `` `<verdict>APPROVED|CHANGES_REQUESTED|BLOCKED</verdict>` `` (the identical 3-value enum used everywhere in this contract — D-08) plus dimension-tagged issues (CRITICAL/MAJOR/MINOR, each with file:line and fix).
+
+- **Large ONLY:** the security dimension is dispatched as the dedicated `/security_review` OWASP pass — invoke its Fan-out contract (`quoin/adapters/claude/skills/security_review/SKILL.md` § Fan-out contract) rather than an inline security-focused prompt. The performance and architecture/integration dimensions are unchanged (inline focused prompts, same as Medium).
+- **Medium cost note (MIN-4):** Medium fan-out triples the review-phase subagent count (1 → 3 Opus dimension subagents) versus the pre-fan-out single pass — a material increase to the ~$2.99-$4.00 Medium cost envelope. This is an intended consequence of the default-to-Medium-fan-out safety posture (D-02), not an oversight — surfacing it here so a Medium-profile user sees the expected cost before `/review` runs.
+
+**Required-section ownership** (every V-07-required `review-N.md` section has a named producer):
+- `## For human` — parent's §5.3 Step 2 Haiku summary, unchanged.
+- `## Summary` — parent's own unchanged single-pass step, unchanged.
+- `## Plan Compliance` — parent Step 2, unchanged.
+- `## Spec Compliance` — parent Step 2b, unchanged.
+- `## Integration Safety` — the architecture/integration dimension subagent's findings, folded in verbatim by the parent at merge time.
+- `## Test Coverage` — parent's own Step 5 / Step 6b affected-area test gate, unchanged (dimension subagents do NOT run tests).
+- `## Risk Assessment` — parent Step 6, informed by all three dimensions' tagged issues.
+- `## Issues Found` — union of all three dimensions' tagged issues, each dimension-labeled.
+- `## Verdict` — merged worst-of (below).
+- `## Dimension Verdicts` (new optional section, Medium/Large only) — the per-dimension verdict table.
+
+So the three dimension subagents return ONLY verdict + tagged issues + (architecture/integration dimension only) an integration-safety writeup — they never synthesize For human, Summary, Plan Compliance, Spec Compliance, or Test Coverage; the parent retains those steps exactly as in the Small single-pass flow.
+
+**Ledger:** the parent appends ONE cost-ledger row per reviewer subagent (phase `review`, NOTE identifies the dimension). Subagent session UUIDs are not resolvable (lesson 2026-06-16) — use the `get_session_uuid.py` fallback/synthetic-UUID form; note-tag the dimension (e.g. `"review fan-out — security dimension"`).
+
+**Merge:** the parent computes the worst-of verdict (`BLOCKED` > `CHANGES_REQUESTED` > `APPROVED`) across all dimension verdicts, and writes ONE `review-N.md` via the existing §5.3 Class B mechanism below, adding a `## Dimension Verdicts` table (columns: dimension | verdict | top issue) and tagging each `## Issues Found` entry with its dimension. The top-level `## Verdict` is the merged worst-of. Step 6a (branch placement) and Step 6b (affected-area test gate) run once at parent level regardless of profile — unchanged.
+
 ## Review process
 
 ### Step 1: Gather context
@@ -368,11 +397,12 @@ Compose the format-aware body per the `review` artifact-type sections in format-
 - `## Verdict` — one line: `APPROVED`, `CHANGES_REQUESTED`, or `BLOCKED`. An `APPROVED` verdict asserts that the affected-area test suite is green (or N/A — no affected tests for a docs-only changeset), per the Step 6b hard precondition. Do NOT write `APPROVED` unless Step 6b was run and returned exit 0.
 - `## Plan Compliance` — caveman prose: how well implementation matches the plan; gaps.
 - `## Spec Compliance` — caveman prose: how well the implementation satisfies the task spec's acceptance criteria; GRANDFATHERED wording when no spec exists — write exactly `No spec — verified against plan only.`
-- `## Issues Found` — terse numbered list per severity (CRITICAL / MAJOR / MINOR), each item: description + Location (file:line) + Impact + Fix.
-- `## Integration Safety` — caveman prose: integration risk assessment.
+- `## Issues Found` — terse numbered list per severity (CRITICAL / MAJOR / MINOR), each item: description + Location (file:line) + Impact + Fix. On Medium/Large fan-out, each item is also dimension-labeled (security / performance / architecture-integration).
+- `## Integration Safety` — caveman prose: integration risk assessment. On Medium/Large fan-out, this is the architecture/integration dimension subagent's findings folded in verbatim by the parent.
 - `## Test Coverage` — caveman prose: test adequacy assessment.
 - `## Risk Assessment` — markdown table (columns: id / risk / status / notes).
 - `## Recommendations` — terse list: what to do next.
+- `## Dimension Verdicts` (Medium/Large fan-out only, OPTIONAL) — markdown table (columns: dimension / verdict / top issue), one row per dimension.
 
 Apply `format-kit.md` §1 pick rules per section. DO NOT include the `## For human` block yet — that's Step 2 + Step 3. **Step 1 pre-write sweep:** `(rm -f <path>.body.tmp <path>.tmp 2>/dev/null || true)` — clear stale leftovers before writing. Write the body to `<path>.body.tmp`.
 
