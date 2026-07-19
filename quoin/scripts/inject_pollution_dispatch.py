@@ -3,7 +3,7 @@
 inject_pollution_dispatch.py — Generator for §0' Pollution dispatch AND §0″ Minimum-tier guard.
 
 Inserts/refreshes the §0' Pollution dispatch block (and §0c Pidfile lifecycle for
-architect + review) AND the §0″ Minimum-tier guard block into the 8 Opus-tier
+architect + review) AND the §0″ Minimum-tier guard block into the 9 Opus-tier
 Claude adapter SKILL.md files at:
   quoin/adapters/claude/skills/<skill>/SKILL.md
 
@@ -41,7 +41,7 @@ ZC_HEADING = "## §0c Pidfile lifecycle"
 # template, --check regex, and drift test. Copy-paste from here; do not retype.
 MINTIER_HEADING = "## §0″ Minimum-tier guard (execute after §0 / §0c / §0’ if present — before skill body)"
 
-# 8 Opus-tier target skills — must carry §0'.
+# 9 Opus-tier target skills — must carry §0'.
 POLLUTION_TARGET_SKILLS = [
     "architect",
     "plan",
@@ -51,9 +51,10 @@ POLLUTION_TARGET_SKILLS = [
     "init_workflow",
     "discover",
     "specify",
+    "security_review",
 ]
 
-# 8 Opus-tier target skills — must carry §0″ (same set as POLLUTION_TARGET_SKILLS).
+# 9 Opus-tier target skills — must carry §0″ (same set as POLLUTION_TARGET_SKILLS).
 # Orchestrators /run and /thorough_plan are deliberately excluded (D-04):
 # orchestrators carry no §0/§0'/§0c today and route to correctly-tiered children.
 MINTIER_TARGET_SKILLS = [
@@ -65,6 +66,7 @@ MINTIER_TARGET_SKILLS = [
     "init_workflow",
     "discover",
     "specify",
+    "security_review",
 ]
 
 # Skills that also need §0c Pidfile lifecycle (inserted BEFORE §0').
@@ -387,6 +389,15 @@ DISPATCH_CONTRACTS = {
         "[no-redispatch]\\n/specify <task description>\\n"
         "Spec output path: .workflow_artifacts/<task>/spec.md",
     ),
+    "security_review": (
+        """\
+  Determine dispatch contract fields:
+    - Locate `current-plan.md` in the task directory if resolvable (resolve via path_resolve.py); else target the standalone `.workflow_artifacts/security-review/` dir (D-07).
+    - Get the current git branch (`git rev-parse --abbrev-ref HEAD`) -- the OWASP-style security pass reviews this branch's diff.
+""",
+        "[no-redispatch]\\n/security_review\\nBranch: <current git branch>\\n"
+        "OWASP security review -- Plan path: <absolute path to current-plan.md, if resolvable>",
+    ),
 }
 
 
@@ -504,7 +515,7 @@ def inject_mintier_block_into_file(skill: str, skill_md: pathlib.Path) -> None:
         # Refresh path (all re-runs after first injection)
         text = _replace_existing_block(text, MINTIER_HEADING, mintier_block)
     elif POLLUTION_HEADING in text:
-        # Insert path: all 7 skills have §0' (first run)
+        # Insert path: all 9 skills have §0' (first run)
         # §0' block ends at the next "## " heading STRICTLY AFTER POLLUTION_HEADING
         p_idx = text.index(POLLUTION_HEADING)
         next_h2_match = re.search(r"^## ", text[p_idx + len(POLLUTION_HEADING):], re.MULTILINE)
@@ -538,7 +549,7 @@ def _get_adapter_dir() -> pathlib.Path:
 
 
 def run_inject(*, dry_run: bool = False) -> int:
-    """Inject/refresh §0' (and §0c) AND §0″ into all 7 target adapter SKILL.md files.
+    """Inject/refresh §0' (and §0c) AND §0″ into all 9 target adapter SKILL.md files.
 
     Two loops:
     1. Loop over POLLUTION_TARGET_SKILLS — injects §0'/§0c (inject_blocks_into_file).
@@ -612,7 +623,7 @@ def run_inject(*, dry_run: bool = False) -> int:
 
 
 def run_check() -> int:
-    """--check mode: verify all 7 adapter SKILL.md files carry correct §0' (and §0c) AND §0″ blocks.
+    """--check mode: verify all 9 adapter SKILL.md files carry correct §0' (and §0c) AND §0″ blocks.
 
     Returns 0 if all files are fresh, 7 if any drift detected.
     Also verifies:
@@ -782,8 +793,8 @@ def run_check() -> int:
         for msg in drifted:
             print(f"DRIFT: {msg}", file=sys.stderr)
         return 7
-    print("inject_pollution_dispatch --check: all 7 adapter files are fresh")
-    print("inject_pollution_dispatch --check: all 7 §0doubleprime files are fresh")
+    print("inject_pollution_dispatch --check: all 9 adapter files are fresh")
+    print("inject_pollution_dispatch --check: all 9 §0doubleprime files are fresh")
     return 0
 
 
@@ -800,7 +811,7 @@ def main() -> int:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="Verify all 7 adapter SKILL.md files carry correct §0' blocks; exit 7 if any drift",
+        help="Verify all 9 adapter SKILL.md files carry correct §0' blocks; exit 7 if any drift",
     )
     args = parser.parse_args()
 

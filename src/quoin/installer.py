@@ -71,6 +71,7 @@ CANONICAL_SKILLS = (
     "revise-fast",
     "rollback",
     "run",
+    "security_review",
     "sleep",
     "specify",
     "start_of_day",
@@ -154,6 +155,7 @@ SKILL_OVERRIDES: dict[str, str] = {
     "weekly_review": "name-only",
     "next_steps": "name-only",
     "continue_work": "name-only",
+    "security_review": "name-only",
 }
 
 _MARKER_START = "# === DEV WORKFLOW START ==="
