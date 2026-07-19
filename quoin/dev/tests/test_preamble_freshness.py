@@ -117,3 +117,46 @@ class TestSizeBudget:
             f"Preamble for {skill} is {size} bytes, exceeds budget of {PREAMBLE_SIZE_BUDGET} bytes. "
             f"Trim the §3 slice or reduce glossary content."
         )
+
+
+class TestSection3SliceContent:
+    """Content regression guard (IVG-128 T-12, MAJ-1 round 2).
+
+    test_preamble_fresh above only compares committed-vs-regenerated source
+    hashes, which would have passed silently even under the original
+    hard-coded-line-window bug in read_format_kit_slice() (a shift in
+    format-kit.md's line numbers would still hash-match a *stale* preamble
+    if the preamble itself was never regenerated). This class additionally
+    confirms the regenerated [format-kit-§3-slice] body actually CONTAINS the
+    full text of "## §3 Pick rules for ambiguous content" through the
+    complete numbered item 3 — a lightweight content check that would have
+    caught the original bug. Uses a contains-check, not startswith: the
+    slice's actual first line is a blank line before the heading.
+    """
+
+    FULL_KIND_SKILLS = [
+        skill for skill, kind in SPAWN_TARGETS.items() if kind == "full"
+    ]
+
+    @pytest.mark.parametrize("skill", FULL_KIND_SKILLS)
+    def test_preamble_contains_section3_heading(self, skill):
+        p = _preamble_path(skill)
+        if not p.exists():
+            pytest.skip(f"Preamble for {skill} not present — presence test will catch this")
+        content = p.read_text(encoding="utf-8")
+        assert "## §3 Pick rules for ambiguous content" in content, (
+            f"Preamble for {skill} does not contain the §3 pick-rules heading. "
+            f"Run: python3 quoin/scripts/build_preambles.py"
+        )
+
+    @pytest.mark.parametrize("skill", FULL_KIND_SKILLS)
+    def test_preamble_contains_section3_item3_full_text(self, skill):
+        p = _preamble_path(skill)
+        if not p.exists():
+            pytest.skip(f"Preamble for {skill} not present — presence test will catch this")
+        content = p.read_text(encoding="utf-8")
+        assert "A risk with a long mitigation procedure" in content, (
+            f"Preamble for {skill} is missing the complete §3 pick-rules item 3 text. "
+            f"This is the regression the original hard-coded-line-window bug would have "
+            f"produced silently. Run: python3 quoin/scripts/build_preambles.py"
+        )

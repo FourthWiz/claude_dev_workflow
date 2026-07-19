@@ -578,6 +578,46 @@ def test_detect_type_architecture_critic_returns_critic_response():
     assert mod.detect_type('architecture.md', None) == 'architecture'
 
 
+# ── IVG-128 T-12: security-review-N.md type + Dimension Verdicts fixtures ──────
+
+def test_detect_type_security_review_returns_security_review():
+    """security-review-1.md must resolve to 'security-review', not 'review'."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('validate_artifact', VALIDATOR)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.detect_type('security-review-1.md', None) == 'security-review'
+    assert mod.detect_type('review-1.md', None) == 'review'
+
+
+def test_v3_security_review_fixture_passes():
+    """security-review-v3-sample.md (auto-detected as security-review) must pass
+    all V-07 required sections per format-kit.sections.json's security-review type,
+    using the pinned APPROVED|CHANGES_REQUESTED|BLOCKED verdict enum shared with
+    review-N.md.
+    """
+    rc, stderr = run_validator(artifact=fixture('security-review-v3-sample.md'))
+    assert rc == 0, f"security-review fixture failed:\n{stderr}"
+
+
+def test_v3_review_dimension_verdicts_fixture_passes():
+    """A merged review-N.md fixture WITH ## Dimension Verdicts (Large fan-out
+    shape) must pass V-02 (allowed) and V-07 (required), with every required
+    section populated per T-08's ownership mapping.
+    """
+    rc, stderr = run_validator(artifact=fixture('review-v3-dimension-verdicts-sample.md'))
+    assert rc == 0, f"merged review-with-dimension-verdicts fixture failed:\n{stderr}"
+
+
+def test_v3_review_fixture_without_dimension_verdicts_still_passes():
+    """A Small single-pass review-N.md WITHOUT ## Dimension Verdicts must still
+    pass — the section is OPTIONAL, not required (byte-path-identical Small flow).
+    """
+    rc, stderr = run_validator(artifact=fixture('review-v3-sample.md'))
+    assert rc == 0, f"pre-existing Small-shape review fixture regressed:\n{stderr}"
+    assert '## Dimension Verdicts' not in open(fixture('review-v3-sample.md')).read()
+
+
 # ── T-17: Class A round-trip fixture tests ─────────────────────────────────────
 
 def test_v3_critic_response_fixture_passes():

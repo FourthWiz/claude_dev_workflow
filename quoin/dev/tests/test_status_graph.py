@@ -291,6 +291,24 @@ class TestPickActiveTask:
         # pick_active_task excludes "finalized" by name
         assert pick_active_task(tmp_path) is None
 
+    def test_excludes_security_review_dir_even_with_newest_mtime(self, tmp_path):
+        """IVG-128 D-07/MIN-3: the standalone security-review dir must never be
+        mistaken for the active task, even when it has the most recent mtime
+        of any dir under .workflow_artifacts/.
+        """
+        make_task(tmp_path, "real-task", ["current-plan.md"])
+        import time; time.sleep(0.02)  # ensure security-review/ mtime is strictly newer
+        sec = tmp_path / ".workflow_artifacts" / "security-review"
+        sec.mkdir(parents=True)
+        (sec / "security-review-1.md").write_text("data\n")
+        result = pick_active_task(tmp_path)
+        assert result is not None
+        assert result.name == "real-task", (
+            f"pick_active_task() returned {result.name!r}; expected 'real-task' — "
+            "the standalone .workflow_artifacts/security-review/ dir must be excluded "
+            "from mtime-based active-task discovery regardless of recency."
+        )
+
     def test_stray_top_level_file_excluded(self, tmp_path):
         """Non-directory entries under .workflow_artifacts/ must be ignored."""
         artifacts = tmp_path / ".workflow_artifacts"
