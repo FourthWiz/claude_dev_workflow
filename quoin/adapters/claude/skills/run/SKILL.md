@@ -26,14 +26,23 @@ Note: The cost ledger is initialized during Setup (see "Initialize cost ledger" 
 
 ## Setup
 
+### Parse `--autonomous` flag (opt-in, default off)
+
+Before profile-tag parsing, scan the task description for the `--autonomous` token. This is **opt-in** — omitting it preserves today's fully-interactive `/run` behavior unchanged (default off).
+
+- If present: strip the `--autonomous` token from the task description **before profile classification** — the same treatment as the existing `[no-session-age-guard]` sentinel and the `strict:`/`max_rounds:` tokens below, none of which are allowed to pollute triage or the derived task name. Set an internal state flag `AUTONOMOUS=true` for the remainder of this session.
+- If absent: `AUTONOMOUS=false`. Every autonomous branch documented in this file is inert when `AUTONOMOUS=false`; plain `/run` stays byte-behavior-unchanged.
+
+Record `autonomous: true` in the session-state file (`.workflow_artifacts/memory/sessions/<date>-<task-name>.md`) once created, and append `[autonomous]` to the NOTE field of the orchestrator's own cost-ledger row (see "Initialize cost ledger" below) so the ledger reflects the run mode.
+
 ### Parse input and determine task profile
 
-Scan the task description for profile tags and runtime overrides, in this order:
+Scan the task description (with `--autonomous` already stripped, if present) for profile tags and runtime overrides, in this order:
 
 1. **`strict:`** prefix → Large profile (all-Opus, max 5 rounds). Strip token.
 2. **`small:` / `medium:` / `large:`** prefix → set profile accordingly. Strip token.
-3. **No tag** → auto-classify using triage criteria, present classification with rationale, ask for user confirmation.
-4. **`max_rounds: N`** → override the round cap. Strip token. Ignored for Small.
+3. **No tag** → auto-classify using triage criteria, present classification with rationale, ask for user confirmation. **Under `AUTONOMOUS`:** skip the wait — auto-accept the classification and proceed (see `## Checkpoint interaction protocol`).
+4. **`max_rounds: N`** → override the round cap. Strip token. Ignored for Small. **Under `AUTONOMOUS`:** if not explicitly given, `max_rounds` defaults per profile — see "Perfectionist depth-within-profile (autonomous)" below.
 
 See `/thorough_plan` SKILL.md section 3 for full parsing rules and triage criteria.
 
@@ -85,6 +94,37 @@ Before any work begins:
 2. If dirty state: commit or stash before proceeding
 3. Switch to main/master, fetch and pull
 4. Create a fresh branch for the task: `feat/<task-name>` or similar
+
+## Perfectionist depth-within-profile (autonomous)
+
+Under `AUTONOMOUS`, tune DEPTH knobs WITHIN the classified/tagged profile — never upgrade the profile itself. Autonomous never maps a `small:` input to Medium or Large: `--autonomous small:` stays a Small, single-pass `/plan` (no critic loop), exactly as plain `small:` does.
+
+- **Gate level → Full at every gate** (post-implement, post-review), regardless of profile — including Small, which under plain `/run` only gets Standard. This is a strictness upgrade only; it does not touch planning depth or the profile tag.
+- **`max_rounds` → the profile default** (Medium 4 rounds, Large 5 rounds) unless the user's explicit `max_rounds: N` token overrides it (the override still applies verbatim). Small has no critic loop, so this knob is inert for Small.
+- **Revise model → all-Opus revise** (strict-mode `/revise`, not the cost-efficient `/revise-fast`) for Medium and Large under autonomous.
+- Propagate these depth parameters to the `/thorough_plan` spawn (Phase 3) and to both `/gate` invocations (Phase 4 inline, Phase 5 inline).
+
+Net effect: `--autonomous small:` → Small stays single-pass, gate goes Full. `--autonomous medium:` / `--autonomous large:` (or auto-classified Medium/Large) → Full gate + profile-default max_rounds + all-Opus revise, profile itself unchanged.
+
+## Autonomous propagation (`[autonomous]` sentinel)
+
+Under `AUTONOMOUS`, `/run` prefixes the `[autonomous]` sentinel onto EVERY sub-phase spawn prompt it issues directly — mirroring the existing `[no-session-age-guard]`/`[no-redispatch]` sentinel convention. This covers all 9 direct sub-phase spawns:
+
+1. **discover** (Phase 1) — prefix `[autonomous]` onto the `/discover` spawn prompt.
+2. **enrich** (Phase 1.4) — prefix `[autonomous]` onto the `/enrich` spawn prompt.
+3. **specify** (Phase 1.5) — prefix `[autonomous]` onto the `/specify` spawn prompt.
+4. **architect** (Phase 2) — prefix `[autonomous]` onto the `/architect` spawn prompt.
+5. **thorough_plan** (Phase 3) — prefix `[autonomous]` onto the `/thorough_plan` spawn prompt.
+6. **implement** (Phase 4) — prefix `[autonomous]` onto the `/implement` spawn prompt.
+7. **review** (Phase 5) — prefix `[autonomous]` onto the `/review` spawn prompt.
+8. **end_of_task** (Phase 6, the terminal `/end_of_task` spawn) — prefix `[autonomous]` onto the `/end_of_task` spawn prompt.
+9. **gate** (every subagent-mode `/gate` spawn — post-specify, post-architect, post-plan boundaries) — prefix `[autonomous]` onto the `/gate` spawn prompt.
+
+**Inline gates** (post-implement, post-review — see "Gate boundaries reference") have no spawn prompt to prefix. For inline gates, the orchestrator applies autonomous gate behavior directly from its own `AUTONOMOUS` state instead of prefixing a sentinel.
+
+**Transitive propagation rule:** propagation is not limited to `/run`'s direct spawns — every spawning skill that itself spawns a deeper skill MUST re-prefix `[autonomous]` onto that deeper spawn, so the sentinel reaches the full transitive spawn set. Concretely: `thorough_plan` re-prefixes `[autonomous]` onto its `/plan`/`/critic`/`/revise`/`/revise-fast` spawns, and `review` re-prefixes `[autonomous]` onto its Large-fan-out `/security_review` and dimension-subagent spawns. Each sub-skill parses and strips `[autonomous]` at its own bootstrap into a local `_AUTONOMOUS` state.
+
+**Stacking:** leading sentinels stack — a spawn prompt may read `[no-redispatch] [autonomous] <task description>`. Each sentinel is parsed and stripped independently; order does not matter.
 
 ## Phase sequence
 
@@ -301,8 +341,9 @@ At every checkpoint, the orchestrator presents a concise summary and waits for e
 | `show <artifact>` | Display the artifact (architecture / plan / changes / review / discover), then re-ask |
 | `skip` | Skip the next phase (only valid for optional phases: discover, specify, architect) |
 | Any other input | Treat as feedback or clarification; answer and re-ask |
+| **Autonomous** (`AUTONOMOUS=true`) | A checkpoint whose gate/verdict is PASS auto-resolves to "continue" — NO `AskUserQuestion` is called and NO wait for user input. A non-PASS checkpoint (gate FAILED, review CHANGES_REQUESTED/BLOCKED, below-bar formulation) is NEVER a silent proceed — it routes to the hard-stop / halt-sentinel logic instead. |
 
-**Never proceed without explicit confirmation.** Ambiguous responses → ask for clarification.
+**Never proceed without explicit confirmation** (non-autonomous mode). Ambiguous responses → ask for clarification. Under `AUTONOMOUS`, confirmation is auto-supplied per the row above — but a non-PASS result is never a silent proceed.
 
 ## Resume
 
