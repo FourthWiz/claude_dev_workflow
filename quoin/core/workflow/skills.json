@@ -270,6 +270,15 @@
       "claude_model": "opus",
       "section_0": false,
       "spawn_target": true
+    },
+    {
+      "name": "enrich",
+      "phase": "enrich",
+      "effort": "max",
+      "user_facing": true,
+      "claude_model": "opus",
+      "section_0": false,
+      "spawn_target": true
     }
   ]
 }

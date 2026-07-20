@@ -59,6 +59,7 @@ CANONICAL_SKILLS = (
     "discover",
     "end_of_day",
     "end_of_task",
+    "enrich",
     "expand",
     "gate",
     "implement",
@@ -137,6 +138,7 @@ SKILL_OVERRIDES: dict[str, str] = {
     "triage": "on",
     "checkpoint": "on",
     "specify": "on",
+    "enrich": "on",
     # Lifecycle / one-shot skills — invocable by name, no description in auto-suggest
     "pr": "name-only",
     "init_workflow": "name-only",
