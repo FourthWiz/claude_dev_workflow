@@ -201,6 +201,18 @@ Use these criteria when auto-classifying a task (step 1c above) or when verifyin
 
 **When the classification is ambiguous, choose the more cautious (larger) profile.** A Medium task that runs the full critic loop costs a few extra dollars; a Large task misclassified as Small can ship bugs.
 
+### 3b-1. Enrich pre-step (default-on prompt, non-blocking)
+
+Before the spec pre-flight below, offer via `AskUserQuestion` to run `/enrich` on the raw task description first (sharpens the prompt upstream of `/specify` — fills genuine gaps, writes enriched-prompt.md, never writes a spec/plan itself):
+
+- Question: "Run prompt enrichment before planning?"
+- Header: "Enrich pre-step"
+- multiSelect: false
+- Option 1: label: "Run /enrich first" — description: "Sharpen the raw task prompt before continuing (fills genuine gaps against real codebase context)."
+- Option 2: label: "Skip enrichment" — description: "Proceed directly to the spec pre-flight / planning loop. Enrichment can always be run later; its absence is a normal, non-blocking outcome."
+
+This is default-on but NON-BLOCKING — the loop proceeds regardless of the answer. If run, append a best-effort cost-ledger row for the `enrich` phase if the subagent didn't record one: `unknown-enrich-<timestamp> | <date> | enrich | opus | task | /thorough_plan subagent (no UUID recorded)`. No `/gate` runs after enrich.
+
 ### 3c. Spec pre-flight (advisory, non-blocking)
 
 If NO `<task-root>/spec.md` exists AND the task profile (determined in step 3/3b above) is Medium or Large (Small tasks skip this offer entirely, per the resolved Small-task-skip policy), offer via `AskUserQuestion` to run `/specify` first:
