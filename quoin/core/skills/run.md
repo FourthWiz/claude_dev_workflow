@@ -109,6 +109,11 @@ be honored when locating per-stage artifacts.
   conflict, a branch-hygiene violation, or a below-bar formulation —
   remains in force under the autonomous span. A hard stop halts the
   run and records the reason for a later resume rather than prompting.
+- A hard stop records its reason in a stable sentinel file before the
+  run exits. The sentinel schema is five one-line fields: `task`,
+  `phase`, `reason`, `timestamp`, `resume_hint`. The sentinel's
+  location is stable and lives outside the task-scoped artifact
+  folder, so the record survives that folder's later archival.
 - The autonomous span MUST NOT create a pull request under any
   circumstance; PR creation stays a separate, explicit user action
   outside this skill's scope, in both interactive and autonomous

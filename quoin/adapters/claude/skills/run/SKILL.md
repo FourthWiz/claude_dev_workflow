@@ -95,6 +95,8 @@ Before any work begins:
 3. Switch to main/master, fetch and pull
 4. Create a fresh branch for the task: `feat/<task-name>` or similar
 
+Under `AUTONOMOUS`: a branch-hygiene violation — task commits landing on a protected branch, or the branch-hygiene precheck failing at any downstream phase (e.g. `implement`'s §0b precheck) — is Hard-stop #5. Write the halt-sentinel per "## Autonomous hard stops" before exit, then stop.
+
 ## Perfectionist depth-within-profile (autonomous)
 
 Under `AUTONOMOUS`, tune DEPTH knobs WITHIN the classified/tagged profile — never upgrade the profile itself. Autonomous never maps a `small:` input to Medium or Large: `--autonomous small:` stays a Small, single-pass `/plan` (no critic loop), exactly as plain `small:` does.
@@ -125,6 +127,22 @@ Under `AUTONOMOUS`, `/run` prefixes the `[autonomous]` sentinel onto EVERY sub-p
 **Transitive propagation rule:** propagation is not limited to `/run`'s direct spawns — every spawning skill that itself spawns a deeper skill MUST re-prefix `[autonomous]` onto that deeper spawn, so the sentinel reaches the full transitive spawn set. Concretely: `thorough_plan` re-prefixes `[autonomous]` onto its `/plan`/`/critic`/`/revise`/`/revise-fast` spawns, and `review` re-prefixes `[autonomous]` onto its Large-fan-out `/security_review` and dimension-subagent spawns. Each sub-skill parses and strips `[autonomous]` at its own bootstrap into a local `_AUTONOMOUS` state.
 
 **Stacking:** leading sentinels stack — a spawn prompt may read `[no-redispatch] [autonomous] <task description>`. Each sentinel is parsed and stripped independently; order does not matter.
+
+## Autonomous hard stops (halt-sentinel)
+
+Under `AUTONOMOUS`, every hard stop writes a halt-sentinel **before exit**, then stops — Stage 1 forward-compatible groundwork for a future Stage 2 supervisor. Stage 1 only *writes* the sentinel; it never consumes one.
+
+- **Location:** `.workflow_artifacts/memory/autonomous-halt-{task}.md` — deliberately OUTSIDE the task folder, so the record survives `/end_of_task`'s later move of the task folder into `finalized/`.
+- **Schema (one line each):** `task`, `phase`, `reason`, `timestamp`, `resume_hint`.
+- **The six hard-stop sites** (each documented at its own phase section below; all resolve here):
+  1. **Review BLOCKED** (Phase 5) — `phase: review`, `reason: <blocking issues summary>`.
+  2. **Gate FAIL after the retry cap** (Checkpoint C, Phase 4) — `phase: gate`, `reason: <failing checks summary>`.
+  3. **Review CHANGES_REQUESTED after 3 rounds** (Phase 5) — `phase: review`, `reason: exceeded 3 review rounds without APPROVED`.
+  4. **Git conflict** (any phase) — `phase: <phase where the conflict surfaced>`, `reason: <conflict summary>`.
+  5. **Branch-hygiene violation** (Setup / any downstream precheck) — `phase: <phase where the violation was detected>`, `reason: <violation summary, e.g. protected-branch commits>`.
+  6. **Below-bar formulation** (Formulation quality bar, between Phase 3 and Phase 4) — `phase: formulation`, `reason: <bar failure detail — critic REVISE at cap, or below-threshold Small confidence/smoke gate>`.
+- **Never auto-creates a PR.** At every one of the six sites, and everywhere else in this file, the orchestrator NEVER auto-creates a pull request — identical in interactive and autonomous mode. PR creation stays `/pr`, a separate explicit user action.
+- **Only under `AUTONOMOUS`.** In plain (non-autonomous) `/run`, these six situations still halt the workflow exactly as documented in their own phase sections — they present the existing interactive prompt instead of writing a halt-sentinel.
 
 ## Phase sequence
 
@@ -254,6 +272,15 @@ Summary:
 Continue to implementation? (yes / no / show plan)
 ```
 
+## Formulation quality bar (autonomous)
+
+Only evaluated under `AUTONOMOUS` — plain `/run` never evaluates this bar and proceeds straight from Checkpoint B to Phase 4 exactly as it does today. This bar sits between Phase 3 (Thorough Plan) and Phase 4 (Implement); it is the sole safety substitute for the human checkpoint that autonomous mode removes at Checkpoint B.
+
+- **Medium/Large:** require the `thorough_plan` critic loop to have converged with a **PASS** verdict. Read the verdict `thorough_plan` returns (or its session-state `## Current stage` trail) — exhausting `max_rounds` while the last critic verdict is still REVISE does **NOT** pass the bar, even though `thorough_plan` itself terminates normally at the round cap.
+- **Small:** require BOTH (a) the post-plan smoke gate to PASS, AND (b) the confidence signal to be `>= QUOIN_AUTONOMOUS_CONFIDENCE_THRESHOLD` (default `0.7`). Small skips `/specify` and `/architect`, so the confidence signal comes from the single-pass `/plan` skill's own `confidence: <float 0..1>` line (see `plan/SKILL.md`) — optionally combined with an `enrich`-emitted confidence value (if enrich ran and emitted one), in which case take the **minimum** of the two.
+- **Below the bar → HARD STOP.** This is Hard-stop #6 (below-bar formulation) in "## Autonomous hard stops" above — write the halt-sentinel (`phase: formulation`) before exit, then stop. Do **NOT** enter Phase 4 / Execution on a formulation that hasn't cleared the bar.
+- The runtime-neutral shape of this bar is mirrored in `quoin/core/skills/run.md`'s "Autonomous mode (opt-in)" section.
+
 ## Phase 4 — Implement
 
 Spawn `/implement` as a subagent session, passing path to `<task_dir>/current-plan.md` (where `<task_dir>` is resolved via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` in Setup §) and all repo paths. Because the user invoked `/run` and confirmed at Checkpoint B, the `/run` exception in `implement/SKILL.md` applies.
@@ -281,6 +308,8 @@ If the gate **failed**: present the failures and ask "Fix and retry, or stop?"
 - "fix" → spawn `/implement` again for the failing items, then re-run `/gate` inline (post-implement boundary — same inline mechanism as the primary path; audit-log persistence applies per `/gate/SKILL.md`)
 - "stop" → halt, preserve artifacts
 
+Under `AUTONOMOUS`: auto-select "fix" and retry once (retry cap = 1 automatic retry). If the gate still fails after that one retry, this is Hard-stop #2 (Gate FAIL after the retry cap) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop. Never fall back to a silent proceed, and never ask.
+
 If the user says "show changes": run `git diff --stat` and display, then re-ask.
 
 ## Phase 5 — Review
@@ -297,7 +326,11 @@ After the phase, verify the cost ledger has a new entry for the `review` phase. 
 1. **"fix"** → spawn `/implement` again with the review issues as the spec. After fix-implement completes, re-run the post-implementation gate inline (same level as before; audit-log persistence per `/gate/SKILL.md`). Then re-spawn `/review`. Cap at 3 review rounds to prevent infinite cycling.
 2. **"accept"** → treat as approved despite requested changes. Log this decision in session state. Proceed to Checkpoint D.
 
+Under `AUTONOMOUS`: auto-select "fix" at each round — never auto-select "accept". If still CHANGES_REQUESTED after the 3-round cap, this is Hard-stop #3 (Review CHANGES_REQUESTED after 3 rounds) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop.
+
 **If BLOCKED:** present the blocking issues. **STOP.** Do not offer to continue. Tell the user: "Review found blocking issues. The workflow cannot continue until these are resolved. Artifacts are preserved at `.workflow_artifacts/<task-name>/`."
+
+Under `AUTONOMOUS`: this is Hard-stop #1 (Review BLOCKED) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop (no `AskUserQuestion`, no silent proceed).
 
 **Checkpoint D** (after APPROVED or accepted):
 ```
@@ -390,7 +423,7 @@ These are rough estimates based on typical usage. Actual costs are computed by `
 
 - **Subagent failure:** inform the user, offer to retry the phase
 - **Gate failure:** present failures, offer to fix (re-run the phase) or stop
-- **Git errors:** report and let the user resolve
+- **Git errors:** report and let the user resolve. **Git conflict (Hard-stop #4, autonomous):** under `AUTONOMOUS`, a git conflict (merge/rebase/push conflict, at any phase) is a hard stop — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop; never attempt automatic conflict resolution.
 - **Context exhaustion:** save state, instruct user to resume with `/run --resume <task-name>`
 - **Stream-idle timeout recovery (orchestrator-only).** If a spawned subagent
   returns a tool_result whose content contains `Stream idle timeout - partial response received`:

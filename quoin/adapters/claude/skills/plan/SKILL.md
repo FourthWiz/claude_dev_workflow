@@ -162,6 +162,12 @@ This skill may run in a fresh chat session. On start:
 
 This skill requires the strongest available model (currently Claude Opus).
 
+## Autonomous confidence signal (`[autonomous]`, Small path)
+
+When the task carries the `[autonomous]` sentinel (see `autonomous-mode.md`) AND the task profile is Small — the only profile where `/plan` runs single-pass with no critic loop — emit one additional line, `confidence: <float 0..1>` (e.g. `confidence: 0.82`), as part of this skill's mandatory End-of-step inline chat summary (CLAUDE.md "Communication" rule), immediately after the summary's normal fields. This is `/plan`'s own Opus self-assessment of how well-specified and low-risk the task is.
+
+This is `run`'s sole Small-path Formulation-bar signal: Small skips `/specify` and `/architect`, so no other confidence source exists on that path (see `run/SKILL.md`'s "Formulation quality bar (autonomous)" section and `QUOIN_AUTONOMOUS_CONFIDENCE_THRESHOLD`, default `0.7`). The line is emitted in the chat summary only — never written into `current-plan.md` itself, so the Class B artifact's structural-validator invariants (V-01..V-07) are unaffected. Plain (non-`[autonomous]`) invocations never emit this line.
+
 ## Inputs
 
 The plan may start from:
