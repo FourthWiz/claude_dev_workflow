@@ -150,12 +150,14 @@ Fail-OPEN path (fires only when Agent dispatch fails):
 ## Session bootstrap
 
 This skill may run in a fresh chat session with no prior context. On start:
-1. Read `.workflow_artifacts/memory/lessons-learned.md` for insights relevant to prompt framing and past enrichment mistakes.
-2. Read `.workflow_artifacts/memory/repos-inventory.md`, `architecture-overview.md`, and `dependencies-map.md` (if they exist) — this is your grounding context for judging whether the raw prompt has genuine gaps against the real codebase, not guessed ones.
-3. Read `.workflow_artifacts/memory/sessions/` for any active session state for this task.
-4. Resolve the task dir via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name>` (no `--stage` flag — `enriched-prompt.md` is ALWAYS at the task root, mirroring `spec.md`). If exit code 2: display stderr verbatim, fall back to the task root, and ask the user to disambiguate. Read `<task-root>/spec.md` if it already exists — a prior spec is useful grounding context (do not duplicate it; enrichment is upstream of specify, not a replacement for it).
-5. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `enrich`.
-6. Then proceed with the work below.
+1. Read `__QUOIN_HOME__/skills/enrich/preamble.md` if it exists; if missing or empty, proceed normally. Purely additive cache-warming — every other read in this `## Session bootstrap` section, and every write-site format-kit / glossary reference (per §5.3 / §5.4 write-site instructions), stays in force unchanged. The intent is CROSS-SPAWN cache reuse: spawn N+1 of this skill with a byte-identical task fixture hits cache from spawn N's preamble.md tool_result, within the 5-minute prompt-cache TTL. Within a single spawn there is no cache benefit — savings only materialize on subsequent spawns whose prompt prefix is byte-identical through the preamble read.
+2. Read `.workflow_artifacts/memory/lessons-learned.md` for insights relevant to prompt framing and past enrichment mistakes.
+3. Read `.workflow_artifacts/memory/repos-inventory.md`, `architecture-overview.md`, and `dependencies-map.md` (if they exist) — this is your grounding context for judging whether the raw prompt has genuine gaps against the real codebase, not guessed ones.
+4. Read `.workflow_artifacts/memory/sessions/` for any active session state for this task.
+5. Resolve the task dir via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name>` (no `--stage` flag — `enriched-prompt.md` is ALWAYS at the task root, mirroring `spec.md`). If exit code 2: display stderr verbatim, fall back to the task root, and ask the user to disambiguate. Read `<task-root>/spec.md` if it already exists — a prior spec is useful grounding context (do not duplicate it; enrichment is upstream of specify, not a replacement for it).
+6. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `enrich`.
+7. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`.
+8. Then proceed with the work below.
 
 ## Process
 

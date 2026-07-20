@@ -26,7 +26,7 @@ LIB_SH = HOOKS_DIR / "_lib.sh"
 POLLUTION_HEADING = "## §0' Pollution dispatch (execute after §0 / §0c if present — before skill body)"
 TARGET_SKILLS = [
     "architect", "plan", "critic", "revise", "review", "init_workflow", "discover",
-    "specify", "security_review",
+    "specify", "security_review", "enrich",
 ]
 # Phase-10 adapter migration moved active SKILL.md content from quoin/skills/ (stubs)
 # to quoin/adapters/claude/skills/ (active adapter files). §0' was restored into the

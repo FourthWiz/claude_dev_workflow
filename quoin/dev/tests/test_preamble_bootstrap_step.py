@@ -44,6 +44,7 @@ MIGRATED_SKILLS_DIR_OVERRIDES = {
     "revise-fast": ADAPTER_SKILLS_DIR,
     "gate": ADAPTER_SKILLS_DIR,
     "specify": ADAPTER_SKILLS_DIR,
+    "enrich": ADAPTER_SKILLS_DIR,
 }
 
 
