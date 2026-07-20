@@ -6,6 +6,7 @@
 |---------|-------------|
 | `/init_workflow` | One-time project bootstrap — creates .workflow_artifacts/, configures permissions, runs /discover |
 | `/discover` | Scans all repos, maps architecture and dependencies |
+| `/enrich` | Sharpens a raw task prompt before /specify — fills genuine gaps, no spec/plan written. Lighter-weight than /specify (which does full structured intent elicitation) and distinct from /triage (which only routes) |
 | `/architect` | Designs solution architecture for a feature/change |
 | `/plan` | Creates a detailed implementation plan (single-pass, Opus) |
 | `/thorough_plan` | Triages task size and runs plan→critic→revise convergence loop |
