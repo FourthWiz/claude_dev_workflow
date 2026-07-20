@@ -200,6 +200,15 @@
       "spawn_target": false
     },
     {
+      "name": "security_review",
+      "phase": "security_review",
+      "effort": "high",
+      "user_facing": true,
+      "claude_model": "opus",
+      "section_0": false,
+      "spawn_target": false
+    },
+    {
       "name": "sleep",
       "phase": "sleep",
       "effort": "low",

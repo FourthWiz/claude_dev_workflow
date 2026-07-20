@@ -45,11 +45,29 @@ A single artifact under `.workflow_artifacts/<task-name>/`, named with the
 pattern `review-N.md` where N is the round number starting at 1 (path resolved
 by the runtime adapter's path resolver). Closed section set: Summary, Verdict,
 Plan Compliance, Spec Compliance, Issues Found, Integration Safety, Test
-Coverage, Risk Assessment, Recommendations. The skill also updates a
-session-state file under `.workflow_artifacts/memory/sessions/`.
+Coverage, Risk Assessment, Recommendations, and the optional Dimension
+Verdicts (present only on a merged multi-dimension review — see Fan-out
+below). The skill also updates a session-state file under
+`.workflow_artifacts/memory/sessions/`.
 
 Verdict is one of three closed values: `APPROVED`, `CHANGES_REQUESTED`,
 `BLOCKED`.
+
+## Fan-out (profile-conditional)
+
+The skill reads the task profile (from the plan's convergence summary, or the
+session state). A Small task runs a single-pass review — one artifact write,
+no additional subagents. A Medium or Large task (or an undetermined profile,
+which defaults to Medium — more review, not less) fans out into three
+parallel dimension passes — security, performance, architecture/integration —
+each returning a verdict and dimension-tagged issues; the runtime adapter
+merges these into one artifact with a worst-of verdict
+(`BLOCKED` > `CHANGES_REQUESTED` > `APPROVED`) and an optional Dimension
+Verdicts table. On a Large task, the security dimension is delegated to the
+standalone security-review skill's fan-out contract rather than an inline
+security pass. The dimension subagents never synthesize the artifact's For
+human, Summary, Plan Compliance, Spec Compliance, or Test Coverage sections —
+those remain owned by the parent review session in every profile.
 
 ## Behavior contract
 

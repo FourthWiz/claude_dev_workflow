@@ -32,6 +32,7 @@ MIGRATED_SKILLS_DIR_OVERRIDES = {
     "revise-fast": ADAPTER_SKILLS_DIR,
     "gate": ADAPTER_SKILLS_DIR,
     "implement": ADAPTER_SKILLS_DIR,
+    "security_review": ADAPTER_SKILLS_DIR,
 }
 
 STEP5_CANONICAL = (
@@ -44,8 +45,8 @@ STEP2_CANONICAL = (
     "Before re-running Step 2, increment the session-state `fallback_fires`"
 )
 
-STEP5_SKILLS = ["architect", "critic", "revise", "revise-fast", "plan", "review"]
-STEP2_SKILLS = ["architect", "plan", "revise", "revise-fast", "review"]
+STEP5_SKILLS = ["architect", "critic", "revise", "revise-fast", "plan", "review", "security_review"]
+STEP2_SKILLS = ["architect", "plan", "revise", "revise-fast", "review", "security_review"]
 NEGATIVE_SKILLS = ["capture_insight", "end_of_day", "start_of_day", "implement"]
 
 # Verbatim Step 2 anchor lines per skill (from T-08 spec)
@@ -55,6 +56,7 @@ STEP2_ANCHORS = {
     "revise": "**Step 2 failure:** re-run Step 2 once (re-spawn the Haiku Agent subagent); if still fails",
     "revise-fast": "**Step 2 failure:** re-run Step 2 once (re-spawn the Haiku Agent subagent); if still fails",
     "review": "Re-run ONLY Step 2 once (re-spawn the Haiku Agent subagent). If re-run also fails: fall back to v2-style write.",
+    "security_review": "Re-run ONLY Step 2 once (re-spawn the Haiku Agent subagent). If re-run also fails: fall back to v2-style write.",
 }
 
 

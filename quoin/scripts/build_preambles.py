@@ -5,7 +5,10 @@ build_preambles.py — Preamble builder for subagent prompt-cache warming.
 Generates preamble.md files for 8 spawn-target skills under quoin/skills/<skill>/.
 Each full preamble contains:
   - YAML frontmatter (path, kind, source_files, source_hashes, generated_at, generated_by, total_bytes)
-  - [format-kit-§3-slice] marker + lines 189-207 of format-kit.md
+  - [format-kit-§3-slice] marker + the marker-anchored §3 slice of format-kit.md
+    (the lines strictly between the '---' delimiters bracketing the
+    '## §3 Pick rules for ambiguous content' heading — self-corrects if
+    format-kit.md's line numbers shift; see read_format_kit_slice())
   - [glossary] marker + verbatim glossary.md content
 
 Gate skill gets a frontmatter-only stub (~200 bytes) for uniformity.
@@ -22,6 +25,7 @@ Exit codes:
 import argparse
 import os
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -91,14 +95,58 @@ def git_hash_object(path: pathlib.Path) -> str:
     return result.stdout.strip()
 
 
+_SECTION3_HEADING_RE = re.compile(r"^## §3 Pick rules for ambiguous content")
+
+
 def read_format_kit_slice() -> str:
-    """Extract lines 189-207 inclusive from format-kit.md (1-indexed)."""
+    """Extract the §3 pick-rules slice from format-kit.md via marker anchoring.
+
+    Finds the line matching '## §3 Pick rules for ambiguous content', then scans
+    backward for the nearest preceding bare '---' line and forward for the
+    nearest following bare '---' line. The slice is every line strictly between
+    those two delimiters. This reproduces the historical fixed-window output
+    byte-for-byte (format-kit.md's §3 heading is bracketed by bare '---' lines
+    immediately above and below its surrounding table), but self-corrects for
+    any future shift in format-kit.md instead of requiring a manual re-count
+    each time the file changes near that section (closes the MAJ-1 risk class
+    from IVG-128, not just one instance of it). Exits with a MISSING MARKER
+    error rather than silently returning an empty or wrong slice if no
+    '---'-delimited match is found.
+    """
     if not SOURCE_FORMAT_KIT.exists():
         print(f"MISSING SOURCE: {SOURCE_REL_FORMAT_KIT}", file=sys.stderr)
         sys.exit(4)
     lines = SOURCE_FORMAT_KIT.read_text(encoding="utf-8").splitlines(keepends=True)
-    # lines list is 0-indexed; line 189 = index 188, line 207 = index 206
-    slice_lines = lines[188:207]  # [188, 207) = lines 189-207 inclusive
+    heading_idx = None
+    for i, line in enumerate(lines):
+        if _SECTION3_HEADING_RE.match(line.rstrip("\n")):
+            heading_idx = i
+            break
+    if heading_idx is None:
+        print(
+            f"MISSING MARKER: '## §3 Pick rules for ambiguous content' heading "
+            f"not found in {SOURCE_REL_FORMAT_KIT}",
+            file=sys.stderr,
+        )
+        sys.exit(4)
+    start_idx = None
+    for i in range(heading_idx - 1, -1, -1):
+        if lines[i].rstrip("\n") == "---":
+            start_idx = i
+            break
+    end_idx = None
+    for i in range(heading_idx + 1, len(lines)):
+        if lines[i].rstrip("\n") == "---":
+            end_idx = i
+            break
+    if start_idx is None or end_idx is None:
+        print(
+            f"MISSING MARKER: '---' delimiters bracketing the §3 heading not "
+            f"found in {SOURCE_REL_FORMAT_KIT}",
+            file=sys.stderr,
+        )
+        sys.exit(4)
+    slice_lines = lines[start_idx + 1 : end_idx]
     return "".join(slice_lines)
 
 

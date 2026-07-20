@@ -1,9 +1,9 @@
 """T-12: pitfall-injection presence test.
 
 Verifies that format-kit-pitfalls.md is injected exactly once into each of the
-7 target SKILL.md files (architect, plan, revise, revise-fast, review, critic, gate)
-and NOT present in the 4 non-target skills (capture_insight, implement, end_of_day,
-start_of_day).
+8 target SKILL.md files (architect, plan, revise, revise-fast, review, critic, gate,
+security_review) and NOT present in the 4 non-target skills (capture_insight,
+implement, end_of_day, start_of_day).
 
 Per Stage 4 D-04-rev2: target iff (a) output IS validated by validate_artifact.py
 AND (b) writer follows the §5.3 Class B 5-step pattern (or Class A variant with
@@ -26,6 +26,7 @@ MIGRATED_SKILLS_DIR_OVERRIDES = {
     "revise-fast": ADAPTER_SKILLS_DIR,
     "gate": ADAPTER_SKILLS_DIR,
     "implement": ADAPTER_SKILLS_DIR,
+    "security_review": ADAPTER_SKILLS_DIR,
 }
 
 TARGET_SKILLS = [
@@ -36,6 +37,7 @@ TARGET_SKILLS = [
     "review",
     "critic",
     "gate",
+    "security_review",
 ]
 
 NON_TARGET_SKILLS = [

@@ -163,3 +163,34 @@ def test_review_core_doc_no_adapter_specific_refs():
         "core/skills/review.md must NOT contain '__QUOIN_HOME__' "
         "(adapter-specific). IVG-70 adapter/core boundary violated."
     )
+
+
+# ── IVG-128 T-12: review fan-out wiring guard (cheap early guard) ──────────
+
+
+def test_review_adapter_has_profile_detection_language():
+    """T-08: adapter must document reading the task profile to decide fan-out."""
+    text = ADAPTER_SKILL_MD.read_text(encoding="utf-8")
+    assert "Profile detection" in text
+    assert "Task profile: Small/Medium/Large" in text
+
+
+def test_review_adapter_has_worst_of_merge_language():
+    """T-08: adapter must document the worst-of verdict merge rule."""
+    text = ADAPTER_SKILL_MD.read_text(encoding="utf-8")
+    assert "worst-of" in text
+    assert "BLOCKED` > `CHANGES_REQUESTED` > `APPROVED`" in text
+
+
+def test_review_adapter_names_all_three_dimensions():
+    """T-08: adapter must name all three fan-out dimensions."""
+    text = ADAPTER_SKILL_MD.read_text(encoding="utf-8")
+    for dimension in ("security", "performance", "architecture/integration"):
+        assert dimension in text, f"missing dimension name: {dimension!r}"
+
+
+def test_review_adapter_preserves_small_single_pass():
+    """T-08 AC: Small task path must be documented as unchanged/single-pass."""
+    text = ADAPTER_SKILL_MD.read_text(encoding="utf-8")
+    assert "Small — unchanged single-pass review" in text
+    assert "byte-path-identical" in text

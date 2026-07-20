@@ -92,6 +92,7 @@ SKILL_DISTINCTIVE_TOKENS = {
     "init_workflow": "project root",
     "discover": "project root",
     "specify": "spec.md",
+    "security_review": "OWASP",
 }
 
 # MIN-A: literal default threshold value
@@ -348,4 +349,21 @@ def test_check_fails_after_manual_edit(tmp_path, monkeypatch):
     assert exit_code != 0, (
         "run_check() returned 0 even though POLLUTION_THRESHOLD was removed from §0' blocks. "
         "The anti-drift guard is not working."
+    )
+
+
+# ─── 10. Generator-side DISPATCH_CONTRACTS roster parity (round-4 CRIT-1 guard) ──
+
+def test_dispatch_contracts_matches_target_skills():
+    """DISPATCH_CONTRACTS must have an entry for every POLLUTION_TARGET_SKILLS member.
+
+    render_pollution_block() does a bare DISPATCH_CONTRACTS[skill] subscript with no
+    .get() fallback, so a missing entry KeyErrors the whole generator run before it
+    injects a single block. This closes the enumeration/coverage-miss defect class
+    permanently at the generator-side dispatch-contract map (found round-4, after the
+    round-3 census's test-side sweep missed it — see IVG-128 plan Notes row 19).
+    """
+    assert set(generator.DISPATCH_CONTRACTS) == set(generator.POLLUTION_TARGET_SKILLS), (
+        f"DISPATCH_CONTRACTS keys {set(generator.DISPATCH_CONTRACTS)} != "
+        f"POLLUTION_TARGET_SKILLS {set(generator.POLLUTION_TARGET_SKILLS)}"
     )

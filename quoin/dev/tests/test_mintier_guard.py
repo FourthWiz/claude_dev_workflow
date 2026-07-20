@@ -19,10 +19,10 @@ fallback only. The two discriminator tokens `spawn an Agent subagent` and
 from the old Option-B body and serve as the structural regression guard.
 
 Note on SO_HEADING non-collision: test_quoin_stage1_preamble.py::test_no_opus_tier_skill_has_preamble
-covers the 9 Opus skills and asserts SO_HEADING = "## §0 Model dispatch (FIRST STEP — execute
+covers the 11 Opus skills and asserts SO_HEADING = "## §0 Model dispatch (FIRST STEP — execute
 before anything else)" is absent. §0″'s heading does NOT substring-match SO_HEADING. The
 non-collision is verified by T-04's grep check (grep -c "## §0 Model dispatch" returns 0 for all
-7 target SKILL.md files). See also the T-04 commit for the verification output.
+9 target SKILL.md files). See also the T-04 commit for the verification output.
 
 Token list discipline (MIN-1):
 - mintier_required_tokens (9 content tokens): checked INSIDE the extracted §0″ block.
@@ -72,6 +72,7 @@ MINTIER_SKILLS = [
     "init_workflow",
     "discover",
     "specify",
+    "security_review",
 ]
 
 # mintier_required_tokens (MIN-1): 9 content tokens checked INSIDE the §0″ block.

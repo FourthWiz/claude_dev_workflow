@@ -150,6 +150,19 @@ Machine-readable sidecar: `quoin/memory/format-kit.sections.json` (consumed by `
 | `## Test Coverage` | REQUIRED | Caveman prose | Adequacy of tests for new code |
 | `## Risk Assessment` | REQUIRED | Caveman prose or table | Deployment risks, blast radius, rollback |
 | `## Recommendations` | OPTIONAL | Terse numbered list | What to do next |
+| `## Dimension Verdicts` | OPTIONAL | table (dimension/verdict/top-issue) | present only on merged multi-dimension reviews |
+
+### `security-review-N.md` (Class B)
+
+| Section | Status | Primitive | Description |
+|---------|--------|-----------|-------------|
+| `## For human` | REQUIRED (first after frontmatter) | Caveman prose, 5–8 lines | Haiku summary: verdict, top finding, what must change |
+| `## Summary` | REQUIRED | Caveman prose, 2–3 sentences | Overall security-pass outcome |
+| `## Verdict` | REQUIRED | XML tag `<verdict>APPROVED\|CHANGES_REQUESTED\|BLOCKED</verdict>` | Machine-extractable verdict; same enum as review-N.md's Verdict primitive |
+| `## Findings` | REQUIRED | Terse numbered list with severity tags | Critical, major, minor findings with location and fix, grouped by OWASP category |
+| `## Risk Assessment` | REQUIRED | Caveman prose or table | Deployment risks, blast radius, rollback |
+| `## Recommendations` | OPTIONAL | Terse numbered list | What to do next |
+| `## Scope` | OPTIONAL | Caveman prose, 1 line | Branch name and diff basis used |
 
 ### `critic-response-N.md` (Class A)
 

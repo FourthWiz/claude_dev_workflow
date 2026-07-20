@@ -75,9 +75,31 @@
         "## Integration Safety",
         "## Test Coverage",
         "## Risk Assessment",
-        "## Recommendations"
+        "## Recommendations",
+        "## Dimension Verdicts"
       ],
       "notes": "format-kit.md §2 review-N.md entry; Class B — requires Haiku For human block"
+    },
+    "security-review": {
+      "class": "B",
+      "match_paths": ["security-review-*.md", "**/security-review-*.md"],
+      "required_sections": [
+        "## For human",
+        "## Summary",
+        "## Verdict",
+        "## Findings",
+        "## Risk Assessment"
+      ],
+      "allowed_sections": [
+        "## For human",
+        "## Summary",
+        "## Verdict",
+        "## Findings",
+        "## Risk Assessment",
+        "## Recommendations",
+        "## Scope"
+      ],
+      "notes": "format-kit.md §2 security-review-N.md entry (IVG-128); Class B — requires Haiku For human block; Verdict primitive shared verbatim with review-N.md (APPROVED|CHANGES_REQUESTED|BLOCKED)"
     },
     "critic-response": {
       "class": "A",

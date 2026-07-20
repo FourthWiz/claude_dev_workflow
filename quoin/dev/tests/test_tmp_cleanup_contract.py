@@ -18,9 +18,10 @@ MIGRATED_SKILLS_DIR_OVERRIDES = {
     "plan": ADAPTER_SKILLS_DIR,
     "revise": ADAPTER_SKILLS_DIR,
     "revise-fast": ADAPTER_SKILLS_DIR,
+    "security_review": ADAPTER_SKILLS_DIR,
 }
 
-CLASS_B_WRITERS = ["plan", "architect", "review", "revise", "revise-fast"]
+CLASS_B_WRITERS = ["plan", "architect", "review", "revise", "revise-fast", "security_review"]
 
 SKILL_PATHS = {
     name: MIGRATED_SKILLS_DIR_OVERRIDES.get(name, SKILLS_DIR) / name / "SKILL.md"

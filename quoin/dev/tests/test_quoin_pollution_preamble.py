@@ -1,8 +1,8 @@
 """
 Quoin Stage 1 — structural consistency tests for the §0' pollution dispatch block.
 
-The 7 Opus-tier target skills (architect, plan, critic, revise, review,
-init_workflow, discover) carry a `## §0' Pollution dispatch ...` block.
+The 9 Opus-tier target skills (architect, plan, critic, revise, review,
+init_workflow, discover, specify, security_review) carry a `## §0' Pollution dispatch ...` block.
 Cheap-tier skills and orchestrators must NOT carry it.
 
 Per lesson 2026-04-23 LLM-replay non-determinism: NO live LLM calls —
@@ -26,7 +26,7 @@ SESSION_BOOTSTRAP_HEADING = "## Session bootstrap"
 MODEL_REQ_HEADING = "## Model requirement"
 ZC_PIDFILE_HEADING = "## §0c Pidfile lifecycle"
 
-# 8 Opus-tier target skills — must carry §0'.
+# 9 Opus-tier target skills — must carry §0'.
 POLLUTION_TARGET_SKILLS = [
     "architect",
     "plan",
@@ -36,6 +36,7 @@ POLLUTION_TARGET_SKILLS = [
     "init_workflow",
     "discover",
     "specify",
+    "security_review",
 ]
 
 # 12 cheap-tier skills — must NOT carry §0'.
@@ -77,6 +78,7 @@ SKILL_DISTINCTIVE_TOKENS = {
     "init_workflow": "project root",
     "discover": "project root",
     "specify": "spec.md",
+    "security_review": "OWASP",
 }
 
 
@@ -152,7 +154,7 @@ def test_no_cheap_tier_skill_has_pollution(skill):
     text = _read_skill(skill)
     assert POLLUTION_HEADING not in text, (
         f"{skill}/SKILL.md is cheap-tier but contains the §0' heading. "
-        "S-1 architecture limits §0' to the 7 Opus-tier non-orchestrator skills."
+        "S-1 architecture limits §0' to the 9 Opus-tier non-orchestrator skills."
     )
 
 
