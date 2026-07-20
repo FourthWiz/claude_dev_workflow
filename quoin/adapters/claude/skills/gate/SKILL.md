@@ -371,6 +371,21 @@ normally present in interactive user sessions.
 
 **If only ONE or NEITHER variable is set:** proceed normally to Step 4 below.
 
+### Step 3.6: Autonomous auto-approve check (runs BEFORE Step 4 STOP; independent of Step 3.5)
+
+Applies when `/gate` is running under autonomous mode — either dispatched as a `[autonomous]`-subagent (the incoming prompt carries the `[autonomous]` sentinel), OR invoked **inline** by an orchestrator (`/run --autonomous`) whose own `AUTONOMOUS` state is set (no spawn prompt exists for inline invocation, so the orchestrator's own state is read directly — mirrors the inline-gate rule documented in `run/SKILL.md`).
+
+Detection: parse `[autonomous]` from the incoming prompt (subagent mode), OR read the orchestrator's own `AUTONOMOUS` flag when this gate is executing inline (post-implement/post-review boundaries).
+
+**If autonomous mode is active:**
+
+1. **On checks PASS** (no blocking FAIL rows in the `## Automated checks` table): do NOT block on user input. Do NOT call `AskUserQuestion`. Emit a one-line notice: `[quoin-gate: autonomous auto-approved] checks PASS — skipping human gate under autonomous mode`. Treat this as an implicit approval and proceed DIRECTLY to Step 5 audit-log persistence. In Step 5, write the audit log with the extra fields `auto_approved: true` and `mode: autonomous`.
+2. **On checks FAIL** (any blocking FAIL row present): do NOT auto-approve — this is the fail-closed branch. Do NOT write the audit log as an approval. Return the FAIL verdict to the orchestrator; the orchestrator (not `/gate`) owns the retry/hard-stop decision. Step 5 audit-log persistence still runs (mandatory in both modes — see "Gate invocation boundaries" below) and records `Verdict: FAIL`, never an auto-approval.
+
+**If autonomous mode is NOT active:** proceed normally to Step 4 (unchanged).
+
+This check is independent of the Step 3.5 benchmark dual-guard bypass — the two auto-approve paths are keyed on different signals and are not mutually exclusive gates on the same run.
+
 ### Step 4: STOP and wait
 
 Do NOT proceed. Do NOT invoke the next skill. Do NOT suggest "I'll go ahead and start implementing."
