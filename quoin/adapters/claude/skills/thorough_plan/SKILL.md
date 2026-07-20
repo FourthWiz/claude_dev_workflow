@@ -19,6 +19,20 @@ On start:
 
 ## Setup
 
+### 0. Parse autonomous sentinel
+
+Before anything else, check whether the invocation prompt carries the `[autonomous]` sentinel
+(prefixed by `/run` per its "Autonomous propagation" rule when this skill is spawned from an
+autonomous `/run`, or passed directly on a standalone invocation). Parse and strip it at
+bootstrap into an internal state flag `_AUTONOMOUS`:
+
+- If present: strip `[autonomous]` from the prompt text — leading sentinels stack (e.g.
+  `[no-redispatch] [autonomous] <task description>`); strip each independently, order does not
+  matter — and set `_AUTONOMOUS=true` for the remainder of this session.
+- If absent: `_AUTONOMOUS=false`. Every `[autonomous]` branch documented below is inert when
+  `_AUTONOMOUS=false` — a standalone `/thorough_plan` invocation without the sentinel keeps the
+  existing interactive behavior unchanged.
+
 ### 1. Determine the task subfolder and stage
 
 Before starting the loop, establish the working directory:
@@ -121,6 +135,13 @@ in its body:
 **Fail-OPEN:** if `_ckpt_sid` extraction fails (empty result) or `_TPCKPT_SID == "unknown"`,
 treat as `_TP_SAME_SESSION=false` and present the standard 2-option AskUserQuestion.
 
+**Under `[autonomous]`:** skip the `AskUserQuestion` entirely in both variants — auto-select
+option **(a) Resume** (same-session variant: **(a) Resume here**) and proceed exactly as
+documented for that option: parse the `## Current stage` token, re-hydrate from the existing
+`current-plan.md` and any `critic-response-*.md` on disk, set the round counter, and re-dispatch
+the phase that was in flight. NEVER auto-select **(c) Resume in a new session** — that option
+prints STOP instructions and halts, which would stall an unattended autonomous run.
+
 **If NO qualifying checkpoint exists:** continue silently with round 1 (no AskUserQuestion).
 
 **Convergence cleanup (on PASS or Small single-pass convergence):** after writing the converged plan,
@@ -146,7 +167,7 @@ Before starting the loop, scan the user's task description for runtime overrides
 
 1b. **Task profile tag** (`small:`, `medium:`, `large:`, case-insensitive): If the task description begins with one of these tokens, set the task profile accordingly and strip the token. If `large:` is specified, it is equivalent to `strict:` (all-Opus, max 5). If no profile tag is found and `strict:` was not found, proceed to step 1c.
 
-1c. **Auto-classification** (only if no explicit tag from steps 1 or 1b): Based on the task description and any available context (architecture docs, referenced files), classify the task as Small, Medium, or Large using the triage criteria (see "Task triage criteria" section below). Present the classification to the user with a brief rationale and ask for confirmation. If the user disagrees, use their choice. If the user does not respond or says "ok" / "yes" / "go", use the auto-classification. **When in doubt, default to Medium** — it is the safe middle ground.
+1c. **Auto-classification** (only if no explicit tag from steps 1 or 1b): Based on the task description and any available context (architecture docs, referenced files), classify the task as Small, Medium, or Large using the triage criteria (see "Task triage criteria" section below). Present the classification to the user with a brief rationale and ask for confirmation. If the user disagrees, use their choice. If the user does not respond or says "ok" / "yes" / "go", use the auto-classification. **When in doubt, default to Medium** — it is the safe middle ground. **Under `[autonomous]`:** skip presenting the classification for confirmation — accept the auto-classified profile immediately and proceed without waiting for a response.
 
 2. **`max_rounds: N`** (case-insensitive, N = positive integer): If found, use N as the maximum round cap for this run. Strip the `max_rounds: N` token from the description before passing it to the planner skill. If not found, use the default cap (4 for Medium, 5 for Large/strict). If the value is not a positive integer (e.g., zero, negative, or non-numeric), ignore the override and use the default.
 
@@ -213,6 +234,8 @@ Before the spec pre-flight below, offer via `AskUserQuestion` to run `/enrich` o
 
 This is default-on but NON-BLOCKING — the loop proceeds regardless of the answer. If run, append a best-effort cost-ledger row for the `enrich` phase if the subagent didn't record one: `unknown-enrich-<timestamp> | <date> | enrich | opus | task | /thorough_plan subagent (no UUID recorded)`. No `/gate` runs after enrich.
 
+**Under `[autonomous]`:** skip the `AskUserQuestion` — do not wait for a choice. When `/thorough_plan` was itself spawned with `[autonomous]` from `/run`, enrichment has typically already run at `/run` Phase 1.4 — skip re-running it here. When `/thorough_plan` is invoked standalone under `[autonomous]` (no upstream enrich), run `/enrich` best-effort without blocking; if it is unavailable, errors, or times out, proceed directly to the spec pre-flight below without waiting. Either way this stays non-blocking, exactly as the non-autonomous default already is.
+
 ### 3c. Spec pre-flight (advisory, non-blocking)
 
 If NO `<task-root>/spec.md` exists AND the task profile (determined in step 3/3b above) is Medium or Large (Small tasks skip this offer entirely, per the resolved Small-task-skip policy), offer via `AskUserQuestion` to run `/specify` first:
@@ -224,6 +247,8 @@ If NO `<task-root>/spec.md` exists AND the task profile (determined in step 3/3b
 - Option 2: label: "Proceed without a spec" — description: "Continue planning now. A spec can always be added later; its absence is a normal, non-blocking outcome (grandfather)."
 
 This is ADVISORY / NON-BLOCKING — the loop proceeds regardless of the answer; grandfather preserved. Small tasks skip the offer entirely.
+
+**Under `[autonomous]`:** skip the `AskUserQuestion`. If `<task-root>/spec.md` already exists, proceed straight to planning. If it does NOT exist, run `/specify` non-interactively (spawn with `[autonomous]` — see `/specify`'s own non-interactive degrade branch, which synthesizes a confidence-scored spec instead of eliciting interactively) rather than waiting on a choice; treat the resulting spec (including its `confidence` field) as planning input. Either way this never blocks — under `[autonomous]` it simply never waits for user input.
 
 ### 4. Model selection per round
 
@@ -276,6 +301,15 @@ Round 2:
 
 ### Invoking each agent
 
+**Autonomous re-prefix (`[autonomous]` transitive propagation):** When this orchestrator itself
+is running with `_AUTONOMOUS=true` (parsed at bootstrap per Setup "0. Parse autonomous sentinel"
+above), prefix `[autonomous]` onto EVERY spawn prompt below — the `/plan`, `/critic`, `/revise`,
+and `/revise-fast` spawns, and the post-plan `/gate` subagent spawn — so the sentinel reaches
+those leaf skills' own `[autonomous]` / §0' / §0″ branches. Sentinels stack with any existing
+prefix (e.g. `[no-redispatch] [autonomous] <spawn instructions>`); each leaf skill parses and
+strips its own copy independently at its own bootstrap. This is the deeper-spawn re-prefix rule
+referenced by `/run`'s "Transitive propagation rule" (`D-07`).
+
 **`/plan` (Round 1 only)**
 - Always spawn `/plan` (Opus) — the initial plan is always Opus-quality regardless of mode
 - Pass all context: architecture docs, user requirements, repo paths
@@ -300,7 +334,7 @@ The loop stops when ANY of these is true:
 
 1. **Critic gives PASS** — no CRITICAL or MAJOR issues. Plan is ready.
 2. **Max rounds reached (default: 4)** — inform the user of remaining issues. The plan may have inherent constraints.
-3. **Stuck in a loop** — if round N's critic has the same dominant `surface_family` class among structural CRIT/MAJ issues as round N-1 (same-class recurrence), escalate to the user with the repeated class, the specific issues, and three options: (a) continue revising, (b) add a structural canary task to the plan, (c) accept the plan as-is and proceed to implement. Do NOT auto-continue.
+3. **Stuck in a loop** — if round N's critic has the same dominant `surface_family` class among structural CRIT/MAJ issues as round N-1 (same-class recurrence), escalate to the user with the repeated class, the specific issues, and three options: (a) continue revising, (b) add a structural canary task to the plan, (c) accept the plan as-is and proceed to implement. Do NOT auto-continue. **Under `[autonomous]`:** skip escalating to the user — auto-select **(a) continue revising**, up to `max_rounds` (never silently accept an unresolved same-class recurrence, and never auto-add a canary task without review). If `max_rounds` is reached while the same-class recurrence is still unresolved, fall through to rule 2 (max-rounds-reached) handling above.
 
 ### After each critic round — classify and decide
 
@@ -317,7 +351,7 @@ Note: `--enable-bailout` is currently disabled (default=False) and should NOT be
 
 **BAIL-TO-IMPLEMENT verdict handling:** If the classifier returns `BAIL-TO-IMPLEMENT` (only possible when `--enable-bailout` is explicitly passed), stop the critic loop immediately and route directly to `/implement` without further revision rounds. BAIL-TO-IMPLEMENT is NOT emitted by the critic itself — it is synthesized by this orchestrator when all remaining CRITICAL and MAJOR issues are classified as mechanical and the canary precondition holds. When this verdict fires, inform the user that only mechanical issues remain and that implementation will address them directly, then proceed to the gate.
 
-**Same-class detection:** If round N's `structural_count` > 0 AND round N-1's `structural_count` > 0 AND the dominant surface families match (both rounds share the same top-1 `surface_family` among structural CRIT/MAJ issues), escalate to the user as described in rule 3 above. Do NOT auto-continue. When `Class:` lines are absent in a critic response (legacy format without per-issue class labels), same-class detection falls back to same-title comparison — comparing the titles of structural CRIT/MAJ issues across rounds instead of their class labels to detect recurrence.
+**Same-class detection:** If round N's `structural_count` > 0 AND round N-1's `structural_count` > 0 AND the dominant surface families match (both rounds share the same top-1 `surface_family` among structural CRIT/MAJ issues), escalate to the user as described in rule 3 above. Do NOT auto-continue. **Under `[autonomous]`:** apply the rule-3 autonomous branch above (auto-select "continue revising" up to `max_rounds`) instead of escalating. When `Class:` lines are absent in a critic response (legacy format without per-issue class labels), same-class detection falls back to same-title comparison — comparing the titles of structural CRIT/MAJ issues across rounds instead of their class labels to detect recurrence.
 
 ### Between rounds
 

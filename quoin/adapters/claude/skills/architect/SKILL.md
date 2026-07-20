@@ -191,6 +191,8 @@ If NO `<task-root>/spec.md` exists AND the task is Medium or Large (Small tasks 
 
 This is ADVISORY / NON-BLOCKING — proceeding without a spec is always allowed (grandfather); never block, never hard-require. Small tasks skip the offer entirely.
 
+**Under `[autonomous]`:** skip the `AskUserQuestion` — proceed without waiting. If `<task-root>/spec.md` already exists, use it as-is. If it does NOT exist, proceed straight into Phase 1 without one; a missing spec is a normal, non-blocking outcome under autonomous exactly as it is otherwise (grandfather preserved). Parse `[autonomous]` at bootstrap into a local `_AUTONOMOUS` state (mirrors `/run`'s "Autonomous propagation" sentinel — the prompt may arrive prefixed `[autonomous]` when this skill is spawned from an autonomous `/run` or `/thorough_plan`).
+
 ## How you work
 
 You are methodical and thorough. You never guess when you can look. You read code, documents, configs, and tests before forming opinions. You ask clarifying questions when the problem space is ambiguous. You search the web when you need context about external systems, APIs, or best practices.
@@ -281,6 +283,8 @@ Each scan agent returns its structured findings. Collect all findings into a com
 
 If a scan agent fails, times out, or returns incomplete results (missing one or more of the 5 required sections), flag it to the user. Options: (a) retry the failed scan, (b) read the failed repo directly in the main Opus session during Phase 2 (fallback to old behavior for that repo), (c) proceed without it if the repo is peripheral to the task. Do NOT silently proceed with missing scan data for a task-relevant repo.
 
+**Under `[autonomous]`:** proceed best-effort without asking — (a) retry the failed scan ONCE; (b) if the retry also fails, fall back to reading the repo directly in the main Opus session during Phase 2; (c) if that is impractical (repo genuinely peripheral to the task), proceed without it. In every case, flag the gap explicitly in the resulting `architecture.md` (e.g. a note under `## Open questions` or inline in `## Current state`) rather than silently proceeding with missing scan data — the flag substitutes for the interactive prompt this mode skips.
+
 #### Stale-cache scan agent variant
 
 When spawning a scan agent for a repo that has stale cache entries (case 2 from the cache check above), append the following to the standard scan agent instructions:
@@ -307,6 +311,8 @@ This variant produces the same scan findings as a normal scan agent, plus refres
 #### Questions before synthesis
 
 If something in the scan findings is unclear or ambiguous, ask the user. Don't assume. Use the AskUserQuestion tool with specific, pointed questions. Better to ask 3 good questions upfront than to build a plan on wrong assumptions.
+
+**Under `[autonomous]`:** skip `AskUserQuestion` — proceed to Phase 2 best-effort using the most reasonable reading of the ambiguous scan findings, and record each unresolved ambiguity explicitly under `## Open questions` in the written `architecture.md` (never silently pick an interpretation without flagging it).
 
 ### Phase 2: Synthesize — architectural design (Opus)
 
@@ -496,13 +502,20 @@ while round <= max_rounds:
 
     if round == 2:
         # cost guard — use AskUserQuestion before spawning round 2:
-        confirm = AskUserQuestion(
-            question="[critic round 2 starting — ~$10-30 estimated based on body size] Proceed?",
-            options=[
-                {label: "Yes, proceed", description: "Run round 2 of the architecture critic."},
-                {label: "No, stop here", description: "Accept the architecture as-is after round 1."}
-            ]
-        )
+        # Under [autonomous] (parsed at bootstrap into _AUTONOMOUS): skip this AskUserQuestion
+        # entirely and auto-select "Yes, proceed" — perfectionist depth-within-profile (D-02)
+        # means autonomous never stops early on cost grounds; the max_rounds cap (default 2,
+        # 4 in strict mode — see Step P1) remains the sole ceiling.
+        if _AUTONOMOUS:
+            confirm = "Yes, proceed"
+        else:
+            confirm = AskUserQuestion(
+                question="[critic round 2 starting — ~$10-30 estimated based on body size] Proceed?",
+                options=[
+                    {label: "Yes, proceed", description: "Run round 2 of the architecture critic."},
+                    {label: "No, stop here", description: "Accept the architecture as-is after round 1."}
+                ]
+            )
         if confirm != "Yes, proceed": break
 
     # Spawn /critic as a FRESH subagent (model: opus — non-negotiable per CLAUDE.md model assignments).
@@ -540,14 +553,21 @@ while round <= max_rounds:
         this_family  = dominant_structural_surface_family(round)
         if prior_family and this_family and prior_family == this_family:
             inform_user("Same structural surface-family class '" + this_family + "' recurring across rounds — escalating.")
-            decision = AskUserQuestion(
-                question="The same structural issue class is recurring. Accept architecture as-is, or continue revising?",
-                options=[
-                    {label: "Accept as-is", description: "Stop revising; accept the current architecture."},
-                    {label: "Continue revising", description: "Run another critic round on the same surface-family."}
-                ]
-            )
+            # Under [autonomous]: skip escalating to the user — auto-select "Continue revising"
+            # up to max_rounds (never silently accept a recurring structural issue class).
+            if _AUTONOMOUS:
+                decision = "Continue revising"
+            else:
+                decision = AskUserQuestion(
+                    question="The same structural issue class is recurring. Accept architecture as-is, or continue revising?",
+                    options=[
+                        {label: "Accept as-is", description: "Stop revising; accept the current architecture."},
+                        {label: "Continue revising", description: "Run another critic round on the same surface-family."}
+                    ]
+                )
             if decision == "Accept as-is": break
+            # decision == "Continue revising": loop continues; if max_rounds is reached with
+            # recurrence still unresolved, the max-rounds-reached message below fires as usual.
 
     # REVISE — re-run Output format Steps 1-6 IN THE SAME /architect session (D-03):
     # /architect IS the synthesis skill; no fresh-session re-spawn for re-synthesis.
@@ -567,7 +587,7 @@ if verdict == REVISE and round > max_rounds:
 
 - **PASS → done.** No CRITICAL or MAJOR issues — proceed to `## Save session state`.
 - **Max rounds reached.** Loop exited with REVISE verdict — max-rounds-reached message emitted above; proceed to `## Save session state`.
-- **Loop detected (strict mode only).** User chose "accept" at AskUserQuestion — architecture.md is final-as-is; proceed to `## Save session state`.
+- **Loop detected (strict mode only).** User chose "accept" at AskUserQuestion — architecture.md is final-as-is; proceed to `## Save session state`. **Under `[autonomous]`:** this AskUserQuestion never fires (see Step P3's autonomous branch above) — the loop instead continues revising up to `max_rounds`, so this outcome path is reached only via the max-rounds-reached outcome above, never via a user "accept" choice.
 
 ## Save session state
 

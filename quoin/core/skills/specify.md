@@ -79,6 +79,17 @@ The closed top-level section set is:
   skill (owned by the init-workflow and discover skills).
 - When requirements are ambiguous the skill MUST ask the user before
   proceeding.
+- **Autonomous non-interactive degrade:** when invoked in an autonomous span
+  (a sentinel carried on the invocation, adapter-specific in form), the skill
+  MUST NOT block on interactive elicitation. Instead it synthesizes the spec
+  from the raw task description plus any available upstream artifacts (a
+  prior enriched-prompt document, a prior architecture document, or an
+  existing task spec), explicitly records every filled gap as an assumption
+  in `## Context`, and adds a self-assessed `confidence` field (0..1) to the
+  frontmatter reflecting how well-grounded the synthesis is. The repo-main-spec
+  update proposal (below) MUST auto-reject rather than auto-approve in this
+  mode — the repo main spec stays human-owned even when task-spec elicitation
+  is non-interactive.
 
 ## Out of scope
 

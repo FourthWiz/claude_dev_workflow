@@ -169,6 +169,14 @@ Analyze the raw prompt against the grounding context gathered above (real repo s
 
 - **Interactive session:** fold the user's answers into the enriched prompt directly.
 - **Non-interactive dispatch (no way to ask):** produce a best-effort rewrite of the prompt, explicitly flag every assumption you made to fill a gap, and list the exact questions you would have asked as a "questions I would have asked" section — never silently guess without flagging it.
+- **Under `[autonomous]`:** parse and strip the `[autonomous]` sentinel at bootstrap into a local
+  `_AUTONOMOUS` state (mirrors `/run`'s "Autonomous propagation" sentinel — present when this
+  skill is spawned from an autonomous session, or passed directly on a standalone invocation).
+  When `_AUTONOMOUS=true`, treat this exactly as the non-interactive dispatch path above even in
+  an otherwise-interactive session: skip `AskUserQuestion`, never block waiting for a round-trip,
+  produce the best-effort rewrite, and flag every assumption made to fill a gap plus the
+  "questions I would have asked" list. This is additive to (not a replacement for) the existing
+  non-interactive-dispatch degrade — both paths converge on the same best-effort, flagged output.
 
 ## Output
 
@@ -181,6 +189,16 @@ Sections, in this order:
 - `## Assumptions` — every assumption made to fill a gap (non-interactive path), or "none" (interactive path / already-clear path).
 - `## Open questions` — the "questions I would have asked" list (non-interactive path), or any genuinely unresolved ambiguity the user chose to defer, or "none".
 - `## Grounding sources` — which discovery/memory files or prior spec.md informed the enrichment, or "none — prompt required no grounding lookup".
+
+**Under `[autonomous]` (REQUIRED):** emit an additional `confidence: <float 0..1>` line (place it
+at the top of `## Enriched prompt`, e.g. `confidence: 0.8`) — a self-assessed score of how
+well-grounded the enriched prompt is given the raw input and the grounding context gathered at
+bootstrap. Lower confidence when the raw prompt was thin and required several flagged
+assumptions; higher confidence when it was already clear or grounding context resolved the gaps
+cleanly. This gives the Small-path Formulation bar a second input alongside the single-pass
+`/plan` confidence — `/run`'s bar takes the **minimum** of the two when both are present (see
+`run/SKILL.md` "Formulation quality bar"). Omit this line in the non-autonomous path — it is
+specific to `[autonomous]` runs.
 
 After writing, echo the full enriched prompt in chat so the user sees it immediately without needing to open the file.
 
