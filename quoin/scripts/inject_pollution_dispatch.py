@@ -123,6 +123,13 @@ On fire (happy path — silent up-dispatch):
 Fail-OPEN path (fires only when Agent dispatch fails):
   Classify the error text BEFORE proceeding:
 
+  - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
+    incoming prompt carries the `[autonomous]` sentinel, then on ANY §0″ dispatch-failure or
+    1M-context-credit error, proceed at current tier fail-OPEN and DO NOT call `AskUserQuestion`
+    — skip the 1M-credit-class and generic branches below entirely. Print
+    `[quoin-mintier-autonomous: §0″ dispatch failed; proceeding fail-OPEN at current tier]` and
+    proceed to skill body (treat as bare [no-redispatch]).
+
   - 1M-credit-class: if error text contains `Usage credits required for 1M context`:
       Issue AskUserQuestion:
         Question: "§0″ up-dispatch to opus failed with a 1M-context credit mismatch for /{skill}.
@@ -264,6 +271,13 @@ Dispatch action (when pollution detected AND no sentinel AND no prior §0 dispat
 
 Fail-OPEN path:
   If Agent tool unavailable or errors — classify the error first:
+
+  - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
+    incoming prompt carries the `[autonomous]` sentinel, then on ANY §0' dispatch-failure or
+    1M-context-credit error, proceed at current tier fail-OPEN and DO NOT call `AskUserQuestion`
+    — skip the 1M-credit-class and generic branches below entirely. Print
+    `[quoin-autonomous: §0' dispatch failed; proceeding fail-OPEN at current tier]` and proceed
+    with skill body (treat as bare [no-redispatch]).
   - 1M-credit-class: if the error text contains the substring
       `Usage credits required for 1M context`:
       The §0' opus dispatch hit a 1M-context credit mismatch (IVG-89). Detection via
@@ -666,6 +680,8 @@ def run_check() -> int:
         "POLLUTION_THRESHOLD",
         'model: "opus"',
         "Usage credits required for 1M context",
+        "[autonomous]",
+        "[quoin-autonomous: §0' dispatch failed; proceeding fail-OPEN at current tier]",
     ]
     # Required file-wide strings (test_pollution_score_extraction.py)
     score_extraction_strings = [
@@ -688,6 +704,8 @@ def run_check() -> int:
         "Abort — run from an Opus session",
         "Proceed at current tier (under-powered)",
         "[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]",
+        "[autonomous]",
+        "[quoin-mintier-autonomous: §0″ dispatch failed; proceeding fail-OPEN at current tier]",
     ]
     # Required HTML markers for §0″ (MIN-1: 2 markers checked as file-level presence, NOT inside block extraction)
     mintier_required_markers = [

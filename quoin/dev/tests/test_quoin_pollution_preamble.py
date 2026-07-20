@@ -67,6 +67,8 @@ REQUIRED_TOKENS = [
     "pollution_score",
     "POLLUTION_THRESHOLD",
     'model: "opus"',
+    "[autonomous]",
+    "[quoin-autonomous: §0' dispatch failed; proceeding fail-OPEN at current tier]",
 ]
 
 # Per-skill distinctive token that proves the dispatch contract is skill-specific.

@@ -60,6 +60,13 @@ Dispatch action (when pollution detected AND no sentinel AND no prior §0 dispat
 
 Fail-OPEN path:
   If Agent tool unavailable or errors — classify the error first:
+
+  - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
+    incoming prompt carries the `[autonomous]` sentinel, then on ANY §0' dispatch-failure or
+    1M-context-credit error, proceed at current tier fail-OPEN and DO NOT call `AskUserQuestion`
+    — skip the 1M-credit-class and generic branches below entirely. Print
+    `[quoin-autonomous: §0' dispatch failed; proceeding fail-OPEN at current tier]` and proceed
+    with skill body (treat as bare [no-redispatch]).
   - 1M-credit-class: if the error text contains the substring
       `Usage credits required for 1M context`:
       The §0' opus dispatch hit a 1M-context credit mismatch (IVG-89). Detection via
@@ -126,6 +133,13 @@ On fire (happy path — silent up-dispatch):
 
 Fail-OPEN path (fires only when Agent dispatch fails):
   Classify the error text BEFORE proceeding:
+
+  - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
+    incoming prompt carries the `[autonomous]` sentinel, then on ANY §0″ dispatch-failure or
+    1M-context-credit error, proceed at current tier fail-OPEN and DO NOT call `AskUserQuestion`
+    — skip the 1M-credit-class and generic branches below entirely. Print
+    `[quoin-mintier-autonomous: §0″ dispatch failed; proceeding fail-OPEN at current tier]` and
+    proceed to skill body (treat as bare [no-redispatch]).
 
   - 1M-credit-class: if error text contains `Usage credits required for 1M context`:
       Issue AskUserQuestion:
