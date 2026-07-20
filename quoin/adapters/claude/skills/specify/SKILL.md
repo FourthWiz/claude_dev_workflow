@@ -43,6 +43,13 @@ Dispatch action (when pollution detected AND no sentinel AND no prior §0 dispat
 
 Fail-OPEN path:
   If Agent tool unavailable or errors — classify the error first:
+
+  - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
+    incoming prompt carries the `[autonomous]` sentinel, then on ANY §0' dispatch-failure or
+    1M-context-credit error, proceed at current tier fail-OPEN and DO NOT call `AskUserQuestion`
+    — skip the 1M-credit-class and generic branches below entirely. Print
+    `[quoin-autonomous: §0' dispatch failed; proceeding fail-OPEN at current tier]` and proceed
+    with skill body (treat as bare [no-redispatch]).
   - 1M-credit-class: if the error text contains the substring
       `Usage credits required for 1M context`:
       The §0' opus dispatch hit a 1M-context credit mismatch (IVG-89). Detection via
@@ -110,6 +117,13 @@ On fire (happy path — silent up-dispatch):
 Fail-OPEN path (fires only when Agent dispatch fails):
   Classify the error text BEFORE proceeding:
 
+  - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
+    incoming prompt carries the `[autonomous]` sentinel, then on ANY §0″ dispatch-failure or
+    1M-context-credit error, proceed at current tier fail-OPEN and DO NOT call `AskUserQuestion`
+    — skip the 1M-credit-class and generic branches below entirely. Print
+    `[quoin-mintier-autonomous: §0″ dispatch failed; proceeding fail-OPEN at current tier]` and
+    proceed to skill body (treat as bare [no-redispatch]).
+
   - 1M-credit-class: if error text contains `Usage credits required for 1M context`:
       Issue AskUserQuestion:
         Question: "§0″ up-dispatch to opus failed with a 1M-context credit mismatch for /specify.
@@ -161,6 +175,15 @@ This skill may run in a fresh chat session with no prior context. On start:
 6. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`.
 7. Then proceed with the work below.
 
+**Autonomous sentinel:** check whether the invocation prompt carries the `[autonomous]` sentinel
+(prefixed by `/run`, `/thorough_plan`, or `/architect` per their "Autonomous propagation" /
+re-prefix rules when this skill is spawned from an autonomous session, or passed directly on a
+standalone invocation). Parse and strip it at bootstrap into a local state flag `_AUTONOMOUS`:
+present → strip it (sentinels stack, e.g. `[no-redispatch] [autonomous] <task>` — strip each
+independently) and set `_AUTONOMOUS=true`; absent → `_AUTONOMOUS=false`, and every `[autonomous]`
+branch below is inert — a standalone `/specify` invocation without the sentinel keeps the
+existing interactive behavior unchanged.
+
 ## Intent elicitation
 
 Use the `AskUserQuestion` tool to draw out the shape of the feature before writing anything. Do not invent user stories, functional requirements, or acceptance criteria the user has not confirmed — this skill's entire value is capturing what the user actually means, not guessing.
@@ -177,6 +200,37 @@ If the user's initial description already answers some of these, don't re-ask �
 
 Ask focused, specific questions. Prefer 2-3 pointed questions per round over one giant checklist — this is a conversation, not a form.
 
+### Non-interactive degrade (`[autonomous]`)
+
+**Under `[autonomous]` (`_AUTONOMOUS=true`):** skip the `AskUserQuestion`-based elicitation above
+entirely — do not wait for a round-trip. Instead, synthesize the spec directly from the inputs
+already on hand:
+
+1. **Inputs, in priority order:** the raw task description from the invocation; `<task-root>/enriched-prompt.md`
+   if it exists (per Session bootstrap — the upstream `/enrich` output, including its own
+   `## Assumptions` / `## Open questions` sections); `<task-root>/architecture.md` if it exists
+   (constraints, proposed design, risks already captured there); any prior `<task-root>/spec.md`
+   (revise rather than start from scratch, per Session bootstrap step 4).
+2. **Synthesize** the five required sections (`## Context`, `## User stories`, `## Functional
+   requirements`, `## Acceptance criteria`, `## Out of scope`) from those inputs using the most
+   reasonable reading — do not invent scope that contradicts the raw prompt or the architecture.
+3. **Record every filled gap as an explicit assumption** in `## Context` (e.g. "Assumption: no
+   out-of-scope boundary was stated, so X is treated as excluded based on Y"). Never silently
+   fabricate a user story or acceptance criterion without flagging it as an assumption — the
+   flag substitutes for the interactive confirmation this mode skips.
+4. **Add a `confidence: <float 0..1>` frontmatter field** (see "Writing the spec" below) — a
+   self-assessed score of how well-grounded the synthesized spec is given the available inputs.
+   Lower confidence when inputs were sparse (no enriched prompt, no architecture, no prior spec)
+   or when several assumptions had to be made; higher confidence when the raw prompt was already
+   detailed and/or a rich `enriched-prompt.md`/`architecture.md` was available. This is the
+   Small-path Formulation-bar signal `/run`'s autonomous quality gate reads (alongside the
+   single-pass `/plan` confidence — see `run/SKILL.md` "Formulation quality bar").
+
+The `§0'`/`§0″` dispatch-failure `AskUserQuestion` sites elsewhere in this file are a separate,
+generator-owned mechanism (see the `<!-- §0doubleprime-begin/end -->` block above) — their
+autonomous fail-OPEN behavior is added uniformly across all leaf skills by a generator-template
+change, not by hand-editing this section.
+
 ## Writing the spec
 
 Once intent is clear, compose `spec.md` as a **Class A** artifact (always-English; no terse body; no `## For human` summary block or truncation of any kind — the whole file stays human-readable prose).
@@ -190,6 +244,13 @@ date: <today's date>
 status: draft
 ---
 ```
+
+**Under `[autonomous]`:** add one additional frontmatter field, `confidence: <float 0..1>` — the
+self-assessed score computed per the "Non-interactive degrade" branch above. This is an ALLOWED
+additive frontmatter key: `validate_artifact.py`'s `spec` type check (V-01) only parses YAML and
+does not enforce a closed frontmatter key set, so adding `confidence` does not break validation.
+Omit this field entirely in the non-autonomous (interactive) path — it only appears when the spec
+was synthesized non-interactively.
 
 **Body — exactly these five headings, in this order:**
 - `## Context` — the problem, why it matters, constraints, business context, in plain prose.
@@ -226,7 +287,13 @@ This trigger is BEST-EFFORT / ADVISORY judgment — there is no numeric threshol
 
 NEVER write automatically — this gate is the safety guarantee (never auto-writes; always diff + approve).
 
-On Approve: write via `<path>.tmp` + atomic `mv` to `.workflow_artifacts/spec.md`, then `python3 __QUOIN_HOME__/scripts/validate_artifact.py .workflow_artifacts/spec.md` → expect exit 0. On Reject: leave the repo spec untouched. Either way, the task spec written earlier is unaffected.
+**Under `[autonomous]`:** skip the `AskUserQuestion` — auto-select **Option 2: "Reject — keep repo
+spec as-is"**. This gate NEVER auto-writes the repo spec, autonomous or not — the repo main spec
+is a human-owned artifact, and autonomous mode must not fabricate or silently merge changes into
+it. The drafted proposal (Step 1 above) is discarded; the task spec written earlier is unaffected
+either way.
+
+On Approve: write via `<path>.tmp` + atomic `mv` to `.workflow_artifacts/spec.md`, then `python3 __QUOIN_HOME__/scripts/validate_artifact.py .workflow_artifacts/spec.md` → expect exit 0. On Reject (including the autonomous auto-Reject above): leave the repo spec untouched. Either way, the task spec written earlier is unaffected.
 
 ## Important behaviors
 

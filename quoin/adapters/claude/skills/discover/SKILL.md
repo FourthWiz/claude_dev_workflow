@@ -42,6 +42,13 @@ Dispatch action (when pollution detected AND no sentinel AND no prior §0 dispat
 
 Fail-OPEN path:
   If Agent tool unavailable or errors — classify the error first:
+
+  - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
+    incoming prompt carries the `[autonomous]` sentinel, then on ANY §0' dispatch-failure or
+    1M-context-credit error, proceed at current tier fail-OPEN and DO NOT call `AskUserQuestion`
+    — skip the 1M-credit-class and generic branches below entirely. Print
+    `[quoin-autonomous: §0' dispatch failed; proceeding fail-OPEN at current tier]` and proceed
+    with skill body (treat as bare [no-redispatch]).
   - 1M-credit-class: if the error text contains the substring
       `Usage credits required for 1M context`:
       The §0' opus dispatch hit a 1M-context credit mismatch (IVG-89). Detection via
@@ -109,6 +116,13 @@ On fire (happy path — silent up-dispatch):
 Fail-OPEN path (fires only when Agent dispatch fails):
   Classify the error text BEFORE proceeding:
 
+  - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
+    incoming prompt carries the `[autonomous]` sentinel, then on ANY §0″ dispatch-failure or
+    1M-context-credit error, proceed at current tier fail-OPEN and DO NOT call `AskUserQuestion`
+    — skip the 1M-credit-class and generic branches below entirely. Print
+    `[quoin-mintier-autonomous: §0″ dispatch failed; proceeding fail-OPEN at current tier]` and
+    proceed to skill body (treat as bare [no-redispatch]).
+
   - 1M-credit-class: if error text contains `Usage credits required for 1M context`:
       Issue AskUserQuestion:
         Question: "§0″ up-dispatch to opus failed with a 1M-context credit mismatch for /discover.
@@ -144,6 +158,16 @@ Fail-OPEN path (fires only when Agent dispatch fails):
       - Option 1: print `[quoin-mintier: aborted; re-invoke /discover from an Opus session]` and STOP.
       - Option 2: print `[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]`, then proceed to skill body (treat as bare [no-redispatch]).
 <!-- §0doubleprime-end -->
+
+## Autonomous mode bootstrap
+
+Parse the incoming prompt for the `[autonomous]` sentinel (may stack after `[no-redispatch]`,
+e.g. `[no-redispatch] [autonomous]`, since `/run` prefixes it onto this skill's spawn prompt).
+If present, set internal state `_AUTONOMOUS=true` for the remainder of this skill's execution;
+strip the sentinel before further parsing. Default `_AUTONOMOUS=false` (opt-in only).
+`_AUTONOMOUS` gates ONLY the repo main spec offer below (see "Repo main spec (optional offer)").
+It does not change §0'/§0″ dispatch behavior above (those are generated separately) or any
+other part of the scan.
 
 ## Model requirement
 
@@ -539,6 +563,8 @@ This self-clear IS the stale-recovery mechanism — it bounds the marker's lifet
 Then proceed to the "Tell the user" summary below. This is a file-existence check, so it works whether `/discover` runs inline or is dispatched as a subagent. (Init's Step-6.7 `rm -f` remains a harmless belt-and-suspenders no-op.)
 
 Only when the marker is ABSENT does the offer proceed:
+
+**Autonomous mode:** if `_AUTONOMOUS` is true, skip this entire offer — whether `.workflow_artifacts/spec.md` is absent (the DRAFT prompt) or present (the REFRESH prompt), do NOT call `AskUserQuestion`, and NEVER auto-write or auto-modify `.workflow_artifacts/spec.md` in either case. The repo main spec is a human-owned artifact; autonomous must not fabricate or silently refresh it. Print one advisory line: `[quoin: repo-spec offer skipped — autonomous mode; spec.md not written]`. Then proceed directly to the "Tell the user" summary below.
 
 - If `.workflow_artifacts/spec.md` is ABSENT: `AskUserQuestion` offering to DRAFT a repo main spec from the freshly discovered structure plus a short user prompt ("what is this repo about?").
   - Decline → one-line advisory, no file, no error.

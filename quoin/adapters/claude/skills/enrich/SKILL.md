@@ -44,6 +44,13 @@ Dispatch action (when pollution detected AND no sentinel AND no prior §0 dispat
 
 Fail-OPEN path:
   If Agent tool unavailable or errors — classify the error first:
+
+  - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
+    incoming prompt carries the `[autonomous]` sentinel, then on ANY §0' dispatch-failure or
+    1M-context-credit error, proceed at current tier fail-OPEN and DO NOT call `AskUserQuestion`
+    — skip the 1M-credit-class and generic branches below entirely. Print
+    `[quoin-autonomous: §0' dispatch failed; proceeding fail-OPEN at current tier]` and proceed
+    with skill body (treat as bare [no-redispatch]).
   - 1M-credit-class: if the error text contains the substring
       `Usage credits required for 1M context`:
       The §0' opus dispatch hit a 1M-context credit mismatch (IVG-89). Detection via
@@ -111,6 +118,13 @@ On fire (happy path — silent up-dispatch):
 Fail-OPEN path (fires only when Agent dispatch fails):
   Classify the error text BEFORE proceeding:
 
+  - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
+    incoming prompt carries the `[autonomous]` sentinel, then on ANY §0″ dispatch-failure or
+    1M-context-credit error, proceed at current tier fail-OPEN and DO NOT call `AskUserQuestion`
+    — skip the 1M-credit-class and generic branches below entirely. Print
+    `[quoin-mintier-autonomous: §0″ dispatch failed; proceeding fail-OPEN at current tier]` and
+    proceed to skill body (treat as bare [no-redispatch]).
+
   - 1M-credit-class: if error text contains `Usage credits required for 1M context`:
       Issue AskUserQuestion:
         Question: "§0″ up-dispatch to opus failed with a 1M-context credit mismatch for /enrich.
@@ -169,6 +183,14 @@ Analyze the raw prompt against the grounding context gathered above (real repo s
 
 - **Interactive session:** fold the user's answers into the enriched prompt directly.
 - **Non-interactive dispatch (no way to ask):** produce a best-effort rewrite of the prompt, explicitly flag every assumption you made to fill a gap, and list the exact questions you would have asked as a "questions I would have asked" section — never silently guess without flagging it.
+- **Under `[autonomous]`:** parse and strip the `[autonomous]` sentinel at bootstrap into a local
+  `_AUTONOMOUS` state (mirrors `/run`'s "Autonomous propagation" sentinel — present when this
+  skill is spawned from an autonomous session, or passed directly on a standalone invocation).
+  When `_AUTONOMOUS=true`, treat this exactly as the non-interactive dispatch path above even in
+  an otherwise-interactive session: skip `AskUserQuestion`, never block waiting for a round-trip,
+  produce the best-effort rewrite, and flag every assumption made to fill a gap plus the
+  "questions I would have asked" list. This is additive to (not a replacement for) the existing
+  non-interactive-dispatch degrade — both paths converge on the same best-effort, flagged output.
 
 ## Output
 
@@ -181,6 +203,16 @@ Sections, in this order:
 - `## Assumptions` — every assumption made to fill a gap (non-interactive path), or "none" (interactive path / already-clear path).
 - `## Open questions` — the "questions I would have asked" list (non-interactive path), or any genuinely unresolved ambiguity the user chose to defer, or "none".
 - `## Grounding sources` — which discovery/memory files or prior spec.md informed the enrichment, or "none — prompt required no grounding lookup".
+
+**Under `[autonomous]` (REQUIRED):** emit an additional `confidence: <float 0..1>` line (place it
+at the top of `## Enriched prompt`, e.g. `confidence: 0.8`) — a self-assessed score of how
+well-grounded the enriched prompt is given the raw input and the grounding context gathered at
+bootstrap. Lower confidence when the raw prompt was thin and required several flagged
+assumptions; higher confidence when it was already clear or grounding context resolved the gaps
+cleanly. This gives the Small-path Formulation bar a second input alongside the single-pass
+`/plan` confidence — `/run`'s bar takes the **minimum** of the two when both are present (see
+`run/SKILL.md` "Formulation quality bar"). Omit this line in the non-autonomous path — it is
+specific to `[autonomous]` runs.
 
 After writing, echo the full enriched prompt in chat so the user sees it immediately without needing to open the file.
 

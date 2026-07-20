@@ -58,3 +58,42 @@ def test_deployed_projection_below_40k():
         f"ceiling is {DEPLOYED_CEILING}. "
         "Re-extract more sections from quoin/CLAUDE.md or increase HOME_STANDIN budget."
     )
+
+
+# IVG-153 T-17: CLAUDE.md was offset by relocating the verbose "Exception:
+# `/run` orchestrator." paragraph into the new autonomous-mode.md Tier-1
+# memory file, leaving a short pointer that also carries the --autonomous
+# mention. These guards keep that relocation from silently drifting back.
+
+RELOCATED_PARAGRAPH_ANCHOR = "the gate confirmations provide the safety checkpoints"
+
+_MEMORY_DIR = Path(__file__).resolve().parents[2] / "memory"
+AUTONOMOUS_MODE_DOC = _MEMORY_DIR / "autonomous-mode.md"
+
+
+def test_claude_md_mentions_autonomous_flag_and_pointer():
+    text = SOURCE.read_text(encoding="utf-8")
+    assert "--autonomous" in text, (
+        "quoin/CLAUDE.md must mention --autonomous on the /run bullet"
+    )
+    assert "autonomous-mode.md" in text, (
+        "quoin/CLAUDE.md must point to autonomous-mode.md for the relocated "
+        "verbose /run-exception wording"
+    )
+
+
+def test_relocated_run_exception_paragraph_absent_from_claude_md():
+    text = SOURCE.read_text(encoding="utf-8")
+    assert RELOCATED_PARAGRAPH_ANCHOR not in text, (
+        "quoin/CLAUDE.md still contains the verbose 'Exception: `/run` "
+        "orchestrator.' paragraph — it must be relocated to autonomous-mode.md, "
+        "leaving only a short pointer (M-2, no double-count)."
+    )
+
+
+def test_relocated_run_exception_paragraph_present_in_autonomous_mode_doc():
+    text = AUTONOMOUS_MODE_DOC.read_text(encoding="utf-8")
+    assert RELOCATED_PARAGRAPH_ANCHOR in text, (
+        "autonomous-mode.md must contain the relocated verbose "
+        "'Exception: `/run` orchestrator.' paragraph moved out of CLAUDE.md"
+    )

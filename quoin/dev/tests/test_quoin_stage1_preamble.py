@@ -273,6 +273,30 @@ def test_recursion_abort_sentinel_present(skill, token):
 
 
 # -----------------------------------------------------------------------------
+# (e-2) T-25 (autonomous-run-mode, M-3): the §0-worktree-fallback block's
+# autonomous fail-OPEN clause is conditional on the `[autonomous]` sentinel —
+# it must not alter the RECURSION_TOKENS grammar checked above. Spot-check the
+# two cheap-tier skills where the clause is genuinely reachable under
+# autonomous (gate, revise-fast); full byte-identity + roster coverage across
+# all 15 worktree-fallback skills lives in test_quoin_stage1_worktree_fallback.py.
+# -----------------------------------------------------------------------------
+@pytest.mark.parametrize("skill", ["gate", "revise-fast"])
+def test_autonomous_worktree_clause_present_and_grammar_intact(skill):
+    path = skill_md_path(skill)
+    slice_text = extract_preamble_block(path)
+    assert "Autonomous fail-OPEN" in slice_text, (
+        f"{skill}/SKILL.md §0 slice missing the T-25 autonomous fail-OPEN clause "
+        "on the Worktree-class branch."
+    )
+    # Non-autonomous grammar (sentinel tokens + fail-OPEN warning) must still be intact.
+    for token in RECURSION_TOKENS:
+        assert token in slice_text, (
+            f"{skill}/SKILL.md §0 slice: T-25 clause insertion must not disturb "
+            f"pre-existing sentinel/grammar token: {token!r}"
+        )
+
+
+# -----------------------------------------------------------------------------
 # (f) Pre-§0 intro region preserved — count lines between H1 and §0 heading,
 # assert ≥ 0 (smoke check that the per-file Edit anchor did not delete intro).
 # Actual content equality is checked by git diff in T-08.

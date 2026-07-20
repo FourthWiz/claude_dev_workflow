@@ -88,6 +88,8 @@ MINTIER_REQUIRED_TOKENS = [
     "Abort — run from an Opus session",
     "Proceed at current tier (under-powered)",
     "[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]",
+    "[autonomous]",
+    "[quoin-mintier-autonomous: §0″ dispatch failed; proceeding fail-OPEN at current tier]",
 ]
 
 # mintier_required_markers (MIN-1): 2 HTML markers checked as file-level presence

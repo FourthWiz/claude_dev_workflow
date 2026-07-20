@@ -67,6 +67,13 @@ Dispatch action (when pollution detected AND no sentinel AND no prior §0 dispat
 
 Fail-OPEN path:
   If Agent tool unavailable or errors — classify the error first:
+
+  - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
+    incoming prompt carries the `[autonomous]` sentinel, then on ANY §0' dispatch-failure or
+    1M-context-credit error, proceed at current tier fail-OPEN and DO NOT call `AskUserQuestion`
+    — skip the 1M-credit-class and generic branches below entirely. Print
+    `[quoin-autonomous: §0' dispatch failed; proceeding fail-OPEN at current tier]` and proceed
+    with skill body (treat as bare [no-redispatch]).
   - 1M-credit-class: if the error text contains the substring
       `Usage credits required for 1M context`:
       The §0' opus dispatch hit a 1M-context credit mismatch (IVG-89). Detection via
@@ -134,6 +141,13 @@ On fire (happy path — silent up-dispatch):
 Fail-OPEN path (fires only when Agent dispatch fails):
   Classify the error text BEFORE proceeding:
 
+  - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
+    incoming prompt carries the `[autonomous]` sentinel, then on ANY §0″ dispatch-failure or
+    1M-context-credit error, proceed at current tier fail-OPEN and DO NOT call `AskUserQuestion`
+    — skip the 1M-credit-class and generic branches below entirely. Print
+    `[quoin-mintier-autonomous: §0″ dispatch failed; proceeding fail-OPEN at current tier]` and
+    proceed to skill body (treat as bare [no-redispatch]).
+
   - 1M-credit-class: if error text contains `Usage credits required for 1M context`:
       Issue AskUserQuestion:
         Question: "§0″ up-dispatch to opus failed with a 1M-context credit mismatch for /review.
@@ -173,6 +187,7 @@ Fail-OPEN path (fires only when Agent dispatch fails):
 ## Session bootstrap
 
 This skill should run in a fresh session for unbiased review (similar to /critic — fresh eyes catch more). On start:
+0. Parse the `[autonomous]` sentinel from the incoming prompt (parsed independently of `[no-redispatch]`; leading sentinels stack, e.g. `[no-redispatch] [autonomous]`). Store as `_AUTONOMOUS` state for this session — used below in "Profile detection and fan-out" to re-prefix `[autonomous]` onto deeper subagent spawns (security_review + dimension subagents).
 1. Read `__QUOIN_HOME__/skills/review/preamble.md` if it exists; if missing or empty, proceed normally. Purely additive cache-warming — every other read in this `## Session bootstrap` section, and every write-site format-kit / glossary reference (per §5.3 / §5.4 write-site instructions), stays in force unchanged. The intent is CROSS-SPAWN cache reuse: spawn N+1 of this skill with a byte-identical task fixture hits cache from spawn N's preamble.md tool_result, within the 5-minute prompt-cache TTL. Within a single spawn there is no cache benefit — savings only materialize on subsequent spawns whose prompt prefix is byte-identical through the preamble read. (Stage 2-alt of pipeline-efficiency-improvements.)
 2. Run `python3 __QUOIN_HOME__/scripts/memory_select.py --task-text "<task description from current-plan.md>"` to read only task-relevant lessons from `.workflow_artifacts/memory/lessons-learned.md`. The task description is available from `current-plan.md` (read at bootstrap step 3); use the task title or `## For human` summary block as `--task-text`. If the script is absent, errors, or reports `fellback_to_wholesale`, read the whole `.workflow_artifacts/memory/lessons-learned.md` as the fallback (the wholesale read is preserved as the explicit fallback). Apply relevant lessons.
 3. Read `<task_dir>/current-plan.md` — this is the spec to review against. Resolve `<task_dir>` via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. Apply the §5.7.1 detection rule below before reading. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
@@ -217,7 +232,9 @@ Read the task profile from the convergence summary at the top of `current-plan.m
 
 **Medium/Large — parallel dimension fan-out.** Gather shared context ONCE at Step 1 of the Review process below (plan, architecture, diff via `git diff <base-branch>...HEAD`, changed-file set), then dispatch three parallel `model: "opus"` Agent subagents — one per dimension: **security**, **performance**, **architecture/integration**. Each subagent's prompt is focused to its dimension only, and carries the plan path, branch, and diff scope. Each subagent returns a structured block: `` `<verdict>APPROVED|CHANGES_REQUESTED|BLOCKED</verdict>` `` (the identical 3-value enum used everywhere in this contract — D-08) plus dimension-tagged issues (CRITICAL/MAJOR/MINOR, each with file:line and fix).
 
-- **Large ONLY:** the security dimension is dispatched as the dedicated `/security_review` OWASP pass — invoke its Fan-out contract (`quoin/adapters/claude/skills/security_review/SKILL.md` § Fan-out contract) rather than an inline security-focused prompt. The performance and architecture/integration dimensions are unchanged (inline focused prompts, same as Medium).
+**`[autonomous]` propagation (C-1 / D-07):** if this `/review` invocation is running under `_AUTONOMOUS` (parsed at Session bootstrap step 0), re-prefix the `[autonomous]` sentinel onto every deeper subagent spawn prompt issued at this fan-out step — the Large-only `/security_review` OWASP-pass spawn AND the Medium/Large performance + architecture/integration dimension Agent subagents — so those leaf skills' own §0'/§0″ dispatch blocks receive the sentinel and can resolve their own dispatch-failure prompts fail-OPEN without `AskUserQuestion` (per `T-23`'s generator-template change). This propagation is purely additive to the dimension-subagent prompts described above; it does not change verdict handling. Verdict emission (`APPROVED`/`CHANGES_REQUESTED`/`BLOCKED`) stays exactly as documented in `## After the review` below — `/review` never auto-resolves a BLOCKED (or CHANGES_REQUESTED) verdict itself under autonomous mode; those hard stops remain owned by `run/SKILL.md`.
+
+- **Large ONLY:** the security dimension is dispatched as the dedicated `/security_review` OWASP pass — invoke its Fan-out contract (`quoin/adapters/claude/skills/security_review/SKILL.md` § Fan-out contract) rather than an inline security-focused prompt, prefixed with `[autonomous]` under `_AUTONOMOUS` per the propagation rule above. The performance and architecture/integration dimensions are unchanged (inline focused prompts, same as Medium, likewise `[autonomous]`-prefixed under `_AUTONOMOUS`).
 - **Medium cost note (MIN-4):** Medium fan-out triples the review-phase subagent count (1 → 3 Opus dimension subagents) versus the pre-fan-out single pass — a material increase to the ~$2.99-$4.00 Medium cost envelope. This is an intended consequence of the default-to-Medium-fan-out safety posture (D-02), not an oversight — surfacing it here so a Medium-profile user sees the expected cost before `/review` runs.
 
 **Required-section ownership** (every V-07-required `review-N.md` section has a named producer):

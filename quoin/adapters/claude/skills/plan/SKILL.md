@@ -43,6 +43,13 @@ Dispatch action (when pollution detected AND no sentinel AND no prior §0 dispat
 
 Fail-OPEN path:
   If Agent tool unavailable or errors — classify the error first:
+
+  - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
+    incoming prompt carries the `[autonomous]` sentinel, then on ANY §0' dispatch-failure or
+    1M-context-credit error, proceed at current tier fail-OPEN and DO NOT call `AskUserQuestion`
+    — skip the 1M-credit-class and generic branches below entirely. Print
+    `[quoin-autonomous: §0' dispatch failed; proceeding fail-OPEN at current tier]` and proceed
+    with skill body (treat as bare [no-redispatch]).
   - 1M-credit-class: if the error text contains the substring
       `Usage credits required for 1M context`:
       The §0' opus dispatch hit a 1M-context credit mismatch (IVG-89). Detection via
@@ -110,6 +117,13 @@ On fire (happy path — silent up-dispatch):
 Fail-OPEN path (fires only when Agent dispatch fails):
   Classify the error text BEFORE proceeding:
 
+  - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
+    incoming prompt carries the `[autonomous]` sentinel, then on ANY §0″ dispatch-failure or
+    1M-context-credit error, proceed at current tier fail-OPEN and DO NOT call `AskUserQuestion`
+    — skip the 1M-credit-class and generic branches below entirely. Print
+    `[quoin-mintier-autonomous: §0″ dispatch failed; proceeding fail-OPEN at current tier]` and
+    proceed to skill body (treat as bare [no-redispatch]).
+
   - 1M-credit-class: if error text contains `Usage credits required for 1M context`:
       Issue AskUserQuestion:
         Question: "§0″ up-dispatch to opus failed with a 1M-context credit mismatch for /plan.
@@ -161,6 +175,12 @@ This skill may run in a fresh chat session. On start:
 ## Model requirement
 
 This skill requires the strongest available model (currently Claude Opus).
+
+## Autonomous confidence signal (`[autonomous]`, Small path)
+
+When the task carries the `[autonomous]` sentinel (see `autonomous-mode.md`) AND the task profile is Small — the only profile where `/plan` runs single-pass with no critic loop — emit one additional line, `confidence: <float 0..1>` (e.g. `confidence: 0.82`), as part of this skill's mandatory End-of-step inline chat summary (CLAUDE.md "Communication" rule), immediately after the summary's normal fields. This is `/plan`'s own Opus self-assessment of how well-specified and low-risk the task is.
+
+This is `run`'s sole Small-path Formulation-bar signal: Small skips `/specify` and `/architect`, so no other confidence source exists on that path (see `run/SKILL.md`'s "Formulation quality bar (autonomous)" section and `QUOIN_AUTONOMOUS_CONFIDENCE_THRESHOLD`, default `0.7`). The line is emitted in the chat summary only — never written into `current-plan.md` itself, so the Class B artifact's structural-validator invariants (V-01..V-07) are unaffected. Plain (non-`[autonomous]`) invocations never emit this line.
 
 ## Inputs
 

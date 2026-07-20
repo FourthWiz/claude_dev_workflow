@@ -135,6 +135,12 @@ Fail-graceful path with error-class triage (per architecture I-01):
      declared cheap-tier model (sonnet). Do NOT escalate to parent tier.
      Emit one-line audit:
        [quoin-stage-1: worktree dispatch skipped; proceeding at sonnet without isolation]
+     Autonomous fail-OPEN: if the incoming prompt carries the `[autonomous]`
+     sentinel, then on any worktree-class dispatch error, proceed at current
+     tier fail-OPEN and do NOT call AskUserQuestion — this is already
+     guaranteed unconditionally by this Phase 2 retry (no AskUserQuestion
+     exists in this path to skip), so behavior here is identical with or
+     without the sentinel.
 
   STEP D — Done:
      No child-side coordination required. The harness handles cwd correctly:
@@ -221,6 +227,8 @@ Parse the JSON output. The check uses `repos[]` from the JSON and filters on `on
 
   **Benchmark dual-guard bypass:** if BOTH `QUOIN_GATE_AUTO_APPROVE=1` AND `QUOIN_BENCHMARK_RUN` (any non-empty value) are set (matching gate's dual-guard exactly — BOTH required), skip `AskUserQuestion`, auto-create `feat/{task-name}` in each flagged repo, emit `[quoin: branch-hygiene auto-branch for benchmark run]`, and proceed to §1.
 
+  **`[autonomous]` bypass (D-01 — a NEW path PARALLEL to, and INDEPENDENT of, the benchmark dual-guard above):** if the incoming prompt carries the `[autonomous]` sentinel (parsed at Session bootstrap step 0), skip `AskUserQuestion` regardless of `QUOIN_GATE_AUTO_APPROVE`/`QUOIN_BENCHMARK_RUN` — this path does NOT require either env var and is keyed solely on the sentinel. Reuse the SAME auto-branch logic as the benchmark bypass: for each flagged repo, run `git -C {repo} switch -c {branch}` where `{branch}` = Linear `gitBranchName` if discoverable from task/session context, else `feat/{task-name}`; if the branch already exists, `git -C {repo} switch {branch}`. Emit `[quoin: branch-hygiene auto-branch for autonomous run]`, echo the branch created per repo, and proceed to §1.
+
   Otherwise, present `AskUserQuestion`:
   - Question: "One or more affected repos are on a protected branch (main/master): {flagged-repo-list}. Implementation commits must NOT land on a protected branch. How do you want to proceed?"
   - Header: "Branch hygiene"; multiSelect: false
@@ -245,6 +253,7 @@ This skill MUST be explicitly invoked by the user typing `/implement`. No other 
 ## Session bootstrap
 
 This skill typically runs in a fresh session (clean context is a feature, not a bug — implementation doesn't need planning back-and-forth). On start:
+0. Parse the `[autonomous]` sentinel from the incoming prompt (parsed independently of `[no-redispatch]`; leading sentinels stack, e.g. `[no-redispatch] [autonomous]`). Store as `_AUTONOMOUS` state for this session. Used below in §0b (branch-hygiene auto-create) and step 4 (auto-select all pending tasks).
 1. Read `.workflow_artifacts/memory/lessons-learned.md` for relevant insights
 2. Read `.workflow_artifacts/memory/sessions/` for active session state (which tasks are done, where to resume)
 3. Read `<task_dir>/current-plan.md` — this is your specification. Resolve `<task_dir>` via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. Apply the §5.7.1 detection rule below before reading. architecture.md: ALWAYS `<task-root>/architecture.md`. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
@@ -282,6 +291,8 @@ This skill uses Sonnet for fast, high-quality implementation. The architectural 
 3. **Read the relevant code.** Before modifying any file, read it. Understand the existing patterns, style, naming conventions, and architecture. Your changes must feel native to the codebase.
 
 4. **Confirm the task.** Use AskUserQuestion to ask the user which task(s) from the plan they want you to implement. Dynamically populate options from the pending tasks (⏳) in `current-plan.md`:
+
+   **`[autonomous]` branch:** if `_AUTONOMOUS` is set (Session bootstrap step 0), skip `AskUserQuestion` entirely and auto-select "All remaining tasks" — implement every pending (⏳) task in `current-plan.md` in plan order, with no wait for user input. If 0 pending tasks: inform the user "All tasks already implemented." and stop (same as the interactive path below).
 
    - If 0 pending tasks: inform the user "All tasks already implemented." and stop.
    - If 1 pending task: present it with "Yes, implement it" / "Skip for now".

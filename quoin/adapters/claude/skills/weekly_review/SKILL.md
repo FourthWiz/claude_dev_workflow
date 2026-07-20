@@ -94,6 +94,13 @@ Fail-graceful path with error-class triage (per architecture I-01):
 
 
   - Worktree-class branch:
+      Autonomous fail-OPEN (checked FIRST): if the incoming prompt carries
+      the `[autonomous]` sentinel, then on this worktree-class dispatch
+      error, proceed at current tier fail-OPEN and do NOT call
+      AskUserQuestion — skip straight to the Other-class path below (it
+      emits the bare warning and the `error-class=worktree` classification
+      line), then proceed to §1 at the current tier. Otherwise (no
+      `[autonomous]` sentinel — non-autonomous behavior unchanged):
       Worktree creation is hook-driven and cannot be skipped by omitting a
       parameter. Use the AskUserQuestion tool to present the user with one
       option:

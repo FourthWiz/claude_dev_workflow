@@ -45,6 +45,8 @@ TIER1_MEMORY_FILES = (
     "checkpoint-spec.md",
     # Added IVG-137: opt-in /schedule EOD cron recipe (Tier-1 memory file)
     "eod-refresh-routine.md",
+    # Added IVG-153: opt-in --autonomous span reference (Tier-1 memory file)
+    "autonomous-mode.md",
 )
 
 # T-05: canonical skill list — must match quoin/skills/ on disk exactly

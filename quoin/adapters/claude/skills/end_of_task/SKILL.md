@@ -139,6 +139,12 @@ Fail-graceful path with error-class triage (per architecture I-01):
      declared cheap-tier model (sonnet). Do NOT escalate to parent tier.
      Emit one-line audit:
        [quoin-stage-1: worktree dispatch skipped; proceeding at sonnet without isolation]
+     Autonomous fail-OPEN: if the incoming prompt carries the `[autonomous]`
+     sentinel, then on any worktree-class dispatch error, proceed at current
+     tier fail-OPEN and do NOT call AskUserQuestion — this is already
+     guaranteed unconditionally by this Phase 2 retry (no AskUserQuestion
+     exists in this path to skip), so behavior here is identical with or
+     without the sentinel.
 
   STEP D — Done:
      No child-side coordination required. The harness handles cwd correctly:
@@ -187,6 +193,19 @@ If the helper is missing OR exits with a non-0/1 code: emit the warning
 
 Manual override: prefix the user invocation with `[no-session-age-guard]`
 to skip the check entirely. Strip the sentinel before processing.
+
+## Autonomous mode bootstrap
+
+Parse the incoming prompt for the `[autonomous]` sentinel (may stack after `[no-redispatch]`,
+e.g. `[no-redispatch] [autonomous]`, since `/run` prefixes it onto this skill's terminal
+Phase-6 spawn). If present, set internal state `_AUTONOMOUS=true` for the remainder of this
+skill's execution; strip the sentinel before further parsing. Default `_AUTONOMOUS=false`
+(opt-in only). `_AUTONOMOUS` gates ONLY the four interactive body-prompt sites in the
+"Process" section below (Steps 1b, 2, 3, 4) — it does not change the §0 dispatch / §0b
+session-age-guard behavior above, and does not change the order of or preconditions for
+(APPROVED review, passed gate) any of the 8 sequential steps. **The "never auto-create a
+PR" invariant is unchanged in every mode, including autonomous — `/end_of_task` never
+creates a PR, autonomous or not.**
 
 ## When to use
 
@@ -279,6 +298,13 @@ project root):
    )
    ```
 
+   **Autonomous mode:** if `_AUTONOMOUS` is true and findings were reported, skip the
+   `AskUserQuestion` — auto-select **"Delete garbage files"** (the recommended cleanup
+   default) and proceed to Step 2 without waiting. Print one line:
+   `[quoin: autonomous — deleting flagged garbage files, proceeding to Step 2]`.
+   Debug leftovers found in tracked-file diffs stay advisory-only and are never
+   auto-modified or auto-deleted.
+
 4. **If nothing found** — print one line and continue:
    ```
    Working-tree cleanup scan: ✅ clean
@@ -298,6 +324,11 @@ Run `git status`. If there are uncommitted changes:
     ]
   )
   ```
+- **Autonomous mode:** if `_AUTONOMOUS` is true, skip the `AskUserQuestion` — auto-select
+  **"Commit"** (NEVER "Abort"). Compose the conventional commit message automatically from
+  the diff/plan context. Print one line: `[quoin: autonomous — committing uncommitted
+  changes]`. This never creates a PR — the "never auto-create a PR" invariant applies here
+  exactly as in interactive mode.
 - If **Commit**: collect a conventional commit message inline.
 - If **Abort**: STOP. Tell the user: "Stash manually then re-invoke /end_of_task."
 Capture the answer as `commit_or_abort` (`"commit"` or `"abort"`).
@@ -315,6 +346,12 @@ AskUserQuestion(
   ]
 )
 ```
+
+**Autonomous mode:** if `_AUTONOMOUS` is true, skip the `AskUserQuestion` entirely — no
+prompt, no wait. Wire the existing auto-capture triggers below (critic-revise loop > 3
+rounds, review requested changes, a rollback happened during this task) to compose
+`lessons_text` non-interactively from that context. If none of the triggers fire, set
+`lessons_text = ""` and skip cleanly (nothing to capture).
 
 If the user selects "Nothing to add": set `lessons_text = ""`.
 If the user selects "Yes, let me share" or uses the "Other" free-text option: capture their input as `lessons_text`.
@@ -337,6 +374,10 @@ AskUserQuestion(
   ]
 )
 ```
+
+**Autonomous mode:** if `_AUTONOMOUS` is true, skip the `AskUserQuestion` — auto-select the
+safe default **"Fully complete"** (`archive_type = "feature"`, top-level archive). Print one
+line: `[quoin: autonomous — archiving task folder to finalized/]`.
 
 Capture as `archive_type`: `"feature"` (fully complete) or `"none"` (more work planned — do not archive).
 
