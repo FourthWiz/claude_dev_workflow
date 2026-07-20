@@ -439,3 +439,61 @@ def test_no_parent_cd_artifacts_remain(skill):
             f"{skill}/SKILL.md §0 contains retired parent-cd artifact: {artifact!r}. "
             "The parent-cd design was retired in round-4 pivot. Remove this carryover."
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Test 12 — T-25 (autonomous-run-mode, M-3): autonomous fail-OPEN clause present
+# on the worktree-class path, for both byte-identity classes. The clause is
+# conditional on the `[autonomous]` sentinel — non-autonomous behavior (the
+# AskUserQuestion prompt / the Phase 2 retry) is preserved unchanged; see D-08.
+# Reachable-under-autonomous skills per the Stage-1 plan: revise-fast, gate
+# (artifact-only class) and implement, end_of_task (source-mutating class).
+# The clause is propagated to every member of each byte-identity class (not
+# only the reachable ones) so Tests 5 and 7 above stay green.
+# ─────────────────────────────────────────────────────────────────────────────
+_AUTONOMOUS_CLAUSE_MARKER = "Autonomous fail-OPEN"
+_REACHABLE_ARTIFACT_ONLY_SKILLS = ["revise-fast", "gate"]
+_REACHABLE_SOURCE_MUTATING_SKILLS = ["implement", "end_of_task"]
+
+
+@pytest.mark.parametrize("skill", _REACHABLE_ARTIFACT_ONLY_SKILLS)
+def test_autonomous_clause_present_artifact_only_reachable(skill):
+    """Worktree-class branch must carry the [autonomous]-conditional fail-OPEN clause."""
+    block = extract_worktree_block(skill_md_path(skill))
+    assert _AUTONOMOUS_CLAUSE_MARKER in block, (
+        f"{skill}/SKILL.md worktree-fallback block missing the T-25 autonomous "
+        "fail-OPEN clause on the Worktree-class branch."
+    )
+    assert "do NOT call\n      AskUserQuestion" in block, (
+        f"{skill}/SKILL.md worktree-fallback block must document skipping "
+        "AskUserQuestion under the autonomous branch."
+    )
+    assert "`[autonomous]` sentinel" in block, (
+        f"{skill}/SKILL.md worktree-fallback block clause must be conditional on the "
+        "`[autonomous]` sentinel."
+    )
+
+
+@pytest.mark.parametrize("skill", _REACHABLE_SOURCE_MUTATING_SKILLS)
+def test_autonomous_clause_present_source_mutating_reachable(skill):
+    """Sidecar block's Phase 2 retry must document the [autonomous] fail-OPEN guarantee."""
+    block = extract_sidecar_block(skill_md_path(skill))
+    assert _AUTONOMOUS_CLAUSE_MARKER in block, (
+        f"{skill}/SKILL.md §0-sidecar block missing the T-25 autonomous fail-OPEN "
+        "clause on the Phase 2 retry (STEP C)."
+    )
+    assert "`[autonomous]`" in block and "sentinel" in block, (
+        f"{skill}/SKILL.md §0-sidecar block clause must be conditional on the "
+        "`[autonomous]` sentinel."
+    )
+
+
+def test_autonomous_clause_does_not_alter_nonautonomous_option_labels():
+    """Non-autonomous path must still be reachable: proceed-current-tier option
+    label is preserved verbatim in the artifact-only worktree-fallback block
+    (the autonomous clause only adds a preceding conditional branch)."""
+    block = extract_worktree_block(skill_md_path("gate"))
+    assert "(c) `proceed-current-tier`" in block, (
+        "gate/SKILL.md: non-autonomous AskUserQuestion option (c) proceed-current-tier "
+        "must remain byte-present after the T-25 autonomous clause insertion."
+    )

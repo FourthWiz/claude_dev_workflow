@@ -139,6 +139,12 @@ Fail-graceful path with error-class triage (per architecture I-01):
      declared cheap-tier model (sonnet). Do NOT escalate to parent tier.
      Emit one-line audit:
        [quoin-stage-1: worktree dispatch skipped; proceeding at sonnet without isolation]
+     Autonomous fail-OPEN: if the incoming prompt carries the `[autonomous]`
+     sentinel, then on any worktree-class dispatch error, proceed at current
+     tier fail-OPEN and do NOT call AskUserQuestion — this is already
+     guaranteed unconditionally by this Phase 2 retry (no AskUserQuestion
+     exists in this path to skip), so behavior here is identical with or
+     without the sentinel.
 
   STEP D — Done:
      No child-side coordination required. The harness handles cwd correctly:
