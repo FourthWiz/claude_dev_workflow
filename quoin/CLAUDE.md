@@ -134,7 +134,7 @@ Each stage feeds into the next, with `/gate` checkpoints requiring explicit huma
   - **Medium:** runs the plan→critic→revise convergence loop (Opus plan, Sonnet revise, Opus critic, max 4 rounds)
   - **Large:** runs the convergence loop in strict mode (all Opus, max 5 rounds)
   - Override with `max_rounds: N` for any profile (ignored for Small)
-- `/run` chains the entire workflow end-to-end: discover (if stale) → specify (if not Small and no task spec) → architect (if not Small) → thorough_plan → implement → review → end_of_task. Pauses at each gate for user confirmation. Accepts same profile tags as `/thorough_plan`. Use when you want the full pipeline in one command.
+- `/run` chains the entire workflow end-to-end: discover (if stale) → specify (if not Small and no task spec) → architect (if not Small) → thorough_plan → implement → review → end_of_task. Pauses at each gate for user confirmation. Accepts same profile tags as `/thorough_plan`. Use when you want the full pipeline in one command. Add `--autonomous` for a zero-prompt span through `/end_of_task` once formulation clears the quality bar.
 - **GATE** — automated checks (plan completeness, risk coverage), user reviews plan, explicitly approves
 - `/implement` executes tasks from the converged plan, writing code and tests
 - **GATE** — automated checks (scope depends on task profile — Standard for Small/Medium, Full for Large)
@@ -150,7 +150,7 @@ Not every task needs every stage. Small tasks typically skip `/architect` entire
 
 **CRITICAL RULE: `/implement` and `/end_of_task` require explicit user commands.** No skill may auto-invoke either. After `/thorough_plan` converges, the workflow STOPS and waits for `/implement`. After `/review` approves and the gate passes, the workflow STOPS and waits for `/end_of_task`. The user must consciously decide to start writing code AND to ship it.
 
-**Exception: `/run` orchestrator.** When the user invokes `/run`, they have explicitly requested the full end-to-end pipeline. `/run` may invoke `/implement` and `/end_of_task` on the user's behalf, but still pauses at each gate checkpoint for confirmation before proceeding. The user's `/run` invocation constitutes the conscious decision; the gate confirmations provide the safety checkpoints.
+**Exception: `/run` (incl. `--autonomous`).** May invoke `/implement`/`/end_of_task` for the user — see `autonomous-mode.md`.
 
 **Gate invocation modes:** Post-implement and post-review gates run **inline** by default (same session, no subagent spawn — preserves the parent session's prompt cache). Post-architect and post-plan gates spawn **subagent** by default (different context shape after those phases). There is no `/gate` after `/discover`. Audit-log persistence (`gate-{phase}-{date}.md`) is mandatory regardless of mode — see `/gate/SKILL.md`.
 

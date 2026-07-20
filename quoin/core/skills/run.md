@@ -95,6 +95,28 @@ be honored when locating per-stage artifacts.
 - The specific names of the sub-skills invoked at runtime — those are
   adapter-specific.
 
+## Autonomous mode (opt-in)
+
+- Adapters MAY support an opt-in autonomous span: a single explicit
+  user-supplied flag that, once accepted, carries the run from
+  formulation through finalization with zero prompts.
+- Entering the autonomous span still requires clearing a documented
+  quality bar via a non-interactive formulation before execution
+  begins. A formulation that fails the bar is a hard stop, not a
+  silent proceed.
+- Every hard stop already defined in this contract — a blocked
+  downstream verdict, a failed check past its retry cap, a git
+  conflict, a branch-hygiene violation, or a below-bar formulation —
+  remains in force under the autonomous span. A hard stop halts the
+  run and records the reason for a later resume rather than prompting.
+- The autonomous span MUST NOT create a pull request under any
+  circumstance; PR creation stays a separate, explicit user action
+  outside this skill's scope, in both interactive and autonomous
+  modes.
+- Which prompt each downstream phase auto-resolves to, and how
+  formulation confidence is scored, is adapter-specific and documented
+  in the adapter's own reference material.
+
 ## Notes
 
 - The orchestrator owns coordination only, never artifact content;
