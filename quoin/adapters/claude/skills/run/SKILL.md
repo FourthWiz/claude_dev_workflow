@@ -90,6 +90,7 @@ Before any work begins:
 
 ```
 Phase 1: DISCOVER     (conditional — skip if recent)
+Phase 1.4: ENRICH     (default-on prompt — user chooses run/skip each time)
 Phase 1.5: SPECIFY    (conditional — skip if Small OR task spec.md exists)
           ↓ Checkpoint A0: user confirms spec
 Phase 2: ARCHITECT    (conditional — skip if Small)
@@ -115,6 +116,23 @@ Also check for `repos-inventory.md` (plural) as secondary confirmation.
 - **If running:** spawn `/discover` as a subagent session (same mechanism as `/thorough_plan` uses for `/critic` — see its "Invoking each agent" section). Pass the project folder path. No gate runs after discover — it feeds directly into architect.
 
 After the phase, verify the cost ledger has a new entry for the `discover` phase. If not (subagent didn't record), append a best-effort entry: `unknown-discover-<timestamp> | <date> | discover | opus | task | /run subagent (no UUID recorded)`.
+
+## Phase 1.4 — Enrich (default-on prompt)
+
+On entry, PROMPT via `AskUserQuestion`: "Run prompt enrichment on this task, or skip?"
+
+- Header: "Enrich"; multiSelect: false
+- Option 1: label "Run /enrich" — description: "Sharpen the raw task prompt before specify/architect (fills genuine gaps, writes enriched-prompt.md)."
+- Option 2: label "Skip" — description: "Proceed straight to the next phase without enrichment."
+
+- **If skipping:** tell the user "Skipping /enrich per your choice." and proceed to Phase 1.5.
+- **If running:** spawn `/enrich` as a subagent session (same mechanism as the Phase 1.5 specify spawn). Pass the raw task description and the task folder path.
+
+After the phase, verify the cost ledger has a new entry for the `enrich` phase. If not (subagent didn't record), append a best-effort entry: `unknown-enrich-<timestamp> | <date> | enrich | opus | task | /run subagent (no UUID recorded)` (mirrors the Phase 1/Phase 1.5 best-effort append pattern).
+
+**No `/gate` spawn after enrich** — proceed straight to Phase 1.5 (Q-1: enrich is a lightweight upstream sharpening pass, not a phase boundary that needs a quality gate).
+
+Under non-interactive dispatch (no way to present `AskUserQuestion`), degrade to best-effort: run `/enrich` anyway and flag assumptions, never block the pipeline waiting for an answer that can't be given.
 
 ## Phase 1.5 — Specify (conditional)
 

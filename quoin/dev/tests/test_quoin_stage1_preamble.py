@@ -37,6 +37,8 @@ MIGRATED_TO_ADAPTER = {
     "checkpoint", "cleanup", "next_steps", "sleep",
     # specify-skill stage 2 (IVG-127)
     "specify",
+    # enrich-skill (IVG-152)
+    "enrich",
     # continue_work is intentionally absent — see comment below
 }
 
@@ -97,7 +99,7 @@ CHEAP_TIER_SKILLS = [
 # file's parametrized lists (it is covered separately via MIGRATED_TO_ADAPTER paths).
 # Do NOT add `continue_work` here to "fix" the count — the gap is by design.
 
-# 11 Opus-tier skills — must NOT carry §0.
+# 12 Opus-tier skills — must NOT carry §0.
 OPUS_TIER_SKILLS = [
     "architect",
     "plan",
@@ -110,6 +112,7 @@ OPUS_TIER_SKILLS = [
     "review",
     "specify",
     "security_review",
+    "enrich",
 ]
 
 YAML_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)

@@ -84,7 +84,9 @@ convergence, and updates a session-state file under
   and gate, the skill STOPS and waits for an explicit user command to proceed.
 - The skill MAY offer to produce a task feature spec when none exists (Medium/
   Large only, advisory/non-blocking); it passes the task spec path to the
-  planner when present.
+  planner when present. It MAY also offer a prompt-enrichment pre-step ahead
+  of that spec offer (default-on, non-blocking) to sharpen the raw task
+  description first.
 - Cost-ledger writes are mandatory when a task context is active.
   The ledger lives at `.workflow_artifacts/<task-name>/cost-ledger.md`.
 - After the phase completes, the skill MUST emit a concise human-readable

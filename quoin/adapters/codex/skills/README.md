@@ -40,3 +40,4 @@ mechanics.
 | [`triage`](triage/README.md) | routing | low | yes |
 | [`weekly_review`](weekly_review/README.md) | session-lifecycle | low | yes |
 | [`specify`](specify/README.md) | specify | max | yes |
+| [`enrich`](enrich/README.md) | enrich | max | yes |

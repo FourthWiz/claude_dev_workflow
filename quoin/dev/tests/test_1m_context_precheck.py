@@ -58,6 +58,7 @@ MIGRATED_TO_ADAPTER: frozenset[str] = frozenset({
     "checkpoint", "cleanup", "continue_work", "next_steps", "sleep",
     # §0' targets — all adapter-path
     "architect", "review", "init_workflow", "discover", "specify", "security_review",
+    "enrich",
 })
 
 
@@ -110,6 +111,7 @@ SECTION0PRIME_TARGETS = [
     "discover",
     "specify",
     "security_review",
+    "enrich",
 ]
 
 # ---------------------------------------------------------------------------

@@ -37,6 +37,7 @@ POLLUTION_TARGET_SKILLS = [
     "discover",
     "specify",
     "security_review",
+    "enrich",
 ]
 
 # 12 cheap-tier skills — must NOT carry §0'.
@@ -79,6 +80,7 @@ SKILL_DISTINCTIVE_TOKENS = {
     "discover": "project root",
     "specify": "spec.md",
     "security_review": "OWASP",
+    "enrich": "enriched-prompt.md",
 }
 
 

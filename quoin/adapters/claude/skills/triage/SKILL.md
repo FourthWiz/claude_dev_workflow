@@ -115,7 +115,7 @@ Otherwise (already at or below declared tier, OR prompt has [no-redispatch] sent
 
 ## Summary
 
-`/triage` is a lightweight routing skill. It reads a user's natural-language prompt, inspects the current workflow state on disk, scores each candidate skill against an embedded catalog, and presents a ranked proposal with rationale. After confirming the best-fit skill, `/triage` always tells the user which command to type — it **never invokes skills itself**. This applies to every skill, not just `/implement` and `/end_of_task`. The propose-only posture for all 19 routable skills is intentional and permanent: no `Skill` tool calls happen from `/triage` at any point.
+`/triage` is a lightweight routing skill. It reads a user's natural-language prompt, inspects the current workflow state on disk, scores each candidate skill against an embedded catalog, and presents a ranked proposal with rationale. After confirming the best-fit skill, `/triage` always tells the user which command to type — it **never invokes skills itself**. This applies to every skill, not just `/implement` and `/end_of_task`. The propose-only posture for all 20 routable skills is intentional and permanent: no `Skill` tool calls happen from `/triage` at any point.
 
 ---
 
@@ -169,7 +169,7 @@ Run the following checks. All are **best-effort and read-only** — if a command
 
 Apply the three-signal scoring algorithm:
 
-**Signal A — Explicit command.** If the scoring prompt contains a literal `/<skill-name>` token matching any of the 19 routable skills (case-insensitive), that skill gets score **3** and skip directly to Step 4 proposal. No further scoring needed.
+**Signal A — Explicit command.** If the scoring prompt contains a literal `/<skill-name>` token matching any of the 20 routable skills (case-insensitive), that skill gets score **3** and skip directly to Step 4 proposal. No further scoring needed.
 
 - Special rule: if `/revise-fast` is matched via Signal A, substitute `/revise` in the proposal with note: "`/revise-fast` is an internal variant; proposing `/revise` instead."
 - `/revise-fast` is **never** included in any ranked list or ambiguous candidate display.
@@ -209,7 +209,7 @@ For decline/negation replies, apply the one-question cap (Section 9).
 
 ## Section 6: Skill Catalog
 
-All 19 user-facing routable skills. `/revise-fast` is excluded (internal, not user-facing).
+All 20 user-facing routable skills. `/revise-fast` is excluded (internal, not user-facing).
 
 | Skill | Primary keywords | Trigger phrases | State signals that boost (+) | State signals that suppress (−) | Notes |
 |-------|-----------------|-----------------|------------------------------|---------------------------------|-------|
@@ -221,6 +221,7 @@ All 19 user-facing routable skills. `/revise-fast` is excluded (internal, not us
 | `/discover` | discover, scan, map, repos, inventory, dependencies, index | "scan my repos", "map the codebase", "what repos do I have", "index the project", "save the architecture" | `repos-inventory.md` missing/stale (+2), cache stale (+1) | — | Run once on setup or when repos change |
 | `/end_of_day` | end of day, EOD, wrapping up, done for the day, save progress | "wrapping up", "done for the day", "save my progress", "end of day", "EOD" | Today's daily cache exists (+1) | No session file today (−1) | Saves state and consolidates work |
 | `/end_of_task` | end of task, finalize, push, ship, done, complete, wrap up task | "finalize this", "we're done", "ship it", "task complete", "wrap up this task", "push the branch" | APPROVED review found (+2) | On main/clean (−2), uncommitted changes without APPROVED (−1) | **High-impact.** Requires `/review` APPROVED first |
+| `/enrich` | enrich, sharpen, tighten, fill gaps, sharpen the prompt | "sharpen this prompt", "tighten this task description", "fill in the gaps before we spec this" | No `spec.md`/`enriched-prompt.md` yet (+1) | Spec or enriched-prompt already exists (−1) | Route, don't rewrite — sits upstream of `/specify`; never writes a spec/plan |
 | `/gate` | gate, check before, quality check, verify before next step | "check before proceeding", "run the gate", "verify before next step", "quality checkpoint" | Active task folder (+1) | No plan, no commits (−1) | Runs between phases; usually auto-invoked by workflow |
 | `/implement` | implement, code, write code, build, start coding | "implementing a plan", "writing code from a plan", "start coding", "build this", "write the code", "let's code" | Plan found (+2), uncommitted changes (+1), active in_progress session (+1) | No plan found (−2) | **High-impact.** Requires explicit user command |
 | `/init_workflow` | init, initialize, bootstrap, set up workflow, first time | "initialize workflow", "set up dev workflow", "install workflow", "bootstrap workflow", "first time setup" | No `.workflow_artifacts/` (+2) | Active task folder exists (−2), active session (−2) | Run once per project |
@@ -252,7 +253,7 @@ When keyword collisions produce a tie, use state signals to break it. These rule
 
 ## Section 8: Invocation Policy
 
-**All 19 routable skills are propose-only.** After the user confirms, `/triage` prints the command to type and stops. No `Skill` tool call is ever made.
+**All 20 routable skills are propose-only.** After the user confirms, `/triage` prints the command to type and stops. No `Skill` tool call is ever made.
 
 **Rationale:**
 - No Haiku skill in this workflow uses the `Skill` tool. Only Opus orchestrators (`/run`, `/thorough_plan`) invoke other skills via `Skill` tool dispatch. Running a `Skill` tool call from a Haiku model is unverified and potentially unsupported.

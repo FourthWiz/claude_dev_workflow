@@ -93,6 +93,7 @@ SKILL_DISTINCTIVE_TOKENS = {
     "discover": "project root",
     "specify": "spec.md",
     "security_review": "OWASP",
+    "enrich": "enriched-prompt.md",
 }
 
 # MIN-A: literal default threshold value
