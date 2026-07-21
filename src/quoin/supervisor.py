@@ -259,3 +259,156 @@ def supervise(
 
         relaunches += 1
         clock.sleep(backoff_fn(relaunches))
+
+
+# ---------------------------------------------------------------------------
+# Headless launcher (T-07)
+# ---------------------------------------------------------------------------
+
+#: Permission mode recorded by the T-01 POC (poc-headless-decision.md): a
+#: scoped `--allowedTools` allow-list cleared the first tool approval
+#: unattended, while `--dangerously-skip-permissions` was blocked by this
+#: machine's auto-mode classifier. `allowedTools` is therefore the correct
+#: default; `bypassPermissions` remains available for operators running the
+#: supervisor from a standard (non-auto-mode) context.
+DEFAULT_PERMISSION_MODE = "allowedTools"
+
+#: Tool allow-list covering everything the `/run --resume --autonomous`
+#: pipeline's phases use (discover/enrich/specify/architect/thorough_plan/
+#: implement/review/end_of_task), per the T-01 POC decision note.
+DEFAULT_ALLOWED_TOOLS = (
+    "Read",
+    "Write",
+    "Edit",
+    "Bash",
+    "Glob",
+    "Grep",
+    "Agent",
+    "Skill",
+    "TaskCreate",
+    "TaskUpdate",
+)
+
+#: Generous timeout for the relaunch subprocess — cloud-mounted FS has been
+#: observed at 2x+ a local baseline (lesson 2026-07-04).
+DEFAULT_LAUNCH_TIMEOUT_SECONDS = 1800.0
+
+
+@dataclass
+class LaunchResult:
+    """Result of one headless relaunch subprocess invocation.
+
+    ``timed_out`` distinguishes a hard subprocess timeout from an ordinary
+    non-zero exit; both are surfaced to :func:`supervise` without raising,
+    so a single bad relaunch never crashes the loop.
+    """
+
+    returncode: int
+    stdout: str = ""
+    stderr: str = ""
+    timed_out: bool = False
+
+
+def resolve_repo_root(project_root: PathLike) -> Path:
+    """Resolve the real git repo root via ``git rev-parse --show-toplevel``.
+
+    Never assumes ``project_root`` itself is a git repo (lesson 2026-07-18)
+    — PROJECT_ROOT can be a plain, non-git outer folder wrapping the git
+    repo (e.g. a cloud-synced workspace). Falls back to ``project_root``
+    itself if git resolution fails for any reason, so callers still get a
+    usable cwd.
+    """
+    import subprocess  # local import — keeps module-top import-lean (D-01)
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            top = result.stdout.strip()
+            if top:
+                return Path(top)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return Path(project_root)
+
+
+def build_relaunch_argv(
+    task: str,
+    *,
+    permission_mode: str = DEFAULT_PERMISSION_MODE,
+    allowed_tools: "tuple[str, ...]" = DEFAULT_ALLOWED_TOOLS,
+) -> "list[str]":
+    """Build the argv for the headless relaunch subprocess (T-07).
+
+    The prompt string carries BOTH ``--resume`` and ``--autonomous`` (D-06:
+    belt-and-suspenders alongside the marker-read in `/run --resume`, so a
+    relaunch never reverts to interactive). Permission mode defaults to the
+    T-01 POC's scoped ``--allowedTools`` allow-list; ``bypassPermissions``
+    uses ``--dangerously-skip-permissions`` instead, for operators who
+    explicitly choose that mode outside an auto-mode-restricted context.
+    """
+    prompt = f"/run --resume --autonomous {task}"
+    argv = ["claude", "-p", prompt]
+    if permission_mode == "bypassPermissions":
+        argv.append("--dangerously-skip-permissions")
+    else:
+        argv.extend(["--allowedTools", *allowed_tools])
+    argv.extend(["--output-format", "text"])
+    return argv
+
+
+def make_launch_fn(
+    project_root: PathLike,
+    *,
+    permission_mode: str = DEFAULT_PERMISSION_MODE,
+    allowed_tools: "tuple[str, ...]" = DEFAULT_ALLOWED_TOOLS,
+    timeout: float = DEFAULT_LAUNCH_TIMEOUT_SECONDS,
+) -> Callable[[str], LaunchResult]:
+    """Build the real headless ``launch_fn`` for :func:`supervise` (T-07).
+
+    Each call resolves REPO_ROOT fresh via :func:`resolve_repo_root`, runs
+    the relaunch subprocess with that cwd and ``stdin`` redirected from
+    ``/dev/null`` (headless print mode otherwise waits ~3s for stdin — POC
+    Probe A2), and captures exit code + stdout/stderr. A non-zero exit or a
+    subprocess timeout is surfaced as a :class:`LaunchResult` rather than
+    raised, so a single bad relaunch never crashes :func:`supervise`'s loop.
+    """
+    import subprocess  # local import — keeps module-top import-lean (D-01)
+
+    def _launch(task: str) -> LaunchResult:
+        repo_root = resolve_repo_root(project_root)
+        argv = build_relaunch_argv(
+            task, permission_mode=permission_mode, allowed_tools=allowed_tools
+        )
+        try:
+            proc = subprocess.run(
+                argv,
+                cwd=str(repo_root),
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+            return LaunchResult(
+                returncode=proc.returncode,
+                stdout=proc.stdout,
+                stderr=proc.stderr,
+            )
+        except subprocess.TimeoutExpired as exc:
+            return LaunchResult(
+                returncode=-1,
+                stdout=(exc.stdout or "") if isinstance(exc.stdout, str) else "",
+                stderr=((exc.stderr or "") if isinstance(exc.stderr, str) else "")
+                + "\n[launch timed out]",
+                timed_out=True,
+            )
+        except OSError as exc:
+            # e.g. `claude` binary not found on PATH — surface, don't crash.
+            return LaunchResult(returncode=-1, stderr=str(exc))
+
+    return _launch

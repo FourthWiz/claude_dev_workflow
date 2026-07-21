@@ -646,6 +646,45 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_run(args: argparse.Namespace) -> int:
+    """`quoin run --autonomous <task>` — external supervisor entrypoint (T-08).
+
+    Lazily imports `supervisor` (mirrors the router/models lazy-import
+    convention, R-11/D-01) so the base install path stays import-clean.
+    Resolves --project-root, builds the real headless launch_fn, and runs
+    the relaunch loop to a terminal condition (SUCCESS/HALTED/ABORTED).
+
+    NOTE (MIN-2): --budget is a no-op stub this release — cost is bounded
+    only by --max-relaunch + exponential backoff. See autonomous-mode.md.
+    """
+    from quoin import supervisor as _supervisor  # noqa: PLC0415
+
+    project_root = pathlib.Path(args.project_root).resolve()
+    launch_fn = _supervisor.make_launch_fn(
+        project_root,
+        permission_mode=args.permission_mode,
+    )
+    result = _supervisor.supervise(
+        args.task,
+        project_root,
+        launch_fn=launch_fn,
+        max_relaunch=args.max_relaunch,
+    )
+
+    label = result.status
+    if result.reason:
+        label += f" ({result.reason})"
+    print(f"quoin run: {label}")
+    print(f"  task: {args.task}")
+    print(f"  relaunches: {result.relaunches}")
+
+    if result.status == "SUCCESS":
+        return 0
+    if result.status == "HALTED":
+        return 1
+    return 2  # ABORTED
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="quoin",
@@ -659,6 +698,7 @@ def main(argv: list[str] | None = None) -> int:
               quoin dashboard                Open the workflow dashboard in a browser
               quoin router setup             Enable open-model routing (claude-code-router)
               quoin models set opus glm      Map the opus tier to an OpenRouter model
+              quoin run --autonomous <task>  Run the external autonomous supervisor
 
             Run 'quoin <command> --help' for command-specific options.
             See QUICKSTART.md for the full command reference.
@@ -925,6 +965,61 @@ def main(argv: list[str] | None = None) -> int:
         help="Explicit-intent alias for reset; produces identical behaviour.",
     )
 
+    run_p = sub.add_parser(
+        "run",
+        description=(
+            "Run the external autonomous supervisor: relaunches "
+            '`claude -p "/run --resume --autonomous <task>"` in fresh '
+            "headless sessions until the task's done- or halt-sentinel "
+            "appears, bounded by --max-relaunch and exponential backoff."
+        ),
+        help="Run the external autonomous supervisor for a task (relaunch loop)",
+    )
+    run_p.add_argument(
+        "task",
+        help="Task name (matches the .workflow_artifacts/<task> folder).",
+    )
+    run_p.add_argument(
+        "--autonomous",
+        action="store_true",
+        help=(
+            "This subcommand IS the autonomous supervisor entrypoint; the "
+            "flag is explicit/required for clarity in the relaunch string."
+        ),
+    )
+    run_p.add_argument(
+        "--project-root",
+        default=".",
+        help="Project root containing .workflow_artifacts/ (default: cwd).",
+    )
+    run_p.add_argument(
+        "--max-relaunch",
+        type=int,
+        default=10,
+        help=(
+            "Maximum relaunch count before aborting (default: 10; mirrors "
+            "supervisor.DEFAULT_MAX_RELAUNCH)."
+        ),
+    )
+    run_p.add_argument(
+        "--permission-mode",
+        default="allowedTools",
+        help=(
+            "Headless permission mode for the relaunch subprocess: "
+            "'allowedTools' (default; scoped allow-list, per the T-01 POC) "
+            "or 'bypassPermissions' (--dangerously-skip-permissions)."
+        ),
+    )
+    run_p.add_argument(
+        "--budget",
+        default=None,
+        help=(
+            "Cross-session cost ceiling (nice-to-have). NOT YET ENFORCED "
+            "this release — cost is bounded by --max-relaunch + backoff "
+            "only; see autonomous-mode.md."
+        ),
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "install" or args.command is None:
@@ -961,6 +1056,8 @@ def main(argv: list[str] | None = None) -> int:
             return _models._cmd_models_reset(args)
         # Bare 'quoin models' → show mapping.
         return _models._cmd_models_show(args)
+    elif args.command == "run":
+        return _cmd_run(args)
 
     parser.print_help()
     return 1

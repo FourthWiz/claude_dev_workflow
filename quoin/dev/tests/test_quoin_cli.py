@@ -55,6 +55,7 @@ def test_cli_help():
     assert "Examples:" in result.stdout
     assert "quoin router setup" in result.stdout
     assert "quoin models set" in result.stdout
+    assert "quoin run --autonomous" in result.stdout
 
     # install subcommand help shows --dev flag + de-densified Scope epilog
     result2 = _py("-m", "quoin", "install", "--help")
@@ -96,6 +97,19 @@ def test_cli_help():
     assert "tier" in result8.stdout
     assert "claude-code-router" in result8.stdout
 
+    # run subcommand: autonomous supervisor entrypoint
+    result9 = _py("-m", "quoin", "run", "--help")
+    assert result9.returncode == 0, result9.stderr
+    assert "--autonomous" in result9.stdout
+    assert "--max-relaunch" in result9.stdout
+    assert "--project-root" in result9.stdout
+    assert "--permission-mode" in result9.stdout
+    assert "--budget" in result9.stdout
+    # MIN-2: --budget is a documented no-op stub this release. argparse
+    # word-wraps help text, so normalize whitespace/newlines before matching.
+    normalized9 = " ".join(result9.stdout.split()).lower()
+    assert "not yet enforced" in normalized9
+
     # In-process variant (no pip install needed — pythonpath = ["src"])
     from quoin.cli import main  # noqa: PLC0415
     with pytest.raises(SystemExit) as exc:
@@ -123,6 +137,86 @@ def test_install_default_and_bare_quoin_remain_claude(monkeypatch):
     from quoin import cli  # noqa: PLC0415
 
     runtimes: list[str] = []
+
+    def fake_claude_install(args):
+        runtimes.append(args.runtime)
+        return 0
+
+    monkeypatch.setattr(cli, "_cmd_claude_install", fake_claude_install)
+
+    assert cli.main(["install"]) == 0
+    assert cli.main([]) == 0
+    assert runtimes == ["claude", "claude"]
+
+
+# ── run subcommand dispatch (T-08) ───────────────────────────────────────────
+
+def test_run_subcommand_dispatches_to_supervisor(monkeypatch, tmp_path):
+    """In-process dispatch check: supervisor.supervise is monkeypatched so no
+    real `claude` subprocess is ever launched (T-08 acceptance c)."""
+    from quoin import cli  # noqa: PLC0415
+    from quoin import supervisor  # noqa: PLC0415
+
+    calls: dict = {}
+
+    def fake_supervise(task, project_root, *, launch_fn, max_relaunch, **kwargs):
+        calls["task"] = task
+        calls["project_root"] = project_root
+        calls["max_relaunch"] = max_relaunch
+        calls["launch_fn_is_callable"] = callable(launch_fn)
+        return supervisor.SuperviseResult(status="SUCCESS", relaunches=2)
+
+    monkeypatch.setattr(supervisor, "supervise", fake_supervise)
+
+    code = cli.main(
+        [
+            "run", "--autonomous", "demo",
+            "--project-root", str(tmp_path),
+            "--max-relaunch", "3",
+        ]
+    )
+    assert code == 0
+    assert calls["task"] == "demo"
+    assert calls["project_root"] == tmp_path.resolve()
+    assert calls["max_relaunch"] == 3
+    assert calls["launch_fn_is_callable"] is True
+
+
+def test_run_subcommand_halted_returns_nonzero(monkeypatch, tmp_path):
+    from quoin import cli  # noqa: PLC0415
+    from quoin import supervisor  # noqa: PLC0415
+
+    def fake_supervise(task, project_root, *, launch_fn, max_relaunch, **kwargs):
+        return supervisor.SuperviseResult(
+            status="HALTED", reason="git conflict", relaunches=1
+        )
+
+    monkeypatch.setattr(supervisor, "supervise", fake_supervise)
+
+    code = cli.main(["run", "--autonomous", "demo", "--project-root", str(tmp_path)])
+    assert code == 1
+
+
+def test_run_subcommand_aborted_returns_nonzero(monkeypatch, tmp_path):
+    from quoin import cli  # noqa: PLC0415
+    from quoin import supervisor  # noqa: PLC0415
+
+    def fake_supervise(task, project_root, *, launch_fn, max_relaunch, **kwargs):
+        return supervisor.SuperviseResult(
+            status="ABORTED", reason="relaunch cap", relaunches=10
+        )
+
+    monkeypatch.setattr(supervisor, "supervise", fake_supervise)
+
+    code = cli.main(["run", "--autonomous", "demo", "--project-root", str(tmp_path)])
+    assert code == 2
+
+
+def test_run_subcommand_bare_other_subcommands_unchanged(monkeypatch):
+    """Adding `run` must not disturb dispatch for pre-existing subcommands."""
+    from quoin import cli  # noqa: PLC0415
+
+    runtimes: list = []
 
     def fake_claude_install(args):
         runtimes.append(args.runtime)

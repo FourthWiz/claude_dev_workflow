@@ -250,3 +250,16 @@ Backoff between relaunches is exponential, capped. `MAX_RELAUNCH` alone
 guarantees termination even under continual sub-phase progress. The
 relaunch string always carries `--autonomous` (belt) alongside the
 marker (suspenders), so the fresh session's mode is never ambiguous.
+The relaunch subprocess uses the T-01 POC's scoped `--allowedTools`
+permission mode by default (`--permission-mode` overrides), runs with
+`stdin` redirected from `/dev/null`, and resolves its cwd via
+`git rev-parse --show-toplevel` rather than assuming the project root
+is itself a git repo.
+
+**`quoin run --autonomous <task>` CLI.** Flags: `task` (positional),
+`--autonomous`, `--project-root` (default cwd), `--max-relaunch`
+(default 10), `--permission-mode` (default `allowedTools`), and
+`--budget` — a nice-to-have cross-session cost ceiling that is a
+**no-op stub this release: NOT YET ENFORCED — cost is bounded by
+`--max-relaunch` + backoff only.** Exits 0 on SUCCESS, 1 on HALTED, 2
+on ABORTED.
