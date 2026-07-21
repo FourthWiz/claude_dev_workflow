@@ -122,6 +122,72 @@ be honored when locating per-stage artifacts.
   formulation confidence is scored, is adapter-specific and documented
   in the adapter's own reference material.
 
+## Autonomous durability contract (opt-in supervisor)
+
+An adapter MAY implement an external supervisor that relaunches fresh
+sessions to carry an autonomous span across a context-window boundary
+that a single session cannot fit in. When it does, the relaunch and
+resume MUST agree on the following sentinel path templates, all of
+which resolve under `.workflow_artifacts/memory/` — deliberately
+outside the task-scoped artifact folder, so each sentinel survives
+that folder's later archival:
+
+- **Marker** — `autonomous-run-{task}.marker`, one line, written once
+  at autonomous-span entry, before the first phase begins. A resumed
+  session reads this marker first, before its own first decision
+  point, to re-establish the autonomous span rather than reverting to
+  an interactive default and stalling.
+- **Per-phase completion sentinels** — `autonomous-progress-{task}/{phase}.done`,
+  one file per completed phase. The phase set is the full resumable
+  roster documented under "Phase sequence" above; every phase named
+  there gets a completion sentinel, none silently excluded. Finer
+  progress within a single long-running phase MAY additionally write
+  `autonomous-progress-{task}/{phase}.{subphase}.done`. The counting
+  glob `autonomous-progress-{task}/*.done` is the union of both forms,
+  so either kind of new sentinel counts as forward progress for a
+  supervisor's no-progress guard.
+- **Done sentinel** — `autonomous-done-{task}.md`, written last, after
+  finalization's other side effects complete, so a relaunch after a
+  kill mid-finalization can tell the span already reached its terminal
+  step and stop without redoing that work. Because a kill anywhere
+  inside finalization re-runs the whole terminal phase on relaunch,
+  every side-effecting finalization step MUST be individually
+  idempotent — each check-and-skip guards its own already-done work
+  (a push is a no-op when the branch already matches its remote at the
+  same commit; a lessons/cost step skips when its own completion
+  sentinel is present; an archive move skips when the target already
+  exists) — not only the push and the archive.
+- **Halt sentinel** — the hard-stop record already defined above
+  (`autonomous-halt-{task}.md`); a resuming supervisor checks it after
+  the done sentinel, before deciding whether to relaunch again.
+
+This document fixes only the path templates and the phase-roster
+coverage rule, so independently implemented supervisors and resumers
+agree on the contract shape; the supervisor loop mechanics themselves
+(relaunch cap, backoff, launcher) are adapter-specific.
+
+A within-phase mechanism complements the cross-phase relaunch above: a
+phase subagent MUST exchange only paths and short summaries with the
+orchestrator, never raw content, so the orchestrator's own context stays
+bounded across the whole span. A phase subagent nearing its own limit
+writes a checkpoint to disk and reports a partial-completion signal
+instead of exhausting itself; the orchestrator answers by dispatching a
+fresh subagent to continue the same phase from that checkpoint, repeating
+until the phase reports normal completion. Whether a subagent detects its
+own nearness-to-limit or falls back to a fixed work-unit cap is
+adapter-specific.
+
+A resume that honors this contract MUST read the marker before any
+other decision point, so a relaunch never reverts to an interactive
+default and stalls; MUST derive the next phase from the completion
+sentinels rather than from prose state alone, treating a present
+sentinel as never-re-run and an absent one as never-skip; and MAY use
+sub-phase sentinels to resume partway through a single long phase
+rather than restarting it. Each resumable phase is responsible for
+writing its own completion sentinel once its work is done, so the
+reader and writer sides of this contract stay independently
+verifiable.
+
 ## Notes
 
 - The orchestrator owns coordination only, never artifact content;

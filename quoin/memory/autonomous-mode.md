@@ -189,3 +189,113 @@ of pausing for confirmation. Every hard stop defined in the
 halt-sentinel contract above still halts the run and records the
 reason rather than proceeding silently, and a PR is never auto-created
 in either mode.
+
+## Stage 2 — supervisor + sentinel contract
+
+Stage 1 (above) covers the in-session autonomous span: propagation,
+the quality bar, and the halt-sentinel *write* side. Stage 2 adds an
+external local supervisor — `quoin run --autonomous <task>` — that can
+relaunch fresh `claude -p "/run --resume --autonomous <task>"` sessions
+to carry a Large task across context windows a single session cannot
+fit in. The supervisor is pure orchestration outside the session; it
+never edits skill content and reads the sentinel contract below to
+decide whether to relaunch.
+
+**Sentinel contract.** All four sentinels resolve under
+`.workflow_artifacts/memory/` — outside the task-scoped folder, so
+each survives `/end_of_task`'s later move of that folder into
+`finalized/`:
+
+- **Marker** — `autonomous-run-{task}.marker` (single line: task,
+  timestamp, `autonomous: true`). Written once at autonomous-span
+  entry, in `/run`'s Setup, right after `AUTONOMOUS=true` is set.
+  `/run --resume` reads it FIRST, before its own first decision point,
+  to re-establish autonomous mode — so a headless resume never reverts
+  to interactive and stalls. Re-writing the marker is a no-op-equivalent
+  overwrite; plain (non-autonomous) `/run` never writes it.
+- **Per-phase completion sentinels** —
+  `autonomous-progress-{task}/{phase}.done`, one file per completed
+  phase, for the FULL resumable `/run` phase roster (`run/SKILL.md`
+  `## Phase sequence`): `discover, enrich, specify, architect,
+  thorough_plan, implement, review, end_of_task` — 8 phases. `enrich`
+  (Phase 1.4) and `specify` (Phase 1.5) are IN-SET; the roster is never
+  abbreviated as "Phases 1..6", which would silently drop them. Finer
+  progress within one long phase MAY also write
+  `autonomous-progress-{task}/{phase}.{subphase}.done`. **Counting
+  glob** (consumed by the supervisor's no-forward-progress guard):
+  `autonomous-progress-{task}/*.done` — the UNION of phase- and
+  sub-phase-granular sentinels, so a phase spanning more than two
+  relaunches with only sub-phase progress is not false-aborted.
+- **Done sentinel** — `autonomous-done-{task}.md`, written by
+  `/end_of_task` LAST — after push, the lessons/cost sub-phase, and the
+  archive move all complete — and outside the archived folder, so a
+  kill between any two of those steps resumes safely with no duplicated
+  work.
+- **Halt sentinel** — `autonomous-halt-{task}.md` (Stage 1, unchanged).
+  The supervisor checks the done sentinel first, then the halt
+  sentinel, before deciding whether to relaunch.
+
+All sentinel writes are atomic: `printf > f.tmp && mv f.tmp f` — the
+same idiom the hooks already use.
+
+**Supervisor loop.** `quoin run --autonomous <task>` runs a pure
+relaunch loop: on each iteration, check the done sentinel (exit
+SUCCESS if present), then the halt sentinel (exit HALTED with the
+recorded reason, no further relaunch), then the relaunch cap
+(`MAX_RELAUNCH`, exit ABORTED "relaunch cap" if reached). Otherwise it
+counts completion sentinels, relaunches a fresh headless session, and
+re-counts; two consecutive relaunches that produce zero new completion
+sentinels (by the union glob above) abort with "no forward progress".
+Backoff between relaunches is exponential, capped. `MAX_RELAUNCH` alone
+guarantees termination even under continual sub-phase progress. The
+relaunch string always carries `--autonomous` (belt) alongside the
+marker (suspenders), so the fresh session's mode is never ambiguous.
+The relaunch subprocess uses the T-01 POC's scoped `--allowedTools`
+permission mode by default (`--permission-mode` overrides), runs with
+`stdin` redirected from `/dev/null`, and resolves its cwd via
+`git rev-parse --show-toplevel` rather than assuming the project root
+is itself a git repo.
+
+**`quoin run --autonomous <task>` CLI.** Flags: `task` (positional),
+`--autonomous`, `--project-root` (default cwd), `--max-relaunch`
+(default 10), `--permission-mode` (default `allowedTools`), and
+`--budget` — a nice-to-have cross-session cost ceiling that is a
+**no-op stub this release: NOT YET ENFORCED — cost is bounded by
+`--max-relaunch` + backoff only.** Exits 0 on SUCCESS, 1 on HALTED, 2
+on ABORTED.
+
+**Sub-phase-granular idempotent resume.** Each fresh relaunch is a
+`/run --resume --autonomous <task>` that MUST land at the correct phase
+with no re-work and no skipped work. `/run --resume` reads the marker
+FIRST (re-establishing `AUTONOMOUS` before any decision point), then
+derives the next phase from the `{phase}.done` completion sentinels
+rather than from session-state prose alone: a phase whose `{phase}.done`
+exists is NEVER re-run; a phase whose `{phase}.done` is absent is NEVER
+skipped; a phase with a partial `{phase}.{subphase}.done` set resumes at
+the right sub-phase. When no sentinel dir exists (a plain, non-autonomous
+resume), the pre-existing session-state resume path is preserved intact.
+A headless relaunch raises ZERO `AskUserQuestion` — the marker + the
+`--autonomous` flag keep the fresh session autonomous.
+
+**Terminal (`/end_of_task`) step-idempotency.** A kill after
+`/end_of_task` pushes but before the done sentinel re-runs the WHOLE
+terminal phase, so every side-effecting sub-phase is individually
+idempotent, in the verified order push → lessons/cost → archive →
+done-sentinel-LAST:
+
+- **Push (Sub-phase A)** is a no-op when the branch already matches
+  origin at the same HEAD (fetch, then compare `git rev-parse HEAD`
+  against `origin/<branch>`).
+- **Lessons + cost (Sub-phase B)** are gated behind an entry-skip
+  sentinel `autonomous-progress-{task}/end_of_task.subphaseB.done`
+  (checked at Sub-phase B entry, written atomically at its end, and
+  counted by the union progress glob). Belt-and-suspenders, the lessons
+  append also greps `lessons-learned.md` for an existing entry keyed on
+  `{task}` + stage before appending, and cost aggregation recomputes /
+  overwrites the task total rather than blind-appending a second row.
+- **Archive (Sub-phase C)** checks the `finalized/` target first and
+  skips the move if the task folder is already archived.
+- **Done sentinel** is written LAST — after the archive move and the
+  final report — at the memory-dir location outside the archived folder,
+  so a kill at any boundary resumes with no duplicated work. The
+  "never auto-create a PR" invariant holds in every mode.

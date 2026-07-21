@@ -35,6 +35,28 @@ Before profile-tag parsing, scan the task description for the `--autonomous` tok
 
 Record `autonomous: true` in the session-state file (`.workflow_artifacts/memory/sessions/<date>-<task-name>.md`) once created, and append `[autonomous]` to the NOTE field of the orchestrator's own cost-ledger row (see "Initialize cost ledger" below) so the ledger reflects the run mode.
 
+### Write the autonomous-span marker (T-10 — only under `AUTONOMOUS`)
+
+Immediately after `AUTONOMOUS=true` is set above, write the T-05 marker sentinel
+`autonomous-run-{task}.marker` atomically. This fires on EVERY autonomous entry —
+a fresh `--autonomous` invocation and a resumed `--resume --autonomous` relaunch
+alike — because the write is idempotent (an overwrite is a no-op-equivalent), so
+there is no need to distinguish fresh-vs-resumed at this site:
+
+```bash
+mkdir -p .workflow_artifacts/memory
+printf 'task: <task-name>\ntimestamp: <ISO-8601 now>\nautonomous: true\n' \
+  > .workflow_artifacts/memory/autonomous-run-<task-name>.marker.tmp \
+  && mv .workflow_artifacts/memory/autonomous-run-<task-name>.marker.tmp \
+        .workflow_artifacts/memory/autonomous-run-<task-name>.marker
+```
+
+Plain `/run` (no `--autonomous`, `AUTONOMOUS=false`) never writes this marker — the
+write is entirely inert when `AUTONOMOUS=false`, mirroring every other autonomous
+branch in this file. The read side of this contract (a resumed session re-establishing
+`AUTONOMOUS=true` from this marker before its own first decision point) is documented
+in `## Resume` below.
+
 ### Parse input and determine task profile
 
 Scan the task description (with `--autonomous` already stripped, if present) for profile tags and runtime overrides, in this order:
@@ -144,6 +166,24 @@ Under `AUTONOMOUS`, every hard stop writes a halt-sentinel **before exit**, then
 - **Never auto-creates a PR.** At every one of the six sites, and everywhere else in this file, the orchestrator NEVER auto-creates a pull request — identical in interactive and autonomous mode. PR creation stays `/pr`, a separate explicit user action.
 - **Only under `AUTONOMOUS`.** In plain (non-autonomous) `/run`, these six situations still halt the workflow exactly as documented in their own phase sections — they present the existing interactive prompt instead of writing a halt-sentinel.
 
+## Autonomous progress sentinels (Stage 2 sentinel contract)
+
+Under `AUTONOMOUS`, the completion of each of the 8 resumable phases below is recorded by a per-phase completion sentinel, so a future resumed session (or an external supervisor relaunching one) can tell exactly which phases already finished without re-deriving it from session-state prose. This section is the T-05 contract declaration — the entry-marker write (Setup) and the resume-side read/idempotency logic (the later "Resume" section) land in a later Stage-2 task; this section fixes the write-site map they both consume.
+
+- **Directory:** `.workflow_artifacts/memory/autonomous-progress-{task}/` — same OUTSIDE-the-task-folder rationale as the halt-sentinel above.
+- **Write-site map** (phase → completion sentinel, all 8 resumable phases, atomic write `printf > f.tmp && mv f.tmp f`):
+  1. **discover** (Phase 1) → writes `autonomous-progress-{task}/discover.done`.
+  2. **enrich** (Phase 1.4) → writes `autonomous-progress-{task}/enrich.done`.
+  3. **specify** (Phase 1.5) → writes `autonomous-progress-{task}/specify.done`.
+  4. **architect** (Phase 2) → writes `autonomous-progress-{task}/architect.done`.
+  5. **thorough_plan** (Phase 3) → writes `autonomous-progress-{task}/thorough_plan.done`.
+  6. **implement** (Phase 4) → writes `autonomous-progress-{task}/implement.done`.
+  7. **review** (Phase 5) → writes `autonomous-progress-{task}/review.done`.
+  8. **end_of_task** (Phase 6) → writes `autonomous-progress-{task}/end_of_task.done`.
+- **Sub-phase granularity (optional):** a phase MAY additionally write `autonomous-progress-{task}/{phase}.{subphase}.done` for finer-grained progress within itself (e.g. a long `implement` phase checkpointing partial task batches). The counting glob `autonomous-progress-{task}/*.done` is the UNION of both forms.
+- **Marker:** `autonomous-run-{task}.marker`, written once at autonomous-span entry (Setup, right after `AUTONOMOUS` is set) — the read/re-establish-on-resume side of this contract is Stage-2 groundwork, documented alongside the later "Resume" section.
+- **Done sentinel:** `autonomous-done-{task}.md`, written by `end_of_task` LAST, after its other terminal side effects, outside the archived folder — same rationale as the halt-sentinel.
+
 ## Phase sequence
 
 ```
@@ -175,6 +215,8 @@ Also check for `repos-inventory.md` (plural) as secondary confirmation.
 
 After the phase, verify the cost ledger has a new entry for the `discover` phase. If not (subagent didn't record), append a best-effort entry: `unknown-discover-<timestamp> | <date> | discover | opus | task | /run subagent (no UUID recorded)`.
 
+Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/discover.done` (atomic write — T-05/T-10 write-site map) — the T-09 resume-reader depends on this file's presence to know Phase 1 finished.
+
 ## Phase 1.4 — Enrich (default-on prompt)
 
 On entry, PROMPT via `AskUserQuestion`: "Run prompt enrichment on this task, or skip?"
@@ -188,6 +230,8 @@ On entry, PROMPT via `AskUserQuestion`: "Run prompt enrichment on this task, or 
 
 After the phase, verify the cost ledger has a new entry for the `enrich` phase. If not (subagent didn't record), append a best-effort entry: `unknown-enrich-<timestamp> | <date> | enrich | opus | task | /run subagent (no UUID recorded)` (mirrors the Phase 1/Phase 1.5 best-effort append pattern).
 
+Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/enrich.done` (atomic write — T-05/T-10 write-site map) — including when enrich was skipped via the AskUserQuestion prompt above (a skipped phase still counts as reaching this point in the pipeline; resume must not re-offer the prompt).
+
 **No `/gate` spawn after enrich** — proceed straight to Phase 1.5 (Q-1: enrich is a lightweight upstream sharpening pass, not a phase boundary that needs a quality gate).
 
 Under non-interactive dispatch (no way to present `AskUserQuestion`), degrade to best-effort: run `/enrich` anyway and flag assumptions, never block the pipeline waiting for an answer that can't be given.
@@ -200,6 +244,8 @@ Under non-interactive dispatch (no way to present `AskUserQuestion`), degrade to
 - **If running:** spawn `/specify` as a subagent session (same mechanism as the Phase 2 architect spawn). Pass the task description and the task folder path.
 
 After the phase, verify the cost ledger has a new entry for the `specify` phase. If not (subagent didn't record), append a best-effort entry: `unknown-specify-<timestamp> | <date> | specify | opus | task | /run subagent (no UUID recorded)` (mirrors the Phase 1/Phase 2 best-effort append pattern).
+
+Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/specify.done` (atomic write — T-05/T-10 write-site map), including when specify was skipped by its own skip condition.
 
 After specify completes, spawn `/gate` as a subagent session (spec→architect boundary — subagent dispatch, mirrors the post-architect gate at Phase 2; audit-log persistence mandatory).
 
@@ -226,6 +272,8 @@ Continue to architecture? (yes / no / show spec)
   - **Note:** `/architect` now includes a Phase 4 critic loop (max 2 rounds default, 4 in strict mode); expect 1-2 additional `critic` phase rows in the cost ledger per round. If Phase 4 triggers the cost-guard confirmation (pre-round-2), the architect subagent will pause for user input — watch for the prompt `[critic round 2 starting — ~$10-30 estimated based on body size]` in the subagent output.
 
 After the phase, verify the cost ledger has a new entry for the `architect` phase. If not, append a best-effort entry with `unknown-architect-<timestamp>`. Also check for `critic` phase rows from Phase 4 (1-2 expected; accept their absence if Phase 4 was skipped via `max_rounds: 0`).
+
+Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/architect.done` (atomic write — T-05/T-10 write-site map), including when architect was skipped for a Small task.
 
 After architect completes, spawn `/gate` as a subagent session (architecture gate — subagent dispatch required for audit-log persistence).
 
@@ -258,6 +306,8 @@ Spawn `/thorough_plan` as a subagent session, passing:
 
 After the phase, verify the cost ledger has new entries for `thorough-plan`, `plan`, `critic`, and (if applicable) `revise` phases. If not, append best-effort entries with `unknown-<phase>-<timestamp>`.
 
+Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/thorough_plan.done` (atomic write — T-05/T-10 write-site map).
+
 **Checkpoint B:**
 ```
 Phase complete: Planning
@@ -286,6 +336,8 @@ Only evaluated under `AUTONOMOUS` — plain `/run` never evaluates this bar and 
 Spawn `/implement` as a subagent session, passing path to `<task_dir>/current-plan.md` (where `<task_dir>` is resolved via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` in Setup §) and all repo paths. Because the user invoked `/run` and confirmed at Checkpoint B, the `/run` exception in `implement/SKILL.md` applies.
 
 After the phase, verify the cost ledger has a new entry for the `implement` phase. If not, append a best-effort entry with `unknown-implement-<timestamp>`.
+
+Under `AUTONOMOUS`, once Checkpoint C confirms (gate passed, continuing to review), also write the phase's completion sentinel `autonomous-progress-{task}/implement.done` (atomic write — T-05/T-10 write-site map).
 
 After implement completes, run `/gate` inline (read `/gate/SKILL.md` from the same session and execute the gate process directly — do not spawn a subagent). Step 5 audit-log persistence applies in inline mode per the gate skill's existing rule.
 - Standard level for Small/Medium
@@ -320,6 +372,8 @@ Read the review output (`review-*.md`) and check the verdict.
 
 After the phase, verify the cost ledger has a new entry for the `review` phase. If not, append a best-effort entry with `unknown-review-<timestamp>`.
 
+Under `AUTONOMOUS`, once Checkpoint D confirms (APPROVED or accepted, gate passed), also write the phase's completion sentinel `autonomous-progress-{task}/review.done` (atomic write — T-05/T-10 write-site map).
+
 **If APPROVED:** run `/gate` inline (Full level, post-review — read `/gate/SKILL.md` from the same session and execute the gate process directly). Step 5 audit-log persistence applies in inline mode per the gate skill's existing rule. Proceed to Checkpoint D.
 
 **If CHANGES_REQUESTED:** present the issues to the user. Offer:
@@ -349,6 +403,8 @@ Finalize and push? (yes / no / show review)
 ## Phase 6 — End of Task
 
 Spawn `/end_of_task` as a subagent session. Because the user invoked `/run` and confirmed at Checkpoint D, the `/run` exception in `end_of_task/SKILL.md` applies. All 8 steps run as normal (pre-flight, commit, push, lessons, session state, cost aggregation, archive, report).
+
+Under `AUTONOMOUS`, once `/end_of_task` returns successfully, also write the phase's completion sentinel `autonomous-progress-{task}/end_of_task.done` (atomic write — T-05/T-10 write-site map). This is a separate sentinel from `end_of_task`'s own terminal `autonomous-done-{task}.md` (T-11) — this one records phase-level progress consistent with the other 7 phases; the done-sentinel is the overall supervisor-loop terminal signal.
 
 After completion, present the final report:
 ```
@@ -382,10 +438,46 @@ At every checkpoint, the orchestrator presents a concise summary and waits for e
 
 If invoked as `/run --resume <task-name>` (or "resume the run for <task-name>"):
 
-1. Read `.workflow_artifacts/memory/sessions/<latest>-<task-name>.md` to find the last completed phase.
-2. Identify the next phase.
-3. Tell the user: "Resuming `<task-name>` from Phase N (`<phase-name>`). Phases 1–M already completed."
-4. Start from the next uncompleted phase — do not re-run completed phases.
+**Step 0 (T-09) — re-establish autonomous mode from the marker, BEFORE any other
+decision point.** Read `.workflow_artifacts/memory/autonomous-run-{task}.marker`
+(the T-05/T-10 marker sentinel) for `<task-name>` FIRST — before reading session
+state, before checking completion sentinels, before anything else:
+- If the marker exists: set `AUTONOMOUS=true` immediately, whether or not the
+  resume invocation's own text carries `--autonomous` (belt-and-suspenders, D-06).
+  This is what guarantees a headless `claude -p "/run --resume --autonomous
+  {task}"` relaunch never reverts to interactive and stalls waiting on a prompt
+  no one is present to answer.
+- If the marker is absent: `AUTONOMOUS` is determined normally from the invocation
+  text — plain (non-autonomous) resume, unchanged from pre-T-09 behavior.
+
+**Step 1 (T-09) — determine the next phase from completion sentinels, never from
+session-state prose alone, when the sentinel contract is present.** Read
+`.workflow_artifacts/memory/autonomous-progress-{task}/` (the T-05/T-10 write-site
+directory) for `<task-name>`:
+- A phase whose `{phase}.done` sentinel EXISTS is finished — never re-run it, even
+  if session-state prose about that phase is ambiguous, stale, or missing.
+- A phase whose `{phase}.done` sentinel is ABSENT is not finished — never skip it.
+- If a phase's sentinels are only PARTIALLY present at sub-phase granularity
+  (`{phase}.{subphase}.done` for some but not all sub-phases of one phase — e.g. a
+  long `implement` phase that checkpointed partial task batches), resume that phase
+  at the first sub-phase lacking its own completion sentinel, rather than
+  restarting the whole phase from scratch.
+- If NO `autonomous-progress-{task}/` directory exists for the task (a resume that
+  predates the sentinel contract, or a non-autonomous run that never wrote one),
+  fall back to the pre-T-09 behavior:
+  1. Read `.workflow_artifacts/memory/sessions/<latest>-<task-name>.md` to find the last completed phase.
+  2. Identify the next phase.
+
+**Step 2 — announce and proceed.** Tell the user: "Resuming `<task-name>` from
+Phase N (`<phase-name>`). Phases 1–M already completed." Start from the next
+uncompleted phase — do not re-run completed phases.
+
+**Headless autonomous path (T-09):** when Step 0 established `AUTONOMOUS=true`
+from the marker, resume proceeds directly into Phase N with ZERO
+`AskUserQuestion` calls — the sentinel-derived phase selection above IS the
+decision, so there is nothing left to ask. A headless
+`/run --resume --autonomous {task}` relaunch with the marker present therefore
+raises zero `AskUserQuestion` prompts by construction.
 
 Note: `--resume` is a convention the skill checks for in the input, not a CLI flag.
 
@@ -404,6 +496,8 @@ Each phase runs as a separate subagent session — never inline. This keeps the 
 - After each subagent completes, read its output artifacts from disk
 - Spawning mechanism: same as `/thorough_plan`'s "Invoking each agent" section — the `Skill` tool invokes each subagent as a fresh session. Phases are sequential (not parallel).
 - Known gate/SKILL.md diagram inconsistency: `gate/SKILL.md` shows a gate after discover, but `CLAUDE.md`'s workflow sequence does not. This skill follows `CLAUDE.md` — no gate after discover. The gate skill determines context from disk artifacts, so the discrepancy has no runtime effect.
+- **Within-phase isolation, autonomous (T-12).** Under `AUTONOMOUS`, the "paths and parameters only" rule above is a HARD requirement, not just a lean-context preference: a phase subagent returns a PATH plus a short summary, never raw file content, so the orchestrator's own transcript stays bounded across a multi-relaunch autonomous span. A phase subagent that nears its own limit writes a checkpoint to disk and returns a structured `PARTIAL` signal instead of exhausting itself mid-phase; the orchestrator responds by dispatching a FRESH subagent to CONTINUE that same phase from the checkpoint (see "Within-phase PARTIAL continuation" under "## Error handling" below). This keeps orchestrator context bounded WITHIN a phase, complementing the cross-phase relaunch a supervisor performs between phases.
+- **Self-utilization vs. scope-cap fallback.** A phase subagent SHOULD attempt to read its own transcript utilization to decide when to checkpoint-and-return-`PARTIAL` proactively, before it is forced to stop mid-tool-call. When a subagent cannot resolve its own transcript utilization, it MUST fall back to a fixed tool-use scope cap (mirroring `end_of_task`'s existing "Scope cap: ~N tool uses; if blocked, write to disk and return" pattern) so `PARTIAL` is still returned deterministically rather than the subagent silently running until it is killed.
 
 ## Parallel tasks
 
@@ -442,6 +536,59 @@ These are rough estimates based on typical usage. Actual costs are computed by `
        artifact, or stop.
   NOTE: This retry only fires for subagents dispatched BY /run.
   Standalone invocations of sub-skills have no automatic retry.
+- **Within-phase PARTIAL continuation (autonomous, T-12).** When a phase
+  subagent returns a structured `PARTIAL` signal (see "Subagent session
+  management" above) instead of its normal phase-complete summary:
+    a. Read the checkpoint path the subagent wrote to disk (paths-not-content
+       — the orchestrator never reads the subagent's raw transcript).
+    b. Dispatch a FRESH subagent for the SAME phase, passing the checkpoint
+       path so it resumes the phase's own remaining work rather than
+       restarting the phase from scratch.
+    c. Repeat until the phase returns its normal phase-complete summary
+       (not `PARTIAL`) or a hard-stop condition fires.
+  This is a WITHIN-phase mechanism — distinct from a supervisor's
+  cross-phase relaunch (`autonomous-progress-{task}/{phase}.done`
+  sentinels), and distinct from the stream-idle recovery above (which
+  responds to a dead/unresponsive child, not a self-reported `PARTIAL`).
+  Only fires under `AUTONOMOUS`; a non-autonomous phase subagent that runs
+  long is handled by the existing context-exhaustion path above ("save
+  state, instruct user to resume").
+
+## Hook cooperation (autonomous)
+
+Under `AUTONOMOUS`, the orchestrator COOPERATES with the existing
+context-utilization hooks — it never disables, edits, or lowers any of
+their thresholds. This section documents the cooperation mechanism only;
+the threshold values themselves live in `hooks/_lib.sh`'s
+`read_constants()` and are read here, never redefined.
+
+- **Self-checkpoint before the advisory band.** At `COMPACT_FIRST_BPS`
+  (90% utilization) — BEFORE the 70–95% advisory band and well before the
+  95% block — the orchestrator self-invokes a checkpoint save and writes a
+  `checkpoint-defer-{sid}` marker so the mid-phase advisory in the 70–95%
+  band does not re-prompt for a checkpoint the orchestrator already took.
+- **Catch the block JSON if it fires anyway.** If utilization still
+  reaches the block threshold (`BLOCK_BPS`, 95%), the hook returns a
+  `"decision": "block"` response, and the in-flight prompt is already
+  saved to `pending-prompt-{sid}.txt` by the hook itself. The
+  orchestrator's block-catch logic MUST key on the `"decision"` and
+  `"block"` tokens (not a byte-exact no-space literal — the live response
+  uses spaces after each colon) so it recognizes the block regardless of
+  incidental JSON formatting. On a caught block, the orchestrator stops
+  cleanly; an external supervisor (if one is driving this span) relaunches
+  a fresh session with `/run --resume --autonomous <task-name>`, which
+  re-reads the prompt from `pending-prompt-{sid}.txt` and the
+  marker/sentinel contract to resume exactly where it left off.
+- **Hooks fail open; the orchestrator never assumes otherwise.** The
+  compaction hook never blocks by design — it only ever allows. If a block
+  is not observable in a given dispatch shape, the orchestrator relies on
+  automatic compaction plus a supervisor's cross-phase relaunch instead of
+  waiting on a block signal that may never arrive.
+- **Hard constraint.** Autonomous mode NEVER writes to any file under
+  `hooks/`, and NEVER modifies or lowers a `QUOIN_*_BPS` constant or any
+  other hook threshold — anywhere, under any condition. The cooperation
+  described above is entirely additive branches in this document; it adds
+  no new hook script and changes no existing one.
 
 ## Gate boundaries reference
 
