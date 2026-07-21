@@ -164,6 +164,73 @@ Fail-graceful path with error-class triage (per architecture I-01):
 
 Otherwise (already at or below declared tier, OR prompt has [no-redispatch] sentinel, OR dispatch unavailable): proceed to §1 (skill body).
 
+## §0‴ Minimum-tier guard (execute after §0 — before any §0-sidecar block and the skill body)
+This skill is declared model: "sonnet". If the executing agent is running on a model
+strictly CHEAPER than sonnet, it silently up-dispatches to a Sonnet subagent (mirrors §0 down-dispatch).
+
+<!-- §0tripleprime-begin -->
+Detection:
+  - Read your current model from system context ("powered by the model named X").
+  - Tier order: haiku < sonnet < opus. declared_tier = sonnet.
+  - Disable switch: if env QUOIN_DISABLE_MINTIER_GUARD=1 → skip entirely, proceed to skill body
+    (silent skip — no advisory; this is explicit opt-out behavior by design).
+  - Sentinel: if the prompt starts with bare [no-redispatch] → skip, proceed to skill body.
+  - Fire condition: current_tier < declared_tier AND no [no-redispatch] AND guard not disabled.
+  - Recursion: counter form `[no-redispatch:N]` (N≥2) never reaches this block — §0 (earlier in this file) aborts on N≥2 before any §0‴ tool call.
+
+On fire (happy path — silent up-dispatch):
+  spawn an Agent subagent:
+    model: "sonnet"
+    description: "implement — min-tier up-dispatch"
+    prompt: "[no-redispatch]\n<original user input verbatim>"
+  Wait for the subagent. Return its output as your final response. STOP.
+
+Fail-OPEN path (fires only when Agent dispatch fails):
+  Classify the error text BEFORE proceeding:
+
+  - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
+    incoming prompt carries the `[autonomous]` sentinel, then on ANY §0‴ dispatch-failure or
+    1M-context-credit error, proceed at current tier fail-OPEN and DO NOT call `AskUserQuestion`
+    — skip the 1M-credit-class and generic branches below entirely. Print
+    `[quoin-mintier-autonomous: §0‴ dispatch failed; proceeding fail-OPEN at current tier]` and
+    proceed to skill body (treat as bare [no-redispatch]).
+
+  - 1M-credit-class: if error text contains `Usage credits required for 1M context`:
+      Issue AskUserQuestion:
+        Question: "§0‴ up-dispatch to sonnet failed with a 1M-context credit mismatch for /implement.
+        The parent session carries the 1M-context beta header; Sonnet lacks 1M credits. How would you like to proceed?"
+        Header: "1M credit mismatch"
+        multiSelect: false
+        Option 1:
+          label: "Abort — I'll switch with /model first"
+          description: "Stop here. Run /model in your terminal to switch to a standard-context
+          model (e.g., /model sonnet), then re-invoke /implement."
+        Option 2:
+          label: "Proceed in-session at parent tier"
+          description: "Skip the up-dispatch this once. /implement runs in the current session
+          (below Sonnet, but works). Emits a one-line advisory."
+      On Option 1: print `[quoin-mintier: 1M-context credit mismatch; abort per user choice —
+      switch with /model and re-invoke /implement]` and STOP.
+      On Option 2: print `[quoin-mintier: 1M-context credit mismatch on sonnet up-dispatch;
+      proceeding in-session at parent tier — run /model to switch to standard context]`
+      and proceed to skill body (treat as bare [no-redispatch]).
+
+  - Any other error: Issue AskUserQuestion (labels verbatim — drift relies on equality):
+      Question: "/implement requires Sonnet but this session is below Sonnet. Auto-dispatch to Sonnet failed. How would you like to proceed?"
+      Header: "Min-tier"
+      multiSelect: false
+      Option 1:
+        label: "Abort — run from a Sonnet session"
+        description: "Stop here. Switch the session to Sonnet (/model sonnet) and re-invoke /implement."
+      Option 2:
+        label: "Proceed at current tier (under-powered)"
+        description: "Run /implement on the current cheaper model. Quality may be reduced;
+        emits a one-line advisory."
+    Then:
+      - Option 1: print `[quoin-mintier: aborted; re-invoke /implement from a Sonnet session]` and STOP.
+      - Option 2: print `[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]`, then proceed to skill body (treat as bare [no-redispatch]).
+<!-- §0tripleprime-end -->
+
 ## §0a Scope cap (read this before doing any work)
 
 Previous /implement subagent runs timed out after 64 tool uses

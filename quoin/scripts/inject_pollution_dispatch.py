@@ -74,6 +74,33 @@ MINTIER_TARGET_SKILLS = [
 # Skills that also need §0c Pidfile lifecycle (inserted BEFORE §0').
 ZC_SKILLS = ["architect", "review"]
 
+# ─── §0‴ Minimum-tier guard (Sonnet tier) — IVG-117 ───────────────────────────
+# Anchor heading for the 19 cheap-tier §0 skills (hand-authored, always present).
+# SECTION0_HEADING is verified count==1 across the 10 Sonnet §0‴ target files.
+SECTION0_HEADING = "## §0 Model dispatch (FIRST STEP — execute before anything else)"
+
+# 10 Sonnet-declared cheap-tier skills that lack an under-tier guard (IVG-117 Gap 1).
+# 9 Haiku-declared skills are structurally exempt (bottom tier — nothing cheaper to
+# guard against). Orchestrators /run and /thorough_plan are excluded per the
+# orchestrator-exclusion rule (mirrors MINTIER_TARGET_SKILLS D-04). Roster mirrors
+# skills.json claude_model=="sonnet" && section_0==true.
+MINTIER_SONNET_TARGET_SKILLS = [
+    "checkpoint",
+    "continue_work",
+    "end_of_day",
+    "end_of_task",
+    "expand",
+    "gate",
+    "implement",
+    "pr",
+    "revise-fast",
+    "rollback",
+]
+
+# HEADING BYTE-IDENTITY: the ‴ (U+2034 TRIPLE PRIME) must match exactly across
+# template, --check regex, and drift test. Copy-paste from here; do not retype.
+MINTIER_SONNET_HEADING = "## §0‴ Minimum-tier guard (execute after §0 — before any §0-sidecar block and the skill body)"
+
 # ─── §0″ Minimum-tier guard block template ────────────────────────────────────
 # Spike result 2026-06-23: up-dispatch adopted as happy path (Option A) per IVG-91.
 # The IVG-72 implement session could not confirm up-dispatch (ran on Sonnet without
@@ -179,6 +206,110 @@ def render_mintier_block(skill: str) -> str:
     """
     body = _MINTIER_BLOCK_BODY.replace("{skill}", skill)
     return MINTIER_HEADING + body
+
+
+# ─── §0‴ Minimum-tier guard (Sonnet tier) block template — IVG-117 ────────────
+# Tier-swapped derivative of _MINTIER_BLOCK_BODY (D-07: zero edits to the Opus
+# template/constants — separate constants keep the 10 deployed Opus files and
+# test_mintier_guard.py byte-frozen). Substitution map applied: "an Opus" -> "a
+# Sonnet" (article agreement, MIN-3), "Opus" -> "Sonnet", "opus" -> "sonnet",
+# "§0″" -> "§0‴", "doubleprime" -> "tripleprime". declared_tier = sonnet.
+# ONE net-new line vs the Opus body: the MIN-2 recursion-contract line inside
+# Detection (the template-parity guard in test_sonnet_mintier_guard.py strips
+# this line, keyed on the literal substring "[no-redispatch:N]", before
+# asserting semantic equality with _MINTIER_BLOCK_BODY).
+#
+# Required tokens in this block (mirrors Opus Option A discriminators):
+#   [no-redispatch]  — sentinel detection line AND child dispatch prompt prefix
+#   model: "sonnet"  — declared tier descriptor AND subagent dispatch model field
+#   current_tier < declared_tier  — fire condition line (tier-agnostic, verbatim)
+#   spawn an Agent subagent  — unique discriminator
+#   Wait for the subagent. Return its output as your final response. STOP.
+#   Usage credits required for 1M context  — 1M-credit-class catch branch
+#   Abort — run from a Sonnet session  — generic fallback AskUserQuestion Option 1 label
+#   Proceed at current tier (under-powered)  — generic fallback AskUserQuestion Option 2 label
+#   [quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]
+#   [no-redispatch:N]  — MIN-2 recursion-contract line
+_MINTIER_SONNET_BLOCK_BODY = """\
+
+This skill is declared model: "sonnet". If the executing agent is running on a model
+strictly CHEAPER than sonnet, it silently up-dispatches to a Sonnet subagent (mirrors §0 down-dispatch).
+
+<!-- §0tripleprime-begin -->
+Detection:
+  - Read your current model from system context ("powered by the model named X").
+  - Tier order: haiku < sonnet < opus. declared_tier = sonnet.
+  - Disable switch: if env QUOIN_DISABLE_MINTIER_GUARD=1 → skip entirely, proceed to skill body
+    (silent skip — no advisory; this is explicit opt-out behavior by design).
+  - Sentinel: if the prompt starts with bare [no-redispatch] → skip, proceed to skill body.
+  - Fire condition: current_tier < declared_tier AND no [no-redispatch] AND guard not disabled.
+  - Recursion: counter form `[no-redispatch:N]` (N≥2) never reaches this block — §0 (earlier in this file) aborts on N≥2 before any §0‴ tool call.
+
+On fire (happy path — silent up-dispatch):
+  spawn an Agent subagent:
+    model: "sonnet"
+    description: "{skill} — min-tier up-dispatch"
+    prompt: "[no-redispatch]\\n<original user input verbatim>"
+  Wait for the subagent. Return its output as your final response. STOP.
+
+Fail-OPEN path (fires only when Agent dispatch fails):
+  Classify the error text BEFORE proceeding:
+
+  - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
+    incoming prompt carries the `[autonomous]` sentinel, then on ANY §0‴ dispatch-failure or
+    1M-context-credit error, proceed at current tier fail-OPEN and DO NOT call `AskUserQuestion`
+    — skip the 1M-credit-class and generic branches below entirely. Print
+    `[quoin-mintier-autonomous: §0‴ dispatch failed; proceeding fail-OPEN at current tier]` and
+    proceed to skill body (treat as bare [no-redispatch]).
+
+  - 1M-credit-class: if error text contains `Usage credits required for 1M context`:
+      Issue AskUserQuestion:
+        Question: "§0‴ up-dispatch to sonnet failed with a 1M-context credit mismatch for /{skill}.
+        The parent session carries the 1M-context beta header; Sonnet lacks 1M credits. How would you like to proceed?"
+        Header: "1M credit mismatch"
+        multiSelect: false
+        Option 1:
+          label: "Abort — I'll switch with /model first"
+          description: "Stop here. Run /model in your terminal to switch to a standard-context
+          model (e.g., /model sonnet), then re-invoke /{skill}."
+        Option 2:
+          label: "Proceed in-session at parent tier"
+          description: "Skip the up-dispatch this once. /{skill} runs in the current session
+          (below Sonnet, but works). Emits a one-line advisory."
+      On Option 1: print `[quoin-mintier: 1M-context credit mismatch; abort per user choice —
+      switch with /model and re-invoke /{skill}]` and STOP.
+      On Option 2: print `[quoin-mintier: 1M-context credit mismatch on sonnet up-dispatch;
+      proceeding in-session at parent tier — run /model to switch to standard context]`
+      and proceed to skill body (treat as bare [no-redispatch]).
+
+  - Any other error: Issue AskUserQuestion (labels verbatim — drift relies on equality):
+      Question: "/{skill} requires Sonnet but this session is below Sonnet. Auto-dispatch to Sonnet failed. How would you like to proceed?"
+      Header: "Min-tier"
+      multiSelect: false
+      Option 1:
+        label: "Abort — run from a Sonnet session"
+        description: "Stop here. Switch the session to Sonnet (/model sonnet) and re-invoke /{skill}."
+      Option 2:
+        label: "Proceed at current tier (under-powered)"
+        description: "Run /{skill} on the current cheaper model. Quality may be reduced;
+        emits a one-line advisory."
+    Then:
+      - Option 1: print `[quoin-mintier: aborted; re-invoke /{skill} from a Sonnet session]` and STOP.
+      - Option 2: print `[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]`, then proceed to skill body (treat as bare [no-redispatch]).
+<!-- §0tripleprime-end -->
+
+"""
+
+
+def render_mintier_sonnet_block(skill: str) -> str:
+    """Render the §0‴ Minimum-tier guard (Sonnet tier) block for a given skill.
+
+    Prepends MINTIER_SONNET_HEADING to guarantee byte-identity between the block
+    heading and the constant used by _replace_existing_block and --check (mirrors
+    render_mintier_block).
+    """
+    body = _MINTIER_SONNET_BLOCK_BODY.replace("{skill}", skill)
+    return MINTIER_SONNET_HEADING + body
 
 
 # ─── §0c block bodies (verbatim from f81b6ff, §0c path fixed to __QUOIN_HOME__) ─
@@ -565,6 +696,51 @@ def inject_mintier_block_into_file(skill: str, skill_md: pathlib.Path) -> None:
     os.replace(tmp_path, skill_md)
 
 
+def inject_mintier_sonnet_block_into_file(skill: str, skill_md: pathlib.Path) -> None:
+    """Inject/refresh §0‴ Minimum-tier guard (Sonnet tier) into a single adapter
+    SKILL.md file — IVG-117.
+
+    Anchors on SECTION0_HEADING (the hand-authored §0 block, always present in the
+    10 Sonnet targets), NOT on §0'/§0″ (Opus-only, disjoint file set). D-06.
+
+    Strategy:
+    - Refresh path: if MINTIER_SONNET_HEADING already in text, replace in place
+      (idempotent).
+    - Insert path: find SECTION0_HEADING; find the next '## ' heading strictly
+      after it; insert §0‴ immediately before that next H2. FAIL LOUD if
+      SECTION0_HEADING is absent or appears more than once.
+    - Atomic write: .tmp + os.replace(), mirrors inject_mintier_block_into_file.
+    """
+    text = skill_md.read_text(encoding="utf-8")
+    sonnet_block = render_mintier_sonnet_block(skill)
+
+    if MINTIER_SONNET_HEADING in text:
+        # Refresh path (all re-runs after first injection)
+        text = _replace_existing_block(text, MINTIER_SONNET_HEADING, sonnet_block)
+    else:
+        # Insert path: anchor on SECTION0_HEADING, FAIL LOUD if absent or duplicated
+        count = text.count(SECTION0_HEADING)
+        if count != 1:
+            raise ValueError(
+                f"{skill_md}: SECTION0_HEADING appears {count} times (expected exactly 1) "
+                "— FAIL LOUD. Cannot determine insertion anchor for §0‴ block."
+            )
+        s_idx = text.index(SECTION0_HEADING)
+        next_h2_match = re.search(r"^## ", text[s_idx + len(SECTION0_HEADING):], re.MULTILINE)
+        if not next_h2_match:
+            raise ValueError(
+                f"No heading found after §0 block in {skill_md} — FAIL LOUD. "
+                "Cannot determine insertion point for §0‴ block."
+            )
+        insert_pos = s_idx + len(SECTION0_HEADING) + next_h2_match.start()
+        text = text[:insert_pos] + sonnet_block + text[insert_pos:]
+
+    # Atomic write: .tmp + os.replace()
+    tmp_path = skill_md.with_suffix(".md.tmp")
+    tmp_path.write_text(text, encoding="utf-8")
+    os.replace(tmp_path, skill_md)
+
+
 # ─── Main processing ──────────────────────────────────────────────────────────
 
 def _get_adapter_dir() -> pathlib.Path:
@@ -641,6 +817,28 @@ def run_inject(*, dry_run: bool = False) -> int:
             errors.append(f"ERROR processing §0″ for {skill}: {e}")
             continue
         print(f"  injected §0″ into {skill_md.relative_to(adapter_dir.parent.parent.parent.parent)}")
+
+    # ── Loop 3: §0‴ (Minimum-tier guard — Sonnet tier) injection — IVG-117 ──
+    # Independent of Loops 1-2: anchors on SECTION0_HEADING (hand-authored §0),
+    # not on §0'/§0″. MINTIER_SONNET_TARGET_SKILLS is disjoint from the Opus-10.
+    for skill in MINTIER_SONNET_TARGET_SKILLS:
+        skill_md = adapter_dir / skill / "SKILL.md"
+        if not skill_md.exists():
+            errors.append(f"MISSING (§0‴): {skill_md}")
+            continue
+
+        if dry_run:
+            print(f"=== {skill} §0‴ preview ===")
+            block = render_mintier_sonnet_block(skill)
+            print(block[:500])
+            continue
+
+        try:
+            inject_mintier_sonnet_block_into_file(skill, skill_md)
+        except (ValueError, OSError) as e:
+            errors.append(f"ERROR processing §0‴ for {skill}: {e}")
+            continue
+        print(f"  injected §0‴ into {skill_md.relative_to(adapter_dir.parent.parent.parent.parent)}")
 
     if errors:
         for err in errors:
@@ -820,12 +1018,73 @@ def run_check() -> int:
         if p_idx != -1 and m_idx != -1 and m_idx <= p_idx:
             drifted.append(f"{skill}: §0″ appears BEFORE or AT §0' (ordering violation)")
 
+    # ── §0‴ checks (MINTIER_SONNET_TARGET_SKILLS) — IVG-117 ──
+    # HEADING BYTE-IDENTITY: the ‴ (U+2034) must match exactly — see MINTIER_SONNET_HEADING.
+    mintier_sonnet_required_tokens = [
+        "[no-redispatch]",
+        'model: "sonnet"',
+        "current_tier < declared_tier",
+        "spawn an Agent subagent",
+        "Wait for the subagent. Return its output as your final response. STOP.",
+        "Usage credits required for 1M context",
+        "Abort — run from a Sonnet session",
+        "Proceed at current tier (under-powered)",
+        "[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]",
+        "[autonomous]",
+        "[quoin-mintier-autonomous: §0‴ dispatch failed; proceeding fail-OPEN at current tier]",
+        "[no-redispatch:N]",
+    ]
+    mintier_sonnet_required_markers = [
+        "<!-- §0tripleprime-begin -->",
+        "<!-- §0tripleprime-end -->",
+    ]
+    mintier_sonnet_heading_escaped = re.escape(MINTIER_SONNET_HEADING)
+    for skill in MINTIER_SONNET_TARGET_SKILLS:
+        skill_md = adapter_dir / skill / "SKILL.md"
+        if not skill_md.exists():
+            drifted.append(f"{skill}: adapter SKILL.md missing at {skill_md} (§0‴ check)")
+            continue
+
+        text = skill_md.read_text(encoding="utf-8")
+
+        count = text.count(MINTIER_SONNET_HEADING)
+        if count == 0:
+            drifted.append(f"{skill}: §0‴ heading missing")
+            continue
+        if count > 1:
+            drifted.append(f"{skill}: §0‴ heading appears {count} times (expected exactly 1)")
+
+        for marker in mintier_sonnet_required_markers:
+            if text.count(marker) != 1:
+                drifted.append(f"{skill}: §0‴ marker {marker!r} missing or duplicated (count={text.count(marker)})")
+
+        sonnet_block_match = re.search(
+            mintier_sonnet_heading_escaped + r".+?(?=^## )",
+            text,
+            flags=re.DOTALL | re.MULTILINE,
+        )
+        if not sonnet_block_match:
+            drifted.append(f"{skill}: §0‴ block could not be extracted (no trailing ## heading?)")
+            continue
+        sonnet_block = sonnet_block_match.group(0)
+
+        for token in mintier_sonnet_required_tokens:
+            if token not in sonnet_block:
+                drifted.append(f"{skill}: missing mintier-sonnet required token {token!r} in §0‴ block")
+
+        # Ordering guard: §0‴ must appear AFTER §0 (SECTION0_HEADING)
+        s_idx = text.find(SECTION0_HEADING)
+        t_idx = text.find(MINTIER_SONNET_HEADING)
+        if s_idx != -1 and t_idx != -1 and t_idx <= s_idx:
+            drifted.append(f"{skill}: §0‴ appears BEFORE or AT §0 (ordering violation)")
+
     if drifted:
         for msg in drifted:
             print(f"DRIFT: {msg}", file=sys.stderr)
         return 7
     print("inject_pollution_dispatch --check: all 10 adapter files are fresh")
     print("inject_pollution_dispatch --check: all 10 §0doubleprime files are fresh")
+    print("inject_pollution_dispatch --check: all 10 §0tripleprime files are fresh")
     return 0
 
 

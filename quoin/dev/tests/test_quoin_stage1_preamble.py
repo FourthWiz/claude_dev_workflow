@@ -72,6 +72,11 @@ _ipd = _ilu.module_from_spec(_ipd_spec)
 assert _ipd_spec.loader is not None
 _ipd_spec.loader.exec_module(_ipd)
 MINTIER_HEADING: str = _ipd.MINTIER_HEADING
+# MINTIER_SONNET_HEADING added for the same reason (IVG-117): revise-fast/SKILL.md
+# now carries §0‴ (Sonnet-tier minimum-tier guard) but revise/SKILL.md (Opus) does
+# not. Without adding it to allowed_sections, every §0‴ diff line falls under an
+# unknown section and fails the sync-contract test. Same precedent as MINTIER_HEADING.
+MINTIER_SONNET_HEADING: str = _ipd.MINTIER_SONNET_HEADING
 
 # 18 cheap-tier skills — must carry §0.
 CHEAP_TIER_SKILLS = [
@@ -388,7 +393,7 @@ def test_revise_revise_fast_sync_contract():
                     return None
         return None
 
-    allowed_sections = {SO_HEADING, MR_HEADING, POLLUTION_HEADING, MINTIER_HEADING}
+    allowed_sections = {SO_HEADING, MR_HEADING, POLLUTION_HEADING, MINTIER_HEADING, MINTIER_SONNET_HEADING}
     # Stage 2-alt (pipeline-efficiency-improvements): the preamble bootstrap step
     # contains the skill-specific path (~/.claude/skills/<skill>/preamble.md) which
     # differs between revise and revise-fast. This is an intentional, allowed diff

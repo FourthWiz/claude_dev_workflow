@@ -2,7 +2,7 @@
 
 ## §0 Model dispatch preamble (verbose reference)
 
-The 16 cheap-tier skills (gate, end_of_day, start_of_day, triage, capture_insight, cost_snapshot, weekly_review, end_of_task, implement, rollback, expand, revise-fast, sleep, next_steps, checkpoint, continue_work) carry a `## §0 Model dispatch (FIRST STEP — execute before anything else)` block as the first body H2 after the H1. When invoked from a session running on a model strictly more expensive than the declared tier, the skill self-dispatches via the Agent tool to its declared model and prefixes the child prompt with the bare `[no-redispatch]` sentinel to prevent infinite recursion. The counter form `[no-redispatch:N]` is reserved for an abort signal: if a child sees N≥2, it aborts instead of proceeding (the bare form is the normal parent-emit; counter forms catch buggy parents or mistaken manual overrides). The 9 Opus-tier skills do NOT carry the preamble — they should run on Opus regardless of session model.
+The 19 cheap-tier skills (gate, end_of_day, start_of_day, triage, capture_insight, cleanup, cost_snapshot, weekly_review, end_of_task, implement, rollback, expand, revise-fast, sleep, next_steps, checkpoint, continue_work, pr, status) carry a `## §0 Model dispatch (FIRST STEP — execute before anything else)` block as the first body H2 after the H1. When invoked from a session running on a model strictly more expensive than the declared tier, the skill self-dispatches via the Agent tool to its declared model and prefixes the child prompt with the bare `[no-redispatch]` sentinel to prevent infinite recursion. The counter form `[no-redispatch:N]` is reserved for an abort signal: if a child sees N≥2, it aborts instead of proceeding (the bare form is the normal parent-emit; counter forms catch buggy parents or mistaken manual overrides). The 12 Opus-tier skills do NOT carry the preamble — they should run on Opus regardless of session model.
 
 If the harness's subagent-spawn tool is unavailable or returns an error, dispatch falls back to a fail-OPEN path (proceed at current tier, emit a one-line `[quoin-stage-1: subagent dispatch unavailable; ...]` warning). This is intentional per architecture I-01: cost guardrail is best-effort, not load-bearing for correctness.
 
@@ -45,13 +45,13 @@ Observability: when `--decide` returns `safe-path`, the skill emits `[quoin: 1M-
 
 The §0 body of all 19 cheap-tier skills has two byte-identical marked regions: `<!-- §0-1m-decide-begin -->` / `<!-- §0-1m-decide-end -->` (the pre-dispatch DECISION block — the `--decide` call and its `safe-path` branch) and `<!-- §0-1m-cachewrite-begin -->` / `<!-- §0-1m-cachewrite-end -->` (the cache-write lines). The blocks are byte-identical across all 19 files using literal placeholders `§1/§0c` and `tier T` (no per-skill token). Byte-identity is verified by `quoin/dev/tests/test_1m_proactive_precheck.py` (`test_all_19_s0_files_decide_block_byte_identical` + `test_all_19_s0_files_cachewrite_block_byte_identical`, iterating all 19 via `SECTION0_TARGETS`/`MIGRATED_TO_ADAPTER`).
 
-**C-01 caveat — stub coverage gap:** `validate_adapter_drift.py` iterates `manifest["skills"]` (21 entries covering the 14 adapter-manifested skills). The 5 legacy stub skills (`checkpoint`, `cleanup`, `continue_work`, `next_steps`, `sleep`) are NOT in `skills.json` and receive ZERO structural coverage from the `AD-S0P`, `AD-FB`, and `AD-SS` validators. The new `test_1m_proactive_precheck.py` (iterating all 19 §0 skills via `SECTION0_TARGETS`/`MIGRATED_TO_ADAPTER`) plus the existing `test_1m_context_precheck.py` are the SOLE structural guard for those 5 stubs. Do NOT add the 5 stubs to `skills.json` — doing so would break `AD-CO` and `AD-AD` checks that expect only adapter-manifested skills. New scripts introduced by IVG-90: `dispatch_config.py` (canonical implementation at `quoin/core/scripts/dispatch_config.py` + compatibility wrapper at `quoin/scripts/dispatch_config.py`), added to both the `DEPLOYED_SCRIPTS` and `CORE_SCRIPTS` installer lists in `quoin/src/quoin/installer.py`.
+**C-01 caveat — stub coverage (refreshed 2026-07-21, IVG-117 Q-01):** `validate_adapter_drift.py` iterates `manifest["skills"]` — `skills.json` (schema_version 2) now has 31 entries and ALREADY INCLUDES the 5 legacy stub skills (`checkpoint`, `cleanup`, `continue_work`, `next_steps`, `sleep`) with populated `claude_model`/`section_0` fields. `validate_adapter_drift.py` exits 0 (green) on the committed tree WITH those 5 in the manifest, proving `AD-CO`/`AD-AD`/`AD-LS`/`AD-FB`/`AD-SS` all already hold for them (all three files exist per stub skill; stub frontmatter byte-equals the adapter; the stub body stays shorter than the adapter). Deriving `claude_model=="sonnet" && section_0==true` from `skills.json` yields exactly the 10 §0‴ targets; `haiku && section_0` yields the 9 structurally-exempt skills; `opus && !section_0 && not orchestrator` yields the 10 Opus §0″ leaf skills — these rosters are machine-derivable and are asserted by the set-equality guards in `test_sonnet_mintier_guard.py`. `skills.json` remains a READ-ONLY cross-check source; no code path writes back to it. New scripts introduced by IVG-90: `dispatch_config.py` (canonical implementation at `quoin/core/scripts/dispatch_config.py` + compatibility wrapper at `quoin/scripts/dispatch_config.py`), added to both the `DEPLOYED_SCRIPTS` and `CORE_SCRIPTS` installer lists in `quoin/src/quoin/installer.py`.
 
 Mechanical drift detection lives in `quoin/dev/tests/test_quoin_stage1_preamble.py` and `quoin/dev/tests/test_quoin_stage1_recursion_abort.py`; manual production-dispatch verification is captured in `quoin/dev/verify_subagent_dispatch.md`.
 
 ## §0' Pollution dispatch (verbose reference)
 
-The 7 Opus-tier skills that are NOT orchestrators (architect, plan, critic, revise, review, init_workflow, discover) carry a `## §0' Pollution dispatch (execute after §0 / §0c if present — before skill body)` block. When `pollution_score` exceeds `POLLUTION_THRESHOLD`, the skill self-dispatches as a fresh Agent subagent carrying per-skill paths (not content).
+The 10 Opus-tier skills that are NOT orchestrators (architect, plan, critic, revise, review, init_workflow, discover, specify, security_review, enrich) carry a `## §0' Pollution dispatch (execute after §0 / §0c if present — before skill body)` block. When `pollution_score` exceeds `POLLUTION_THRESHOLD`, the skill self-dispatches as a fresh Agent subagent carrying per-skill paths (not content).
 
 **Detection:** reads `pollution_score: N` from session-state file or `pollution-score-latest.txt`. Fires if N >= threshold AND no `[no-redispatch]` AND no prior §0 dispatch. Score formula: `transcript_kb + (agent_returns × 5) + (read_calls × 1) + (bash_calls × 1)` — implemented in `quoin/hooks/_lib.sh`. Written by `userpromptsubmit.sh` STEP 0.5 on every prompt submit.
 
@@ -66,6 +66,9 @@ The 7 Opus-tier skills that are NOT orchestrators (architect, plan, critic, revi
 | /review | path to current-plan.md + branch ref |
 | /init_workflow | project root absolute path |
 | /discover | project root absolute path |
+| /specify | task description + spec output path (`.workflow_artifacts/<task>/spec.md`) |
+| /security_review | current git branch + plan path (if resolvable) |
+| /enrich | raw task description + enriched-prompt output path (`.workflow_artifacts/<task>/enriched-prompt.md`) |
 
 **Ordering:** §0 fires FIRST; §0' fires only if no §0 dispatch. For §0c skills (architect, review): §0c → §0' → body. **Excluded:** /run and /thorough_plan. **Threshold:** `QUOIN_POLLUTION_THRESHOLD` (default 5000). Fail-OPEN on Agent unavailable. `[no-redispatch]` skips. Drift detection: `test_quoin_pollution_preamble.py`; verification: `quoin/dev/verify_pollution_dispatch.md`.
 
@@ -73,7 +76,7 @@ The 7 Opus-tier skills that are NOT orchestrators (architect, plan, critic, revi
 
 ## §0″ Minimum-tier guard (verbose reference)
 
-The 7 Opus-tier leaf skills (architect, plan, critic, revise, review, init_workflow, discover) carry a `## §0″ Minimum-tier guard (execute after §0 / §0c / §0' if present — before skill body)` block. Fires when the executing session is running on a model cheaper than Opus (inverse of §0's over-tier trigger: `current_tier < declared_tier`). Mirrors §0 down-dispatch: zero user-visible prompts on the happy path. Orchestrators /run and /thorough_plan are excluded (D-04). Generated by `inject_pollution_dispatch.py`. Drift test: `test_mintier_guard.py`. Activated as Option A per IVG-91 (2026-06-23).
+The 10 Opus-tier leaf skills (architect, plan, critic, revise, review, init_workflow, discover, specify, security_review, enrich) carry a `## §0″ Minimum-tier guard (execute after §0 / §0c / §0' if present — before skill body)` block. Fires when the executing session is running on a model cheaper than Opus (inverse of §0's over-tier trigger: `current_tier < declared_tier`). Mirrors §0 down-dispatch: zero user-visible prompts on the happy path. Orchestrators /run and /thorough_plan are excluded (D-04). Generated by `inject_pollution_dispatch.py`. Drift test: `test_mintier_guard.py`. Activated as Option A per IVG-91 (2026-06-23).
 
 **Detection:** Read model name from system context. Tier order: haiku < sonnet < opus. Declared tier = opus. Fire conditions: `current_tier < declared_tier` AND no `[no-redispatch]` sentinel AND `QUOIN_DISABLE_MINTIER_GUARD` not set.
 
@@ -86,3 +89,21 @@ The 7 Opus-tier leaf skills (architect, plan, critic, revise, review, init_workf
 **Env knob:** `QUOIN_DISABLE_MINTIER_GUARD=1` → silent skip (no advisory). Intentional silence: explicit opt-out is user-controlled, not an unexpected error state.
 
 **Recursion guard:** Child has `current_tier == declared_tier` after up-dispatch; `[no-redispatch]` prefix is belt-and-suspenders. No counter form needed.
+
+## §0‴ Minimum-tier guard — Sonnet tier (verbose reference)
+
+Added IVG-117 (2026-07-21) to close Gap 1: §0″ only protected the 10 Opus-tier leaf skills, leaving 19 cheap-tier skills to run silently under-tier when invoked from a more expensive session. Of those 19, 10 are Sonnet-declared and carry the mirrored guard; the other 9 are Haiku-declared and structurally exempt (bottom tier — nothing cheaper to guard against).
+
+The 10 Sonnet-tier targets (checkpoint, continue_work, end_of_day, end_of_task, expand, gate, implement, pr, revise-fast, rollback) carry a `## §0‴ Minimum-tier guard (execute after §0 — before any §0-sidecar block and the skill body)` block, landing as the FIRST H2 immediately after §0 (before §0a/§0b/§0c sidecar blocks where present — MIN-1 neutral wording avoids misdescribing the 7 sidecar-less targets). Fires when `current_tier < declared_tier` (declared_tier = sonnet), mirroring §0″'s fire condition exactly.
+
+**Anchor (D-06):** §0‴ anchors on `SECTION0_HEADING` (the hand-authored §0 heading, always present and count==1 in all 10 targets) — NOT on §0'/§0″, which only exist on the disjoint Opus-10 file set. FAIL LOUD if §0 is absent or appears more than once.
+
+**Byte-safety (D-07):** separate `MINTIER_SONNET_*` constants and a separate `_MINTIER_SONNET_BLOCK_BODY` template — zero edits to the existing Opus `_MINTIER_BLOCK_BODY`/`MINTIER_HEADING`. The 10 deployed Opus files and `test_mintier_guard.py` are untouched by this change.
+
+**Shared knob:** `QUOIN_DISABLE_MINTIER_GUARD` (same env var as §0″ — one concept, char-budget friendly; no tier-specific knob).
+
+**Happy path / fail-OPEN triage:** identical shape to §0″ — silent Agent up-dispatch (`model: "sonnet"`) on the happy path; autonomous-class / 1M-credit-class / generic-error classification on dispatch failure, with the same AskUserQuestion fallback wording (tier words swapped: "Abort — run from a Sonnet session", etc.).
+
+**Recursion delegation (MIN-2):** §0‴ carries ONE net-new line vs the Opus §0″ body, inside the Detection section, documenting that the counter form `[no-redispatch:N]` (N≥2) never reaches this block — §0 (earlier in the same file) already aborts on N≥2 before any §0‴ tool call. This is the sole permitted semantic delta between the two templates; the template-parity guard in the drift test strips this one line before asserting equality.
+
+Generated by `inject_pollution_dispatch.py` (Loop 3, independent of the §0'/§0″ loops). Drift test: `quoin/dev/tests/test_sonnet_mintier_guard.py` (mirrors `test_mintier_guard.py`'s structural checks, plus set-equality guards against `skills.json` and the template-parity guard). Orchestrators `/run`/`/thorough_plan` excluded (same D-04 rationale).
