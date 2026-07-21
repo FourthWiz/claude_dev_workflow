@@ -268,10 +268,19 @@ class TestCachewriteBlockByteIdentity:
     def test_cachewrite_occurrence0_precedes_wait_line(self, skill: str) -> None:
         """Occurrence 0 must appear AFTER 'Wait for the subagent.' (standalone) and BEFORE
         'Return its output as your final response. STOP.' in the file (m-06 ordering).
-        The original compound line has been split by the propagation step."""
+        The original compound line has been split by the propagation step.
+
+        Scope note (IVG-117): 10 of the 19 §0 skills now also carry a §0‴ Minimum-tier
+        guard block (mirrors the Opus §0″ template) that legitimately re-introduces the
+        compound 'Wait for the subagent. Return its output as your final response. STOP.'
+        literal as a required token — that block is unrelated to the §0 cachewrite
+        propagation this test guards. Scope the "compound line must be split" assertion
+        to the §0 block only (everything before the §0‴ heading, if present)."""
         text = skill_md_path(skill).read_text()
-        # Verify the COMPOUND line no longer exists
-        assert "Wait for the subagent. Return its output as your final response. STOP." not in text, (
+        mintier_sonnet_idx = text.find("## §0‴ Minimum-tier guard")
+        s0_scope = text if mintier_sonnet_idx == -1 else text[:mintier_sonnet_idx]
+        # Verify the COMPOUND line no longer exists WITHIN THE §0 BLOCK
+        assert "Wait for the subagent. Return its output as your final response. STOP." not in s0_scope, (
             f"{skill}: compound 'Wait...STOP.' line must be split (m-06)"
         )
         pos_wait = text.find("      Wait for the subagent.\n")
