@@ -122,6 +122,43 @@ be honored when locating per-stage artifacts.
   formulation confidence is scored, is adapter-specific and documented
   in the adapter's own reference material.
 
+## Autonomous durability contract (opt-in supervisor)
+
+An adapter MAY implement an external supervisor that relaunches fresh
+sessions to carry an autonomous span across a context-window boundary
+that a single session cannot fit in. When it does, the relaunch and
+resume MUST agree on the following sentinel path templates, all of
+which resolve under `.workflow_artifacts/memory/` — deliberately
+outside the task-scoped artifact folder, so each sentinel survives
+that folder's later archival:
+
+- **Marker** — `autonomous-run-{task}.marker`, one line, written once
+  at autonomous-span entry, before the first phase begins. A resumed
+  session reads this marker first, before its own first decision
+  point, to re-establish the autonomous span rather than reverting to
+  an interactive default and stalling.
+- **Per-phase completion sentinels** — `autonomous-progress-{task}/{phase}.done`,
+  one file per completed phase. The phase set is the full resumable
+  roster documented under "Phase sequence" above; every phase named
+  there gets a completion sentinel, none silently excluded. Finer
+  progress within a single long-running phase MAY additionally write
+  `autonomous-progress-{task}/{phase}.{subphase}.done`. The counting
+  glob `autonomous-progress-{task}/*.done` is the union of both forms,
+  so either kind of new sentinel counts as forward progress for a
+  supervisor's no-progress guard.
+- **Done sentinel** — `autonomous-done-{task}.md`, written last, after
+  finalization's other side effects complete, so a relaunch after a
+  kill mid-finalization can tell the span already reached its terminal
+  step and stop without redoing that work.
+- **Halt sentinel** — the hard-stop record already defined above
+  (`autonomous-halt-{task}.md`); a resuming supervisor checks it after
+  the done sentinel, before deciding whether to relaunch again.
+
+This document fixes only the path templates and the phase-roster
+coverage rule, so independently implemented supervisors and resumers
+agree on the contract shape; the supervisor loop mechanics themselves
+(relaunch cap, backoff, launcher) are adapter-specific.
+
 ## Notes
 
 - The orchestrator owns coordination only, never artifact content;

@@ -144,6 +144,24 @@ Under `AUTONOMOUS`, every hard stop writes a halt-sentinel **before exit**, then
 - **Never auto-creates a PR.** At every one of the six sites, and everywhere else in this file, the orchestrator NEVER auto-creates a pull request — identical in interactive and autonomous mode. PR creation stays `/pr`, a separate explicit user action.
 - **Only under `AUTONOMOUS`.** In plain (non-autonomous) `/run`, these six situations still halt the workflow exactly as documented in their own phase sections — they present the existing interactive prompt instead of writing a halt-sentinel.
 
+## Autonomous progress sentinels (Stage 2 sentinel contract)
+
+Under `AUTONOMOUS`, the completion of each of the 8 resumable phases below is recorded by a per-phase completion sentinel, so a future resumed session (or an external supervisor relaunching one) can tell exactly which phases already finished without re-deriving it from session-state prose. This section is the T-05 contract declaration — the entry-marker write (Setup) and the resume-side read/idempotency logic (the later "Resume" section) land in a later Stage-2 task; this section fixes the write-site map they both consume.
+
+- **Directory:** `.workflow_artifacts/memory/autonomous-progress-{task}/` — same OUTSIDE-the-task-folder rationale as the halt-sentinel above.
+- **Write-site map** (phase → completion sentinel, all 8 resumable phases, atomic write `printf > f.tmp && mv f.tmp f`):
+  1. **discover** (Phase 1) → writes `autonomous-progress-{task}/discover.done`.
+  2. **enrich** (Phase 1.4) → writes `autonomous-progress-{task}/enrich.done`.
+  3. **specify** (Phase 1.5) → writes `autonomous-progress-{task}/specify.done`.
+  4. **architect** (Phase 2) → writes `autonomous-progress-{task}/architect.done`.
+  5. **thorough_plan** (Phase 3) → writes `autonomous-progress-{task}/thorough_plan.done`.
+  6. **implement** (Phase 4) → writes `autonomous-progress-{task}/implement.done`.
+  7. **review** (Phase 5) → writes `autonomous-progress-{task}/review.done`.
+  8. **end_of_task** (Phase 6) → writes `autonomous-progress-{task}/end_of_task.done`.
+- **Sub-phase granularity (optional):** a phase MAY additionally write `autonomous-progress-{task}/{phase}.{subphase}.done` for finer-grained progress within itself (e.g. a long `implement` phase checkpointing partial task batches). The counting glob `autonomous-progress-{task}/*.done` is the UNION of both forms.
+- **Marker:** `autonomous-run-{task}.marker`, written once at autonomous-span entry (Setup, right after `AUTONOMOUS` is set) — the read/re-establish-on-resume side of this contract is Stage-2 groundwork, documented alongside the later "Resume" section.
+- **Done sentinel:** `autonomous-done-{task}.md`, written by `end_of_task` LAST, after its other terminal side effects, outside the archived folder — same rationale as the halt-sentinel.
+
 ## Phase sequence
 
 ```

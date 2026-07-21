@@ -189,3 +189,64 @@ of pausing for confirmation. Every hard stop defined in the
 halt-sentinel contract above still halts the run and records the
 reason rather than proceeding silently, and a PR is never auto-created
 in either mode.
+
+## Stage 2 — supervisor + sentinel contract
+
+Stage 1 (above) covers the in-session autonomous span: propagation,
+the quality bar, and the halt-sentinel *write* side. Stage 2 adds an
+external local supervisor — `quoin run --autonomous <task>` — that can
+relaunch fresh `claude -p "/run --resume --autonomous <task>"` sessions
+to carry a Large task across context windows a single session cannot
+fit in. The supervisor is pure orchestration outside the session; it
+never edits skill content and reads the sentinel contract below to
+decide whether to relaunch.
+
+**Sentinel contract.** All four sentinels resolve under
+`.workflow_artifacts/memory/` — outside the task-scoped folder, so
+each survives `/end_of_task`'s later move of that folder into
+`finalized/`:
+
+- **Marker** — `autonomous-run-{task}.marker` (single line: task,
+  timestamp, `autonomous: true`). Written once at autonomous-span
+  entry, in `/run`'s Setup, right after `AUTONOMOUS=true` is set.
+  `/run --resume` reads it FIRST, before its own first decision point,
+  to re-establish autonomous mode — so a headless resume never reverts
+  to interactive and stalls. Re-writing the marker is a no-op-equivalent
+  overwrite; plain (non-autonomous) `/run` never writes it.
+- **Per-phase completion sentinels** —
+  `autonomous-progress-{task}/{phase}.done`, one file per completed
+  phase, for the FULL resumable `/run` phase roster (`run/SKILL.md`
+  `## Phase sequence`): `discover, enrich, specify, architect,
+  thorough_plan, implement, review, end_of_task` — 8 phases. `enrich`
+  (Phase 1.4) and `specify` (Phase 1.5) are IN-SET; the roster is never
+  abbreviated as "Phases 1..6", which would silently drop them. Finer
+  progress within one long phase MAY also write
+  `autonomous-progress-{task}/{phase}.{subphase}.done`. **Counting
+  glob** (consumed by the supervisor's no-forward-progress guard):
+  `autonomous-progress-{task}/*.done` — the UNION of phase- and
+  sub-phase-granular sentinels, so a phase spanning more than two
+  relaunches with only sub-phase progress is not false-aborted.
+- **Done sentinel** — `autonomous-done-{task}.md`, written by
+  `/end_of_task` LAST — after push, the lessons/cost sub-phase, and the
+  archive move all complete — and outside the archived folder, so a
+  kill between any two of those steps resumes safely with no duplicated
+  work.
+- **Halt sentinel** — `autonomous-halt-{task}.md` (Stage 1, unchanged).
+  The supervisor checks the done sentinel first, then the halt
+  sentinel, before deciding whether to relaunch.
+
+All sentinel writes are atomic: `printf > f.tmp && mv f.tmp f` — the
+same idiom the hooks already use.
+
+**Supervisor loop.** `quoin run --autonomous <task>` runs a pure
+relaunch loop: on each iteration, check the done sentinel (exit
+SUCCESS if present), then the halt sentinel (exit HALTED with the
+recorded reason, no further relaunch), then the relaunch cap
+(`MAX_RELAUNCH`, exit ABORTED "relaunch cap" if reached). Otherwise it
+counts completion sentinels, relaunches a fresh headless session, and
+re-counts; two consecutive relaunches that produce zero new completion
+sentinels (by the union glob above) abort with "no forward progress".
+Backoff between relaunches is exponential, capped. `MAX_RELAUNCH` alone
+guarantees termination even under continual sub-phase progress. The
+relaunch string always carries `--autonomous` (belt) alongside the
+marker (suspenders), so the fresh session's mode is never ambiguous.
