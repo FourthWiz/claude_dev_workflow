@@ -159,6 +159,17 @@ coverage rule, so independently implemented supervisors and resumers
 agree on the contract shape; the supervisor loop mechanics themselves
 (relaunch cap, backoff, launcher) are adapter-specific.
 
+A within-phase mechanism complements the cross-phase relaunch above: a
+phase subagent MUST exchange only paths and short summaries with the
+orchestrator, never raw content, so the orchestrator's own context stays
+bounded across the whole span. A phase subagent nearing its own limit
+writes a checkpoint to disk and reports a partial-completion signal
+instead of exhausting itself; the orchestrator answers by dispatching a
+fresh subagent to continue the same phase from that checkpoint, repeating
+until the phase reports normal completion. Whether a subagent detects its
+own nearness-to-limit or falls back to a fixed work-unit cap is
+adapter-specific.
+
 A resume that honors this contract MUST read the marker before any
 other decision point, so a relaunch never reverts to an interactive
 default and stalls; MUST derive the next phase from the completion
