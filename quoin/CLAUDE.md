@@ -150,7 +150,7 @@ Not every task needs every stage. Small tasks typically skip `/architect` entire
 
 **CRITICAL RULE: `/implement` and `/end_of_task` require explicit user commands.** No skill may auto-invoke either. After `/thorough_plan` converges, the workflow STOPS and waits for `/implement`. After `/review` approves and the gate passes, the workflow STOPS and waits for `/end_of_task`. The user must consciously decide to start writing code AND to ship it.
 
-**Exception: `/run` (incl. `--autonomous`).** May invoke `/implement`/`/end_of_task` for the user — see `autonomous-mode.md`.
+**Exception: `/run` (incl. `--autonomous`).** May invoke `/implement`/`/end_of_task` for the user — see `autonomous-mode.md`. Stage 2 adds a `quoin run --autonomous <task>` supervisor that relaunches fresh sessions across context windows.
 
 **Gate invocation modes:** Post-implement and post-review gates run **inline** by default (same session, no subagent spawn — preserves the parent session's prompt cache). Post-architect and post-plan gates spawn **subagent** by default (different context shape after those phases). There is no `/gate` after `/discover`. Audit-log persistence (`gate-{phase}-{date}.md`) is mandatory regardless of mode — see `/gate/SKILL.md`.
 

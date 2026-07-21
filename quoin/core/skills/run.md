@@ -149,7 +149,14 @@ that folder's later archival:
 - **Done sentinel** — `autonomous-done-{task}.md`, written last, after
   finalization's other side effects complete, so a relaunch after a
   kill mid-finalization can tell the span already reached its terminal
-  step and stop without redoing that work.
+  step and stop without redoing that work. Because a kill anywhere
+  inside finalization re-runs the whole terminal phase on relaunch,
+  every side-effecting finalization step MUST be individually
+  idempotent — each check-and-skip guards its own already-done work
+  (a push is a no-op when the branch already matches its remote at the
+  same commit; a lessons/cost step skips when its own completion
+  sentinel is present; an archive move skips when the target already
+  exists) — not only the push and the archive.
 - **Halt sentinel** — the hard-stop record already defined above
   (`autonomous-halt-{task}.md`); a resuming supervisor checks it after
   the done sentinel, before deciding whether to relaunch again.

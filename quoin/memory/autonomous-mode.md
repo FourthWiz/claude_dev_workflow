@@ -263,3 +263,39 @@ is itself a git repo.
 **no-op stub this release: NOT YET ENFORCED — cost is bounded by
 `--max-relaunch` + backoff only.** Exits 0 on SUCCESS, 1 on HALTED, 2
 on ABORTED.
+
+**Sub-phase-granular idempotent resume.** Each fresh relaunch is a
+`/run --resume --autonomous <task>` that MUST land at the correct phase
+with no re-work and no skipped work. `/run --resume` reads the marker
+FIRST (re-establishing `AUTONOMOUS` before any decision point), then
+derives the next phase from the `{phase}.done` completion sentinels
+rather than from session-state prose alone: a phase whose `{phase}.done`
+exists is NEVER re-run; a phase whose `{phase}.done` is absent is NEVER
+skipped; a phase with a partial `{phase}.{subphase}.done` set resumes at
+the right sub-phase. When no sentinel dir exists (a plain, non-autonomous
+resume), the pre-existing session-state resume path is preserved intact.
+A headless relaunch raises ZERO `AskUserQuestion` — the marker + the
+`--autonomous` flag keep the fresh session autonomous.
+
+**Terminal (`/end_of_task`) step-idempotency.** A kill after
+`/end_of_task` pushes but before the done sentinel re-runs the WHOLE
+terminal phase, so every side-effecting sub-phase is individually
+idempotent, in the verified order push → lessons/cost → archive →
+done-sentinel-LAST:
+
+- **Push (Sub-phase A)** is a no-op when the branch already matches
+  origin at the same HEAD (fetch, then compare `git rev-parse HEAD`
+  against `origin/<branch>`).
+- **Lessons + cost (Sub-phase B)** are gated behind an entry-skip
+  sentinel `autonomous-progress-{task}/end_of_task.subphaseB.done`
+  (checked at Sub-phase B entry, written atomically at its end, and
+  counted by the union progress glob). Belt-and-suspenders, the lessons
+  append also greps `lessons-learned.md` for an existing entry keyed on
+  `{task}` + stage before appending, and cost aggregation recomputes /
+  overwrites the task total rather than blind-appending a second row.
+- **Archive (Sub-phase C)** checks the `finalized/` target first and
+  skips the move if the task folder is already archived.
+- **Done sentinel** is written LAST — after the archive move and the
+  final report — at the memory-dir location outside the archived folder,
+  so a kill at any boundary resumes with no duplicated work. The
+  "never auto-create a PR" invariant holds in every mode.
