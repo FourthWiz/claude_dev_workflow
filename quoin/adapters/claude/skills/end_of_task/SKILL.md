@@ -232,7 +232,7 @@ Execute these steps inline (never dispatch for interactive steps):
 
 Before touching git, verify everything is clean:
 
-1. **Review status** — resolve the artifact path via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` (or stage=None for legacy tasks), then look for `<task_dir>/review-*.md`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate. If no review file exists at the resolved path, STOP and tell the user: "No review found — please run `/review` first." If a review exists, read the latest one and confirm verdict is APPROVED. If not approved, stop and tell the user. (architecture.md and cost-ledger.md ALWAYS at task root per D-03.)
+1. **Review status** — resolve the artifact path via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` (or stage=None for legacy tasks), then look for `<task_dir>/review-*.md`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate. If no review file exists at the resolved path, STOP and tell the user: "No review found — please run `/review` first." If a review exists, read the latest one and confirm verdict is APPROVED. If not approved, stop and tell the user. (architecture.md and cost-ledger.md ALWAYS at task root per D-03.) **Retain the resolved `<N-or-name>` (or empty string for a legacy/single-stage task) as `<stage-value>`** — Sub-phase B's lessons-append idempotency guard (Step 7, T-11) keys on task+stage, not task alone, so it needs this value.
 2. **Tests pass** — run the test suite one final time. If anything fails, stop.
 3. **Branch state** — check if the branch is up to date with the base branch. If behind, rebase/merge and re-run tests. If push is blocked because task commits are on a protected branch (main/master), do NOT force-push; instead follow the safe reset-to-origin recipe at `__QUOIN_HOME__/memory/branch-recovery.md` — move the mis-placed commits onto a feature branch first, then run the recipe to restore the protected branch to origin.
 4. **No secrets** — quick scan of the diff for passwords, API keys, tokens.
@@ -391,6 +391,7 @@ Write `.workflow_artifacts/<task-name>/eot-preflights.json` (fixed name — no d
 {
   "task_name": "<task-name>",
   "task_dir": "<absolute-path-to-task-dir>",
+  "stage": "<stage-value-or-empty-string>",
   "commit_list": ["<file1>", "<file2>"],
   "commit_message": "<conventional commit message or empty string>",
   "commit_or_abort": "commit",
@@ -398,6 +399,8 @@ Write `.workflow_artifacts/<task-name>/eot-preflights.json` (fixed name — no d
   "archive_type": "feature"
 }
 ```
+
+`"stage"` is `<stage-value>` from Step 1 (empty string for a legacy/single-stage task) — carried through so Sub-phase B (T-11) can key its lessons-append idempotency guard on task+stage.
 
 The orchestrator OVERWRITES any stale file from a prior run. Each `/end_of_task`
 invocation produces exactly one `eot-preflights.json`. Sub-phases MUST NOT
@@ -422,10 +425,14 @@ Spawn an Agent subagent:
     2. If `commit_list` is non-empty and `commit_message` is non-empty:
        - Stage the listed files (`git add <file>` for each, not `git add .`)
        - Commit with the provided `commit_message`
-    3. Push: `git push -u origin <current-branch-name>`
+    3. **Push (idempotent, T-11):** `git fetch origin <current-branch-name>` then compare
+       `git rev-parse HEAD` against `git rev-parse origin/<current-branch-name>`. If they
+       are EQUAL (already pushed — e.g. a kill-after-push resume re-running this
+       sub-phase), SKIP the push as a no-op and record `"push_skipped": true` in
+       `eot-preflights.json`. Otherwise: `git push -u origin <current-branch-name>`.
        If push fails: report the error clearly; do NOT retry. The user will resolve.
     4. Run `git rev-parse HEAD` and append `"commit_hash": "<sha>"` to `eot-preflights.json`.
-    5. Report: branch pushed, commit hash, any errors.
+    5. Report: branch pushed (or push-skipped-already-current), commit hash, any errors.
 
     Scope cap: at most ~15 tool uses. If blocked, write what you have to disk and return.
 
@@ -445,12 +452,33 @@ Spawn an Agent subagent:
     Cost ledger: `<absolute-path-to-task-dir>/cost-ledger.md`
     Lessons-learned: `.workflow_artifacts/memory/lessons-learned.md`
     Session state dir: `.workflow_artifacts/memory/sessions/`
+    Sub-phase B sentinel (autonomous only, T-11): `.workflow_artifacts/memory/autonomous-progress-<task_name>/end_of_task.subphaseB.done`
+
+    **Entry-skip guard (T-11, `_AUTONOMOUS` only) — run BEFORE step 1:** if
+    `_AUTONOMOUS` is true and `autonomous-progress-<task_name>/end_of_task.subphaseB.done`
+    already exists, this whole sub-phase already ran on a prior attempt (e.g. a
+    kill-after-push, before-done-sentinel resume) — SKIP everything below as a
+    no-op and report "Sub-phase B already complete (subphaseB.done sentinel
+    present) — skipping." Do NOT re-append lessons, re-touch session state, or
+    recompute cost. This sentinel is unconditional-safe: it only ever skips
+    already-finished work, never unfinished work. It ALSO counts toward the
+    T-06 union forward-progress glob (`autonomous-progress-{task}/*.done`).
 
     Steps:
-    1. Read `eot-preflights.json` for `lessons_text` and `task_name`.
-    2. If `lessons_text` is non-empty: append to lessons-learned.md:
+    1. Read `eot-preflights.json` for `lessons_text`, `task_name`, and `stage`.
+    2. **Lessons-append idempotency (T-11, keyed on task+stage, unconditional —
+       runs whether or not `_AUTONOMOUS`):** if `lessons_text` is non-empty, first
+       grep `lessons-learned.md` for an existing entry heading matching this
+       task+stage: `## .* — <task_name>` when `stage` is empty, or
+       `## .* — <task_name> \[stage-<stage>\]` when `stage` is non-empty (a
+       stage-2 lessons entry must never be false-skipped by a stage-1 entry's
+       heading, and vice versa — MINOR fix). If a matching heading is already
+       present, SKIP the append (already recorded — belt-and-suspenders behind
+       the Sub-phase B entry-skip sentinel above) and note it in the report.
+       Otherwise append to lessons-learned.md, including the stage suffix in the
+       heading when `stage` is non-empty:
        ```
-       ## <date> — <task_name>
+       ## <date> — <task_name>[ [stage-<stage>]]
        **What happened:** <lessons_text>
        **Lesson:** <reusable takeaway>
        **Applies to:** <relevant skills>
@@ -516,6 +544,11 @@ Spawn an Agent subagent:
           Prepend: `[fallback: cost_from_jsonl.py — prices as of <LAST_UPDATED>]`
           Read LAST_UPDATED via: `python3 -c "from pathlib import Path; import sys; sys.path.insert(0, str(Path.home() / '.claude' / 'scripts')); import cost_from_jsonl; print(cost_from_jsonl.LAST_UPDATED)"`
        d. Aggregate: per-phase totals, per-model totals, grand total.
+       **Re-runnable (T-11):** this whole computation reads from cost-ledger.md
+       (append-only, never mutated by this step) and OVERWRITES cost-summary.json
+       (fixed name — see step 5) — re-running it after a kill/resume recomputes the
+       same totals from the same ledger and overwrites the same file; it never
+       blind-appends a second total row anywhere.
     5. Write `.workflow_artifacts/<task_name>/cost-summary.json` (fixed name, overwritten):
        ```json
        {
@@ -535,9 +568,16 @@ Spawn an Agent subagent:
        consumed only by `costService.ts` (extension). `/cost_snapshot` and
        `dashboard_model.py` consume `cost-ledger.md` instead — do NOT wire them to
        this file.
-    6. Report: lessons appended (yes/no), session state updated, finalized-task sessions flipped
-       (count, or "skipped — QUOIN_DISABLE_EOT_FLAG_FLIP set" / "skipped — script unavailable"),
-       cost summary written.
+    6. Report: lessons appended (yes/no, or "skipped — already recorded"), session state
+       updated, finalized-task sessions flipped (count, or "skipped —
+       QUOIN_DISABLE_EOT_FLAG_FLIP set" / "skipped — script unavailable"), cost summary
+       written.
+    7. **Write the Sub-phase B entry-skip sentinel (T-11, `_AUTONOMOUS` only) — LAST, after
+       everything above succeeds:** atomically write
+       `autonomous-progress-<task_name>/end_of_task.subphaseB.done`
+       (`mkdir -p` the dir first; `printf > f.tmp && mv f.tmp f`). Inert when
+       `_AUTONOMOUS` is false — plain (non-autonomous) `/end_of_task` never writes it,
+       matching every other autonomous-only sentinel write in this workflow.
 
     Scope cap: at most ~15 tool uses. If blocked on cost aggregation, write partial
     data to cost-summary.json and return — partial cost data is better than none.
@@ -556,6 +596,7 @@ Spawn an Agent subagent:
     - `<absolute-path-to-task-dir>/cost-summary.json` (read BEFORE the mv — it lives
       inside the task folder which you are about to move)
     Task dir: `<absolute-path-to-task-dir>`
+    Done sentinel (autonomous only, T-11): `.workflow_artifacts/memory/autonomous-done-<task_name>.md`
 
     Steps:
     1. Read `cost-summary.json` from the task dir (BEFORE any mv).
@@ -563,12 +604,16 @@ Spawn an Agent subagent:
     3. Delete planner trace breadcrumb (if present):
        Run: rm -f "<task_dir>/.planner-trace.md" 2>/dev/null || true
        Tier-3 ephemeral — must not persist in the finalized archive; runs BEFORE the archive mv.
-    4. Archive based on `archive_type`:
-       - `"subtask"`: mv task folder into `.workflow_artifacts/<parent>/finalized/<subtask>/`
-       - `"feature"`: mv task folder into `.workflow_artifacts/finalized/<task_name>/`
-       - `"none"`: skip the mv entirely.
-       Create target dir with `mkdir -p` before the mv.
-    4. Print the final report:
+    4. **Archive (idempotent, T-11)** based on `archive_type`:
+       - `"subtask"`: target = `.workflow_artifacts/<parent>/finalized/<subtask>/`.
+       - `"feature"`: target = `.workflow_artifacts/finalized/<task_name>/`.
+       - `"none"`: skip the mv entirely — no target, nothing to check.
+       For `"subtask"`/`"feature"`: **before the mv, check whether the target directory
+       already exists** (the task folder was already archived on a prior attempt — e.g.
+       a kill-after-archive-before-done-sentinel resume). If it exists, SKIP the mv as a
+       no-op (do not double-move or error) and note "already archived" in the report.
+       Otherwise create the target dir with `mkdir -p` and perform the mv.
+    5. Print the final report:
        ```
        Task finalized: <task_name>
 
@@ -594,6 +639,19 @@ Spawn an Agent subagent:
 
        Next: when you're ready, create a PR from the branch.
        ```
+    6. **Write the done-sentinel (T-11, `_AUTONOMOUS` only) — LAST, after the archive mv
+       (step 4) AND the report print (step 5) above, never before either:** atomically
+       write `.workflow_artifacts/memory/autonomous-done-<task_name>.md`
+       (`mkdir -p` the memory dir first; `printf > f.tmp && mv f.tmp f`), deliberately
+       OUTSIDE the just-archived task folder so the record survives the mv. This is the
+       final terminal signal an external supervisor's relaunch loop checks for SUCCESS —
+       anchoring it here (after both the mv and the report, not attached to any earlier
+       step) means a kill at any prior boundary in this 8-step process — including
+       after-push-before-Sub-phase-B, after-Sub-phase-B-before-archive, and
+       after-archive-before-done — safely re-runs from where it left off with no
+       duplicated work, and only a kill AFTER this final write is a true, safe SUCCESS.
+       Inert when `_AUTONOMOUS` is false — plain (non-autonomous) `/end_of_task` never
+       writes it.
 
     Scope cap: at most ~15 tool uses. If blocked, write what you have to disk and return.
 

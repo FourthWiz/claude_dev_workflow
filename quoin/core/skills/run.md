@@ -159,6 +159,17 @@ coverage rule, so independently implemented supervisors and resumers
 agree on the contract shape; the supervisor loop mechanics themselves
 (relaunch cap, backoff, launcher) are adapter-specific.
 
+A resume that honors this contract MUST read the marker before any
+other decision point, so a relaunch never reverts to an interactive
+default and stalls; MUST derive the next phase from the completion
+sentinels rather than from prose state alone, treating a present
+sentinel as never-re-run and an absent one as never-skip; and MAY use
+sub-phase sentinels to resume partway through a single long phase
+rather than restarting it. Each resumable phase is responsible for
+writing its own completion sentinel once its work is done, so the
+reader and writer sides of this contract stay independently
+verifiable.
+
 ## Notes
 
 - The orchestrator owns coordination only, never artifact content;

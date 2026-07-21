@@ -103,18 +103,14 @@ def test_never_auto_create_pr_restated_in_autonomous_path(eot_skill_text: str) -
 
 
 def test_no_stage2_idempotency_text_introduced(eot_skill_text: str) -> None:
-    """SCOPE GUARD (negative assertion): this task is IN-SESSION auto-confirm ONLY.
-    It must NOT introduce any Stage-2 end_of_task idempotency rework text."""
-    text = eot_skill_text.lower()
-    forbidden_phrases = [
-        "no-op-if-already-pushed",
-        "no-op-if-pushed",
-        "archive-checks-finalized",
-        "done-sentinel-outside-archive",
-        "done-sentinel",
-    ]
-    for phrase in forbidden_phrases:
-        assert phrase not in text, f"Stage-2 idempotency text leaked into SKILL.md: {phrase!r}"
+    """SUPERSEDED by IVG-153 Stage 2 T-11 (2026-07-21): this was originally a scope
+    guard for T-24 (IN-SESSION auto-confirm ONLY, Stage 1), asserting Stage-2
+    end_of_task idempotency rework had NOT yet been introduced. T-11 now
+    deliberately introduces exactly that rework (push no-op guard, Sub-phase B
+    entry-skip sentinel, archive-skip guard, done-sentinel written last) — see
+    `test_end_of_task_idempotent.py` for the positive coverage. Kept as a no-op
+    (rather than deleted) so the historical scope note stays discoverable."""
+    assert eot_skill_text  # file still readable; nothing forbidden anymore
 
 
 def test_dispatch_and_worktree_blocks_not_hand_edited(eot_skill_text: str) -> None:
