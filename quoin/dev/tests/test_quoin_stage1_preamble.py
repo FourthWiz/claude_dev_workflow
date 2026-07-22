@@ -27,20 +27,17 @@ ADAPTER_SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
 
 
 # Skills migrated to the three-file adapter pattern (Phase 6 / Phase 7).
-# When this set grows, add the skill name here AND verify the install.sh
-# override branch exists.
-MIGRATED_TO_ADAPTER = {
-    "capture_insight", "triage", "start_of_day", "plan", "critic", "revise",
-    "revise-fast", "gate", "implement", "rollback", "end_of_task", "run",
-    "end_of_day", "weekly_review", "cost_snapshot", "expand", "pr", "status",
-    # Phase 22 migrations
-    "checkpoint", "cleanup", "next_steps", "sleep",
-    # specify-skill stage 2 (IVG-127)
-    "specify",
-    # enrich-skill (IVG-152)
-    "enrich",
-    # continue_work is intentionally absent — see comment below
-}
+# IVG-118 T-05: derived from the filesystem (every skill with an adapter
+# SKILL.md) instead of a hand-maintained literal — "migrated" is a GLOBAL
+# filesystem fact (all 31 skills have an authoritative adapter SKILL.md), so
+# a hardcoded subset silently drifts under-count. See D-02/D-03 in
+# .workflow_artifacts/ivg-118-registration-manifest/current-plan.md. No
+# per-skill scoping comment is needed anymore — membership is intent-
+# documenting by construction, not by a hand-maintained note that goes stale
+# (the prior "continue_work is intentionally absent" note was one such case).
+MIGRATED_TO_ADAPTER = frozenset(
+    p.name for p in ADAPTER_SKILLS_DIR.iterdir() if (p / "SKILL.md").is_file()
+)
 
 
 def skill_md_path(skill_name: str) -> Path:

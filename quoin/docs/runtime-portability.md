@@ -31,6 +31,45 @@ The portable core is the workflow contract that every runtime adapter should pre
   - `cost_event.py` is portable because it provides the typed cost-event schema (`CostEvent` dataclass) and pure functions `parse_row`, `format_row`, and `iter_events` for reading and writing cost-ledger rows. It has no runtime-specific dependencies: no pricing tables, no session-log parsing, no UUID-acquisition logic. Canonical implementation at `quoin/core/scripts/cost_event.py`; compat wrapper at `quoin/scripts/cost_event.py`.
   - `cost_summary.py` is portable because it normalizes the `total` value from a `cost-summary.json` dict (the 7-key priority ladder `normalize_total()`), with no pricing tables, no JSONL parsing, no UUID logic — pure stdlib only. Consumer map: `cost-summary.json` is produced by `/end_of_task` and consumed only by `costService.ts` (extension) and `cost_summary.py` (normalizer). `/cost_snapshot` and `dashboard_model.py` consume `cost-ledger.md`, not `cost-summary.json`. `fallback_used=true` in `cost-summary.json` means "partial estimate — some ledger UUIDs did not resolve to JSONL sessions", NOT "cost unavailable"; a present total with `fallback_used=true` should render as `~$X (partial)`. Canonical implementation at `quoin/core/scripts/cost_summary.py`; compat wrapper at `quoin/scripts/cost_summary.py`.
   - `verify_claims.py` (IVG-115, §V ground-truth verification) is portable-with-a-seam: it reconciles claimed task/PR state against re-derived truth using `finalized/` folder presence (fully portable, no gh needed) and an optional `gh pr list` call gated behind `--finalized-only`/`--gh-json-file` (a generic git-host CLI, not Claude-only, and fully testable without a live binary via the JSON-file seam). No Claude-specific session parsing, no pricing tables. Canonical implementation at `quoin/core/scripts/verify_claims.py`; compat wrapper at `quoin/scripts/verify_claims.py`.
+
+### Wrapper template (IVG-118 FR-6)
+
+Every compatibility wrapper under `quoin/scripts/` follows the same
+delegation-only shape (see `quoin/scripts/path_resolve.py` or
+`quoin/scripts/nested_root_check.py` for live examples):
+
+```python
+_CORE_PATH = Path(__file__).resolve().parents[1] / "core" / "scripts" / "<name>.py"
+_SPEC = importlib.util.spec_from_file_location("_quoin_core_<name>", _CORE_PATH)
+_CORE = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_CORE)
+```
+
+The wrapper's `importlib.util.spec_from_file_location` call is given a
+namespaced module name (`_quoin_core_<name>`, not the bare `<name>`) — this is
+load-bearing, not cosmetic. `exec_module` does **not** implicitly register the
+module in `sys.modules`; if two wrappers (or a wrapper re-imported within the
+same process, e.g. under pytest) both call `spec_from_file_location` with the
+*same* module name for two *different* file paths, or the same wrapper module
+gets `exec_module`'d a second time in-process, the second call can silently
+alias to (or clobber) the first module's namespace instead of raising —a
+same-name re-import failure that only manifests at runtime, not at install
+time. Registering `sys.modules[spec.name] = module` immediately after
+`module_from_spec` (before `exec_module`) is the standard fix if a wrapper
+ever needs the bare `<name>` (e.g. so a third party can `import <name>`
+directly); the current convention sidesteps the issue entirely by always
+using the `_quoin_core_` prefix, which guarantees no two wrappers' spec names
+collide. New wrappers MUST follow this template — do not drop the prefix to
+"simplify" the module name.
+
+This is the third known silent-failure mode in the wrapper/registration
+system, alongside a wrapper missing from `installer.DEPLOYED_SCRIPTS` and a
+wrapped-core script missing from `installer.CORE_SCRIPTS` (both caught
+mechanically by `quoin/dev/check_registration.py`, see IVG-118). Static
+detection of the `sys.modules` ordering requirement was judged impractical
+(spec FR-6, marked SHOULD not MUST); this documented, tested template is the
+satisfying mitigation.
+
 - Runtime-neutral workflow semantics now live in `quoin/core/workflow/`:
   - `rules.md` defines shared phase and safety rules.
   - `task-layout.md` defines task, stage, and finalization layout.
