@@ -109,7 +109,7 @@ Fail-graceful path with error-class triage (per architecture I-01):
 
   STEP A — Write the dispatch sidecar BEFORE calling the Agent tool:
      Run via Bash:
-       PROJECT_ROOT="$(python3 __QUOIN_HOME__/scripts/path_resolve.py --project-root)"
+       PROJECT_ROOT="$(python3 __QUOIN_HOME__/scripts/path_resolve.py --print-project-root)"
        python3 __QUOIN_HOME__/scripts/dispatch_sidecar.py \
            --skill <skill-name> \
            --project-root "$PROJECT_ROOT" \

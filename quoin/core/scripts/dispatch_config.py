@@ -109,9 +109,10 @@ def find_project_root(start: Optional[Path] = None) -> Optional[Path]:
     Copied from status_graph._find_project_root (L355-365) — repo convention for
     project-root walk-up. Self-contained copy; do NOT cross-import from status_graph.
 
-    NOTE: The architecture doc's phrase "Project root via path_resolve.py --project-root"
-    is INACCURATE — path_resolve.py requires --task and resolves cwd/.workflow_artifacts/<task>;
-    it has no walk-up mode. The real walk-up precedent is status_graph._find_project_root.
+    NOTE: `path_resolve.py --print-project-root` (IVG-119) is now a valid self-inclusive
+    walk-up print mode and mirrors this function's semantics. `status_graph._find_project_root`
+    remains the alternative in-process precedent. (The old `--project-root` flag is an input
+    arg with no print mode — do NOT invoke it bare; it exits 2.)
     """
     current = (start or Path.cwd()).resolve()
     for _ in range(20):
