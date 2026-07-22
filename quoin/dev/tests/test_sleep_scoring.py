@@ -25,6 +25,7 @@ from sleep_score import (
     collect_entries,
     score_entries,
     dedup_against_lessons,
+    _task_name_from_path,
     RawEntry,
     ScoredEntry,
     DEFAULT_CONFIG,
@@ -279,3 +280,33 @@ def run_tests():
 
 if __name__ == "__main__":
     run_tests()
+
+
+# ---------------------------------------------------------------------------
+# T-18 (IVG-119) — promoted module-level slug inference + --slug-from-path CLI
+# ---------------------------------------------------------------------------
+
+def test_task_name_from_path_insights_form():
+    """L497 branch: insights-<date>-<slug>.md → <slug>."""
+    assert _task_name_from_path("insights-2026-04-25-auth-refactor.md") == "auth-refactor"
+
+
+def test_task_name_from_path_sessions_form():
+    """L500 branch: sessions/<date>-<slug>.md → <slug>."""
+    assert _task_name_from_path("sessions/2026-04-25-auth-refactor.md") == "auth-refactor"
+
+
+def test_slug_from_path_cli_matches_module_fn():
+    """CLI --slug-from-path prints the same slug the module fn returns (heading↔guard)."""
+    import subprocess
+    script = Path(__file__).parent.parent.parent / "scripts" / "sleep_score.py"
+    for src in (
+        "insights-2026-04-25-auth-refactor.md",
+        "sessions/2026-04-25-auth-refactor.md",
+    ):
+        run = subprocess.run(
+            [sys.executable, str(script), "--slug-from-path", src],
+            capture_output=True, text=True,
+        )
+        assert run.returncode == 0, run.stderr
+        assert run.stdout.strip() == _task_name_from_path(src) == "auth-refactor"
