@@ -26,31 +26,15 @@ SKILLS_DIR = TESTS_DIR.parent.parent / "skills"
 ADAPTER_SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
 
 # Skills migrated to the three-file adapter pattern (Phase 6 / Phase 7).
-MIGRATED_TO_ADAPTER = {
-    "capture_insight",
-    "triage",
-    "start_of_day",
-    "plan",
-    "critic",
-    "revise",
-    "revise-fast",
-    "gate",
-    "implement",
-    "rollback",
-    "end_of_task",
-    "run",
-    "end_of_day",
-    "weekly_review",
-    "cost_snapshot",
-    "expand",
-    # Phase 22 migrations
-    "checkpoint",
-    "next_steps",
-    "sleep",
-    # pr's authoritative SKILL.md is the Claude adapter copy (installer prefers the
-    # adapter path); it carries the §0-sidecar block (T-05 / SOURCE_MUTATING set).
-    "pr",
-}
+# IVG-118 T-05: derived from the filesystem (every skill with an adapter
+# SKILL.md) instead of a hand-maintained literal — see D-02/D-03 in
+# .workflow_artifacts/ivg-118-registration-manifest/current-plan.md. "pr"'s
+# authoritative SKILL.md is (and remains) the Claude adapter copy, so it
+# resolves correctly under the derived set exactly as it did under the prior
+# hand-maintained literal.
+MIGRATED_TO_ADAPTER = frozenset(
+    p.name for p in ADAPTER_SKILLS_DIR.iterdir() if (p / "SKILL.md").is_file()
+)
 
 
 def skill_md_path(skill_name: str) -> Path:

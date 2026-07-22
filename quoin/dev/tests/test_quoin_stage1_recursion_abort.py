@@ -26,17 +26,16 @@ ADAPTER_SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
 
 
 # Skills migrated to the three-file adapter pattern (Phase 6 / Phase 7).
-# When this set grows, add the skill name here AND verify the install.sh
-# override branch exists.
-MIGRATED_TO_ADAPTER = {
-    "capture_insight", "triage", "start_of_day", "plan", "critic", "revise",
-    "revise-fast", "gate", "implement", "rollback", "end_of_task",
-    "end_of_day", "weekly_review", "cost_snapshot", "expand",
-    # Phase 22 migrations
-    "checkpoint", "next_steps", "sleep",
-}
-# NOTE: "run" is intentionally absent here — run is Opus-tier (no §0 dispatch block)
-# and is therefore not tested by this file's cheap-tier §0 recursion-abort assertions.
+# IVG-118 T-05: derived from the filesystem (every skill with an adapter
+# SKILL.md) instead of a hand-maintained literal — see D-02/D-03 in
+# .workflow_artifacts/ivg-118-registration-manifest/current-plan.md. "run" is
+# NOT excluded here (unlike the pre-T-05 literal): this file's cheap-tier §0
+# recursion-abort assertions are parametrized over CHEAP_TIER_SKILLS (a
+# separate, still-scoped roster — see D-04), not over MIGRATED_TO_ADAPTER, so
+# "run" resolving to the adapter path here is inert w.r.t. this file's tests.
+MIGRATED_TO_ADAPTER = frozenset(
+    p.name for p in ADAPTER_SKILLS_DIR.iterdir() if (p / "SKILL.md").is_file()
+)
 
 
 def skill_md_path(skill_name: str) -> Path:
