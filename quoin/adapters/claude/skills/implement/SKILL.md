@@ -109,7 +109,7 @@ Fail-graceful path with error-class triage (per architecture I-01):
 
   STEP A — Write the dispatch sidecar BEFORE calling the Agent tool:
      Run via Bash:
-       PROJECT_ROOT="$(python3 __QUOIN_HOME__/scripts/path_resolve.py --project-root)"
+       PROJECT_ROOT="$(python3 __QUOIN_HOME__/scripts/path_resolve.py --print-project-root)"
        python3 __QUOIN_HOME__/scripts/dispatch_sidecar.py \
            --skill <skill-name> \
            --project-root "$PROJECT_ROOT" \
@@ -264,19 +264,14 @@ If `QUOIN_DISABLE_BRANCH_HYGIENE=1` is set, skip this section entirely and proce
 
 **Step 1: Resolve project root (worktree-safe)**
 
-Under worktree-isolated `/implement` dispatch, `$(pwd)` is the WORKTREE (a single git repo), NOT the multi-repo project root. A bare `$(pwd)` passed to `--project-root` would silently miss sibling repos on a protected branch. Walk up from cwd to the nearest ancestor that contains `.workflow_artifacts/`:
+Under worktree-isolated `/implement` dispatch, `$(pwd)` is the WORKTREE (a single git repo), NOT the multi-repo project root. A bare `$(pwd)` would silently miss sibling repos on a protected branch. Use `path_resolve.py --print-project-root` — a self-inclusive walk-up (IVG-119) that prints the nearest self-or-ancestor dir containing `.workflow_artifacts/`, spaces-safe, on a single clean stdout line:
 
 ```bash
-PROJECT_ROOT=""
-d="$(pwd)"
-while [ "$d" != "/" ]; do
-  if [ -d "$d/.workflow_artifacts" ]; then PROJECT_ROOT="$d"; break; fi
-  d="$(dirname "$d")"
-done
-[ -z "$PROJECT_ROOT" ] && PROJECT_ROOT="$(pwd)"   # fail-OPEN: fall back to cwd if no .workflow_artifacts/ ancestor found
+PROJECT_ROOT="$(python3 __QUOIN_HOME__/scripts/path_resolve.py --print-project-root)"
+[ -z "$PROJECT_ROOT" ] && PROJECT_ROOT="$(pwd)"   # fail-OPEN: fall back to cwd if the call yields nothing
 ```
 
-Do NOT invoke `path_resolve.py` with `--project-root` (that flag is an input arg with no print-root mode — it exits 2 with empty stdout). Do NOT use `git rev-parse --show-toplevel` (project root is not a git repo). Use the walk-up above.
+Use `--print-project-root` (NOT the bare `--project-root` input flag, which has no print mode and exits 2). Do NOT use `git rev-parse --show-toplevel` (the project root is not a git repo).
 
 **Step 2: Run the check**
 
@@ -508,7 +503,7 @@ After a task's code and tests are written, and BEFORE marking the task ✓ and c
 
 **Retry bound:** `QUOIN_VERIFY_RETRIES` (env knob, default `3`).
 
-**Step 1 — Resolve PROJECT_ROOT.** Reuse the §0b walk-up idiom exactly: walk up from cwd to the nearest ancestor containing `.workflow_artifacts/`.
+**Step 1 — Resolve PROJECT_ROOT.** Reuse the §0b resolution exactly: `PROJECT_ROOT="$(python3 __QUOIN_HOME__/scripts/path_resolve.py --print-project-root)"` (self-inclusive walk-up to the nearest ancestor containing `.workflow_artifacts/`), falling back to `$(pwd)` if empty.
 
 **Step 2 — Resolve REPO_ROOT (anchored SEPARATELY from PROJECT_ROOT — never conflate the two).**
 

@@ -395,3 +395,88 @@ def test_task_root_resolves_without_spec_md(tmp_path):
 
     assert result == task_dir
     assert not (task_dir / "spec.md").exists()
+
+
+# ---------------------------------------------------------------------------
+# T-09 — --print-project-root mode (IVG-119)
+# ---------------------------------------------------------------------------
+
+
+def test_print_project_root_alone_exit0_one_path(tmp_path):
+    """MAJ-1: --print-project-root ALONE → exit 0 + exactly one stdout path line
+    (NOT exit 2, NOT empty)."""
+    (tmp_path / ".workflow_artifacts").mkdir()
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--print-project-root",
+         "--start", str(tmp_path)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, f"stderr={result.stderr!r}"
+    lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
+    assert len(lines) == 1, f"expected one path line, got {lines!r}"
+    assert Path(lines[0]) == tmp_path.resolve()
+
+
+def test_print_project_root_spaces_in_path(tmp_path):
+    """A start dir whose path contains spaces → single correct path, no argparse error."""
+    spaced = tmp_path / "sp ace dir"
+    (spaced / ".workflow_artifacts").mkdir(parents=True)
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--print-project-root",
+         "--start", str(spaced)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, f"stderr={result.stderr!r}"
+    assert result.stdout.strip() == str(spaced.resolve())
+    assert "error" not in result.stderr.lower()
+
+
+def test_print_project_root_from_nested_warns_on_stderr(tmp_path):
+    """From INSIDE a nested root: stderr carries a WARN, stdout stays a clean path."""
+    (tmp_path / ".workflow_artifacts").mkdir()
+    nested = tmp_path / "subproject"
+    (nested / ".workflow_artifacts").mkdir(parents=True)
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--print-project-root",
+         "--start", str(nested)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0
+    assert result.stdout.strip() == str(nested.resolve())
+    assert "WARN" in result.stderr and ".workflow_artifacts" in result.stderr
+
+
+def test_print_project_root_walks_up_to_ancestor(tmp_path):
+    """--start below the root walks up to the nearest .workflow_artifacts ancestor."""
+    (tmp_path / ".workflow_artifacts").mkdir()
+    deep = tmp_path / "a" / "b" / "c"
+    deep.mkdir(parents=True)
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--print-project-root",
+         "--start", str(deep)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0
+    assert result.stdout.strip() == str(tmp_path.resolve())
+
+
+def test_neither_task_nor_print_root_exits_2(tmp_path):
+    """Regression: neither --task nor --print-project-root → exit 2, empty stdout."""
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH)],
+        capture_output=True, text=True, cwd=str(tmp_path),
+    )
+    assert result.returncode == 2
+    assert result.stdout.strip() == ""
+
+
+def test_task_still_resolves_without_print_flag(tmp_path):
+    """Regression: --task foo (no --print-project-root) resolves as before."""
+    (tmp_path / ".workflow_artifacts" / "foo").mkdir(parents=True)
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--task", "foo",
+         "--project-root", str(tmp_path)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0
+    assert result.stdout.strip() == str(tmp_path.resolve() / ".workflow_artifacts" / "foo")

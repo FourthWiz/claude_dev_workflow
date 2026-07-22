@@ -36,6 +36,24 @@ def _find_nested_ancestor(project_root: Path):
     return None
 
 
+def _find_self_or_ancestor_root(start: Path) -> Path:
+    """Return the nearest self-or-ancestor dir containing .workflow_artifacts/.
+
+    Self-inclusive walk-up: starts AT `start` (unlike _find_nested_ancestor, which
+    starts at start.parent). Mirrors dispatch_config.find_project_root semantics.
+    Falls back to `start` itself when no .workflow_artifacts/ ancestor is found, so
+    callers always receive a usable path.
+    """
+    start = Path(start).resolve()
+    cur = start
+    while True:
+        if (cur / ".workflow_artifacts").is_dir():
+            return cur
+        if cur == cur.parent:
+            return start
+        cur = cur.parent
+
+
 def _lookup_stage_by_name(arch_text: str, name: str):
     """Return stage number for the given name, or None if not found.
 
@@ -131,9 +149,26 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--task",
-        required=True,
+        required=False,
+        default=None,
         metavar="TASK_NAME",
         help="Kebab-case task identifier (e.g., quoin-foundation)",
+    )
+    parser.add_argument(
+        "--print-project-root",
+        action="store_true",
+        default=False,
+        help=(
+            "Print the nearest self-or-ancestor project root (dir containing "
+            ".workflow_artifacts/) for --start (default cwd) and exit 0. Mutually "
+            "exclusive with --task."
+        ),
+    )
+    parser.add_argument(
+        "--start",
+        default=None,
+        metavar="PATH",
+        help="Start directory for --print-project-root walk-up (default: cwd).",
     )
     parser.add_argument(
         "--stage",
@@ -175,6 +210,30 @@ def _parse_stage_arg(raw: str):
 def main(argv=None):
     parser = _build_parser()
     args = parser.parse_args(argv)
+
+    # --print-project-root is handled FIRST, before any --task requirement, so it
+    # never argparse-fails to empty stdout (MAJ-1). stdout is always a single clean
+    # path line; the nested-root advisory goes to stderr only.
+    if args.print_project_root:
+        start = Path(args.start or Path.cwd()).resolve()
+        root = _find_self_or_ancestor_root(start)
+        print(str(root))
+        ancestor = _find_nested_ancestor(root)
+        if ancestor is not None:
+            print(
+                f"path_resolve: WARN — project root '{root}' is itself nested inside "
+                f"ancestor '{ancestor}' that also contains .workflow_artifacts/.",
+                file=sys.stderr,
+            )
+        sys.exit(0)
+
+    # Exactly one of --task / --print-project-root is required.
+    if not args.task:
+        print(
+            "path_resolve: exactly one of --task or --print-project-root is required",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     stage = _parse_stage_arg(args.stage)
     project_root = Path(args.project_root or Path.cwd()).resolve()

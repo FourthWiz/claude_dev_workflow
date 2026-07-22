@@ -457,6 +457,28 @@ def _make_raw_entry(text: str, source_path: str, source_start_line: int, source_
 
 
 # ---------------------------------------------------------------------------
+# task-slug inference (module-level so the lessons guard can reuse it via CLI)
+# ---------------------------------------------------------------------------
+
+def _task_name_from_path(path: str) -> str:
+    """Extract task slug from filename like insights-2026-04-25-task.md or
+    sessions/2026-04-25-task.md.
+
+    Module-level (IVG-119 T-12): consumed by both /sleep's append-heading synthesis
+    and the lessons guard's --candidate-slug, so guard-slug == written-heading-slug.
+    """
+    basename = os.path.basename(path)
+    # Remove insights- prefix and date portion
+    m = re.match(r"insights-\d{4}-\d{2}-\d{2}-?(.*)\.md", basename)
+    if m:
+        return m.group(1) or "default"
+    m = re.match(r"\d{4}-\d{2}-\d{2}-(.+)\.md", basename)
+    if m:
+        return m.group(1)
+    return basename
+
+
+# ---------------------------------------------------------------------------
 # score_entries
 # ---------------------------------------------------------------------------
 
@@ -488,19 +510,9 @@ def score_entries(entries: List[RawEntry], config: dict) -> List[ScoredEntry]:
     for entry in entries:
         path_to_entry_texts.setdefault(entry.source_path, []).append(entry.text)
 
-    # Build keyword sets per entry for cross-task signal
-    # source_path encodes task name (e.g. "2026-04-25-auth-refactor.md")
-    def _task_name_from_path(path: str) -> str:
-        """Extract task slug from filename like insights-2026-04-25.md or sessions/2026-04-25-task.md."""
-        basename = os.path.basename(path)
-        # Remove insights- prefix and date portion
-        m = re.match(r"insights-\d{4}-\d{2}-\d{2}-?(.*)\.md", basename)
-        if m:
-            return m.group(1) or "default"
-        m = re.match(r"\d{4}-\d{2}-\d{2}-(.+)\.md", basename)
-        if m:
-            return m.group(1)
-        return basename
+    # source_path encodes task name (e.g. "2026-04-25-auth-refactor.md");
+    # _task_name_from_path is now module-level (IVG-119 T-12) so the lessons guard's
+    # --slug-from-path yields the SAME slug that /sleep writes as an append heading.
 
     # Per-entry keyword sets for cross-file frequency check
     def _keywords(text: str) -> set:
@@ -759,7 +771,23 @@ def main(argv: Optional[List[str]] = None) -> int:
         ),
     )
 
+    parser.add_argument(
+        "--slug-from-path",
+        default=None,
+        metavar="SRC",
+        help=(
+            "Utility sub-mode: print the task slug inferred from SRC (same inference "
+            "that builds /sleep append headings) and exit 0. Used by lessons_guard.py "
+            "to derive --candidate-slug."
+        ),
+    )
+
     args = parser.parse_args(argv)
+
+    # Utility sub-mode: print the inferred slug and exit (no scan, no config).
+    if args.slug_from_path is not None:
+        print(_task_name_from_path(args.slug_from_path))
+        return 0
 
     # Load config
     config = load_config(args.claude_md, signals_yaml_path=args.signals_yaml)

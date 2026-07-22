@@ -120,6 +120,8 @@ DEPLOYED_SCRIPTS = (
     "deploy_drift_check.py",         # IVG-136: post-merge deploy-drift guard (adapter-only, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS twin, see D-05)
     "ci_mirror.py",  # IVG-138: CI-parity gate check for non-Python deliverables
     "checkpoint_picker.py",          # IVG-139: pure restore-picker wrapper
+    "nested_root_check.py",          # IVG-119: nested/duplicate .workflow_artifacts root detector wrapper (wrapped portable-core — also in CORE_SCRIPTS)
+    "lessons_guard.py",              # IVG-119: cross-project lessons verbatim-dedup guard wrapper (wrapped portable-core — also in CORE_SCRIPTS)
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -411,6 +413,8 @@ CORE_SCRIPTS = (
     "verify_claims.py",             # IVG-115: §V ground-truth reconciliation engine core impl
     "ci_mirror.py",  # IVG-138: wrapped impl; required by ~/.claude/scripts/ci_mirror.py parents[1] loader
     "checkpoint_picker.py",         # IVG-139: wrapped impl; required by ~/.claude/scripts/checkpoint_picker.py parents[1] loader
+    "nested_root_check.py",         # IVG-119: wrapped impl; required by ~/.claude/scripts/nested_root_check.py parents[1] loader (imports sibling path_resolve.py)
+    "lessons_guard.py",             # IVG-119: wrapped impl; required by ~/.claude/scripts/lessons_guard.py parents[1] loader
 )
 
 

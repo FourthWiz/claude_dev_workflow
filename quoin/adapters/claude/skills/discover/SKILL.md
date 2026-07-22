@@ -211,6 +211,17 @@ The `repo-heads.md` backward-compat write uses the old 2-column format (no `Upda
 
 Starting from the project root folder, examine every top-level directory. For each repository/service found:
 
+### Nested-root sanity scan (IVG-119)
+
+Before the per-repo inventory, run one project-wide check for accidental nested/duplicate `.workflow_artifacts/` roots (subproject dirs that create their own root break `/checkpoint --restore` and artifact discovery):
+
+```
+PROJECT_ROOT="$(pwd)"
+python3 __QUOIN_HOME__/scripts/nested_root_check.py --project-root "$PROJECT_ROOT" --format text
+```
+
+Non-blocking — NEVER fails `/discover` (fail-OPEN). Exit 1 lists offending nested roots; fold those paths into the final user-facing summary (below). Exit 0 → single canonical root, nothing to report. Exit 2/3 or script missing → skip silently.
+
 ### Per-repo inventory
 
 1. **Identity**
@@ -582,6 +593,7 @@ Tell the user:
 - These files are now available to `/architect`, `/plan`, `/critic`, `/review`, and `/start_of_day` as baseline context
 - Which repos were skipped (unchanged since last scan) and which were re-scanned
 - Knowledge cache populated under `.workflow_artifacts/cache/` — <N> repos cached, <N> module indexes, <N> file entries created (warnings: <N> repos with failed cache writes, if any)
+- Nested-root warnings (IVG-119): if the nested-root sanity scan reported exit 1, list the offending `.workflow_artifacts/` paths and note the corrective action (move/remove, or bless via `.quoin-nested-ok` / `QUOIN_NESTED_ROOT_EXCLUDE`). Omit this line when the scan was clean.
 
 ## When to re-run
 
