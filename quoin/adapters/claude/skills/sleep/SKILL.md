@@ -258,7 +258,23 @@ Promote this pattern?
 [y / n / edit]
 ```
 
-On `y`: append to `.workflow_artifacts/memory/lessons-learned.md` in standard format:
+On `y`: **first run the cross-project dedup guard (IVG-119)** before appending. Derive
+the slug with the SAME inference that builds the append heading below, then call the
+guard:
+```
+slug="$(python3 __QUOIN_HOME__/scripts/sleep_score.py --slug-from-path "<source_path>")"
+python3 __QUOIN_HOME__/scripts/lessons_guard.py \
+  --candidate-file <tmp-with-entry-text> \
+  --lessons-file .workflow_artifacts/memory/lessons-learned.md \
+  --candidate-slug "$slug"
+```
+Exit 1 → present "⚠️ suspected cross-project duplicate of `<matched-slug>`" and let the
+user decide (do not silently append). Indeterminable slug → the guard's None-slug
+contract yields exit 0 (fail-open). Exit 0/2/3 or script missing → proceed. This
+COMPLEMENTS Step 3's `dedup_against_lessons` (which stays as-is): Step 3 catches
+keyword-overlapping repeats; the guard catches different-task verbatim copies.
+
+Then append to `.workflow_artifacts/memory/lessons-learned.md` in standard format:
 ```markdown
 ## <today> — <source task name, inferred from source_path>
 **What happened:** <entry text>

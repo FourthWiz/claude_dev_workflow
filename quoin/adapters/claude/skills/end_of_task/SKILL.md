@@ -542,6 +542,18 @@ Spawn an Agent subagent:
        heading, and vice versa — MINOR fix). If a matching heading is already
        present, SKIP the append (already recorded — belt-and-suspenders behind
        the Sub-phase B entry-skip sentinel above) and note it in the report.
+
+       **Cross-project dedup guard (IVG-119, runs only when the append would
+       proceed):** write `lessons_text` to a temp file, then call
+       `python3 __QUOIN_HOME__/scripts/lessons_guard.py --candidate-file <tmp> --lessons-file .workflow_artifacts/memory/lessons-learned.md --candidate-slug <task_name>`.
+       The guard COMPLEMENTS the heading-grep above (grep catches same-task
+       re-appends; the guard catches DIFFERENT-task verbatim copies). Exit 1 →
+       do NOT silently append: surface the matched foreign heading + slug to the
+       user and let them decide. Under `_AUTONOMOUS`: record the match in the
+       Sub-phase B report AND append with a `> WARN (IVG-119): suspected
+       cross-project duplicate of <matched-slug>` annotation — never block. Exit
+       0/2/3 or script missing → proceed with the append (fail-OPEN).
+
        Otherwise append to lessons-learned.md, including the stage suffix in the
        heading when `stage` is non-empty:
        ```
