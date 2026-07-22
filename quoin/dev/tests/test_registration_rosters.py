@@ -353,7 +353,7 @@ def test_rg_genroster_ac3_detects_missing_entry(tmp_path):
 def test_roster_census_green_on_live_tree():
     dev_tests_dir = _PKG_DIR / "dev" / "tests"
     scripts_dir = _PKG_DIR / "scripts"
-    canonical_names = set(cr.load_installer_rosters()[0])
+    canonical_names = set(cr.load_installer_rosters(cr._default_installer(_PKG_DIR))[0])
     findings = []
     cr.rg_census(dev_tests_dir, scripts_dir, canonical_names, findings)
     assert findings == [], f"unclassified rosters discovered:\n{findings}"

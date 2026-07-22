@@ -78,6 +78,12 @@ def _default_manifest(repo_pkg: Path) -> Path:
     return repo_pkg / "core" / "workflow" / "skills.json"
 
 
+def _default_installer(repo_pkg: Path) -> Path:
+    """repo_pkg is the inner `quoin/` package (parents[1]); installer.py lives
+    in the src-layout distribution package at <git-root>/src/quoin/installer.py."""
+    return repo_pkg.parent / "src" / "quoin" / "installer.py"
+
+
 # ---------------------------------------------------------------------------
 # Manifest / installer loading
 # ---------------------------------------------------------------------------
@@ -99,21 +105,58 @@ def load_manifest(path: Path) -> dict:
     return data
 
 
-def load_installer_rosters():
-    try:
-        from quoin.installer import (
-            CANONICAL_SKILLS,
-            CORE_SCRIPTS,
-            DEPLOYED_SCRIPTS,
-            SKILL_OVERRIDES,
-        )
-    except ImportError as exc:
-        print(
-            f"DATA: cannot import installer rosters from quoin.installer: {exc}",
-            file=sys.stderr,
-        )
+def load_installer_rosters(installer_path: Path):
+    """Read the four installer rosters from src/quoin/installer.py by AST,
+    WITHOUT importing the quoin package.
+
+    CRIT-1 (IVG-118 review-1): the former `from quoin.installer import ...`
+    exited 65 in a bare CI checkout (no `pip install` -> ModuleNotFoundError),
+    which silently disabled the only CI surface for this check. Reading the
+    source as text — the same technique the sibling validate_adapter_drift.py
+    uses — makes the check runnable from a plain `python3 check_registration.py`
+    with stdlib alone. The AST-derived member sets are membership-identical to
+    the former import: CANONICAL_SKILLS / DEPLOYED_SCRIPTS / CORE_SCRIPTS are
+    string tuples (-> set of strings) and SKILL_OVERRIDES is a dict (-> set of
+    its keys, which is all the checker's rules consume). A missing or
+    unparseable installer roster is a loud DATA error (exit 65), never a silent
+    skip.
+
+    Returns (canonical_skills, deployed_scripts, core_scripts, skill_overrides)
+    as sets of strings.
+    """
+    if not installer_path.is_file():
+        print(f"DATA: installer.py not found at {installer_path}", file=sys.stderr)
         sys.exit(65)
-    return CANONICAL_SKILLS, DEPLOYED_SCRIPTS, CORE_SCRIPTS, SKILL_OVERRIDES
+    rosters: dict[str, set] = {}
+    for name in ("CANONICAL_SKILLS", "DEPLOYED_SCRIPTS", "CORE_SCRIPTS", "SKILL_OVERRIDES"):
+        node = parse_roster(installer_path, name)
+        if node is None:
+            print(
+                f"DATA: installer roster {name} not found in {installer_path}",
+                file=sys.stderr,
+            )
+            sys.exit(65)
+        try:
+            members = eval_collection(node)
+        except ValueError as exc:
+            print(
+                f"DATA: could not parse installer roster {name} in {installer_path}: {exc}",
+                file=sys.stderr,
+            )
+            sys.exit(65)
+        if members is DERIVED:
+            print(
+                f"DATA: installer roster {name} has an unexpected derived shape",
+                file=sys.stderr,
+            )
+            sys.exit(65)
+        rosters[name] = members
+    return (
+        rosters["CANONICAL_SKILLS"],
+        rosters["DEPLOYED_SCRIPTS"],
+        rosters["CORE_SCRIPTS"],
+        rosters["SKILL_OVERRIDES"],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -904,7 +947,8 @@ def main(argv: Optional[list] = None) -> int:
     manifest_skills = manifest["skills"]
     manifest_names = {rec["name"] for rec in manifest_skills}
 
-    canonical_skills, deployed_scripts, core_scripts, skill_overrides = load_installer_rosters()
+    installer_path = _default_installer(repo_pkg)
+    canonical_skills, deployed_scripts, core_scripts, skill_overrides = load_installer_rosters(installer_path)
     canonical_set = set(canonical_skills)
     deployed_set = set(deployed_scripts)
     core_scripts_set = set(core_scripts)
