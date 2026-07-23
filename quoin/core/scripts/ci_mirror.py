@@ -27,6 +27,13 @@ Exit-code semantics (mirrors affected_tests.py, fail-CLOSED):
        (`exit_reason="no-steps-derived"`), a step timed out
        (`exit_reason="ci-mirror-timeout"`), OR QUOIN_DISABLE_CI_MIRROR=1.
        Treat as "cannot confirm green → do NOT auto-approve."
+  5  — no active quoin task context (NON-approving, NON-blocking; IVG-151):
+       --project-root + --require-task-context, when QUOIN_REQUIRE_TASK_CONTEXT
+       !=0 and the sibling affected_tests detector finds no active task folder
+       at/above the project root. A CLEAN-SKIP / N/A signal for a non-quoin
+       session, never a WARN or gate FAIL. On a torn deploy (old affected_tests
+       lacking has_active_task_context) the getattr-guard skips this branch and
+       degrades to legacy always-run — never an AttributeError.
 
 Fail-CLOSED philosophy: the bug this check exists to catch is "gate green
 while CI red" — so any inability to CONFIRM green (missing toolchain,
@@ -90,6 +97,9 @@ exit 3, never a silent green nor a false hard-red.
 Env:
   QUOIN_DISABLE_CI_MIRROR=1 — exit 3 immediately (fail-CLOSED opt-out;
       NOT a clean-pass bypass, mirrors QUOIN_DISABLE_AFFECTED_TESTS).
+  QUOIN_REQUIRE_TASK_CONTEXT — literal "0" ONLY forces legacy always-run even
+      when --require-task-context is passed (disarms the exit-5 branch); unset
+      or any other value honors the flag. Shared with affected_tests (IVG-151).
   QUOIN_CI_MIRROR_INSTALL — auto (default) | always | never (D-04).
   QUOIN_SUBPROCESS_TIMEOUT — seconds, default 30; bounds every SHORT git
       subprocess run via the sibling affected_tests module. Correctness/
@@ -601,6 +611,8 @@ def main(argv: list[str] | None = None) -> int:
       3 — UNDETERMINABLE (fail-CLOSED): git-root failure, npm missing, install
           failed/timed out, deliverable detected but zero steps derivable, a
           step timed out, or QUOIN_DISABLE_CI_MIRROR=1
+      5 — no active quoin task context (NON-approving, NON-blocking): --project-root
+          + --require-task-context, via the sibling affected_tests detector (IVG-151)
     """
     # Env opt-out — exits 3 (NOT 0) so disabling cannot silently green-light APPROVE.
     if os.environ.get("QUOIN_DISABLE_CI_MIRROR", "").strip() == "1":
@@ -654,6 +666,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Print derived steps as JSON/text and exit WITHOUT running them.",
     )
     parser.add_argument(
+        "--require-task-context",
+        action="store_true",
+        dest="require_task_context",
+        help=(
+            "Opt-in: in --project-root mode, if no active quoin task context is "
+            "found (and QUOIN_REQUIRE_TASK_CONTEXT!=0), exit 5 (no-quoin-task-context) "
+            "WITHOUT deriving/running steps. Inert in --files/--files-from modes."
+        ),
+    )
+    parser.add_argument(
         "--format",
         choices=["json", "text"],
         default="json",
@@ -675,6 +697,30 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.project_root is not None:
         affected = _load_affected_tests()
+        # IVG-151: opt-in early exit-5 when NO active quoin task context is
+        # found, via the sibling affected_tests detector. Runs BEFORE
+        # resolve_repo so a non-quoin session never resolves a foreign git
+        # root. getattr-guard: on a torn deploy (new ci_mirror caller, old
+        # affected_tests lacking the detector) _has_ctx is None -> the guard is
+        # skipped -> legacy always-run (fail-OPEN to old behavior, never an
+        # AttributeError crash). Precedence: QUOIN_DISABLE_CI_MIRROR=1 already
+        # returned 3 at the top of main(); QUOIN_REQUIRE_TASK_CONTEXT literal
+        # "0" forces legacy always-run.
+        _has_ctx = getattr(affected, "has_active_task_context", None)
+        if (
+            args.require_task_context
+            and _has_ctx is not None
+            and os.environ.get("QUOIN_REQUIRE_TASK_CONTEXT", "").strip() != "0"
+            and not _has_ctx(args.project_root)
+        ):
+            res = CiMirrorResult(
+                changed=[],
+                deliverables=[],
+                ran_steps=False,
+                exit_reason="no-quoin-task-context",
+            )
+            _emit(res, fmt)
+            return 5
         try:
             repo = affected.resolve_repo(args.project_root)
         except RuntimeError as exc:

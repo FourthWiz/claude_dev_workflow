@@ -144,3 +144,27 @@ def test_ran_pytest_in_step_6b():
         "so exit 0 distinguishes 'affected green' from 'no affected tests — N/A' (MAJ-1). "
         f"Block preview: {block[:200]!r}"
     )
+
+
+def _step_6b_block(text: str) -> str:
+    import re
+    m_header = re.search(r"^### Step 6b:", text, re.MULTILINE)
+    assert m_header is not None, "Step 6b heading not found"
+    after = text[m_header.start() + len("### Step 6b:"):]
+    m_next = re.search(r"^### ", after, re.MULTILINE)
+    return after[: m_next.start()] if m_next else after[:3000]
+
+
+def test_require_task_context_flag_in_step_6b():
+    """IVG-151: Step 6b invocation must carry --require-task-context."""
+    block = _step_6b_block(_load())
+    assert "--require-task-context" in block, (
+        "review/SKILL.md Step 6b must pass --require-task-context to affected_tests.py")
+
+
+def test_exit5_verdict_rule_in_step_6b():
+    """IVG-151: Step 6b verdict rule must carry an exit 5 row + the hyphenated token."""
+    block = _step_6b_block(_load())
+    assert "exit 5" in block, "review/SKILL.md Step 6b must carry an exit 5 verdict-rule row"
+    assert "no-quoin-task-context" in block, (
+        "review/SKILL.md Step 6b must pin the hyphenated exit_reason token no-quoin-task-context")

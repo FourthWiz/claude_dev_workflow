@@ -606,3 +606,168 @@ class TestCLIExitCodes:
                 assert "-m" not in str(args_used) or "pytest" not in str(args_used), (
                     f"pytest must not run on --select-only, call: {call}"
                 )
+
+
+# ---------------------------------------------------------------------------
+# IVG-151: has_active_task_context detector (T-01 unit table)
+#
+# R-TMP: every case builds paths under pytest tmp_path — NEVER a path under the
+# real repo tree — so the walk-up cannot detect the real repo's task folders and
+# flip the assertion. tmp_path ancestors are system temp dirs with no
+# .workflow_artifacts/, so walk-up terminates at the filesystem root -> False.
+# ---------------------------------------------------------------------------
+
+class TestHasActiveTaskContext:
+    def test_absent_workflow_artifacts_false(self, tmp_path):
+        """(a) No .workflow_artifacts/ anywhere at/above -> False."""
+        assert _at.has_active_task_context(tmp_path) is False
+
+    def test_infra_only_false(self, tmp_path):
+        """(b) Only infra folders (memory/cache/finalized/trash) -> False."""
+        wa = tmp_path / ".workflow_artifacts"
+        for name in ("memory", "cache", "finalized", "trash"):
+            (wa / name).mkdir(parents=True)
+        assert _at.has_active_task_context(tmp_path) is False
+
+    def test_finalized_only_false(self, tmp_path):
+        """(c) finalized/ only -> False."""
+        (tmp_path / ".workflow_artifacts" / "finalized").mkdir(parents=True)
+        assert _at.has_active_task_context(tmp_path) is False
+
+    def test_real_task_folder_true(self, tmp_path):
+        """(d) >=1 real task folder -> True."""
+        (tmp_path / ".workflow_artifacts" / "some-task").mkdir(parents=True)
+        assert _at.has_active_task_context(tmp_path) is True
+
+    def test_dot_prefixed_child_only_false(self, tmp_path):
+        """(e) Only a dot-prefixed child -> False (dot-prefixed is excluded)."""
+        (tmp_path / ".workflow_artifacts" / ".hidden").mkdir(parents=True)
+        assert _at.has_active_task_context(tmp_path) is False
+
+    def test_subdir_walk_up_true(self, tmp_path):
+        """(f) Task folder at tmp_path; call from a nested subdir -> True (walk-up)."""
+        (tmp_path / ".workflow_artifacts" / "some-task").mkdir(parents=True)
+        sub = tmp_path / "quoin" / "sub"
+        sub.mkdir(parents=True)
+        assert _at.has_active_task_context(sub) is True
+
+    def test_oserror_degrades_to_present(self, tmp_path, monkeypatch):
+        """(g) OSError on iterdir degrades to context-PRESENT (True), NOT a raise."""
+        (tmp_path / ".workflow_artifacts" / "some-task").mkdir(parents=True)
+
+        def _boom(self):
+            raise OSError("simulated unreadable directory")
+
+        monkeypatch.setattr(Path, "iterdir", _boom)
+        # Must return True (degrade), not raise.
+        assert _at.has_active_task_context(tmp_path) is True
+
+    def test_filesystem_root_termination_false(self, tmp_path):
+        """(h) No task folder anywhere in the chain -> False (root termination)."""
+        deep = tmp_path / "a" / "b" / "c"
+        deep.mkdir(parents=True)
+        assert _at.has_active_task_context(deep) is False
+
+
+# ---------------------------------------------------------------------------
+# IVG-151: --require-task-context CLI behavior (T-03)
+# reproduction, false-green guard, non-regression matrix, env precedence,
+# flag-less invariance. R-TMP applies: all no-context dirs live under tmp_path.
+# ---------------------------------------------------------------------------
+
+def _init_git_repo(repo: Path) -> None:
+    repo.mkdir(parents=True, exist_ok=True)
+    _git("init", "-b", "main", cwd=repo)
+    _git("config", "user.email", "test@test.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+    (repo / "baseline.py").write_text("# baseline\n")
+    _git("add", "baseline.py", cwd=repo)
+    _git("commit", "-m", "baseline", cwd=repo)
+
+
+class TestRequireTaskContext:
+    def test_reproduction_foreign_nongit_exit_5(self, tmp_path):
+        """Foreign non-git dir, no WA + --require-task-context -> exit 5,
+        exit_reason=no-quoin-task-context, pytest NOT run, git NOT resolved."""
+        foreign = tmp_path / "foreign"
+        foreign.mkdir()
+        import io, contextlib
+        buf = io.StringIO()
+        with mock.patch.object(_at, "resolve_repo") as mock_resolve, \
+                mock.patch("subprocess.run") as mock_run:
+            with contextlib.redirect_stdout(buf):
+                rc = _cli(["--project-root", str(foreign),
+                           "--require-task-context", "--format", "json"])
+            mock_resolve.assert_not_called()  # early return BEFORE resolve_repo
+            for call in mock_run.call_args_list:
+                assert "pytest" not in str(call), f"pytest must not run, got {call}"
+        assert rc == 5, f"expected exit 5, got {rc}"
+        data = json.loads(buf.getvalue())
+        assert data["exit_reason"] == "no-quoin-task-context"
+        assert data["ran_pytest"] is False
+
+    def test_reproduction_foreign_gitrepo_exit_5(self, tmp_path):
+        """git-init'd foreign repo (no WA) + flag -> exit 5 (still no task context)."""
+        repo = tmp_path / "foreign"
+        _init_git_repo(repo)
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = _cli(["--project-root", str(repo),
+                       "--require-task-context", "--format", "json"])
+        assert rc == 5, f"expected exit 5, got {rc}"
+        assert json.loads(buf.getvalue())["exit_reason"] == "no-quoin-task-context"
+
+    def test_false_green_guard_active_context_red_exit_1(self, tmp_path):
+        """THE critical AC: active task context + red affected test -> exit 1,
+        NEVER 5. Context presence must take priority over the no-context path."""
+        repo = tmp_path / "repo"
+        _init_git_repo(repo)
+        # Active task context lives under the repo.
+        (repo / ".workflow_artifacts" / "some-task").mkdir(parents=True)
+        # A red affected test (staged dirty tree).
+        (repo / "src.py").write_text("def src(): return 42\n")
+        (repo / "test_src.py").write_text(
+            "def test_src_fails(): assert False, 'deliberate red — false-green guard'\n"
+        )
+        _git("add", "src.py", "test_src.py", cwd=repo)
+        rc = _cli(["--project-root", str(repo), "--require-task-context"])
+        assert rc == 1, (
+            f"FALSE-GREEN REGRESSION: active context + red suite must exit 1, got {rc}. "
+            "exit 5 here would be a silently-skipped red suite."
+        )
+
+    def test_matrix_active_context_green_exit_0(self, tmp_path):
+        """flag + task folder present + green affected test -> exit 0 (unchanged)."""
+        repo = tmp_path / "repo"
+        _init_git_repo(repo)
+        (repo / ".workflow_artifacts" / "some-task").mkdir(parents=True)
+        (repo / "src.py").write_text("def src(): return 1\n")
+        (repo / "test_src.py").write_text("def test_src_ok(): assert True\n")
+        _git("add", "src.py", "test_src.py", cwd=repo)
+        rc = _cli(["--project-root", str(repo), "--require-task-context"])
+        assert rc == 0, f"expected exit 0 (green), got {rc}"
+
+    def test_matrix_disable_wins_over_flag(self, tmp_path):
+        """QUOIN_DISABLE_AFFECTED_TESTS=1 + flag + no context -> exit 3 (disable wins)."""
+        foreign = tmp_path / "foreign"
+        foreign.mkdir()
+        rc = _cli(["--project-root", str(foreign), "--require-task-context"],
+                  env={"QUOIN_DISABLE_AFFECTED_TESTS": "1"})
+        assert rc == 3, f"disable must win (exit 3), got {rc}"
+
+    def test_env_require_zero_forces_legacy(self, tmp_path):
+        """flag + no context + QUOIN_REQUIRE_TASK_CONTEXT=0 -> legacy path
+        (foreign no-repo dir -> 3, NOT 5)."""
+        foreign = tmp_path / "foreign"
+        foreign.mkdir()
+        rc = _cli(["--project-root", str(foreign), "--require-task-context"],
+                  env={"QUOIN_REQUIRE_TASK_CONTEXT": "0"})
+        assert rc == 3, f"env=0 must force legacy (no-repo -> 3), got {rc}"
+
+    def test_flagless_invariance_foreign_no_repo_still_3(self, tmp_path):
+        """--project-root foreign no-repo dir WITHOUT the flag -> 3 (byte-for-byte legacy)."""
+        foreign = tmp_path / "foreign"
+        foreign.mkdir()
+        rc = _cli(["--project-root", str(foreign)])
+        assert rc == 3, f"flag-less legacy path must be exit 3, got {rc}"

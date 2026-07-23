@@ -28,9 +28,19 @@ Exit-code semantics intentionally INVERT branch_hygiene's convention:
        (changed source with nothing to run).  Distinct from 3 so the gate
        message can say "no affected tests found for changed sources."
        gate/review treat 3 and 4 identically (both blocking-surface).
+  5  — NO active quoin task context (NON-approving, NON-blocking).  Reachable
+       ONLY with --require-task-context in --project-root mode when
+       QUOIN_REQUIRE_TASK_CONTEXT!=0 and no active task folder is found at or
+       above the project root (IVG-151).  Distinct from 0/1/2/3/4: it is a
+       CLEAN-SKIP / N/A signal for a non-quoin session, never a WARN or a gate
+       FAIL.  With an active task context this code can NEVER be returned — the
+       real check runs and the existing 0/1/3/4 matrix is byte-for-byte intact.
 
 Env:
   QUOIN_DISABLE_AFFECTED_TESTS=1 — exit 3 immediately (fail-CLOSED opt-out)
+  QUOIN_REQUIRE_TASK_CONTEXT — literal "0" ONLY forces legacy always-run even
+      when --require-task-context is passed (disarms the exit-5 branch); unset
+      or any other value honors the flag (IVG-151).
   QUOIN_BASE_BRANCH — override the base branch probe order (default: tries
       origin/main, origin/master, main, master in order).
   QUOIN_SUBPROCESS_TIMEOUT — seconds, default 30; bounds every SHORT git
@@ -258,6 +268,54 @@ def resolve_repo(project_root: Path) -> Path | None:
             f"pass --repo-root explicitly to disambiguate: {paths}"
         )
     return repos[0]
+
+
+# Infra folders under .workflow_artifacts/ that do NOT count as an active task
+# context — they exist regardless of whether any task is in flight (IVG-151).
+_TASK_CONTEXT_INFRA: frozenset[str] = frozenset({"memory", "cache", "finalized", "trash"})
+
+
+def has_active_task_context(project_root: Path) -> bool:
+    """Return True if an active quoin task context is detectable at/above project_root.
+
+    Git-free detector (lives in the Git-helpers region for locality only).
+    Walks UP from project_root to the filesystem root looking for a
+    ``.workflow_artifacts/`` directory that contains at least one REAL task
+    folder — a child directory whose name is NOT dot-prefixed and is NOT one of
+    the infra folders (memory / cache / finalized / trash).
+
+    Direction invariants (the only never-false-green-safe choices — IVG-151
+    architecture R-01 / R-06 / R-07):
+      - Walk-up only ADDS context: a ``.workflow_artifacts/`` with no qualifying
+        task child does NOT short-circuit to False; the walk keeps going upward.
+        This is the subdir-safety guarantee — e.g. a check run from inside
+        ``quoin/`` still finds the workflow root one level up.
+      - OSError degrades to context-PRESENT (return True): an unreadable
+        ``.workflow_artifacts/`` must fail toward RUNNING the real check, never
+        toward silently skipping it, and never toward a crash.
+    Both directions fail toward RUNNING the real check — a false-skip of a real
+    red suite is the one outcome this design forbids.
+    """
+    try:
+        cur = project_root.resolve()
+        while True:
+            wa = cur / ".workflow_artifacts"
+            if wa.is_dir():
+                for child in wa.iterdir():
+                    if (
+                        child.is_dir()
+                        and not child.name.startswith(".")
+                        and child.name not in _TASK_CONTEXT_INFRA
+                    ):
+                        return True
+                # WA present but no qualifying task child — keep walking up
+                # (do NOT early-return False here — walk-up only adds context).
+            if cur.parent == cur:  # reached the filesystem root
+                return False
+            cur = cur.parent
+    except OSError:
+        # Degrade to context-PRESENT: fail toward RUNNING the real check.
+        return True
 
 
 def _resolve_base_branch(repo_str: str) -> str | None:
@@ -531,6 +589,9 @@ def main(argv: list[str] | None = None) -> int:
       3 — UNDETERMINABLE (fail-CLOSED): git-root failure, git error, unmatched
           sources, pytest missing, or QUOIN_DISABLE_AFFECTED_TESTS=1
       4 — .py source changed but selectors resolved to empty set
+      5 — no active quoin task context (NON-approving, NON-blocking); reachable
+          only with --require-task-context in --project-root mode when
+          QUOIN_REQUIRE_TASK_CONTEXT!=0 (IVG-151)
     """
     # Env opt-out — exits 3 (NOT 0) so disabling cannot silently green-light APPROVE
     if os.environ.get("QUOIN_DISABLE_AFFECTED_TESTS", "").strip() == "1":
@@ -595,6 +656,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--require-task-context",
+        action="store_true",
+        dest="require_task_context",
+        help=(
+            "Opt-in: in --project-root mode, if no active quoin task context is "
+            "found (and QUOIN_REQUIRE_TASK_CONTEXT!=0), exit 5 (no-quoin-task-context) "
+            "WITHOUT running pytest. Inert in --files/--files-from modes."
+        ),
+    )
+    parser.add_argument(
         "--format",
         choices=["json", "text"],
         default="json",
@@ -623,6 +694,35 @@ def main(argv: list[str] | None = None) -> int:
     repo_root: Path | None = args.repo_root
 
     if args.project_root is not None:
+        # IVG-151: opt-in early exit-5 when NO active quoin task context is
+        # found. This is the FIRST statement in the --project-root block,
+        # BEFORE resolve_repo(), so a non-quoin session never resolves a
+        # foreign git root or runs any git subprocess (that noise is exactly
+        # what the ticket removes).
+        # Precedence invariants (pin — do NOT reorder):
+        #   - QUOIN_DISABLE_AFFECTED_TESTS=1 already returned 3 at the very top
+        #     of main() (before argparse), so disable NATURALLY wins over this.
+        #   - QUOIN_REQUIRE_TASK_CONTEXT literal "0" forces legacy always-run
+        #     (mirrors the QUOIN_DISABLE_* literal-value parsing convention).
+        if (
+            args.require_task_context
+            and os.environ.get("QUOIN_REQUIRE_TASK_CONTEXT", "").strip() != "0"
+            and not has_active_task_context(args.project_root)
+        ):
+            sel = Selection(
+                changed=[],
+                selectors=[],
+                unmatched_sources=[],
+                ignored=[],
+                ran_pytest=False,
+                pytest_returncode=None,
+                exit_reason="no-quoin-task-context",
+            )
+            if fmt == "text":
+                print(_format_text(sel))
+            else:
+                print(json.dumps(sel.to_dict(), indent=2))
+            return 5
         # --project-root mode: resolve git repo, compute diff
         try:
             repo = resolve_repo(args.project_root)
