@@ -288,14 +288,18 @@ This trigger is BEST-EFFORT / ADVISORY judgment — there is no numeric threshol
 
 NEVER write automatically — this gate is the safety guarantee (never auto-writes; always diff + approve).
 
-**Under `[autonomous]` OR `[no-interactive]` / non-interactive:** skip the `AskUserQuestion` —
-auto-select **Option 2: "Reject — keep repo spec as-is"**. This is a SAFE-DEGRADE boundary, NOT
-a fail-closed helper STOP: the safe degrade for a human-owned artifact is to do nothing to it
-(auto-Reject), so there is no need to write a needs-decision sentinel. This gate NEVER
-auto-writes the repo spec, in any mode — the repo main spec is a human-owned artifact, and neither
-autonomous nor background mode may fabricate or silently merge changes into it. The drafted
-proposal (Step 1 above) is discarded; the task spec written earlier is unaffected either way. (Parse
-`[no-interactive]` at bootstrap into `_INTERACTIVE=false`, same convention as `[autonomous]`.)
+**Under `[autonomous]`:** skip the `AskUserQuestion` — auto-select **Option 2: "Reject — keep repo
+spec as-is"**. This gate NEVER auto-writes the repo spec, autonomous or not — the repo main spec
+is a human-owned artifact, and autonomous mode must not fabricate or silently merge changes into
+it. The drafted proposal (Step 1 above) is discarded; the task spec written earlier is unaffected
+either way.
+
+**Under `[no-interactive]` / non-interactive (SAFE-DEGRADE, not fail-closed):** parse
+`[no-interactive]` at bootstrap into `_INTERACTIVE=false` (same convention as `[autonomous]`); when
+`_INTERACTIVE` is false, take the SAME auto-Reject as the autonomous arm — leave the repo spec
+untouched. This is a `safe-degrade` boundary, NOT a fail-closed helper STOP: the safe
+degrade for a human-owned artifact is to do nothing to it (auto-Reject), so no needs-decision
+sentinel is written. The gate never proceeds on a default write in any mode.
 
 On Approve: write via `<path>.tmp` + atomic `mv` to `.workflow_artifacts/spec.md`, then `python3 __QUOIN_HOME__/scripts/validate_artifact.py .workflow_artifacts/spec.md` → expect exit 0. On Reject (including the autonomous auto-Reject above): leave the repo spec untouched. Either way, the task spec written earlier is unaffected.
 
