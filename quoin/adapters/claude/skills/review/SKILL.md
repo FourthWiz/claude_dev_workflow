@@ -366,7 +366,7 @@ This is a diff-independent hard precondition, parallel to Step 6a's branch-place
 
 ```
 PROJECT_ROOT="$(pwd)"
-python3 __QUOIN_HOME__/scripts/affected_tests.py --project-root "$PROJECT_ROOT" --format text
+python3 __QUOIN_HOME__/scripts/affected_tests.py --project-root "$PROJECT_ROOT" --require-task-context --format text
 ```
 
 The helper resolves the git repo from `--project-root` itself (CRIT-1 fix: the outer project root is NOT a git repo, only the `quoin/` subtree is; the caller does NOT run `git` directly). The diff basis prefers `@{u}...HEAD` (three-dot merge-base diff — sharing the same `@{u}` ANCHOR that Step 6a uses in its `@{u}..HEAD` two-dot rev-list count; both are well-defined when HEAD IS the protected branch, MIN-1) and falls back to the working-tree+staged diff when that is empty (CRIT-2 fix: `main...HEAD` collapses to empty on the protected branch; the fallback produces a usable changed-file set in that state). Step 6b therefore inherits Step 6a's lesson rather than relitigating it.
@@ -376,6 +376,7 @@ The helper resolves the git repo from `--project-root` itself (CRIT-1 fix: the o
 - exit 0 + `ran_pytest=false` → docs-only changeset or clean tree — no affected tests to run (N/A) → APPROVED permissible. When `ran_pytest=false` the review prose MUST state "no affected tests (docs-only / N/A)" rather than asserting tests passed, so the verdict is not over-claimed. (The dominant quoin task shape — SKILL.md/docs-only edits — lands here and is correctly approvable without running the whole suite.)
 - exit 1 → at least one affected test RED → verdict MUST be `CHANGES_REQUESTED`; raise a CRITICAL issue listing the failing selectors.
 - exit 3 or 4 → affected-area green UNCONFIRMED (a changed `.py` source had no resolvable test, or the changed set was undeterminable) → MUST NOT emit `APPROVED`. Either `CHANGES_REQUESTED` (if the cause is an unmatched source that needs a test) or surface to the user for explicit acknowledgement. Default: do-NOT-approve (fail-CLOSED rule).
+- exit 5 (exit_reason: no-quoin-task-context) → no active quoin task context → CLEAN SKIP / N/A (nothing to test in a non-quoin session); APPROVED remains permissible and MUST state "N/A — no active quoin task context" rather than asserting tests passed (no over-claim). NOT CHANGES_REQUESTED, NOT a blocking surface.
 - script missing → non-blocking note; fall back to the generic "run the tests" behavior (fail-OPEN only on absent binary).
 
 **Cross-reference to IVG-71 background:** This precondition exists because a smoke-only review-1 APPROVED a deliverable whose affected-area tests (test_dashboard_assets.py) were red; review-2 caught it a full cycle late (IVG-71).
@@ -411,7 +412,7 @@ Reference files (apply HERE at the body-generation WRITE-SITE — per format-kit
 # When referring to a sibling artifact's task or risk, use plain English (e.g., "the parent plan's T-04"), NOT a bare T-NN token. See format-kit.md §1 / glossary.md.
 Compose the format-aware body per the `review` artifact-type sections in format-kit.md §2:
 - `## Summary` — caveman prose: 2-3 sentence review outcome summary.
-- `## Verdict` — one line: `APPROVED`, `CHANGES_REQUESTED`, or `BLOCKED`. An `APPROVED` verdict asserts that the affected-area test suite is green (or N/A — no affected tests for a docs-only changeset), per the Step 6b hard precondition. Do NOT write `APPROVED` unless Step 6b was run and returned exit 0.
+- `## Verdict` — one line: `APPROVED`, `CHANGES_REQUESTED`, or `BLOCKED`. An `APPROVED` verdict asserts that the affected-area test suite is green (or N/A — no affected tests for a docs-only changeset), per the Step 6b hard precondition. Do NOT write `APPROVED` unless Step 6b was run and returned exit 0 (or exit 5 — the no-active-quoin-task-context CLEAN-SKIP / N/A carve-out, which is also approvable and MUST be annotated "N/A — no active quoin task context").
 - `## Plan Compliance` — caveman prose: how well implementation matches the plan; gaps.
 - `## Spec Compliance` — caveman prose: how well the implementation satisfies the task spec's acceptance criteria; GRANDFATHERED wording when no spec exists — write exactly `No spec — verified against plan only.`
 - `## Issues Found` — terse numbered list per severity (CRITICAL / MAJOR / MINOR), each item: description + Location (file:line) + Impact + Fix. On Medium/Large fan-out, each item is also dimension-labeled (security / performance / architecture-integration).

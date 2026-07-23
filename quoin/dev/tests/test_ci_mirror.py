@@ -409,3 +409,134 @@ class TestExitCode2:
         missing = tmp_path / "does-not-exist.txt"
         rc = _ci.main(["--files-from", str(missing)])
         assert rc == 2
+
+
+# ---------------------------------------------------------------------------
+# IVG-151: --require-task-context (T-05)
+# R-TMP: all no-context dirs live under pytest tmp_path, isolated from the repo.
+# ---------------------------------------------------------------------------
+
+def _init_git_repo(repo: Path) -> None:
+    repo.mkdir(parents=True, exist_ok=True)
+    _git("init", "-b", "main", cwd=repo)
+    _git("config", "user.email", "test@test.com", cwd=repo)
+    _git("config", "user.name", "Test", cwd=repo)
+    (repo / "baseline.py").write_text("# baseline\n")
+    _git("add", "baseline.py", cwd=repo)
+    _git("commit", "-m", "baseline", cwd=repo)
+
+
+class TestRequireTaskContext:
+    def test_foreign_nongit_exit_5(self, tmp_path):
+        """Foreign non-git dir, no WA + flag -> exit 5, no-quoin-task-context.
+
+        A non-git foreign dir yields a resolve failure (no repo) on the legacy
+        path, so the exit-5 early-return (before resolve_repo) is what makes 5
+        reachable here."""
+        foreign = tmp_path / "foreign"
+        foreign.mkdir()
+        with mock.patch("subprocess.run") as mock_run:
+            rc, out = _cli_capture(
+                ["--project-root", str(foreign), "--require-task-context", "--format", "json"]
+            )
+            for call in mock_run.call_args_list:
+                assert "npm" not in str(call), f"steps must not run, got {call}"
+        assert rc == 5, f"expected exit 5, got {rc}"
+        assert json.loads(out)["exit_reason"] == "no-quoin-task-context"
+
+    def test_foreign_gitrepo_exit_5(self, tmp_path):
+        """git-init'd foreign repo (no WA) + flag -> exit 5."""
+        repo = tmp_path / "foreign"
+        _init_git_repo(repo)
+        rc, out = _cli_capture(
+            ["--project-root", str(repo), "--require-task-context", "--format", "json"]
+        )
+        assert rc == 5, f"expected exit 5, got {rc}"
+        assert json.loads(out)["exit_reason"] == "no-quoin-task-context"
+
+    def test_no_deliverable_0_to_5_transition(self, tmp_path):
+        """no-deliverable->5: dirty non-package tree. WITHOUT flag -> 0 (no-deliverable);
+        WITH flag + no context -> 5."""
+        repo = tmp_path / "foreign"
+        _init_git_repo(repo)
+        (repo / "README.md").write_text("# docs change\n")
+        _git("add", "README.md", cwd=repo)
+        # WITHOUT flag -> exit 0, no-deliverable
+        rc0, out0 = _cli_capture(["--project-root", str(repo)])
+        assert rc0 == 0, f"expected exit 0 without flag, got {rc0}"
+        assert json.loads(out0)["exit_reason"] == "no-deliverable"
+        # WITH flag + no task context -> exit 5
+        rc5, out5 = _cli_capture(["--project-root", str(repo), "--require-task-context"])
+        assert rc5 == 5, f"expected exit 5 with flag, got {rc5}"
+        assert json.loads(out5)["exit_reason"] == "no-quoin-task-context"
+
+    def test_no_changes_0_to_5_transition(self, tmp_path):
+        """no-changes->5: fully clean tree. WITHOUT flag -> 0 (no-changes);
+        WITH flag + no context -> 5."""
+        repo = tmp_path / "foreign"
+        _init_git_repo(repo)
+        # WITHOUT flag -> exit 0, no-changes
+        rc0, out0 = _cli_capture(["--project-root", str(repo)])
+        assert rc0 == 0, f"expected exit 0 without flag, got {rc0}"
+        assert json.loads(out0)["exit_reason"] == "no-changes"
+        # WITH flag + no context -> exit 5
+        rc5, out5 = _cli_capture(["--project-root", str(repo), "--require-task-context"])
+        assert rc5 == 5, f"expected exit 5 with flag, got {rc5}"
+        assert json.loads(out5)["exit_reason"] == "no-quoin-task-context"
+
+    def test_flag_context_present_no_deliverable_stays_0(self, tmp_path):
+        """flag + active task context: no-deliverable stays exit 0 (never 5)."""
+        repo = tmp_path / "repo"
+        _init_git_repo(repo)
+        (repo / ".workflow_artifacts" / "some-task").mkdir(parents=True)
+        (repo / "README.md").write_text("# docs\n")
+        _git("add", "README.md", cwd=repo)
+        rc, out = _cli_capture(["--project-root", str(repo), "--require-task-context"])
+        assert rc == 0, f"context present -> legacy no-deliverable exit 0, got {rc}"
+        assert json.loads(out)["exit_reason"] == "no-deliverable"
+
+    def test_flag_context_present_no_changes_stays_0(self, tmp_path):
+        """flag + active task context: no-changes stays exit 0 (never 5)."""
+        repo = tmp_path / "repo"
+        _init_git_repo(repo)
+        (repo / ".workflow_artifacts" / "some-task").mkdir(parents=True)
+        # .workflow_artifacts is untracked; the tree from git's diff basis is clean.
+        rc, out = _cli_capture(["--project-root", str(repo), "--require-task-context"])
+        assert rc == 0, f"context present -> legacy no-changes exit 0, got {rc}"
+        assert json.loads(out)["exit_reason"] == "no-changes"
+
+    def test_getattr_guard_torn_deploy_degrades(self, tmp_path, monkeypatch):
+        """Torn deploy: sibling affected_tests lacks has_active_task_context ->
+        getattr-guard skips exit-5, degrades to legacy always-run, no AttributeError."""
+        real = _ci._load_affected_tests()
+
+        class _TornAffected:
+            resolve_repo = staticmethod(real.resolve_repo)
+            changed_files = staticmethod(real.changed_files)
+            # deliberately NO has_active_task_context
+
+        monkeypatch.setattr(_ci, "_load_affected_tests", lambda: _TornAffected())
+
+        repo = tmp_path / "foreign"
+        _init_git_repo(repo)  # clean tree, no WA
+        rc, out = _cli_capture(["--project-root", str(repo), "--require-task-context"])
+        assert rc != 5, f"torn deploy must NOT exit 5 (degrade to legacy), got {rc}"
+        assert rc == 0
+        assert json.loads(out)["exit_reason"] == "no-changes"
+
+    def test_disable_wins_over_flag(self, tmp_path, monkeypatch):
+        """QUOIN_DISABLE_CI_MIRROR=1 + flag -> exit 3 (disable wins)."""
+        monkeypatch.setenv("QUOIN_DISABLE_CI_MIRROR", "1")
+        foreign = tmp_path / "foreign"
+        foreign.mkdir()
+        rc, _ = _cli_capture(["--project-root", str(foreign), "--require-task-context"])
+        assert rc == 3, f"disable must win (exit 3), got {rc}"
+
+    def test_env_require_zero_forces_legacy(self, tmp_path, monkeypatch):
+        """flag + no context + QUOIN_REQUIRE_TASK_CONTEXT=0 -> legacy (clean tree -> 0, not 5)."""
+        monkeypatch.setenv("QUOIN_REQUIRE_TASK_CONTEXT", "0")
+        repo = tmp_path / "foreign"
+        _init_git_repo(repo)
+        rc, out = _cli_capture(["--project-root", str(repo), "--require-task-context"])
+        assert rc == 0, f"env=0 forces legacy (no-changes -> 0), got {rc}"
+        assert json.loads(out)["exit_reason"] == "no-changes"
