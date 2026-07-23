@@ -353,6 +353,7 @@ Search all `forgotten/<date>.md` files for entries whose text contains `<pattern
 
 After successful restore: remove the entry block from its `forgotten/<date>.md` file (atomic rename pattern: write updated content to `<path>.tmp`, then `os.rename`).
 
+<!-- decision-gate: out-of-scope site=sleep-purge reason=user-invoked-destructive-requires-older-than -->
 ## --purge --older-than 90d
 
 **Usage forms (mutually exclusive scope flags):**

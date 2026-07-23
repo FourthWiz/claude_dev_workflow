@@ -466,9 +466,22 @@ Detection: parse `[autonomous]` from the incoming prompt (subagent mode), OR rea
 
 This check is independent of the Step 3.5 benchmark dual-guard bypass — the two auto-approve paths are keyed on different signals and are not mutually exclusive gates on the same run.
 
+<!-- decision-gate: fail-closed site=gate-approval -->
 ### Step 4: STOP and wait
 
-Do NOT proceed. Do NOT invoke the next skill. Do NOT suggest "I'll go ahead and start implementing."
+**Non-interactive fail-closed check (evaluate BEFORE the STOP; Step 3.6 autonomous
+auto-approve is evaluated first and takes precedence).** The human-approval gate is a plain
+STOP-and-wait, not an `AskUserQuestion`, so the `[no-interactive]` pre-flight sentinel is
+the SOLE detector here (there is no AUQ to backstop). If autonomous mode is NOT active
+(Step 3.6 did not auto-approve) AND the incoming prompt carries `[no-interactive]` (parsed
+and stripped at bootstrap into `_INTERACTIVE=false` — `/run` injects it onto non-autonomous
+phase/gate subagent spawns), then a human cannot approve this STOP: FAIL CLOSED — run
+`python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill gate --site gate-approval --reason "human-approval gate cannot reach a human in a non-interactive context" --resume-hint "re-run /gate interactively, or run under --autonomous"`,
+echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP. Do NOT
+auto-approve. The pre-existing FAIL branch already fails closed (returns the verdict, never
+auto-approves) — do not weaken it. Rule doc: `__QUOIN_HOME__/memory/decision-gate-guard.md`.
+
+Otherwise (interactive): Do NOT proceed. Do NOT invoke the next skill. Do NOT suggest "I'll go ahead and start implementing."
 
 The user must explicitly invoke the next phase. This is non-negotiable.
 

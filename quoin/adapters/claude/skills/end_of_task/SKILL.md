@@ -238,13 +238,38 @@ Fail-OPEN path (fires only when Agent dispatch fails):
 
 This skill has 8 sequential steps; running it in a heavy / long-lived
 session is a known cause of stream-idle timeouts (Apr 28 18:13 incident).
-Before doing any work, check session activity age:
+Before doing any work, check session activity age. For the ordered rule below, first parse
+(and strip) the `[no-session-age-guard]`, `[autonomous]`, and `[no-interactive]` leading
+sentinels from the incoming prompt (`[autonomous]`→`_AUTONOMOUS=true`,
+`[no-interactive]`→`_INTERACTIVE=false`; defaults false/true).
 
+<!-- decision-gate: fail-closed site=session-age -->
 ```
 python3 __QUOIN_HOME__/scripts/session_age_guard.py --threshold-hours 6.0 --project-root "$(pwd)"
 ```
 
-If exit 1 (`OVER|...`): STOP. Tell the user verbatim:
+The guard's exit-code contract is UNCHANGED (still exit 1 only on `OVER`, exit
+0 otherwise, fail-OPEN on other codes). On **exit 1 (`OVER|...`)**, evaluate this ORDERED rule
+(IVG-146 absorbed; composes AC-7/AC-8 with the fail-closed contract —
+`__QUOIN_HOME__/memory/decision-gate-guard.md`):
+
+1. **`[no-session-age-guard]` present** → strip + BYPASS the guard entirely (UNCHANGED
+   power-user path); continue to `## When to use`.
+2. **`_AUTONOMOUS`** → preserve the current autonomous behavior EXACTLY (pinned, do NOT change):
+   STOP on `OVER` with the verbatim message below. Autonomous `/end_of_task` is NOT bypassed
+   (`/run` injects `[autonomous]`, never `[no-session-age-guard]`), so an autonomous OVER stops
+   exactly as it does today — this task does not newly STOP nor newly bypass an autonomous run.
+3. **`[no-interactive]` / non-interactive (and NOT `_AUTONOMOUS`)** → FAIL CLOSED: a human
+   cannot pick a session-age option in a background context, so run
+   `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill end_of_task --site session-age --reason "session over the age cap; proceed/checkpoint/abort decision could not be surfaced" --resume-hint "re-run /end_of_task interactively, or prefix [no-session-age-guard]"`,
+   echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP.
+4. **else (interactive)** → present an `AskUserQuestion` 3-option list (IVG-146 UX):
+   - **Proceed in this session** — continue `/end_of_task` now despite the age (override).
+   - **Checkpoint and finish in a fresh session (recommended)** — run `/checkpoint`, then STOP
+     so the user re-runs `/end_of_task` in a fresh chat.
+   - **Abort** — stop with no changes.
+
+Verbatim STOP message (rule step 2, and the informational text for the option list):
   "Current session has been active for Xh — over the 6h soft cap.
    /end_of_task is failure-prone in long sessions. Please:
      1. Run /end_of_day to save state
@@ -267,7 +292,17 @@ Parse the incoming prompt for the `[autonomous]` sentinel (may stack after `[no-
 e.g. `[no-redispatch] [autonomous]`, since `/run` prefixes it onto this skill's terminal
 Phase-6 spawn). If present, set internal state `_AUTONOMOUS=true` for the remainder of this
 skill's execution; strip the sentinel before further parsing. Default `_AUTONOMOUS=false`
-(opt-in only). `_AUTONOMOUS` gates ONLY the four interactive body-prompt sites in the
+(opt-in only).
+
+Also parse the `[no-interactive]` sentinel (leading, stackable, stripped before further
+parsing — same convention). If present, set `_INTERACTIVE=false`; default `_INTERACTIVE=true`
+(interactive). `/run` injects `[no-interactive]` onto every NON-autonomous phase-subagent
+spawn so a background decision gate FAILS CLOSED instead of silently proceeding — see
+`__QUOIN_HOME__/memory/decision-gate-guard.md`. `[autonomous]` and `[no-interactive]` are
+mutually exclusive per spawn (autonomous carries pre-authorized answers; no-interactive has
+none, so it fails closed).
+
+`_AUTONOMOUS` gates ONLY the four interactive body-prompt sites in the
 "Process" section below (Steps 1b, 2, 3, 4) — it does not change the §0 dispatch / §0b
 session-age-guard behavior above, and does not change the order of or preconditions for
 (APPROVED review, passed gate) any of the 8 sequential steps. **The "never auto-create a
@@ -355,6 +390,7 @@ project root):
    ```
 
    Use AskUserQuestion before continuing to Step 2:
+   <!-- decision-gate: fail-closed site=garbage-files -->
    ```
    AskUserQuestion(
      question="Garbage files or debug leftovers found. How would you like to proceed?",
@@ -372,6 +408,14 @@ project root):
    Debug leftovers found in tracked-file diffs stay advisory-only and are never
    auto-modified or auto-deleted.
 
+   **Non-interactive / `[no-interactive]` (and NOT `_AUTONOMOUS`):** if `_INTERACTIVE` is
+   false (the `[no-interactive]` sentinel was set, or `AskUserQuestion` is unavailable —
+   e.g. an Agent subagent, where it is not provisioned — or returns no usable answer),
+   FAIL CLOSED — do NOT proceed on a default and do NOT stall: run
+   `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill end_of_task --site garbage-files --reason "working-tree cleanup decision could not be surfaced" --resume-hint "re-run /end_of_task interactively, or pass --autonomous"`,
+   echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP.
+   Rule doc: `__QUOIN_HOME__/memory/decision-gate-guard.md`.
+
 4. **If nothing found** — print one line and continue:
    ```
    Working-tree cleanup scan: ✅ clean
@@ -382,6 +426,7 @@ project root):
 Run `git status`. If there are uncommitted changes:
 - Show them to the user
 - Use AskUserQuestion to get the commit decision (no stash option — stash manually then re-invoke if needed):
+  <!-- decision-gate: fail-closed site=commit-decision -->
   ```
   AskUserQuestion(
     question="There are uncommitted changes. Commit them now or abort?",
@@ -396,6 +441,12 @@ Run `git status`. If there are uncommitted changes:
   the diff/plan context. Print one line: `[quoin: autonomous — committing uncommitted
   changes]`. This never creates a PR — the "never auto-create a PR" invariant applies here
   exactly as in interactive mode.
+- **Non-interactive / `[no-interactive]` (and NOT `_AUTONOMOUS`):** if `_INTERACTIVE` is
+  false (`[no-interactive]` set, or `AskUserQuestion` unavailable/suppressed), FAIL CLOSED —
+  the commit/abort decision must never default silently: run
+  `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill end_of_task --site commit-decision --reason "uncommitted-changes commit decision could not be surfaced" --resume-hint "re-run /end_of_task interactively, or pass --autonomous"`,
+  echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP. Rule doc:
+  `__QUOIN_HOME__/memory/decision-gate-guard.md`.
 - If **Commit**: collect a conventional commit message inline.
 - If **Abort**: STOP. Tell the user: "Stash manually then re-invoke /end_of_task."
 Capture the answer as `commit_or_abort` (`"commit"` or `"abort"`).
@@ -404,6 +455,7 @@ If no uncommitted changes: set `commit_or_abort = "commit"` (nothing to do) and 
 **Step 3: Lessons learned (interactive — capture inline)**
 
 Use AskUserQuestion to check for lessons:
+<!-- decision-gate: best-effort site=lessons-prompt -->
 ```
 AskUserQuestion(
   question="Task complete. Anything that surprised you, or that the workflow should handle differently next time?",
@@ -432,6 +484,7 @@ Auto-capture lessons if:
 **Step 4: Archive type (interactive — capture inline)**
 
 If the task folder lives directly under `.workflow_artifacts/` (not inside a parent feature folder), use AskUserQuestion:
+<!-- decision-gate: fail-closed site=archive-type -->
 ```
 AskUserQuestion(
   question="Is the feature '<task-name>' fully complete, or is there more work planned under this folder?",
@@ -445,6 +498,13 @@ AskUserQuestion(
 **Autonomous mode:** if `_AUTONOMOUS` is true, skip the `AskUserQuestion` — auto-select the
 safe default **"Fully complete"** (`archive_type = "feature"`, top-level archive). Print one
 line: `[quoin: autonomous — archiving task folder to finalized/]`.
+
+**Non-interactive / `[no-interactive]` (and NOT `_AUTONOMOUS`):** if `_INTERACTIVE` is false
+(`[no-interactive]` set, or `AskUserQuestion` unavailable/suppressed), FAIL CLOSED — do not
+default the archive decision: run
+`python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill end_of_task --site archive-type --reason "archive-type decision could not be surfaced" --resume-hint "re-run /end_of_task interactively, or pass --autonomous"`,
+echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP. Rule doc:
+`__QUOIN_HOME__/memory/decision-gate-guard.md`.
 
 Capture as `archive_type`: `"feature"` (fully complete) or `"none"` (more work planned — do not archive).
 

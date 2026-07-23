@@ -233,6 +233,7 @@ Fail-OPEN path (fires only when Agent dispatch fails):
 ## Session bootstrap
 
 On start:
+0. Parse the `[no-interactive]` sentinel from the incoming prompt (leading, stackable, strip before further parsing) into `_INTERACTIVE=false` (default `_INTERACTIVE=true`). `/rollback` has no `[autonomous]` arm; when `_INTERACTIVE` is false the destructive-undo confirm (Step 4) FAILS CLOSED instead of proceeding. See `__QUOIN_HOME__/memory/decision-gate-guard.md`.
 1. Read `<task_dir>/current-plan.md` to understand task structure. Resolve `<task_dir>` via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. architecture.md: ALWAYS `<task-root>/architecture.md`. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md` (line 2 below — NOT edited per D-03). If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
 2. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `rollback`
 
@@ -271,6 +272,7 @@ Uncommitted:
 
 Use AskUserQuestion to ask the user what they want to undo:
 
+<!-- decision-gate: best-effort site=rollback-scope -->
 ```
 AskUserQuestion(
   question="What would you like to roll back?",
@@ -330,6 +332,7 @@ Present exactly what will happen:
 
 Use AskUserQuestion to get explicit user confirmation before proceeding:
 
+<!-- decision-gate: fail-closed site=destructive-undo -->
 ```
 AskUserQuestion(
   question="Proceed with the rollback as shown above?",
@@ -339,6 +342,16 @@ AskUserQuestion(
   ]
 )
 ```
+
+**Non-interactive / `[no-interactive]` fail-closed (rollback has NO `[autonomous]` arm — it is
+source-mutating and user-invoked, so it never auto-confirms a destructive undo):** if
+`_INTERACTIVE` is false (the `[no-interactive]` sentinel was parsed and stripped at bootstrap,
+or `AskUserQuestion` is unavailable — e.g. an Agent subagent, where it is not provisioned),
+a human cannot confirm this destructive operation: FAIL CLOSED — do NOT execute the rollback
+and do NOT default to "Confirm". Run
+`python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill rollback --site destructive-undo --reason "destructive rollback confirmation could not be surfaced" --resume-hint "re-run /rollback interactively"`,
+echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP. Rule doc:
+`__QUOIN_HOME__/memory/decision-gate-guard.md`.
 
 If the user selects "Cancel": STOP. Tell the user: "Rollback cancelled. No changes were made."
 

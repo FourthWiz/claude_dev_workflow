@@ -90,6 +90,7 @@ After creating the task folder, initialize the cost ledger:
 /run pipelines span every phase and are even more failure-prone than /end_of_task
 when run from a long-lived session. Before starting the pipeline, check session age:
 
+<!-- decision-gate: best-effort site=run-session-age reason=orchestrator-preflight-stops-safely-with-no-session-age-guard-bypass -->
 ```
 python3 __QUOIN_HOME__/scripts/session_age_guard.py --threshold-hours 6.0 --project-root "$(pwd)"
 ```
@@ -149,6 +150,45 @@ Under `AUTONOMOUS`, `/run` prefixes the `[autonomous]` sentinel onto EVERY sub-p
 **Transitive propagation rule:** propagation is not limited to `/run`'s direct spawns — every spawning skill that itself spawns a deeper skill MUST re-prefix `[autonomous]` onto that deeper spawn, so the sentinel reaches the full transitive spawn set. Concretely: `thorough_plan` re-prefixes `[autonomous]` onto its `/plan`/`/critic`/`/revise`/`/revise-fast` spawns, and `review` re-prefixes `[autonomous]` onto its Large-fan-out `/security_review` and dimension-subagent spawns. Each sub-skill parses and strips `[autonomous]` at its own bootstrap into a local `_AUTONOMOUS` state.
 
 **Stacking:** leading sentinels stack — a spawn prompt may read `[no-redispatch] [autonomous] <task description>`. Each sentinel is parsed and stripped independently; order does not matter.
+
+## Non-interactive fail-closed propagation (`[no-interactive]` sentinel)
+
+When `/run` is NOT autonomous (`AUTONOMOUS` is false), a phase spawned as an Agent subagent
+cannot reach a human — `AskUserQuestion` is not provisioned to subagents (POC finding, see
+`__QUOIN_HOME__/memory/decision-gate-guard.md`). So a decision-gating phase (`/end_of_task`,
+`/gate`, `/implement`, `/rollback`) spawned by a non-autonomous `/run` would silently stall or
+proceed on a default. To prevent that, `/run` prefixes the `[no-interactive]` sentinel onto
+EVERY non-autonomous phase-subagent spawn prompt (the same 9 direct sub-phase spawns listed
+under Autonomous propagation, PLUS every subagent-mode `/gate` spawn), so any decision gate
+reached in a spawned phase FAILS CLOSED (writes `needs-decision-{task}.md`, emits
+`gate-result: NEEDS-DECISION`) instead of stalling.
+
+- **Mutual exclusivity:** `[autonomous]` and `[no-interactive]` are mutually exclusive per
+  spawn. Under `AUTONOMOUS`, `/run` injects `[autonomous]` (pre-authorized answers); when NOT
+  autonomous, `/run` injects `[no-interactive]` (fail-closed). Never both on the same spawn.
+- **INLINE-GATE EXCLUSION:** the injection applies ONLY to phase-subagent spawns and
+  subagent-mode `/gate` spawns. The inline post-implement and post-review gates run in the
+  FOREGROUND `/run` session where a human IS reachable — `/run` MUST NOT inject
+  `[no-interactive]` onto them, or a normal interactive `/run` would wrongly fail-close its own
+  inline gate. (This mirrors the inline-vs-spawn boundary the Autonomous propagation section
+  states for `[autonomous]` inline gates.)
+- **`/thorough_plan` is excluded:** `/run` does NOT inject `[no-interactive]` onto the
+  `/thorough_plan` spawn — `/thorough_plan` spawns no fail-closed skill (its deeper
+  `/plan`/`/critic`/`/revise` spawns have no decision gate), so injecting it would be a
+  false-positive with no benefit (R-06 containment).
+- **Stacking:** a spawn prompt may read `[no-redispatch] [no-interactive] <task description>`.
+
+## Routing a NEEDS-DECISION phase return
+
+A spawned phase subagent that fails closed emits a structured
+`gate-result: NEEDS-DECISION` block as its final message (and has already written
+`needs-decision-{task}.md` under `.workflow_artifacts/memory/`). `/run` MUST recognize
+`NEEDS-DECISION` as a phase-return token alongside review-`BLOCKED` and gate-`FAIL`, and route
+it the SAME way: surface the block to the user, STOP the pipeline, and do NOT silent-proceed to
+the next phase. Under `AUTONOMOUS` this composes with the existing hard-stop/halt-sentinel path
+— the phase already wrote its own `needs-decision-{task}.md`, and `/run` treats the
+NEEDS-DECISION return as a hard stop (it never auto-resolves a decision the phase could not
+surface).
 
 ## Autonomous hard stops (halt-sentinel)
 

@@ -291,6 +291,9 @@ Parse the JSON output. The check uses `repos[]` from the JSON and filters on `on
 
   **`[autonomous]` bypass (D-01 — a NEW path PARALLEL to, and INDEPENDENT of, the benchmark dual-guard above):** if the incoming prompt carries the `[autonomous]` sentinel (parsed at Session bootstrap step 0), skip `AskUserQuestion` regardless of `QUOIN_GATE_AUTO_APPROVE`/`QUOIN_BENCHMARK_RUN` — this path does NOT require either env var and is keyed solely on the sentinel. Reuse the SAME auto-branch logic as the benchmark bypass: for each flagged repo, run `git -C {repo} switch -c {branch}` where `{branch}` = Linear `gitBranchName` if discoverable from task/session context, else `feat/{task-name}`; if the branch already exists, `git -C {repo} switch {branch}`. Emit `[quoin: branch-hygiene auto-branch for autonomous run]`, echo the branch created per repo, and proceed to §1.
 
+  <!-- decision-gate: fail-closed site=branch-hygiene tokens=0 -->
+  **`[no-interactive]` / non-interactive fail-closed (D-01 parallel path; evaluated AFTER the `[autonomous]` auto-branch above, which takes precedence):** if `_INTERACTIVE` is false (the `[no-interactive]` sentinel was set, or `AskUserQuestion` is unavailable — e.g. an Agent subagent, where it is not provisioned) AND `_AUTONOMOUS` is NOT set, a human cannot pick a branch strategy: FAIL CLOSED rather than committing on a protected branch — run `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill implement --site branch-hygiene --reason "affected repos on a protected branch; branch strategy could not be surfaced" --resume-hint "re-run /implement interactively, or pass --autonomous"`, echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP. Rule doc: `__QUOIN_HOME__/memory/decision-gate-guard.md`.
+
   Otherwise, present `AskUserQuestion`:
   - Question: "One or more affected repos are on a protected branch (main/master): {flagged-repo-list}. Implementation commits must NOT land on a protected branch. How do you want to proceed?"
   - Header: "Branch hygiene"; multiSelect: false
@@ -315,7 +318,7 @@ This skill MUST be explicitly invoked by the user typing `/implement`. No other 
 ## Session bootstrap
 
 This skill typically runs in a fresh session (clean context is a feature, not a bug — implementation doesn't need planning back-and-forth). On start:
-0. Parse the `[autonomous]` sentinel from the incoming prompt (parsed independently of `[no-redispatch]`; leading sentinels stack, e.g. `[no-redispatch] [autonomous]`). Store as `_AUTONOMOUS` state for this session. Used below in §0b (branch-hygiene auto-create) and step 4 (auto-select all pending tasks).
+0. Parse the `[autonomous]` sentinel from the incoming prompt (parsed independently of `[no-redispatch]`; leading sentinels stack, e.g. `[no-redispatch] [autonomous]`). Store as `_AUTONOMOUS` state for this session. Used below in §0b (branch-hygiene auto-create) and step 4 (auto-select all pending tasks). ALSO parse the `[no-interactive]` sentinel (leading, stackable, strip before further parsing) into `_INTERACTIVE=false` (default `_INTERACTIVE=true`); `/run` injects it onto non-autonomous phase-subagent spawns so the §0b branch-hygiene decision FAILS CLOSED instead of silently proceeding when no human is reachable — mutually exclusive with `[autonomous]` per spawn. See `__QUOIN_HOME__/memory/decision-gate-guard.md`.
 1. Read `.workflow_artifacts/memory/lessons-learned.md` for relevant insights
 2. Read `.workflow_artifacts/memory/sessions/` for active session state (which tasks are done, where to resume)
 3. Read `<task_dir>/current-plan.md` — this is your specification. Resolve `<task_dir>` via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. Apply the §5.7.1 detection rule below before reading. architecture.md: ALWAYS `<task-root>/architecture.md`. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
@@ -361,6 +364,7 @@ This skill uses Sonnet for fast, high-quality implementation. The architectural 
    - If 2+ pending tasks: list the next 3 pending tasks in plan order, plus "All remaining tasks" as the last option (capped at 4 total). If >3 pending, note the total count in the description.
 
    Example (3+ pending tasks):
+   <!-- decision-gate: best-effort site=task-confirm -->
    ```
    AskUserQuestion(
      question="Which task(s) would you like to implement?",

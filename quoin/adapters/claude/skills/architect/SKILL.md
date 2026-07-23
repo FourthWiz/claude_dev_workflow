@@ -523,6 +523,7 @@ while round <= max_rounds:
         if _AUTONOMOUS:
             confirm = "Yes, proceed"
         else:
+            <!-- decision-gate: best-effort site=architect-prompt-1 -->
             confirm = AskUserQuestion(
                 question="[critic round 2 starting — ~$10-30 estimated based on body size] Proceed?",
                 options=[
@@ -572,6 +573,7 @@ while round <= max_rounds:
             if _AUTONOMOUS:
                 decision = "Continue revising"
             else:
+                <!-- decision-gate: best-effort site=architect-prompt-2 -->
                 decision = AskUserQuestion(
                     question="The same structural issue class is recurring. Accept architecture as-is, or continue revising?",
                     options=[

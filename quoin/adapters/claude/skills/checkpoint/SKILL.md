@@ -430,6 +430,7 @@ Invoke via Bash tool:
 If the output is non-empty (other skills are running):
   - Set SELECTED_MODE="mid-agent" (ask user to confirm via AskUserQuestion):
     ```
+    <!-- decision-gate: best-effort site=checkpoint-prompt-1 -->
     AskUserQuestion(
       question="Active skills detected: SKILL_LIST. Save in mid-agent mode (minimal sentinel only)?",
       options=[
@@ -446,6 +447,7 @@ If the output is non-empty (other skills are running):
     pick the matching mode.
   - Otherwise: use AskUserQuestion to ask the user to choose (default: restore):
     ```
+    <!-- decision-gate: best-effort site=checkpoint-prompt-2 -->
     AskUserQuestion(
       question="How would you like to save this checkpoint?",
       options=[

@@ -442,6 +442,7 @@ If the ToolSearch probe returns no schema, run a filesystem pre-check:
 If neither the schema nor the plugin file is found, offer installation:
 
 ```
+<!-- decision-gate: best-effort site=init_workflow-prompt-1 -->
 AskUserQuestion(
   header="Serena",
   question="Serena gives Claude symbol-level code intelligence (find/rename symbols, references). It's not installed. Install it?",
@@ -546,6 +547,7 @@ Serena config and memories are machine-local; they should not be committed to th
 Use `AskUserQuestion` to ask "What is this repo about?":
 
 ```
+<!-- decision-gate: best-effort site=init_workflow-prompt-2 -->
 AskUserQuestion(
   header="Repo spec",
   question="What is this repo about? A short repo-level spec helps future planning sessions understand context and non-goals at a glance.",
@@ -641,6 +643,7 @@ The interactive guide lives in the source clone:
 After the quickstart copy, offer to register the weekly discovery-refresh cron routine (non-blocking; default Skip):
 
 ```
+<!-- decision-gate: best-effort site=init_workflow-prompt-3 -->
 AskUserQuestion(
   question="Would you like to set up a weekly automated discovery refresh?",
   options=[
