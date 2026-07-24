@@ -210,6 +210,7 @@ tail -5 "<cwd>/.workflow_artifacts/memory/recent-sessions.md" 2>/dev/null
   Cap at 4 sessions (most recent first). Use AskUserQuestion to present the picker:
 
   ```
+  <!-- decision-gate: best-effort site=continue_work-prompt-1 -->
   AskUserQuestion(
     question="Which session do you want to revive?",
     options=[

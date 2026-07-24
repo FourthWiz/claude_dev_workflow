@@ -1,5 +1,13 @@
 # Autonomous mode reference (`--autonomous`)
 
+> **Sibling primitive (opposite default):** `[autonomous]` carries pre-authorized
+> answers so a decision gate auto-resolves; a background context with NO opt-in has no
+> pre-authorized answer, so its only safe move is to FAIL CLOSED. The fail-closed guard,
+> the `[no-interactive]` sentinel, and the `needs-decision-{task}.md` sentinel (a distinct
+> sibling of the `autonomous-halt` family the supervisor never reads) are documented in
+> `decision-gate-guard.md` (IVG-150).
+
+
 Verbose Tier-1 reference for the opt-in `--autonomous` span on `/run`
 (IVG-153, `autonomous-run-mode` Stage 1). This file holds the full
 auto-resolution table, the sentinel/propagation rule, the Formulation

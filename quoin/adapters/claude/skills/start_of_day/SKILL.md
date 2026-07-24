@@ -330,6 +330,7 @@ After presenting the briefing, use AskUserQuestion to ask the user what they wan
 
 Example (2 unfinished tasks):
 ```
+<!-- decision-gate: best-effort site=start_of_day-prompt-1 -->
 AskUserQuestion(
   question="What would you like to work on today?",
   options=[
@@ -342,6 +343,7 @@ AskUserQuestion(
 
 Example (no tasks):
 ```
+<!-- decision-gate: best-effort site=start_of_day-prompt-2 -->
 AskUserQuestion(
   question="What would you like to work on today?",
   options=[
@@ -367,6 +369,7 @@ Both discovery and Serena options may appear simultaneously if both are stale. T
 
 Example (both stale):
 ```
+<!-- decision-gate: best-effort site=start_of_day-prompt-3 -->
 AskUserQuestion(
   question="Discovery memory needs a refresh. What would you like to do?",
   options=[

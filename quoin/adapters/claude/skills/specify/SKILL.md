@@ -280,6 +280,7 @@ This trigger is BEST-EFFORT / ADVISORY judgment — there is no numeric threshol
 **On a detected shift ONLY:**
 1. DRAFT a proposed updated repo spec (the five repo-spec headings: `## Context`, `## Goals`, `## Capabilities`, `## Acceptance criteria`, `## Non-goals`).
 2. Surface a DIFF against the current `.workflow_artifacts/spec.md`.
+<!-- decision-gate: safe-degrade site=repo-spec-write-gate tokens=0 -->
 3. Gate with `AskUserQuestion`:
    - Option 1: "Approve — merge the update" — writes the drafted repo spec.
    - Option 2: "Reject — keep repo spec as-is" — leaves the repo spec untouched.
@@ -292,6 +293,13 @@ spec as-is"**. This gate NEVER auto-writes the repo spec, autonomous or not — 
 is a human-owned artifact, and autonomous mode must not fabricate or silently merge changes into
 it. The drafted proposal (Step 1 above) is discarded; the task spec written earlier is unaffected
 either way.
+
+**Under `[no-interactive]` / non-interactive (SAFE-DEGRADE, not fail-closed):** parse
+`[no-interactive]` at bootstrap into `_INTERACTIVE=false` (same convention as `[autonomous]`); when
+`_INTERACTIVE` is false, take the SAME auto-Reject as the autonomous arm — leave the repo spec
+untouched. This is a `safe-degrade` boundary, NOT a fail-closed helper STOP: the safe
+degrade for a human-owned artifact is to do nothing to it (auto-Reject), so no needs-decision
+sentinel is written. The gate never proceeds on a default write in any mode.
 
 On Approve: write via `<path>.tmp` + atomic `mv` to `.workflow_artifacts/spec.md`, then `python3 __QUOIN_HOME__/scripts/validate_artifact.py .workflow_artifacts/spec.md` → expect exit 0. On Reject (including the autonomous auto-Reject above): leave the repo spec untouched. Either way, the task spec written earlier is unaffected.
 

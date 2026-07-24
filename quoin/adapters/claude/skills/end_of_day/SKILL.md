@@ -520,6 +520,7 @@ If there are entries to promote (after filtering and dedup), use AskUserQuestion
 
 Example (≤4 insights):
 ```
+<!-- decision-gate: best-effort site=end_of_day-prompt-1 -->
 AskUserQuestion(
   question="Which insights to promote to lessons-learned?",
   multiSelect=true,
@@ -550,6 +551,7 @@ Check `.workflow_artifacts/memory/lessons-learned.md`. Count the number of lesso
 **If the count exceeds 30 entries**, present a pruning prompt via AskUserQuestion:
 
 ```
+<!-- decision-gate: best-effort site=end_of_day-prompt-2 -->
 AskUserQuestion(
   question="lessons-learned.md has grown to N entries (~X tokens). Large files add token cost to every /plan, /critic, and /architect session. Would you like to prune?",
   options=[
@@ -601,6 +603,7 @@ AskUserQuestion(
 Use AskUserQuestion to check if the user has anything else to add (this catches anything Claude missed from Step 3b):
 
 ```
+<!-- decision-gate: best-effort site=end_of_day-prompt-3 -->
 AskUserQuestion(
   question="Anything else that surprised you today, or that should work differently next time?",
   options=[

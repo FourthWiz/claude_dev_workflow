@@ -47,6 +47,8 @@ TIER1_MEMORY_FILES = (
     "eod-refresh-routine.md",
     # Added IVG-153: opt-in --autonomous span reference (Tier-1 memory file)
     "autonomous-mode.md",
+    # Added IVG-150: shared fail-closed decision-gate guard reference (Tier-1 memory file)
+    "decision-gate-guard.md",
 )
 
 # T-05: canonical skill list — must match quoin/skills/ on disk exactly
@@ -122,6 +124,7 @@ DEPLOYED_SCRIPTS = (
     "checkpoint_picker.py",          # IVG-139: pure restore-picker wrapper
     "nested_root_check.py",          # IVG-119: nested/duplicate .workflow_artifacts root detector wrapper (wrapped portable-core — also in CORE_SCRIPTS)
     "lessons_guard.py",              # IVG-119: cross-project lessons verbatim-dedup guard wrapper (wrapped portable-core — also in CORE_SCRIPTS)
+    "decision_gate_guard.py",        # IVG-150: fail-closed decision-gate guard wrapper (wrapped portable-core — also in CORE_SCRIPTS; parents[1]/core/scripts loader)
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -415,6 +418,7 @@ CORE_SCRIPTS = (
     "checkpoint_picker.py",         # IVG-139: wrapped impl; required by ~/.claude/scripts/checkpoint_picker.py parents[1] loader
     "nested_root_check.py",         # IVG-119: wrapped impl; required by ~/.claude/scripts/nested_root_check.py parents[1] loader (imports sibling path_resolve.py)
     "lessons_guard.py",             # IVG-119: wrapped impl; required by ~/.claude/scripts/lessons_guard.py parents[1] loader
+    "decision_gate_guard.py",       # IVG-150: fail-closed decision-gate guard core impl; required by ~/.claude/scripts/decision_gate_guard.py parents[1] loader
 )
 
 
