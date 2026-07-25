@@ -1,0 +1,4 @@
+{"type": "assistant", "message": {"model": "claude-opus-4-7", "id": "msg_fixture_malformed_001", "usage": {"input_tokens": 1000, "output_tokens": 200, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}}}
+not-valid-json-{{{garbage
+{"type": "assistant", "message": {"model": "claude-sonnet-4-6", "id": "msg_fixture_malformed_002", "usage": {"input_tokens": 500, "output_tokens": 100, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}}}
+{"type": "result", "subtype": "success"}
