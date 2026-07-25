@@ -242,6 +242,53 @@ Phase 5: REVIEW
 Phase 6: END_OF_TASK
 ```
 
+## On-behalf cost capture (`QUOIN_INLINE_COST_CAPTURE`, flag-gated, D-1/D-2/D-3, IVG-111 stage 3)
+
+When `QUOIN_INLINE_COST_CAPTURE=1`, this applies at EVERY managed phase spawn below — discover,
+enrich, specify, architect, thorough_plan, implement, review, end_of_task — and the two post-phase
+`/gate` subagent spawns (spec→architect boundary at Checkpoint A0, architecture boundary at
+Checkpoint A). The implement-phase inline gate (no spawn) is NOT managed — it runs in-session,
+nothing to suppress.
+
+At each spawn: (1) prepend `[quoin-onbehalf]` to the spawn prompt — stacks with
+`[autonomous]`/`[no-interactive]`/`[no-redispatch]` per the existing propagation rules
+(order-independent, each leaf strips its own copy) — so the child SKIPS its own session-start
+cost-ledger self-write (T-06 predicate); (2) bind `AID`/`TUID` per `proc:agentid-capture` (stage-3
+plan) — `AID` is the `agentId` field from the Agent tool's return for that spawn, transcribed
+literally by this orchestrator (model-in-the-loop, not a shell capture); `TUID` is this spawn's own
+Agent tool_use id; fallback (agentId absent/empty, R-12): `AID = TUID` if present, else
+`"<parent-session-uuid>-<phase>-<utc-ts>"`, forcing `ATTR="src=unresolved"` (discard any sidecar
+hit once agentId capture failed); (3) AFTER the subagent returns and its phase artifact is
+verified on disk, run this on-behalf ledger write with that phase's model and `uuid=<AID>` —
+REPLACES each phase's existing "verify the cost ledger has a new entry... if not, best-effort
+append" step, and REPLACES the suppressed child self-write (D-2), net exactly one row per managed
+phase:
+```bash
+SID="$CLAUDE_CODE_SESSION_ID"
+ATTR="$(python3 __QUOIN_HOME__/scripts/agent_transcript_cost.py \
+          --sid "$SID" --agent-id "$AID" --tool-use-id "$TUID" 2>/dev/null)"
+[ -z "$ATTR" ] && ATTR="src=unresolved"   # MIN-1: key on empty stdout, not exit code
+printf '%s | %s | %s | %s | task | %s | %s | %s\n' \
+  "$AID" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" \
+  "on-behalf: PHASE via /run" "0" "$ATTR" >> "$LEDGER"
+```
+Nested-orchestrator case is correct by construction: `/run` prepends `[quoin-onbehalf]` to the
+`/architect` and `/thorough_plan` spawns; those children strip their own marker (skip their own
+self-write, per T-06/D-9) and independently prepend a FRESH `[quoin-onbehalf]` to THEIR OWN
+children (the architect critic spawn; thorough_plan's plan/critic/revise/enrich spawns) — per-spawn,
+non-inherited, no double-suppression.
+
+**`end_of_task` note:** `end_of_task` is spawned in Phase 6 but is NOT a bootstrap cost-ledger
+self-writer today (it aggregates at task close rather than self-writing a session-start row), so
+there is no child self-write to suppress for it — the on-behalf write above still fires for the
+`end-of-task` phase (parity with the other 7 phases); it simply has no corresponding T-06 skip
+predicate to pair with.
+
+**Flag unset:** none of the above applies; every phase spawn below behaves exactly as documented
+today — the child self-writes (or, for `end_of_task`, aggregates as today) and each phase's
+existing best-effort "verify the cost ledger has a new entry... if not, append" fallback stays in
+effect unchanged.
+
 ## Phase 1 — Discover (conditional)
 
 **Skip condition:** Check if `.workflow_artifacts/cache/_staleness.md` exists AND its modification time is less than 7 days old. Fall back to `.workflow_artifacts/memory/repo-heads.md` if `_staleness.md` does not exist:
@@ -253,7 +300,7 @@ Also check for `repos-inventory.md` (plural) as secondary confirmation.
 - **If skipping:** tell the user "Discovery files are recent (<N> days old) — skipping /discover. Say 'rediscover' to force a fresh scan."
 - **If running:** spawn `/discover` as a subagent session (same mechanism as `/thorough_plan` uses for `/critic` — see its "Invoking each agent" section). Pass the project folder path. No gate runs after discover — it feeds directly into architect.
 
-After the phase, verify the cost ledger has a new entry for the `discover` phase. If not (subagent didn't record), append a best-effort entry: `unknown-discover-<timestamp> | <date> | discover | opus | task | /run subagent (no UUID recorded)`.
+After the phase, verify the cost ledger has a new entry for the `discover` phase. If not (subagent didn't record), append a best-effort entry: `unknown-discover-<timestamp> | <date> | discover | opus | task | /run subagent (no UUID recorded)`. Under `QUOIN_INLINE_COST_CAPTURE=1`, this step is instead the on-behalf write per "On-behalf cost capture" above (phase=discover, model=opus).
 
 Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/discover.done` (atomic write — T-05/T-10 write-site map) — the T-09 resume-reader depends on this file's presence to know Phase 1 finished.
 
@@ -268,7 +315,7 @@ On entry, PROMPT via `AskUserQuestion`: "Run prompt enrichment on this task, or 
 - **If skipping:** tell the user "Skipping /enrich per your choice." and proceed to Phase 1.5.
 - **If running:** spawn `/enrich` as a subagent session (same mechanism as the Phase 1.5 specify spawn). Pass the raw task description and the task folder path.
 
-After the phase, verify the cost ledger has a new entry for the `enrich` phase. If not (subagent didn't record), append a best-effort entry: `unknown-enrich-<timestamp> | <date> | enrich | opus | task | /run subagent (no UUID recorded)` (mirrors the Phase 1/Phase 1.5 best-effort append pattern).
+After the phase, verify the cost ledger has a new entry for the `enrich` phase. If not (subagent didn't record), append a best-effort entry: `unknown-enrich-<timestamp> | <date> | enrich | opus | task | /run subagent (no UUID recorded)` (mirrors the Phase 1/Phase 1.5 best-effort append pattern). Under `QUOIN_INLINE_COST_CAPTURE=1`, this step is instead the on-behalf write per "On-behalf cost capture" above (phase=enrich, model=opus).
 
 Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/enrich.done` (atomic write — T-05/T-10 write-site map) — including when enrich was skipped via the AskUserQuestion prompt above (a skipped phase still counts as reaching this point in the pipeline; resume must not re-offer the prompt).
 
@@ -283,11 +330,11 @@ Under non-interactive dispatch (no way to present `AskUserQuestion`), degrade to
 - **If skipping:** tell the user "Skipping /specify (Small task | spec already exists)."
 - **If running:** spawn `/specify` as a subagent session (same mechanism as the Phase 2 architect spawn). Pass the task description and the task folder path.
 
-After the phase, verify the cost ledger has a new entry for the `specify` phase. If not (subagent didn't record), append a best-effort entry: `unknown-specify-<timestamp> | <date> | specify | opus | task | /run subagent (no UUID recorded)` (mirrors the Phase 1/Phase 2 best-effort append pattern).
+After the phase, verify the cost ledger has a new entry for the `specify` phase. If not (subagent didn't record), append a best-effort entry: `unknown-specify-<timestamp> | <date> | specify | opus | task | /run subagent (no UUID recorded)` (mirrors the Phase 1/Phase 2 best-effort append pattern). Under `QUOIN_INLINE_COST_CAPTURE=1`, this step is instead the on-behalf write per "On-behalf cost capture" above (phase=specify, model=opus).
+
+After specify completes, spawn `/gate` as a subagent session (spec→architect boundary — subagent dispatch, mirrors the post-architect gate at Phase 2; audit-log persistence mandatory). Under `QUOIN_INLINE_COST_CAPTURE=1`, this gate spawn also follows "On-behalf cost capture" above (phase=gate, model=sonnet).
 
 Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/specify.done` (atomic write — T-05/T-10 write-site map), including when specify was skipped by its own skip condition.
-
-After specify completes, spawn `/gate` as a subagent session (spec→architect boundary — subagent dispatch, mirrors the post-architect gate at Phase 2; audit-log persistence mandatory).
 
 **Checkpoint A0:**
 ```
@@ -311,11 +358,11 @@ Continue to architecture? (yes / no / show spec)
 - **If running:** spawn `/architect` as a subagent session, passing the task description, paths to discovery output files (`repos-inventory.md`, `architecture-overview.md`, `dependencies-map.md`), and the path to `<task-root>/spec.md` if it exists (read-if-exists).
   - **Note:** `/architect` now includes a Phase 4 critic loop (max 2 rounds default, 4 in strict mode); expect 1-2 additional `critic` phase rows in the cost ledger per round. If Phase 4 triggers the cost-guard confirmation (pre-round-2), the architect subagent will pause for user input — watch for the prompt `[critic round 2 starting — ~$10-30 estimated based on body size]` in the subagent output.
 
-After the phase, verify the cost ledger has a new entry for the `architect` phase. If not, append a best-effort entry with `unknown-architect-<timestamp>`. Also check for `critic` phase rows from Phase 4 (1-2 expected; accept their absence if Phase 4 was skipped via `max_rounds: 0`).
+After the phase, verify the cost ledger has a new entry for the `architect` phase. If not, append a best-effort entry with `unknown-architect-<timestamp>`. Also check for `critic` phase rows from Phase 4 (1-2 expected; accept their absence if Phase 4 was skipped via `max_rounds: 0`). Under `QUOIN_INLINE_COST_CAPTURE=1`, this step is instead the on-behalf write per "On-behalf cost capture" above (phase=architect, model=opus) — the Phase 4 critic-round rows are architect's OWN on-behalf writes, per its own on-behalf mechanism, independent of this one.
 
 Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/architect.done` (atomic write — T-05/T-10 write-site map), including when architect was skipped for a Small task.
 
-After architect completes, spawn `/gate` as a subagent session (architecture gate — subagent dispatch required for audit-log persistence).
+After architect completes, spawn `/gate` as a subagent session (architecture gate — subagent dispatch required for audit-log persistence). Under `QUOIN_INLINE_COST_CAPTURE=1`, this gate spawn also follows "On-behalf cost capture" above (phase=gate, model=sonnet).
 
 **Checkpoint A:**
 ```
@@ -344,7 +391,7 @@ Spawn `/thorough_plan` as a subagent session, passing:
 
 `/thorough_plan` handles its own internal plan→critic→revise loop and runs its own post-plan smoke gate.
 
-After the phase, verify the cost ledger has new entries for `thorough-plan`, `plan`, `critic`, and (if applicable) `revise` phases. If not, append best-effort entries with `unknown-<phase>-<timestamp>`.
+After the phase, verify the cost ledger has new entries for `thorough-plan`, `plan`, `critic`, and (if applicable) `revise` phases. If not, append best-effort entries with `unknown-<phase>-<timestamp>`. Under `QUOIN_INLINE_COST_CAPTURE=1`, the `thorough-plan` row is instead the on-behalf write per "On-behalf cost capture" above (phase=thorough-plan, model=opus) — the plan/critic/revise/enrich rows are thorough_plan's OWN on-behalf writes, per its own on-behalf mechanism, independent of this one.
 
 Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/thorough_plan.done` (atomic write — T-05/T-10 write-site map).
 
@@ -375,7 +422,7 @@ Only evaluated under `AUTONOMOUS` — plain `/run` never evaluates this bar and 
 
 Spawn `/implement` as a subagent session, passing path to `<task_dir>/current-plan.md` (where `<task_dir>` is resolved via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` in Setup §) and all repo paths. Because the user invoked `/run` and confirmed at Checkpoint B, the `/run` exception in `implement/SKILL.md` applies.
 
-After the phase, verify the cost ledger has a new entry for the `implement` phase. If not, append a best-effort entry with `unknown-implement-<timestamp>`.
+After the phase, verify the cost ledger has a new entry for the `implement` phase. If not, append a best-effort entry with `unknown-implement-<timestamp>`. Under `QUOIN_INLINE_COST_CAPTURE=1`, this step is instead the on-behalf write per "On-behalf cost capture" above (phase=implement, model=sonnet).
 
 Under `AUTONOMOUS`, once Checkpoint C confirms (gate passed, continuing to review), also write the phase's completion sentinel `autonomous-progress-{task}/implement.done` (atomic write — T-05/T-10 write-site map).
 
@@ -410,7 +457,7 @@ Spawn `/review` as a **fresh subagent session** (unbiased assessment requires cl
 
 Read the review output (`review-*.md`) and check the verdict.
 
-After the phase, verify the cost ledger has a new entry for the `review` phase. If not, append a best-effort entry with `unknown-review-<timestamp>`.
+After the phase, verify the cost ledger has a new entry for the `review` phase. If not, append a best-effort entry with `unknown-review-<timestamp>`. Under `QUOIN_INLINE_COST_CAPTURE=1`, this step is instead the on-behalf write per "On-behalf cost capture" above (phase=review, model=opus).
 
 Under `AUTONOMOUS`, once Checkpoint D confirms (APPROVED or accepted, gate passed), also write the phase's completion sentinel `autonomous-progress-{task}/review.done` (atomic write — T-05/T-10 write-site map).
 
@@ -442,7 +489,7 @@ Finalize and push? (yes / no / show review)
 
 ## Phase 6 — End of Task
 
-Spawn `/end_of_task` as a subagent session. Because the user invoked `/run` and confirmed at Checkpoint D, the `/run` exception in `end_of_task/SKILL.md` applies. All 8 steps run as normal (pre-flight, commit, push, lessons, session state, cost aggregation, archive, report).
+Spawn `/end_of_task` as a subagent session. Because the user invoked `/run` and confirmed at Checkpoint D, the `/run` exception in `end_of_task/SKILL.md` applies. All 8 steps run as normal (pre-flight, commit, push, lessons, session state, cost aggregation, archive, report). Under `QUOIN_INLINE_COST_CAPTURE=1`, this spawn also follows "On-behalf cost capture" above (phase=end-of-task, model=sonnet) — see the `end_of_task` note there (no T-06 skip predicate to pair with; this write is additive, not a suppression-replace).
 
 Under `AUTONOMOUS`, once `/end_of_task` returns successfully, also write the phase's completion sentinel `autonomous-progress-{task}/end_of_task.done` (atomic write — T-05/T-10 write-site map). This is a separate sentinel from `end_of_task`'s own terminal `autonomous-done-{task}.md` (T-11) — this one records phase-level progress consistent with the other 7 phases; the done-sentinel is the overall supervisor-loop terminal signal.
 
