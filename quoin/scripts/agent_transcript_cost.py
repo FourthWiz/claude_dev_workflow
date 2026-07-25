@@ -253,3 +253,35 @@ def resolve_attribution(sid, agent_id=None, tool_use_id=None, project_path=None,
         return "src=unresolved"
     except Exception:
         return "src=unresolved"  # fail-open: never crash the spawning orchestrator
+
+
+# ---------------------------------------------------------------------------
+# CLI entrypoint (T-01, stage 3) — mirrors get_session_uuid.py's fail-open
+# shell-out contract so orchestrator SKILL.md one-liners can call this as a
+# subprocess. ALWAYS exits 0; never raises; never prints a traceback to
+# stdout. On any error (including a missing/garbage --sid) prints exactly
+# "src=unresolved" and returns 0.
+# ---------------------------------------------------------------------------
+
+def main(argv=None):
+    import argparse
+    try:
+        ap = argparse.ArgumentParser()
+        ap.add_argument("--sid", required=True)
+        ap.add_argument("--agent-id", default=None)
+        ap.add_argument("--tool-use-id", default=None)
+        ap.add_argument("--project-path", default=None)
+        a = ap.parse_args(argv)
+        print(resolve_attribution(a.sid, agent_id=a.agent_id,
+              tool_use_id=a.tool_use_id, project_path=a.project_path))
+    except SystemExit:
+        # argparse error (e.g. missing --sid): still fail-open, never crash
+        # the calling one-liner.
+        print("src=unresolved")
+    except Exception:
+        print("src=unresolved")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
