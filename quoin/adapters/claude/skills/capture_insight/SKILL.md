@@ -124,9 +124,13 @@ Otherwise (already at or below declared tier, OR prompt has [no-redispatch] sent
 
 ## Session bootstrap
 
+If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 alongside `[no-redispatch]`/`[autonomous]` (per-spawn, non-inherited — do NOT propagate it to any child you spawn). Otherwise self-write as today (col 8 empty).
+
 Cost tracking note: `/capture_insight` is a lightweight note-taking skill. Append to the cost ledger only if a task context is clearly active. If in doubt, skip cost recording.
 
 If a task context is active: append your session to `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `capture-insight`.
+
+<!-- quoin:ledger-self-write -->
 
 ## Process
 

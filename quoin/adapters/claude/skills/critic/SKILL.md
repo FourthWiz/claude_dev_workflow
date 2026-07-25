@@ -167,7 +167,11 @@ This skill ALWAYS runs in a fresh session (that's the whole point — unbiased r
 3. Read the task subfolder: resolve the artifact path via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` — then read `<task_dir>/current-plan.md` and any prior `<task_dir>/critic-response-*.md`. architecture.md: ALWAYS `<task-root>/architecture.md`. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md` (line 5 above — NOT edited per D-03). If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
 4. Read `.planner-trace.md` from the task directory if it exists (same path resolution as the previous step). Treat as a **search-prior hint only** — it tells you where the planner looked and what patterns it noticed, NOT what conclusions to reach. If the file is absent, proceed normally (no error, no warning).
 5. Read the ACTUAL SOURCE CODE referenced by the plan (this is critical — don't trust the plan's claims)
+If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 alongside `[no-redispatch]`/`[autonomous]` (per-spawn, non-inherited — do NOT propagate it to any child you spawn). Otherwise self-write as today (col 8 empty).
+
 6. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `critic`
+
+<!-- quoin:ledger-self-write -->
 7. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`.
 8. Then proceed with critique
 

@@ -446,7 +446,11 @@ Prohibited write targets (non-exhaustive):
 
 ## Cost ledger
 
+If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 alongside `[no-redispatch]`/`[autonomous]` (per-spawn, non-inherited — do NOT propagate it to any child you spawn). Otherwise self-write as today (col 8 empty).
+
 At session start (after Step 0 passes), append a row to the task cost ledger:
+
+<!-- quoin:ledger-self-write -->
 
 ```bash
 LEDGER=".workflow_artifacts/<task-name>/cost-ledger.md"

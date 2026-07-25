@@ -124,7 +124,11 @@ Otherwise (already at or below declared tier, OR prompt has [no-redispatch] sent
 
 ## Session bootstrap
 
+If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 alongside `[no-redispatch]`/`[autonomous]` (per-spawn, non-inherited — do NOT propagate it to any child you spawn). Otherwise self-write as today (col 8 empty).
+
 Cost tracking note: `/cost_snapshot` is a read-only reporting skill. Append to the cost ledger only if a task context is clearly active (e.g., you were invoked mid-task and the task name is unambiguous). If in doubt, skip cost recording. Phase: `cost-snapshot`.
+
+<!-- quoin:ledger-self-write -->
 
 ## Process
 

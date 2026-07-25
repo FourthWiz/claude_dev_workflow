@@ -184,9 +184,13 @@ Note: `QUOIN_DISCOVERY_AUTOREFRESH=1` allows /start_of_day to invoke `/discover`
 
 ## Session bootstrap
 
+If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 alongside `[no-redispatch]`/`[autonomous]` (per-spawn, non-inherited — do NOT propagate it to any child you spawn). Otherwise self-write as today (col 8 empty).
+
 Cost tracking note: `/start_of_day` is a lightweight daily-orientation skill. Append to the cost ledger only if a specific task context is clearly active (the user mentioned a task name or there's a clear active task from session state). If in doubt, skip cost recording — don't guess a task name.
 
 If a task context is active: append your session to `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `start-of-day`.
+
+<!-- quoin:ledger-self-write -->
 
 ## Process
 
