@@ -34,6 +34,7 @@ CostEvent = _MOD.CostEvent
 parse_row = _MOD.parse_row
 format_row = _MOD.format_row
 RowParseError = _MOD.RowParseError
+parse_attribution = _MOD.parse_attribution
 
 
 # ---------------------------------------------------------------------------
@@ -44,7 +45,9 @@ _6COL = "abc123 | 2026-05-12 | plan | opus | task | my note"
 _7COL_ZERO = "abc123 | 2026-05-12 | plan | opus | task | my note | 0"
 _7COL_THREE = "abc123 | 2026-05-12 | plan | opus | task | my note | 3"
 _7COL_BAD_INT = "abc123 | 2026-05-12 | plan | opus | task | my note | notanint"
-_8COL = "abc123 | 2026-05-12 | plan | opus | task | my note | 2 | extra"
+_8COL = "abc123 | 2026-05-12 | plan | opus | task | my note | 2 | usd=0.01;tok=45;src=nested_jsonl"
+_9COL = "abc123 | 2026-05-12 | plan | opus | task | my note | 2 | usd=0.01;tok=45;src=nested_jsonl | ninth"
+_8COL_EMPTY_ATTR = "abc123 | 2026-05-12 | plan | opus | task | my note | 2 | "
 _EXTRA_SPACES = "abc123  |  2026-05-12  |  plan  |  opus  |  task  |  my note  |  1"
 _NON_TASK = "abc123 | 2026-05-12 | plan | opus | event | my note | 0"
 _BLANK = ""
@@ -100,14 +103,47 @@ def test_parse_7col_malformed_int_warns_and_zeros(capsys):
 
 
 def test_parse_8col_extra_warns_and_takes_7th(capsys):
-    """8-col row → fallback_fires is 7th column; stderr warns with cost_snapshot.WARN prefix."""
+    """8-col row is first-class: fallback_fires + attribution taken, no WARN."""
     event = parse_row(_8COL, source="test.md", lineno=7)
     assert event is not None
     assert event.fallback_fires == 2
+    assert event.attribution == "usd=0.01;tok=45;src=nested_jsonl"
+    captured = capsys.readouterr()
+    assert "cost_snapshot.WARN" not in captured.err
+
+
+def test_parse_9col_extra_warns_and_takes_8th(capsys):
+    """9-col row → fallback_fires/attribution taken from cols 7/8; extra-columns WARN emitted."""
+    event = parse_row(_9COL, source="test.md", lineno=7)
+    assert event is not None
+    assert event.fallback_fires == 2
+    assert event.attribution == "usd=0.01;tok=45;src=nested_jsonl"
     captured = capsys.readouterr()
     assert "cost_snapshot.WARN" in captured.err
     assert "extra columns" in captured.err
+    assert "expected ≤8" in captured.err
     assert "test.md:7" in captured.err
+
+
+def test_parse_attribution_absent_on_6col():
+    """6-col row → attribution defaults to ''."""
+    event = parse_row(_6COL)
+    assert event is not None
+    assert event.attribution == ""
+
+
+def test_parse_attribution_absent_on_7col():
+    """7-col row → attribution defaults to ''."""
+    event = parse_row(_7COL_THREE)
+    assert event is not None
+    assert event.attribution == ""
+
+
+def test_parse_attribution_present_on_8col():
+    """8-col row → attribution is the parsed col-8 value."""
+    event = parse_row(_8COL)
+    assert event is not None
+    assert event.attribution == "usd=0.01;tok=45;src=nested_jsonl"
 
 
 def test_parse_extra_spaces_strip_clean():
@@ -163,6 +199,35 @@ def test_format_round_trip_6col_upgrades_to_7col():
     assert result.startswith(_6COL.strip())
 
 
+def test_format_round_trip_8col_nonempty_attribution():
+    """format_row(parse_row(8col_line)) == line.strip() for NON-EMPTY col-8 attribution."""
+    event = parse_row(_8COL)
+    assert event is not None
+    assert format_row(event) == _8COL.strip()
+
+
+def test_format_7col_event_with_empty_attribution_stays_7col():
+    """A 7-col-derived event (attribution=='') formats to 7 cols, no trailing '| '."""
+    event = parse_row(_7COL_THREE)
+    assert event is not None
+    assert event.attribution == ""
+    result = format_row(event)
+    assert result == _7COL_THREE.strip()
+    assert not result.endswith("|")
+    assert not result.endswith("| ")
+
+
+def test_format_round_trip_8col_empty_attribution_collapses_to_7col():
+    """An 8-col row with EMPTY col 8 re-emits as 7 cols — one-way collapse (MIN-1),
+    NOT a byte-identity round-trip (mirrors the 6->7 upgrade test)."""
+    event = parse_row(_8COL_EMPTY_ATTR)
+    assert event is not None
+    assert event.attribution == ""
+    result = format_row(event)
+    assert result == "abc123 | 2026-05-12 | plan | opus | task | my note | 2"
+    assert result != _8COL_EMPTY_ATTR.strip()
+
+
 def test_parse_quoted_note_preserves_quotes():
     """Quoted note field → literal double-quotes preserved verbatim (D-05)."""
     event = parse_row(_QUOTED_NOTE)
@@ -186,3 +251,40 @@ def test_parse_inner_double_quotes_preserved():
     assert event.note == expected_note
     # Full row round-trips byte-for-byte
     assert format_row(event) == _INNER_QUOTES.strip()
+
+
+# ---------------------------------------------------------------------------
+# parse_attribution unit tests (canonical proc:parse_attribution cases)
+# ---------------------------------------------------------------------------
+
+
+def test_parse_attribution_full_map():
+    assert parse_attribution("usd=0.01;tok=45;src=nested_jsonl") == {
+        "usd": "0.01",
+        "tok": "45",
+        "src": "nested_jsonl",
+    }
+
+
+def test_parse_attribution_empty_string():
+    assert parse_attribution("") == {}
+
+
+def test_parse_attribution_src_only():
+    assert parse_attribution("src=unresolved") == {"src": "unresolved"}
+
+
+def test_parse_attribution_tolerant_garbage():
+    """Skips '='-less tokens, empty tokens, AND empty-key '=' tokens (MAJ-1 guard)."""
+    assert parse_attribution("usd=;=;;foo;tok=9") == {"usd": "", "tok": "9"}
+
+
+def test_parse_attribution_whitespace_stripped():
+    assert parse_attribution(" a = b ; c=d ") == {"a": "b", "c": "d"}
+
+
+def test_parse_attribution_duplicate_key_last_write_wins():
+    """Duplicate keys resolve last-write-wins — locks the micro-map contract the
+    S-4 reader-precedence stage consumes (deferred non-blocking nit from S-1 review)."""
+    assert parse_attribution("a=1;a=2") == {"a": "2"}
+    assert parse_attribution("usd=0.01;usd=0.02;tok=5") == {"usd": "0.02", "tok": "5"}

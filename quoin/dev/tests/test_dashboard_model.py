@@ -155,6 +155,8 @@ def test_read_ledger_rows_basic(tmp_path):
     assert rows[0]["model_or_effort"] == "opus"
     assert rows[0]["fallback_fires"] == 0
     assert "model" not in rows[0]  # Ensure model_or_effort, not model (MAJ-1)
+    assert "attribution" in rows[0]
+    assert rows[0]["attribution"] == ""
 
 
 def test_read_ledger_rows_missing(tmp_path):
@@ -164,6 +166,29 @@ def test_read_ledger_rows_missing(tmp_path):
 
     rows = _read_ledger_rows(task_dir)
     assert rows == []
+
+
+def test_read_ledger_rows_attribution_roundtrips(tmp_path):
+    """An 8-col ledger row carrying attribution round-trips into the row dict.
+
+    Written as a raw 8-col line (not via the 7-col make_ledger tuple helper,
+    which has no attribution slot) per the S-1 plan's fixture-shape note.
+    """
+    task_dir = tmp_path / "task_attr"
+    task_dir.mkdir()
+    ledger_path = task_dir / "cost-ledger.md"
+    ledger_path.write_text(
+        "# Cost Ledger — test\n"
+        "u9 | 2026-01-09 | implement | sonnet | task | attributed note | 0 | "
+        "usd=0.01;tok=45;src=nested_jsonl\n"
+    )
+
+    rows = _read_ledger_rows(task_dir)
+
+    assert len(rows) == 1
+    assert rows[0]["uuid"] == "u9"
+    assert rows[0]["attribution"] == "usd=0.01;tok=45;src=nested_jsonl"
+    assert "model" not in rows[0]  # MAJ-1 guard still holds with col 8 present
 
 
 # ---------------------------------------------------------------------------

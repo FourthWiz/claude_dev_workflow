@@ -12,7 +12,15 @@ uuid=$(python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$(pwd)
   >> "$LEDGER"
 ```
 
-Substitute the bareword placeholders `PHASE`, `MODEL`, `NOTE`, `FALLBACK_FIRES` with session-specific values before running. `LEDGER` must be set to the ledger path (e.g., `.workflow_artifacts/<task-name>/cost-ledger.md`) before invocation. `NOTE` MUST be quoted — unquoted values containing spaces or pipes will produce malformed rows. Columns: `UUID | DATE | PHASE | MODEL | task | NOTE | FALLBACK_FIRES`.
+Substitute the bareword placeholders `PHASE`, `MODEL`, `NOTE`, `FALLBACK_FIRES` with session-specific values before running. `LEDGER` must be set to the ledger path (e.g., `.workflow_artifacts/<task-name>/cost-ledger.md`) before invocation. `NOTE` MUST be quoted — unquoted values containing spaces or pipes will produce malformed rows. Columns: `UUID | DATE | PHASE | MODEL | task | NOTE | FALLBACK_FIRES | ATTRIBUTION`.
+
+**8-column form** (adds the optional `attribution` column — currently written only by the on-behalf orchestrator path, a later stage; session-start one-liner writers keep emitting 6/7-col):
+
+```bash
+uuid=$(python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$(pwd)" --phase "PHASE" 2>/dev/null || echo "unknown-PHASE-$(date -u +%Y%m%dT%H%M%SZ)") && printf '%s | %s | %s | %s | task | %s | %s | %s\n' \
+  "$uuid" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" "NOTE" "FALLBACK_FIRES" "ATTRIBUTION" \
+  >> "$LEDGER"
+```
 
 **6-column form** (for Conditional skills `/discover`, `/triage` that omit `fallback_fires`):
 
@@ -22,9 +30,24 @@ uuid=$(python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$(pwd)
   >> "$LEDGER"
 ```
 
-The 7th column (`fallback_fires`) is OPTIONAL. Existing 6-column rows are valid forever; readers MUST tolerate both shapes. When present, the value is a non-negative integer (`0` if no fires occurred during the session). When absent, parsers treat it as `0`. Writers SHOULD emit the 7th column on new rows; readers MUST NOT fail on a missing 7th column. Append-only ledger semantics are unchanged.
+The 7th column (`fallback_fires`) is OPTIONAL. Existing 6-column rows are valid forever; readers MUST tolerate both shapes. When present, the value is a non-negative integer (`0` if no fires occurred during the session). When absent, parsers treat it as `0`. Writers SHOULD emit the 7th column on new rows; readers MUST NOT fail on a missing 7th column. Append-only ledger semantics are unchanged. The append-only invariant and the 6/7/8-column reader-tolerance rule (below) both hold unconditionally — no writer may delete or rewrite an existing row, and readers must not fail on any of the three shapes.
 
-**Writer guidance:** Skills emitting a new ledger row SHOULD include the 7th column when they have a session-state `fallback_fires` value available (typically at session-end emits, not session-open). Skills MAY emit a 6-column row when no session-state exists (e.g., `/discover`, `/triage`) or when `fallback_fires` is 0; readers tolerate both shapes per the row-format spec.
+The 8th column (`attribution`) is likewise OPTIONAL and default-safe: existing 6- and 7-column rows are valid forever; readers MUST tolerate 6-, 7-, and 8-column shapes. Absent means "no inline attribution was captured" — it is NEVER interpreted as `$0`-with-confidence. See `## Attribution column (col 8)` below for the value grammar.
+
+**Writer guidance:** Skills emitting a new ledger row SHOULD include the 7th column when they have a session-state `fallback_fires` value available (typically at session-end emits, not session-open). Skills MAY emit a 6-column row when no session-state exists (e.g., `/discover`, `/triage`) or when `fallback_fires` is 0; readers tolerate both shapes per the row-format spec. Column 8 (`attribution`) is written only by the on-behalf orchestrator path (a later stage); other writers omit it and readers treat the omission as "no attribution", not as a zero-cost claim.
+
+## Attribution column (col 8)
+
+`ATTRIBUTION := k=v(;k=v)*` — a semicolon-delimited micro-map, e.g. `usd=0.0123;tok=45210;src=<tag>`. No pipe characters are permitted inside the value (the bare-`|` row split must stay unaffected by col 8 content).
+
+Keys:
+- `usd` — optional float, a cost snapshot (≤6 decimal places).
+- `tok` — optional int, durable — store whenever known so the row can be re-priced later if the price table changes.
+- `src` — required provenance tag on any row that carries an `attribution` value at all; concrete values: `nested_jsonl` (resolved from the runtime's nested session JSONL), `backfill_session` (resolved after the fact from a backfill pass), `unresolved` (cost could not be attributed — labeled-unresolvable, never a silent `$0`).
+
+Column 8 is OPTIONAL and default-safe. Absent means "no inline attribution" — never `$0`-with-confidence. A row whose `src` tag marks the cost as unresolvable is a labeled-unresolvable case (no `usd` value), not a silent zero.
+
+Append-only and reader-tolerance semantics are unchanged by this column: 6-, 7-, and 8-column rows are all valid forever, and writers never delete or rewrite existing rows.
 
 **UUID acquisition:** Use `python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$(pwd)" --phase "PHASE"` to obtain the session UUID. The script finds the most-recently-modified `<uuid>.jsonl` under `~/.claude/projects/<project-hash>/` (project-hash = project path with non-alphanumeric chars replaced by `-`) and returns its stem. Falls back to `unknown-<phase_slug>-<YYYYMMDD>T<HHMMSS>Z` if no JSONL is found or on any error (fail-open). The `unknown-*` prefix is recognized by the cost_snapshot skip filter — synthetic UUIDs are excluded from cost totals. Phase dashes are slugified to underscores in the fallback (e.g., `end-of-task` → `end_of_task`). The outer shell fallback in the one-liner (`|| echo "unknown-PHASE-$(date -u ...)"`) ensures a UUID is always set even if Python is unavailable. The script exits 0 always (fail-open design).
 
