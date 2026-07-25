@@ -288,3 +288,183 @@ def test_resolve_by_agent_id_fail_open_on_none_sid(fixtures_home):
         project_path=FAKE_PROJECT_PATH, home=fixtures_home,
     )
     assert attr == "src=unresolved"
+
+
+# ---------------------------------------------------------------------------
+# T-08 (stage 3, IVG-111): CLI entrypoint (T-01) behavioral tests + on-behalf
+# ledger-row schema round-trip (MAJ-1) + D-10/R-11 rollout-gating invariant.
+#
+# CLI subprocess tests point resolve_attribution's `home=Path.home()` default at
+# the fixtures tree via a HOME env override (main() takes no --home flag by
+# design — mirrors get_session_uuid.py's real invocation shape).
+# ---------------------------------------------------------------------------
+import os
+import subprocess
+
+from cost_event import CostEvent, format_row, parse_row  # noqa: E402
+
+CLI_SCRIPT = SCRIPTS_DIR / "agent_transcript_cost.py"
+
+
+def _run_cli(fixtures_home, args):
+    env = dict(os.environ)
+    env["HOME"] = str(fixtures_home)
+    return subprocess.run(
+        [sys.executable, str(CLI_SCRIPT), *args],
+        capture_output=True, text=True, env=env, timeout=30,
+    )
+
+
+# (a) CLI happy path
+def test_cli_happy_path_priced_fixture(fixtures_home):
+    result = _run_cli(fixtures_home, [
+        "--sid", FAKE_SID, "--agent-id", "primary001",
+        "--project-path", FAKE_PROJECT_PATH,
+    ])
+    assert result.returncode == 0
+    assert result.stdout.strip() == f"usd={EXPECTED_USD};tok={EXPECTED_TOK};src=nested_jsonl"
+
+
+# (b) deterministic agentId correlation — same agentId always resolves the exact
+# agent-<id>.jsonl file (no mtime-based guessing).
+def test_cli_deterministic_agent_id_correlation(fixtures_home):
+    outputs = {
+        _run_cli(fixtures_home, [
+            "--sid", FAKE_SID, "--agent-id", "primary001",
+            "--project-path", FAKE_PROJECT_PATH,
+        ]).stdout.strip()
+        for _ in range(3)
+    }
+    assert outputs == {f"usd={EXPECTED_USD};tok={EXPECTED_TOK};src=nested_jsonl"}
+
+
+# (c) flush-guard via CLI — truncated last line -> src=unresolved, exit 0
+def test_cli_truncated_transcript_unresolved(fixtures_home):
+    result = _run_cli(fixtures_home, [
+        "--sid", FAKE_SID, "--agent-id", "truncated001",
+        "--project-path", FAKE_PROJECT_PATH,
+    ])
+    assert result.returncode == 0
+    assert result.stdout.strip() == "src=unresolved"
+
+
+# (d) fail-open — missing transcript / missing --sid / no args -> src=unresolved,
+# exit 0, never a traceback on stdout.
+def test_cli_missing_transcript_fail_open(fixtures_home):
+    result = _run_cli(fixtures_home, [
+        "--sid", FAKE_SID, "--agent-id", "does-not-exist",
+        "--project-path", FAKE_PROJECT_PATH,
+    ])
+    assert result.returncode == 0
+    assert result.stdout.strip() == "src=unresolved"
+
+
+def test_cli_missing_required_sid_fail_open(fixtures_home):
+    result = _run_cli(fixtures_home, ["--agent-id", "primary001"])
+    assert result.returncode == 0
+    assert result.stdout.strip() == "src=unresolved"
+    assert "Traceback" not in result.stdout
+
+
+def test_cli_no_args_fail_open(fixtures_home):
+    result = _run_cli(fixtures_home, [])
+    assert result.returncode == 0
+    assert result.stdout.strip() == "src=unresolved"
+    assert "Traceback" not in result.stdout
+
+
+# (e) secondary key via CLI — --tool-use-id without --agent-id resolves via sidecar
+def test_cli_tool_use_id_secondary_key(fixtures_home):
+    result = _run_cli(fixtures_home, [
+        "--sid", FAKE_SID, "--tool-use-id", "toolu_FIXTURE_TOOLUSE_HIT_001",
+        "--project-path", FAKE_PROJECT_PATH,
+    ])
+    assert result.returncode == 0
+    assert result.stdout.strip() == f"usd={EXPECTED_USD};tok={EXPECTED_TOK};src=nested_jsonl"
+
+
+# (f) round-trip — CLI stdout parses cleanly through core parse_attribution
+# (symmetry between the adapter CLI and cost_event.py, mirrors
+# test_symmetry_with_core_parse_attribution for the in-process resolver).
+def test_cli_output_parses_through_core_parse_attribution(fixtures_home):
+    result = _run_cli(fixtures_home, [
+        "--sid", FAKE_SID, "--agent-id", "primary001",
+        "--project-path", FAKE_PROJECT_PATH,
+    ])
+    parsed = parse_attribution(result.stdout.strip())
+    assert parsed == {"usd": str(EXPECTED_USD), "tok": str(EXPECTED_TOK), "src": "nested_jsonl"}
+
+
+# (g) on-behalf row schema round-trip (MAJ-1) — a composed ledger row with
+# uuid=<agentId> present parses back cleanly through cost_event.parse_row, AND
+# the proc:agentid-capture fallback path (agentId capture failed -> unique
+# fallback UUID, ATTR forced to src=unresolved) is still a well-formed,
+# never-empty/never-malformed col-1 row.
+def test_onbehalf_row_with_resolved_attribution_round_trips(fixtures_home):
+    result = _run_cli(fixtures_home, [
+        "--sid", FAKE_SID, "--agent-id", "primary001",
+        "--project-path", FAKE_PROJECT_PATH,
+    ])
+    attr = result.stdout.strip()
+    event = CostEvent(
+        uuid="primary001", date="2026-07-25", phase="critic", model_or_effort="opus",
+        category="task", note="on-behalf: critic via /architect", fallback_fires=0,
+        attribution=attr,
+    )
+    row = format_row(event)
+    reparsed = parse_row(row)
+    assert reparsed == event
+    assert reparsed.uuid  # never empty
+    parsed_attr = parse_attribution(reparsed.attribution)
+    assert parsed_attr == {"usd": str(EXPECTED_USD), "tok": str(EXPECTED_TOK), "src": "nested_jsonl"}
+
+
+def test_onbehalf_row_fallback_uuid_never_malformed_on_agentid_capture_failure():
+    """proc:agentid-capture fallback (R-12): when the harness doesn't surface
+    agentId, AID = TUID if present, else "<parent-session-uuid>-<phase>-<utc-ts>",
+    and ATTR is forced to src=unresolved (MIN-2: discard any sidecar hit). The row
+    must still be present, unique, and parse cleanly — never an empty/malformed
+    col-1."""
+    fallback_uuid = "parent-session-uuid-1234-critic-20260725T120000Z"
+    event = CostEvent(
+        uuid=fallback_uuid, date="2026-07-25", phase="critic", model_or_effort="opus",
+        category="task", note="on-behalf: critic via /architect (agentId capture failed)",
+        fallback_fires=0, attribution="src=unresolved",
+    )
+    row = format_row(event)
+    reparsed = parse_row(row)
+    assert reparsed == event
+    assert reparsed.uuid not in ("", "unknown")
+    assert reparsed.uuid == fallback_uuid
+    assert parse_attribution(reparsed.attribution) == {"src": "unresolved"}
+
+
+# ---------------------------------------------------------------------------
+# D-10/R-11: QUOIN_INLINE_COST_CAPTURE must default OFF until stage-4 col-8-aware
+# readers ship — enabling it early makes managed-phase cost read $0/unresolved
+# (no current reader prices col 8 or resolves uuid=<agentId>).
+# ---------------------------------------------------------------------------
+def test_inline_cost_capture_flag_defaults_off_in_docs():
+    """The authoritative operator doc (T-02) must carry BOTH the off-by-default
+    bash idiom and the explicit rollout-ordering warning — this is the doc a
+    human reads before flipping the flag."""
+    memory_doc = (
+        pathlib.Path(__file__).parent.parent.parent / "memory" / "cost-ledger-format.md"
+    )
+    text = memory_doc.read_text(encoding="utf-8")
+    assert '${QUOIN_INLINE_COST_CAPTURE:-0}' in text
+    assert "default OFF" in text
+    assert "MUST stay OFF in production until" in text
+
+
+def test_inline_cost_capture_flag_gated_not_unconditional_in_orchestrators():
+    """Each of the 3 scoped orchestrators (T-03/T-04/T-05) documents the on-behalf
+    write as conditional on QUOIN_INLINE_COST_CAPTURE=1 — never an unconditional
+    write. Absence/any-other-value must be the byte-unchanged today's-behavior path."""
+    skills_dir = pathlib.Path(__file__).parent.parent.parent / "adapters" / "claude" / "skills"
+    for name in ("architect", "thorough_plan", "run"):
+        text = (skills_dir / name / "SKILL.md").read_text(encoding="utf-8")
+        assert "QUOIN_INLINE_COST_CAPTURE=1" in text or "QUOIN_INLINE_COST_CAPTURE\" == \"1\"" in text, (
+            f"{name}: on-behalf write must be documented as conditional on the flag "
+            "equaling 1, not unconditional"
+        )
