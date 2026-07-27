@@ -201,6 +201,19 @@ def backfill_ledger(ledger_path: Path, project_root: Path, home, dry_run: bool =
     every annotated row are byte-identical to the original; untouched rows
     (header/blank/comment/non-task/already-col-8/6-col) are copied verbatim.
     """
+    if _is_finalized(ledger_path):
+        # MINOR-1 (stage-5 review): a finalized ledger is immutable. This
+        # guard protects EVERY caller (not just the --ledger CLI branch)
+        # from mutating a finalized .md in place. Use --include-finalized
+        # for the non-mutating cost-backfill.json side-car instead.
+        print(
+            f"backfill_cost_attribution: {ledger_path}: finalized ledger is "
+            "immutable; skipping in-place backfill",
+            file=sys.stderr,
+        )
+        return {"ledger": str(ledger_path), "annotated": 0, "unresolved": 0,
+                 "skipped": 0, "aborted": False, "finalized_skipped": True}
+
     st0 = ledger_path.stat()  # MAJ-2: snapshot BEFORE read
     lines = ledger_path.read_text(encoding="utf-8").splitlines(keepends=True)
     proj_hash = project_hash(str(project_root))
@@ -344,7 +357,16 @@ def main(argv=None) -> int:
     home = Path(args.home).resolve() if args.home else None
 
     if args.ledger:
-        ledgers = [Path(args.ledger).resolve()]
+        p = Path(args.ledger).resolve()
+        if _is_finalized(p):
+            print(
+                f"backfill_cost_attribution: {p}: finalized ledger is immutable; "
+                "use --include-finalized for a non-mutating side-car — skipping",
+                file=sys.stderr,
+            )
+            ledgers = []  # nothing mutated (MINOR-1 finalized-guard)
+        else:
+            ledgers = [p]
     else:
         ledgers = discover_ledgers(project_root)
 

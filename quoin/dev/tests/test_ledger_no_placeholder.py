@@ -192,3 +192,85 @@ def test_finalized_sidecar_only_with_include_finalized(tmp_path):
     # non-finalized ledger WAS annotated
     non_finalized_text = non_finalized_ledger.read_text(encoding="utf-8")
     assert "src=backfill_session" in non_finalized_text
+
+
+# ---------------------------------------------------------------------------
+# T-06: MINOR-1 regression — finalized `--ledger` override is left
+# byte-identical (stage-5 review MINOR-1, folded in at stage 6 as T-01/T-06).
+# Both entry points are covered: the CLI `--ledger` branch AND a direct
+# `backfill_ledger()` call on a finalized path (the guard added at the TOP
+# of backfill_ledger protects every future caller, not just the CLI branch).
+# Load-bearing: the fixture's UUID_PRICEABLE row IS a genuine 7-col
+# candidate that price_agent_jsonl can resolve — if the T-01 guard were
+# reverted, this row WOULD be annotated (or at minimum rewritten), so these
+# assertions fail without the fix in place.
+# ---------------------------------------------------------------------------
+
+def _setup_finalized(tmp_path: Path):
+    project_root = tmp_path / "project"
+    home = tmp_path / "home"
+    finalized_dir = project_root / ".workflow_artifacts" / "finalized" / "old-task"
+    finalized_dir.mkdir(parents=True, exist_ok=True)
+    finalized_ledger = finalized_dir / "cost-ledger.md"
+    finalized_ledger.write_text("\n".join(LEDGER_LINES) + "\n", encoding="utf-8")
+    proj_hash = _BCA.project_hash(str(project_root))
+    _make_jsonl(home, proj_hash, UUID_PRICEABLE, "claude-opus-4-8", IN_TOK, OUT_TOK)
+    return project_root, home, finalized_ledger
+
+
+def test_backfill_ledger_direct_call_on_finalized_is_noop(tmp_path):
+    project_root, home, finalized_ledger = _setup_finalized(tmp_path)
+    before = finalized_ledger.read_bytes()
+
+    result = _BCA.backfill_ledger(finalized_ledger, project_root, home, dry_run=False)
+
+    after = finalized_ledger.read_bytes()
+    assert before == after  # byte-identical: no read-for-mutation happened
+    assert result["annotated"] == 0
+    assert result["unresolved"] == 0
+    assert result["aborted"] is False
+    assert result.get("finalized_skipped") is True
+    # no side-car written by this entry point
+    assert not (finalized_ledger.parent / "cost-backfill.json").exists()
+
+
+def test_cli_ledger_flag_on_finalized_path_is_byte_identical(tmp_path, capsys):
+    project_root, home, finalized_ledger = _setup_finalized(tmp_path)
+    before = finalized_ledger.read_bytes()
+
+    exit_code = _BCA.main([
+        "--project-root", str(project_root),
+        "--home", str(home),
+        "--ledger", str(finalized_ledger),
+    ])
+
+    after = finalized_ledger.read_bytes()
+    assert exit_code == 0  # fail-open contract preserved
+    assert before == after  # byte-identical: --ledger bypass is closed
+    assert not (finalized_ledger.parent / "cost-backfill.json").exists()
+
+    captured = capsys.readouterr()
+    assert "finalized ledger is immutable" in captured.err
+    assert "skipping" in captured.err.lower()
+
+
+def test_cli_ledger_flag_on_non_finalized_path_still_annotates(tmp_path):
+    """Sanity companion: the guard must not over-reach and block the
+    legitimate non-finalized --ledger override (R-S6c)."""
+    project_root = tmp_path / "project"
+    home = tmp_path / "home"
+    task_dir = project_root / ".workflow_artifacts" / "my-task"
+    task_dir.mkdir(parents=True, exist_ok=True)
+    ledger_path = task_dir / "cost-ledger.md"
+    ledger_path.write_text("\n".join(LEDGER_LINES) + "\n", encoding="utf-8")
+    proj_hash = _BCA.project_hash(str(project_root))
+    _make_jsonl(home, proj_hash, UUID_PRICEABLE, "claude-opus-4-8", IN_TOK, OUT_TOK)
+
+    exit_code = _BCA.main([
+        "--project-root", str(project_root),
+        "--home", str(home),
+        "--ledger", str(ledger_path),
+    ])
+
+    assert exit_code == 0
+    assert "src=backfill_session" in ledger_path.read_text(encoding="utf-8")
