@@ -189,6 +189,14 @@ def test_9col_row_tolerated_takes_8th_as_attribution(tmp_path):
 
 # ---------------------------------------------------------------------------
 # Mixed ledger — the shared T-08/T-12 fixture; correct partition end-to-end
+#
+# Stage-6 T-03 traceability: this section already exercises the exact mixed-
+# column set the stage-6 plan asks for (legacy 6-col, legacy 7-col-no-JSONL,
+# col-8 nested_jsonl, col-8 backfill_session, col-8 unresolved), asserting
+# resolved_total sums ONLY resolved rows, unresolvable_count == exactly the
+# unresolvable/no-JSONL rows (never folded into a silent $0), and both the
+# `(partial)` and non-partial format_report render branches. No gap found;
+# no new tests added here per plan T-03.
 # ---------------------------------------------------------------------------
 
 def test_mixed_ledger_resolved_total_excludes_unresolvable_slice(tmp_path):

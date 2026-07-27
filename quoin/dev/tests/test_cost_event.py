@@ -293,6 +293,17 @@ def test_parse_attribution_duplicate_key_last_write_wins():
 # ---------------------------------------------------------------------------
 # T-01/T-08 — classify_attribution() precedence verdict (proc:classify)
 # All 7 canonical asserted cases from the stage-4 plan MUST hold verbatim.
+#
+# Stage-6 T-03 traceability: the taxonomy this stage's plan asks for —
+# resolved(nested_jsonl)/resolved(backfill_session)/unresolvable(sentinel,
+# malformed usd)/legacy(empty)/resolved(genuine 0.0, load-bearing distinction
+# from unresolvable) — is already exhaustively covered by the tests below
+# (test_classify_resolved_nested_jsonl, test_classify_resolved_backfill_session,
+# test_classify_unresolved_sentinel_with_tok, test_classify_unresolved_sentinel_bare,
+# test_classify_malformed_usd_never_zero, test_classify_empty_is_legacy,
+# test_classify_resolved_zero_is_genuine_not_unresolvable). No gap found; no
+# new tests added here per plan T-03 ("if these cases already exist, add
+# only the missing ones and reference them").
 # ---------------------------------------------------------------------------
 
 
