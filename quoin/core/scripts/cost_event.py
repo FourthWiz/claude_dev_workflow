@@ -197,6 +197,56 @@ def parse_attribution(s: str) -> dict:
     return out
 
 
+def classify_attribution(attribution: str) -> tuple[str, float | None]:
+    """Classify a raw col-8 attribution string into a precedence verdict.
+
+    Provenance-agnostic: the verdict is keyed on usd-presence plus the
+    neutral 'unresolved' sentinel, NOT a hand-maintained allowlist of
+    resolved 'src' tags — a new resolved src auto-classifies without a
+    code change here.
+
+    Returns exactly one of:
+        ("legacy", None)        — attribution is empty (no col 8); caller
+                                   does its own legacy session-log resolution.
+        ("resolved", usd_float) — col 8 present, a parseable 'usd' value
+                                   is present, AND 'src' is NOT the
+                                   unresolvable sentinel. Never returns
+                                   ("resolved", 0.0) for an unresolvable row
+                                   — a parsed 0.0 here is a genuine resolved
+                                   zero, distinct from "no usd present".
+        ("unresolvable", None)  — col 8 present but src == "unresolved",
+                                   OR usd is absent/unparseable.
+
+    Pure, tolerant, never raises — mirrors parse_attribution's discipline.
+
+    Canonical asserted cases:
+        classify_attribution("") -> ("legacy", None)
+        classify_attribution("usd=0.0123;tok=45210;src=<tag>")
+            -> ("resolved", 0.0123)
+        classify_attribution("tok=45;src=unresolved") -> ("unresolvable", None)
+        classify_attribution("src=unresolved") -> ("unresolvable", None)
+        classify_attribution("usd=abc;src=<tag>") -> ("unresolvable", None)
+        classify_attribution("usd=0.0;tok=9;src=<tag>") -> ("resolved", 0.0)
+    """
+    if not attribution.strip():
+        return ("legacy", None)
+
+    fields = parse_attribution(attribution)
+    src = fields.get("src", "")
+    if src == "unresolved":
+        return ("unresolvable", None)
+
+    raw_usd = fields.get("usd")
+    if raw_usd is None:
+        return ("unresolvable", None)
+    try:
+        usd = float(raw_usd)
+    except ValueError:
+        return ("unresolvable", None)
+
+    return ("resolved", usd)
+
+
 def iter_events(path: Path) -> Iterator[CostEvent]:
     """Open a ledger file and yield CostEvent for each parseable row.
 

@@ -252,9 +252,11 @@
         (isSelected ? ' selected-card' : '');
 
       // T-03: cost badge — show USD or tokens when available, fall back to row count
+      // MINOR-5/D-8 (stage 4): usd gate relaxed to usd!=null (drop >0) so a
+      // genuine resolved $0.00 renders as $0.00, not a row-count fallback.
       var costBadgeText = null;
       if (t.cost) {
-        if (t.cost.mode === 'usd' && t.cost.usd != null && t.cost.usd > 0) {
+        if (t.cost.mode === 'usd' && t.cost.usd != null) {
           costBadgeText = '$' + t.cost.usd.toFixed(2);
         } else if (t.cost.mode === 'tokens' && t.cost.tokens != null && t.cost.tokens > 0) {
           costBadgeText = (t.cost.tokens / 1e6).toFixed(1) + 'M tok';
@@ -262,8 +264,13 @@
           costBadgeText = pluralEvents(t.cost.total);
         }
       }
+      // Stage 4 (MAJOR-R1): surface the partial signal at the render surface —
+      // mirrors the existing spend-monitor (partial) idiom (line ~670).
+      var partialBadge = (t.cost && t.cost.partial)
+        ? ' <span class="spend-unattrib">(partial)</span>'
+        : '';
       var evtBadge = costBadgeText != null
-        ? '<span class="cost-badge">' + escHtml(costBadgeText) + '</span>'
+        ? '<span class="cost-badge">' + escHtml(costBadgeText) + '</span>' + partialBadge
         : '';
 
       // T-03: active stage label (multi-stage only)
@@ -369,10 +376,12 @@
     var reviewRounds = detail.review_rounds != null ? detail.review_rounds : '—';
 
     // Cost summary for stats-grid: show USD or tokens when available
+    // MINOR-5/D-8 (stage 4): usd gate relaxed to usd!=null (drop >0) — a
+    // genuine resolved $0.00 renders as $0.00.
     var costStatValue = '—';
     var costStatLabel = 'cost';
     if (detail.cost) {
-      if (detail.cost.mode === 'usd' && detail.cost.usd != null && detail.cost.usd > 0) {
+      if (detail.cost.mode === 'usd' && detail.cost.usd != null) {
         costStatValue = '$' + detail.cost.usd.toFixed(2);
         costStatLabel = 'cost (USD)';
       } else if (detail.cost.mode === 'tokens' && detail.cost.tokens != null && detail.cost.tokens > 0) {
@@ -383,6 +392,10 @@
         costStatLabel = 'ledger rows';
       }
     }
+    // Stage 4 (MAJOR-R1): partial marker, mirroring the spend-monitor idiom.
+    var costStatPartialHtml = (detail.cost && detail.cost.partial)
+      ? ' <span class="spend-unattrib">(partial)</span>'
+      : '';
 
     html += '<div class="stats-grid">' +
       '<div class="stat-cell"><div class="stat-value">' + escHtml(String(sessionCount)) + '</div>' +
@@ -391,7 +404,7 @@
         '<div class="stat-label">critic rounds</div></div>' +
       '<div class="stat-cell"><div class="stat-value">' + escHtml(String(reviewRounds)) + '</div>' +
         '<div class="stat-label">review rounds</div></div>' +
-      '<div class="stat-cell"><div class="stat-value">' + escHtml(costStatValue) + '</div>' +
+      '<div class="stat-cell"><div class="stat-value">' + escHtml(costStatValue) + costStatPartialHtml + '</div>' +
         '<div class="stat-label">' + escHtml(costStatLabel) + '</div></div>' +
     '</div>';
 
@@ -514,7 +527,12 @@
           var ssbv = cost.by_phase[ssBpKeys[ssbk]];
           ssAttrib += (ssbv && ssbv.usd != null) ? ssbv.usd : 0;
         }
-        html += '<p class="stage-cost-note">By phase (of $' + ssAttrib.toFixed(2) + ' attributed spend):</p>';
+        // Stage 4 (MAJOR-R1): flag the attributed-spend line as incomplete
+        // when the task carries an unresolvable slice.
+        var ssPartialHtml = (cost.partial)
+          ? ' <span class="spend-unattrib">(partial)</span>'
+          : '';
+        html += '<p class="stage-cost-note">By phase (of $' + ssAttrib.toFixed(2) + ' attributed spend)' + ssPartialHtml + ':</p>';
       }
       var ssColHdr = (cost.mode === 'counts') ? 'Events' : 'Cost';
       html += '<table class="by-phase-table"><thead><tr><th>Phase</th><th>' + ssColHdr + '</th></tr></thead><tbody>';

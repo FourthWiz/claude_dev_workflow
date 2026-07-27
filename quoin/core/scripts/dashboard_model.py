@@ -333,6 +333,7 @@ def _task_summary(
         "total": len(rows),
         "usd": None,
         "tokens": None,
+        "partial": False,
     }
 
     # Apply provider enrichment if available
@@ -341,8 +342,10 @@ def _task_summary(
         try:
             enrichment = cost_provider(task_name, rows)
             if enrichment is not None and isinstance(enrichment, dict):
-                # Merge provider output over counts default
-                for key in ["mode", "usd", "tokens", "by_phase"]:
+                # Merge provider output over counts default. "partial"
+                # propagates the never-silent-$0 signal into the emitted
+                # dashboard JSON (MAJOR-1 fix — previously dropped here).
+                for key in ["mode", "usd", "tokens", "by_phase", "partial"]:
                     if key in enrichment:
                         cost[key] = enrichment[key]
         except Exception:

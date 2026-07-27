@@ -71,6 +71,37 @@ jsonl_path_for = _cfj.jsonl_path_for
 project_hash = _cfj.project_hash
 
 
+def _load_core(name: str):
+    """Load a core->core sibling module (allowed; stays within this directory).
+
+    Mirrors dashboard_model.py's core loader shape. Unlike _load_sibling
+    (which resolves the adapter directory), this stays core-local.
+    """
+    core_dir = Path(__file__).resolve().parent  # quoin/quoin/core/scripts/
+    candidate = core_dir / f"{name}.py"
+    if not candidate.exists():
+        raise ImportError(f"Cannot load {name}: {candidate} not found")
+    module_key = f"_spend_monitor_{name}"
+    if module_key in sys.modules:
+        return sys.modules[module_key]
+    spec = importlib.util.spec_from_file_location(module_key, candidate)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot create spec for {name} at {candidate}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[module_key] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+try:
+    _ce = _load_core("cost_event")
+    classify_attribution = _ce.classify_attribution
+except ImportError:
+    # Fail-open: inline-first precedence silently disabled; every row is
+    # treated as legacy (today's behavior), never a crash.
+    classify_attribution = None
+
+
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
@@ -224,11 +255,12 @@ def _cache_set(cache: Optional[dict], path: Path, result: Any) -> None:
 # ---------------------------------------------------------------------------
 
 def _parse_ledger_today(ledger_path: Path, today_str: str) -> list:
-    """Return list of {uuid, phase} for rows where date == today_str.
+    """Return list of {uuid, phase, attribution} for rows where date == today_str.
 
     Parses the cost-ledger.md pipe-separated format:
-      UUID | DATE | PHASE | MODEL | task | NOTE | FALLBACK_FIRES
-    Columns are 0-indexed. date is col 1, uuid is col 0, phase is col 2.
+      UUID | DATE | PHASE | MODEL | task | NOTE | FALLBACK_FIRES | ATTRIBUTION
+    Columns are 0-indexed. date is col 1, uuid is col 0, phase is col 2,
+    attribution is col 7 (optional 8th column; "" when absent).
     """
     rows = []
     try:
@@ -245,7 +277,8 @@ def _parse_ledger_today(ledger_path: Path, today_str: str) -> list:
                 if date_str != today_str:
                     continue
                 phase = parts[2].strip()
-                rows.append({"uuid": uuid, "phase": phase})
+                attribution = parts[7].strip() if len(parts) >= 8 else ""
+                rows.append({"uuid": uuid, "phase": phase, "attribution": attribution})
     except (IOError, OSError):
         pass
     return rows
@@ -308,7 +341,31 @@ def scan_ledgers_today(
                 if not uuid or uuid.lower() == "na":
                     by_task_partial = True
                     continue
-                # UUID deduplication: skip if already counted (first-row attribution)
+
+                # Inline-first precedence: col-8 attribution, if present and
+                # classifiable, takes priority over legacy JSONL resolution.
+                verdict, usd = ("legacy", None)
+                if classify_attribution is not None:
+                    attribution = row.get("attribution", "")
+                    verdict, usd = classify_attribution(attribution)
+
+                if verdict == "resolved":
+                    # Inline usd — no JSONL lookup, no UUID-dedup gate (on-behalf
+                    # rows carry a unique uuid=<agentId>; inline usd is already
+                    # per-phase, so double-counting across rows cannot occur).
+                    task_usd = usd or 0.0
+                    by_task[task_name] = by_task.get(task_name, 0.0) + task_usd
+                    phase = row.get("phase", "")
+                    if phase:
+                        by_phase[phase] = by_phase.get(phase, 0.0) + task_usd
+                    continue
+
+                if verdict == "unresolvable":
+                    # Never fold into a $0 contribution.
+                    by_task_partial = True
+                    continue
+
+                # verdict == "legacy": existing UUID-dedup + JSONL-resolve path.
                 if uuid in seen_uuids:
                     continue
                 jsonl_path = jsonl_path_for(uuid, proj_hash_str, home=home)
