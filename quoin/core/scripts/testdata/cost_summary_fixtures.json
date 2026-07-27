@@ -81,5 +81,17 @@
     "summary": {"grand_total": 8.0, "by_task_partial": true},
     "expect_total": 8.0,
     "expect_partial": true
+  },
+  {
+    "name": "unresolvable_count_partial_no_fallback_used",
+    "summary": {"grand_total": 5.0, "unresolvable_count": 2},
+    "expect_total": 5.0,
+    "expect_partial": true
+  },
+  {
+    "name": "unresolvable_count_zero_stays_live",
+    "summary": {"grand_total": 5.0, "unresolvable_count": 0},
+    "expect_total": 5.0,
+    "expect_partial": false
   }
 ]

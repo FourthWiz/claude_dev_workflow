@@ -35,6 +35,7 @@ parse_row = _MOD.parse_row
 format_row = _MOD.format_row
 RowParseError = _MOD.RowParseError
 parse_attribution = _MOD.parse_attribution
+classify_attribution = _MOD.classify_attribution
 
 
 # ---------------------------------------------------------------------------
@@ -287,4 +288,64 @@ def test_parse_attribution_duplicate_key_last_write_wins():
     """Duplicate keys resolve last-write-wins — locks the micro-map contract the
     S-4 reader-precedence stage consumes (deferred non-blocking nit from S-1 review)."""
     assert parse_attribution("a=1;a=2") == {"a": "2"}
+
+
+# ---------------------------------------------------------------------------
+# T-01/T-08 — classify_attribution() precedence verdict (proc:classify)
+# All 7 canonical asserted cases from the stage-4 plan MUST hold verbatim.
+# ---------------------------------------------------------------------------
+
+
+def test_classify_empty_is_legacy():
+    assert classify_attribution("") == ("legacy", None)
+
+
+def test_classify_whitespace_only_is_legacy():
+    assert classify_attribution("   ") == ("legacy", None)
+
+
+def test_classify_resolved_nested_jsonl():
+    assert classify_attribution("usd=0.0123;tok=45210;src=nested_jsonl") == ("resolved", 0.0123)
+
+
+def test_classify_resolved_backfill_session():
+    assert classify_attribution("usd=0.5;tok=9;src=backfill_session") == ("resolved", 0.5)
+
+
+def test_classify_resolved_zero_is_genuine_not_unresolvable():
+    """A parsed usd=0.0 is a REAL resolved value (MINOR-5/D-8) — distinct from
+    ('unresolvable', None). Never collapses a genuine $0 into 'no data'."""
+    result = classify_attribution("usd=0.0;tok=9;src=nested_jsonl")
+    assert result == ("resolved", 0.0)
+    assert result[0] == "resolved"  # explicit — NOT "unresolvable"
+
+
+def test_classify_unresolved_sentinel_with_tok():
+    assert classify_attribution("tok=45;src=unresolved") == ("unresolvable", None)
+
+
+def test_classify_unresolved_sentinel_bare():
+    assert classify_attribution("src=unresolved") == ("unresolvable", None)
+
+
+def test_classify_malformed_usd_never_zero():
+    """Malformed usd must NEVER silently resolve to $0 — it is unresolvable."""
+    result = classify_attribution("usd=abc;src=nested_jsonl")
+    assert result == ("unresolvable", None)
+
+
+def test_classify_missing_usd_with_src_present():
+    """col 8 present, src resolved-looking, but no usd key at all -> unresolvable."""
+    assert classify_attribution("tok=45;src=nested_jsonl") == ("unresolvable", None)
+
+
+def test_classify_no_jsonl_literal_in_source():
+    """Core-purity guard (MINOR-3): the source docstring must use a neutral
+    src=<tag> placeholder, never the concrete 'nested_jsonl'/'backfill_session'
+    vocabulary or the bare substring 'jsonl' (case-insensitive) — those live
+    only in this test file. Mirrors test_cost_core_no_claude_terms's WORDLIST scan."""
+    source = _CORE_PATH.read_text(encoding="utf-8")
+    assert "jsonl" not in source.lower(), (
+        "cost_event.py must not contain the substring 'jsonl' (no_claude_terms guard)"
+    )
     assert parse_attribution("usd=0.01;usd=0.02;tok=5") == {"usd": "0.02", "tok": "5"}

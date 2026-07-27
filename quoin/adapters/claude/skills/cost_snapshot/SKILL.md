@@ -141,13 +141,27 @@ Determine the project root (the directory containing `.workflow_artifacts/`). Th
 - **Active tasks:** scan `.workflow_artifacts/*/cost-ledger.md` (non-finalized task folders)
 - **Finalized tasks:** scan `.workflow_artifacts/finalized/*/cost-ledger.md`
 
-For each ledger file found, parse every data line (skip lines starting with `#` and blank lines). Split each line on `|` (bare pipe, NOT ` | `), strip each field. Require at least 6 fields. If exactly 7 fields, take the 7th as `fallback_fires` (parse as int; on parse failure treat as `0` and emit stderr WARN `cost_snapshot.WARN: malformed fallback_fires column at <ledger>:<lineno>`). If more than 7 fields, treat the 7th as `fallback_fires` and ignore the rest with a stderr WARN. The format is:
+For each ledger file found, parse every data line (skip lines starting with `#` and blank lines). Split each line on `|` (bare pipe, NOT ` | `), strip each field. Require at least 6 fields.
+
+- **6 fields** — valid; `fallback_fires=0`, `attribution=""` (legacy, pre-Stage-4).
+- **Exactly 7 fields** — take the 7th as `fallback_fires` (parse as int; on parse failure treat as `0` and emit stderr WARN `cost_snapshot.WARN: malformed fallback_fires column at <ledger>:<lineno>`); `attribution=""`.
+- **Exactly 8 fields** — take the 7th as `fallback_fires` (same parsing) and the 8th as `attribution` (first-class, Stage-4-reader-partitioning+). An empty 8th field is equivalent to no col 8 (`attribution=""`).
+- **9 or more fields** — take cols 7 and 8 as `fallback_fires`/`attribution`; ignore any columns beyond the 8th with a stderr WARN: `cost_snapshot.WARN: extra columns at <ledger>:<lineno> (expected ≤8)`.
+
+The format is:
 
 ```
-<uuid> | <date> | <phase> | <model> | <category> | <notes> [| <fallback_fires>]
+<uuid> | <date> | <phase> | <model> | <category> | <notes> [| <fallback_fires> [| <attribution>]]
 ```
 
-The 7th column is OPTIONAL (Stage 4+ only); 6-column rows are always valid with `fallback_fires=0`.
+The 7th column (`fallback_fires`) is OPTIONAL (Stage 4+ only); the 8th column (`attribution`) is OPTIONAL (Stage-4-reader-partitioning+ only). 6-column rows are always valid with `fallback_fires=0`, `attribution=""`.
+
+**Inline-first precedence rule** (per row, applied once `attribution` is extracted — mirrors the core `classify_attribution()` verdict used by the Python readers):
+- Col 8 present, carries a parseable `usd`, AND `src` ≠ `unresolved` → the row is **resolved**: use the inline `usd` directly for that UUID and SKIP the ccusage/`cost_from_jsonl.py` JSONL lookup for it (Step 2 excludes resolved-inline UUIDs from the lookup set — see below).
+- Col 8 present but `src=unresolved` (or no usable `usd`) → the row is **unresolvable**: count it explicitly (see Step 3); it contributes NOTHING to any total — never fold it into $0.
+- Col 8 empty (`attribution=""`) → **legacy**: fall through to the existing UUID→JSONL resolution (Step 2/3), unchanged; a lookup failure here is also counted as unresolvable (Step 3).
+
+Keep the existing `unknown-`-prefixed UUID skip filter (Step 2) as-is — it is orthogonal to this precedence rule (those are fallback entries with no real session at all, not unresolvable col-8 rows).
 
 Build three collections:
 
@@ -168,9 +182,13 @@ Then stop.
 
 ### Step 2: Run ccusage for each unique UUID
 
-Collect all unique UUIDs from all three collections. Skip any UUID starting with `unknown-` (these are fallback entries with no real session to look up).
+Collect all unique UUIDs from all three collections, THEN build the JSONL-lookup set by EXCLUDING two kinds of UUIDs:
+- any UUID starting with `unknown-` (fallback entries with no real session to look up — unchanged, existing behavior);
+- any UUID whose row(s) classified as **resolved** under the Step-1 precedence rule (its cost is already known from the inline col-8 `usd` — sending it to ccusage/`cost_from_jsonl.py` is unnecessary and, for on-behalf rows carrying `uuid=<agentId>` with no top-level `<agentId>.jsonl`, would be a guaranteed-failed lookup that risks double-representation: once inline, once in the unresolvable bucket).
 
-**For fewer than 5 unique UUIDs**, run sequentially with a 15-second timeout per call:
+So: **JSONL-lookup set = all unique UUIDs − resolved-inline UUIDs − `unknown-`-prefixed UUIDs.** Only this reduced set is sent to ccusage/`cost_from_jsonl.py` below.
+
+**For fewer than 5 unique UUIDs** (in the JSONL-lookup set), run sequentially with a 15-second timeout per call:
 
 ```bash
 timeout 15 npx ccusage session -i <UUID> --json
@@ -235,11 +253,10 @@ Before surfacing any task/PR status, run `python3 __QUOIN_HOME__/scripts/verify_
 
 ### Step 3: Print summary
 
-Using the UUID-to-cost map from Step 2, compute:
+Using the UUID-to-cost map from Step 2 PLUS the resolved-inline `usd` values from Step 1, compute per scope (today / lifetime / per-open-task):
 
-- **Today total** — sum costs for UUIDs in `today_entries` (skip nulls and unknown- entries)
-- **Lifetime total** — sum costs for all UUIDs in `all_entries` (skip nulls and unknown- entries)
-- **Per open task** — for each task in `open_task_entries`, sum costs for that task's UUIDs
+- **`resolved_total`** — sum of (a) resolved-inline `usd` (Step-1 precedence rule) and (b) successfully-resolved JSONL costs (legacy rows, Step 2). This is the trustworthy total — it NEVER includes an unresolvable row as $0.
+- **`unresolvable_count`** — count of (a) col-8 **unresolvable** rows (Step 1) PLUS (b) legacy rows whose JSONL lookup failed, timed out, or returned null (skip `unknown-`-prefixed UUIDs, per Step 2 — those were never in the lookup set to begin with). This single counter REPLACES the old "sessions with unknown cost" line — do not maintain two competing counters for the same idea; both failure modes are the same "cost not trustworthy for this row" fact.
 
 Print in this format:
 
@@ -253,16 +270,18 @@ Open tasks:
   <task-name-1>    $X.XX  (<N> sessions)
   <task-name-2>    $X.XX  (<N> sessions)
 
-[<K> sessions with unknown cost — ccusage lookup failed or timed out]
+[<K> sessions unresolvable — col-8 marked unresolved, or ccusage/JSONL lookup failed/timed out]
 ```
+
+Each `$X.XX` total is `resolved_total` for that scope. When the corresponding `unresolvable_count > 0`, prefix the total with `~` and append `(partial)` — e.g. `~$X.XX (partial)` — so a partial total is never rendered as if it were exact. Never fold an unresolvable row into $0 to keep a total looking precise.
 
 When today's fallback total (from `today_fallback_by_task`) is > 0 for a task, append ` (<K> fallback fires today)` after the session count for that task in the "Open tasks" block. When 0, no marker is shown. Similarly, if the lifetime 7th-column sum across all ledgers is > 0, append ` (<K> fallback fires)` after the lifetime session count. If today's total fallback fires across all tasks is > 0, append ` (<K> fallback fires today)` after the Today session count. Never print fallback-fire markers when the count is 0.
 
 Formatting rules:
 - Right-align the dollar amounts (pad task names to consistent width)
 - Omit the "Open tasks" section entirely if there are no active tasks
-- Omit the `[K sessions with unknown cost]` line if all lookups succeeded
-- Show `$0.00` if a total is zero (not blank)
+- Omit the `[K sessions unresolvable]` line if `unresolvable_count == 0` across all scopes
+- Show `$0.00` if a total is zero (not blank) — a genuine resolved $0 is shown as `$0.00`, never omitted
 
 ## Important behaviors
 
