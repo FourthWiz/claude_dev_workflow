@@ -40,7 +40,14 @@ SCANNED_FILES = [
 IMPORT_BLACKLIST = [
     "cost_from_jsonl",
     "session_age_guard",
+    # IVG-111 stage 6 (T-07): the nested-transcript resolver/pricer and the
+    # historical backfill script are Claude-adapter-owned (D-04/R-05) — core
+    # must never import either.
+    "agent_transcript_cost",
+    "backfill_cost_attribution",
 ]
+
+CORE_SCRIPTS_DIR = REPO_ROOT / "quoin" / "core" / "scripts"
 
 
 # ---------------------------------------------------------------------------
@@ -193,3 +200,39 @@ def test_dashboard_model_py_has_no_adapter_imports():
             f"statement in {path}: {offending}. "
             "dashboard_model.py must stay core-pure (no adapter imports)."
         )
+
+
+# ---------------------------------------------------------------------------
+# T-07 (stage 6): directory-wide core-purity guard for the IVG-111
+# cost-attribution surface. Walks EVERY file in quoin/core/scripts/ (not just
+# the three files targeted above) and asserts no actual import statement
+# names the adapter-only resolver/pricer (`agent_transcript_cost`) or the
+# historical backfill script (`backfill_cost_attribution`) — the invariant
+# stated in architecture D-04/R-05 and documented in runtime-portability.md.
+# Anchored to real import/from lines only, mirroring
+# test_dashboard_model_py_has_no_adapter_imports's anchoring discipline (a
+# bare substring scan would spuriously flag this test file's own docstrings
+# elsewhere in the suite, and any future doc comment inside a core script).
+# ---------------------------------------------------------------------------
+
+_COST_ATTRIBUTION_TERMS = ["agent_transcript_cost", "backfill_cost_attribution"]
+
+
+def test_core_scripts_directory_never_imports_cost_attribution_adapter_modules():
+    assert CORE_SCRIPTS_DIR.exists(), f"expected core scripts dir at {CORE_SCRIPTS_DIR}"
+    offenses = []
+    for py_file in sorted(CORE_SCRIPTS_DIR.glob("*.py")):
+        source = py_file.read_text(encoding="utf-8")
+        import_lines = [
+            line for line in source.splitlines()
+            if re.match(r"^\s*(from|import)\s+", line)
+        ]
+        for term in _COST_ATTRIBUTION_TERMS:
+            for line in import_lines:
+                if term in line:
+                    offenses.append((py_file.name, term, line.strip()))
+    assert offenses == [], (
+        "quoin/core/scripts/ must never import the Claude-adapter-owned "
+        "cost-attribution resolver/pricer/backfill modules (D-04/R-05):\n"
+        + "\n".join(f"  {f}: {term!r} in {ln!r}" for f, term, ln in offenses)
+    )
