@@ -461,6 +461,70 @@ def test_scan_tasks_provider_raises_degrades_gracefully(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# T-10 (stage 4, MAJOR-1 END-TO-END): partial propagation through the
+# _task_summary merge whitelist into the EMITTED scan_tasks/task_detail JSON.
+# This is the load-bearing assertion — a mutation that removes "partial" from
+# the merge whitelist (dashboard_model.py:345) MUST fail this test.
+# ---------------------------------------------------------------------------
+
+def test_scan_tasks_partial_signal_reaches_emitted_json(tmp_path):
+    """A provider returning partial=True must surface as
+    task["cost"]["partial"] is True in the scan_tasks-emitted JSON — the
+    MAJOR-1 propagation fix (previously silently dropped by the line-345
+    merge whitelist, which only copied mode/usd/tokens/by_phase)."""
+    root, _, _, _ = make_fixture_tree(tmp_path)
+
+    def partial_provider(task_name, rows):
+        return {"mode": "usd", "usd": 0.75, "partial": True, "by_phase": {"implement": {"usd": 0.75}}}
+
+    result = scan_tasks(root, cost_provider=partial_provider)
+
+    assert result["tasks"], "fixture tree must have at least one task"
+    for task in result["tasks"]:
+        assert task["cost"]["partial"] is True
+        assert task["cost"]["usd"] == 0.75
+
+    # A whitelist-mutation regression check: json.dumps of the whole result
+    # must actually contain the literal partial:true — not merely an object
+    # attribute that never got serialized.
+    payload = json.dumps(result)
+    assert '"partial": true' in payload or '"partial":true' in payload
+
+
+def test_scan_tasks_partial_defaults_false_without_provider_key(tmp_path):
+    """A provider that omits 'partial' (or counts-mode default) must yield
+    task["cost"]["partial"] is False — the explicit default added alongside
+    the whitelist fix, never an absent/None key."""
+    root, _, _, _ = make_fixture_tree(tmp_path)
+
+    def no_partial_provider(task_name, rows):
+        return {"mode": "usd", "usd": 4.0, "by_phase": {"implement": {"usd": 4.0}}}
+
+    result = scan_tasks(root, cost_provider=no_partial_provider)
+    for task in result["tasks"]:
+        assert task["cost"]["partial"] is False
+
+    # Default counts-mode (no provider at all) also carries partial=False.
+    result_counts = scan_tasks(root)
+    for task in result_counts["tasks"]:
+        assert task["cost"]["partial"] is False
+
+
+def test_task_detail_partial_signal_reaches_emitted_json(tmp_path):
+    """Same MAJOR-1 end-to-end check via the task_detail() single-task path
+    (not just scan_tasks) — both emit through the same _task_summary."""
+    root, single_task_dir, _, _ = make_fixture_tree(tmp_path)
+    task_name = single_task_dir.name
+
+    def partial_provider(task_name, rows):
+        return {"mode": "usd", "usd": 1.25, "partial": True, "by_phase": {}}
+
+    detail = task_detail(root, task_name, cost_provider=partial_provider)
+    assert detail["cost"]["partial"] is True
+    assert detail["cost"]["usd"] == 1.25
+
+
+# ---------------------------------------------------------------------------
 # Test: task_detail
 # ---------------------------------------------------------------------------
 
