@@ -234,6 +234,25 @@ Read the task profile from the convergence summary at the top of `current-plan.m
 
 **Small — unchanged single-pass review.** Run the entire Review process below exactly as today: zero extra subagents, one `review-N.md` write. This branch is byte-path-identical to the pre-fan-out single-pass flow.
 
+**Pre-fan-out context budget (IVG-141) — Medium/Large only; Small path unchanged.** At the START of this Medium/Large branch, BEFORE dispatching the three parallel dimension subagents, run the on-demand budget guard (best-effort leaf measurement per the T-02 spike, which PASSED — `/review` subagents resolve their own transcript):
+```bash
+python3 __QUOIN_HOME__/scripts/context_budget_guard.py --project-root "$PROJECT_ROOT" \
+  --current-uuid "$(python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$PROJECT_ROOT" --phase review)"
+```
+Bypass on `[no-phase-budget]` (strip at bootstrap) or `QUOIN_DISABLE_PHASE_BUDGET=1`. On exit 0 (`OK|...` incl. the `OK|0|` fail-OPEN path) → proceed with the fan-out. On exit 1 (`OVER|util|path`), react NON-BLOCKING and uniform in all modes (NO `AskUserQuestion`, NO decision-gate marker):
+  1. Save the boundary checkpoint:
+     ```bash
+     python3 __QUOIN_HOME__/scripts/boundary_checkpoint.py \
+       --project-root "$PROJECT_ROOT" --task "<task>" --skill review \
+       --sid "$(python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$PROJECT_ROOT" --phase review)" \
+       --branch "<branch>" --resume-command "re-invoke /review" \
+       --phase-label "before Medium/Large fan-out" --plan-path "<current-plan.md>" || true
+     ```
+  2. Emit the advisory `[quoin-budget: util NN% ≥ threshold at review boundary; checkpoint saved → re-invoke /review]`, then:
+     - **default** → PROCEED with the fan-out. Never prompts, never blocks.
+     - **`QUOIN_PHASE_BUDGET_BLOCK=1`** (opt-in, default off) → print a fresh-session resume instruction (re-invoke `/review`) and STOP. A printed instruction, NOT an `AskUserQuestion`.
+     - **`_AUTONOMOUS`** → the SAME non-blocking path, and ADDITIONALLY hand back per the existing autonomous behavior. No new `[no-interactive]` sentinel parsing is added for this non-blocking check (it never prompts).
+
 **Medium/Large — parallel dimension fan-out.** Gather shared context ONCE at Step 1 of the Review process below (plan, architecture, diff via `git diff <base-branch>...HEAD`, changed-file set), then dispatch three parallel `model: "opus"` Agent subagents — one per dimension: **security**, **performance**, **architecture/integration**. Each subagent's prompt is focused to its dimension only, and carries the plan path, branch, and diff scope. Each subagent returns a structured block: `` `<verdict>APPROVED|CHANGES_REQUESTED|BLOCKED</verdict>` `` (the identical 3-value enum used everywhere in this contract — D-08) plus dimension-tagged issues (CRITICAL/MAJOR/MINOR, each with file:line and fix).
 
 **`[autonomous]` propagation (C-1 / D-07):** if this `/review` invocation is running under `_AUTONOMOUS` (parsed at Session bootstrap step 0), re-prefix the `[autonomous]` sentinel onto every deeper subagent spawn prompt issued at this fan-out step — the Large-only `/security_review` OWASP-pass spawn AND the Medium/Large performance + architecture/integration dimension Agent subagents — so those leaf skills' own §0'/§0″ dispatch blocks receive the sentinel and can resolve their own dispatch-failure prompts fail-OPEN without `AskUserQuestion` (per `T-23`'s generator-template change). This propagation is purely additive to the dimension-subagent prompts described above; it does not change verdict handling. Verdict emission (`APPROVED`/`CHANGES_REQUESTED`/`BLOCKED`) stays exactly as documented in `## After the review` below — `/review` never auto-resolves a BLOCKED (or CHANGES_REQUESTED) verdict itself under autonomous mode; those hard stops remain owned by `run/SKILL.md`.

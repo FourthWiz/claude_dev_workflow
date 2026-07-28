@@ -246,6 +246,58 @@ Phase 5: REVIEW
 Phase 6: END_OF_TASK
 ```
 
+## Pre-phase context budget (per heavy phase spawn) — IVG-141
+
+Before each HEAVY phase spawn — Phase 2 (architect), Phase 3 (thorough_plan),
+Phase 4 (implement), Phase 5 (review) — run the on-demand context-budget guard in
+the FOREGROUND top-level `/run` session (this is the PRIMARY / authoritative
+measurement point; it measures the context that is about to spawn the phase). Do
+NOT run it before the lighter Phase 1 / 1.4 / 1.5 / 6 (heavy-phase-only scope).
+This is additive to the existing checkpoints; it never lowers or touches any hook
+threshold.
+
+**Bypass:** if the incoming prompt carries `[no-phase-budget]` (strip at
+bootstrap) OR `QUOIN_DISABLE_PHASE_BUDGET=1` is set, SKIP the guard entirely
+(power-user path, mirrors `[no-session-age-guard]`) and spawn the phase as today.
+
+**Run the guard (foreground):**
+```bash
+python3 __QUOIN_HOME__/scripts/context_budget_guard.py --project-root "$PROJECT_ROOT"
+```
+- Exit 0 (`OK|...|` or `OK|disabled|`, incl. the `OK|0|` fail-OPEN path) → proceed
+  with the phase spawn. On the fail-OPEN/missing-helper `OK|0|` path emit
+  `[quoin-budget: guard unavailable; proceeding]`; otherwise emit nothing.
+- Exit 1 (`OVER|util|path`) → run the ORDERED, NON-BLOCKING over-budget sequence
+  (identical in interactive AND autonomous; NO prompt, NO `AskUserQuestion`, NO
+  decision-gate marker):
+  1. ALWAYS save the boundary checkpoint (durable resume point):
+     ```bash
+     python3 __QUOIN_HOME__/scripts/boundary_checkpoint.py \
+       --project-root "$PROJECT_ROOT" --task "<task>" --skill run \
+       --sid "$CLAUDE_CODE_SESSION_ID" --branch "<branch>" \
+       --resume-command "/run --resume <task>" \
+       --phase-label "before Phase N spawn" --plan-path "<current-plan.md>" || true
+     ```
+  2. Emit the one-line advisory:
+     `[quoin-budget: util NN% ≥ threshold at run boundary; checkpoint saved → /run --resume <task>]`
+  3. Then react (this is the ONLY branch that can halt, and only on opt-in):
+     - **default** → PROCEED with the phase spawn. Never prompts, never blocks.
+       Identical in interactive and autonomous.
+     - **`QUOIN_PHASE_BUDGET_BLOCK=1`** (opt-in, default off) → print a
+       fresh-session resume instruction (`/run --resume <task>`) and STOP. A
+       printed instruction, NOT an `AskUserQuestion`.
+  4. **`_AUTONOMOUS`** (`[autonomous]` / `--autonomous`) → the SAME non-blocking
+     path as (1)-(3), and ADDITIONALLY perform the existing Hook-cooperation
+     self-checkpoint + supervisor relaunch via `/run --resume --autonomous`
+     (reuse the "Hook cooperation (autonomous)" contract — no new mechanism).
+     Interactive has no supervisor → it continues in-session with the checkpoint
+     as a clean-recovery backstop.
+
+This adds NO new `AskUserQuestion` site and NO decision-gate `best-effort` marker
+(the over-budget path is non-blocking). It also does NOT touch `/run`'s existing
+`[no-interactive]` injection / `/thorough_plan` exclusion wiring — those are
+unrelated to this non-blocking budget check and stay exactly as documented above.
+
 ## On-behalf cost capture (`QUOIN_INLINE_COST_CAPTURE`, flag-gated, D-1/D-2/D-3, IVG-111 stage 3)
 
 When `QUOIN_INLINE_COST_CAPTURE=1`, this applies at EVERY managed phase spawn below — discover,
