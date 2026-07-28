@@ -750,6 +750,7 @@ KNOWN_DEFERRED_ROSTERS: dict = {
     "_REACHABLE_ARTIFACT_ONLY_SKILLS@test_quoin_stage1_worktree_fallback.py": "2-skill autonomous-clause reachability fixture, no skills.json field, single-file",
     "_REACHABLE_SOURCE_MUTATING_SKILLS@test_quoin_stage1_worktree_fallback.py": "2-skill autonomous-clause reachability fixture, no skills.json field, single-file",
     "_PIPELINE_NODES@test_status_graph.py": "status-graph pipeline-node render labels — the literal example T-04's design anticipated, not a skill roster",
+    "EXPECTED@test_budget_roster_census.py": "IVG-141 budget-check roster: editorial 4-skill grouping (run/implement/thorough_plan/review) self-guarded by set-equality in the same file, no skills.json field, single-file",
 }
 
 _ALLCAPS_RE = None  # populated lazily to avoid import cost at module load

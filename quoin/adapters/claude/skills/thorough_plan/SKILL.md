@@ -516,6 +516,31 @@ The `--session-state` path uses the ORCHESTRATOR-DEDICATED file (`{date}-{task}-
 Subagents write only to the standard `{date}-{task}.md` — these two files are fully disjoint (M-02/D-07).
 The orchestrator file owns `## Current stage: thorough-plan:round-N-{phase}` and subagents never touch it.
 
+**Pre-round context budget (IVG-141) — EXTENDS this IVG-98 boundary; does NOT
+regress it.** AFTER the `thorough_plan_checkpoint.py` call above (which stays the
+OWN, IVG-98 writer — do NOT call `boundary_checkpoint.py` here, per D-3), ALSO run
+the on-demand budget guard, reusing the already-acquired startup SID
+(`$_TPCKPT_SID`) as a best-effort leaf measurement (T-02 spike PASSED):
+```bash
+python3 __QUOIN_HOME__/scripts/context_budget_guard.py --project-root {root} \
+  --current-uuid "$_TPCKPT_SID" || true
+```
+Bypass on `[no-phase-budget]` (strip at bootstrap) or `QUOIN_DISABLE_PHASE_BUDGET=1`.
+On exit 0 → proceed with the next planning round. On exit 1 (`OVER|util|path`),
+react NON-BLOCKING and uniform in all modes (NO `AskUserQuestion`, NO
+decision-gate marker): the IVG-98 checkpoint above is ALREADY durable, so no
+second checkpoint is written — just emit the advisory
+`[quoin-budget: util NN% ≥ threshold at thorough_plan boundary; checkpoint saved → /thorough_plan {task}]`,
+then:
+  - **default** → PROCEED with the next planning round. Never prompts, never blocks.
+  - **`QUOIN_PHASE_BUDGET_BLOCK=1`** (opt-in, default off) → print a fresh-session
+    resume instruction (`/thorough_plan {task}`) and STOP. A printed instruction,
+    NOT an `AskUserQuestion`.
+  - **`_AUTONOMOUS`** → the SAME non-blocking path, and ADDITIONALLY hand back per
+    the existing autonomous behavior so a supervisor resumes in a fresh session.
+No new `[no-interactive]` sentinel parsing is added for this
+non-blocking check (it never prompts).
+
 **`## Current stage` ownership note:** The orchestrator file is authoritative for the round/phase token
 but is NOT a reliable B3 Tier-4 fallback: in the kill-during-subagent window, B3 Tier-4 reads the
 freshest `sessions/*.md` by mtime, which is the subagent's file. Recovery: re-invoke

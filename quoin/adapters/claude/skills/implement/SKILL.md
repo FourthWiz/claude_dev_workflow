@@ -256,6 +256,47 @@ re-invoke manually.
 Do NOT silently keep going past 40 tool uses. Stream-idle timeouts
 produce partial responses that the parent cannot reliably recover.
 
+**Pre-phase context budget at task/batch boundaries (IVG-141) — folded INTO the
+soft-cap handoff, ONE mechanism, not a parallel one.** At each task/batch
+boundary (after each committed batch, before starting the next task), run the
+on-demand budget guard (best-effort leaf measurement per the T-02 spike, which
+PASSED — `/implement` subagents resolve their own transcript):
+```bash
+python3 __QUOIN_HOME__/scripts/context_budget_guard.py --project-root "$PROJECT_ROOT" \
+  --current-uuid "$(python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$PROJECT_ROOT" --phase implement)"
+```
+Bypass entirely on `[no-phase-budget]` (strip at bootstrap) or
+`QUOIN_DISABLE_PHASE_BUDGET=1`. On exit 0 (`OK|...` incl. the `OK|0|` fail-OPEN
+path) → continue with the next task. On exit 1 (`OVER|util|path`), react
+NON-BLOCKING and uniform in all modes (NO `AskUserQuestion`, NO decision-gate
+marker), folding into the SAME §0a soft-cap handoff path:
+  1. Mark remaining tasks `⏳` + `[continue in fresh /implement dispatch]` in
+     `current-plan.md` and commit any in-progress files (same as the tool-count
+     soft cap above — one handoff mechanism).
+  2. Save the boundary checkpoint:
+     ```bash
+     python3 __QUOIN_HOME__/scripts/boundary_checkpoint.py \
+       --project-root "$PROJECT_ROOT" --task "<task>" --skill implement \
+       --sid "$(python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$PROJECT_ROOT" --phase implement)" \
+       --branch "<branch>" --resume-command "/implement" \
+       --phase-label "task boundary (over budget)" --plan-path "<current-plan.md>" || true
+     ```
+  3. Emit the advisory
+     `[quoin-budget: util NN% ≥ threshold at implement boundary; checkpoint saved → re-invoke /implement]`,
+     then:
+     - **default** → PROCEED with the next task (never prompts, never blocks;
+       the checkpoint is a clean-recovery backstop if the session later fills up).
+     - **`QUOIN_PHASE_BUDGET_BLOCK=1`** (opt-in, default off) → print a
+       fresh-session resume instruction (`/implement`) and STOP. A printed
+       instruction, NOT an `AskUserQuestion`.
+  4. **`_AUTONOMOUS`** (parsed at Session bootstrap step 0) → the SAME
+     non-blocking path, and ADDITIONALLY hand back per the existing
+     soft-cap/autonomous relaunch contract so a supervisor resumes in a fresh
+     session.
+This is additive — no hook threshold is touched. If the T-02 spike had FAILED,
+this would checkpoint on the §0a trigger without self-measuring; it PASSED, so
+`/implement` measures its own transcript as above.
+
 ## §0b Branch-hygiene precheck (EARLY DETECTION — runs at dispatch entry, not per-commit)
 
 **Scope statement (honest):** This precheck is early detection at each `/implement` dispatch entry. It is NOT a per-commit guarantee — `/implement` makes "small, focused commits" throughout a session (see Incremental progress below) and the §0a scope-cap path re-dispatches fresh children. The precheck re-runs at each fresh dispatch entry, but it does NOT protect against a branch switch mid-run after the check passes. The REAL enforcement net is the `/gate` FAIL (§0b is the early warning + prompt; gate is the enforcement layer). `/review` is the final backstop.
