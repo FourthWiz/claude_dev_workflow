@@ -240,7 +240,11 @@ This skill is **never auto-invoked** by any orchestrator or skill.
 ## Session bootstrap
 
 On start:
+If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 alongside `[no-redispatch]`/`[autonomous]` (per-spawn, non-inherited — do NOT propagate it to any child you spawn). Otherwise self-write as today (col 8 empty).
+
 1. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` — phase: `pr`
+
+<!-- quoin:ledger-self-write -->
 2. Write session state to `.workflow_artifacts/memory/sessions/<date>-<task-name>.md`
 
 ## Process

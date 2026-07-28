@@ -8,6 +8,14 @@ Tests:
 - test_fallback_phase_slug_uses_underscores — dashes slugified
 - test_main_cli_exits_zero_always — fail-open: exit 0 even with nonexistent path
 - test_most_recent_jsonl_selected — mtime ordering
+
+IVG-111 stage 6 (T-04) backstop: architecture decision D-06 keeps this
+script's fail-open + unknown-<phase_slug>-<ts> contract UNCHANGED across
+the ivg-111-cost-attribution stages 1-5. test_fallback_when_no_jsonl (form)
+and test_main_cli_exits_zero_always (exit code) already assert both legs of
+that contract — this comment is the stage-6 regression backstop confirming
+stages 1-5 did not silently alter it. No missing leg found; no new tests
+added here.
 """
 import importlib.util
 import re

@@ -74,6 +74,22 @@ def _make_rows(uuid_phase_pairs):
     return rows
 
 
+def _make_rows_with_attribution(uuid_phase_attr_triples):
+    """Return ledger rows carrying a col-8 `attribution` string (stage 4)."""
+    rows = []
+    for uuid, phase, attribution in uuid_phase_attr_triples:
+        rows.append({
+            "uuid": uuid,
+            "date": "2026-07-27",
+            "phase": phase,
+            "model_or_effort": "sonnet",
+            "note": "",
+            "fallback_fires": 0,
+            "attribution": attribution,
+        })
+    return rows
+
+
 # ---------------------------------------------------------------------------
 # T-01 tests: usd / tokens / None ladder + nested by_phase (D-14)
 # ---------------------------------------------------------------------------
@@ -185,6 +201,119 @@ class TestCostProviderLadder:
         """Empty row list → None."""
         provider = make_cost_provider(tmp_path / "project", home=tmp_path / "home")
         assert provider("my-task", []) is None
+
+
+# ---------------------------------------------------------------------------
+# T-08 (stage 4): inline-first precedence (D-1/D-2/D-8, MINOR-5)
+# ---------------------------------------------------------------------------
+
+class TestInlineFirstPrecedence:
+    """Test the col-8 attribution precedence rule applied by the provider."""
+
+    def test_resolved_only_empty_jsonl_tree_returns_inline_usd_mode(self, tmp_path):
+        """A resolved-only task with NO JSONL tree at all must still return
+        mode=usd with the inline total — proving the JSONL lookup is skipped
+        (the any_jsonl_found gate is relaxed to any_resolved, R-04)."""
+        home = tmp_path / "empty-home"  # no .claude/projects/ tree
+        project_root = tmp_path / "project"
+        project_root.mkdir(parents=True)
+
+        uuid1 = "dddddddd-0001-0001-0001-000000000001"
+        rows = _make_rows_with_attribution([
+            (uuid1, "implement", "usd=3.25;tok=1000;src=nested_jsonl"),
+        ])
+        provider = make_cost_provider(project_root, home=home)
+        result = provider("inline-task", rows)
+
+        assert result is not None
+        assert result["mode"] == "usd"
+        assert result["usd"] == pytest.approx(3.25)
+        assert result["partial"] is False
+        assert result["by_phase"]["implement"]["usd"] == pytest.approx(3.25)
+
+    def test_resolved_zero_only_returns_usd_mode_not_counts(self, tmp_path):
+        """MINOR-5/D-8: a genuine resolved usd=0.0 must return mode=usd, usd=0.0
+        — NOT collapse to counts/None."""
+        home = tmp_path / "empty-home"
+        project_root = tmp_path / "project"
+        project_root.mkdir(parents=True)
+
+        uuid1 = "eeeeeeee-0001-0001-0001-000000000001"
+        rows = _make_rows_with_attribution([
+            (uuid1, "implement", "usd=0.0;tok=9;src=nested_jsonl"),
+        ])
+        provider = make_cost_provider(project_root, home=home)
+        result = provider("zero-task", rows)
+
+        assert result is not None
+        assert result["mode"] == "usd"
+        assert result["usd"] == 0.0
+        assert result["partial"] is False
+
+    def test_unresolvable_row_sets_partial_true(self, tmp_path):
+        """A col-8 unresolvable row must set partial=True and contribute
+        nothing — never folded into a silent $0."""
+        home = tmp_path / "empty-home"
+        project_root = tmp_path / "project"
+        project_root.mkdir(parents=True)
+
+        uuid1 = "ffffffff-0001-0001-0001-000000000001"
+        rows = _make_rows_with_attribution([
+            (uuid1, "implement", "tok=45;src=unresolved"),
+        ])
+        provider = make_cost_provider(project_root, home=home)
+        result = provider("unresolvable-task", rows)
+
+        # Nothing resolved and no JSONL → None (counts mode upstream), per the
+        # not (any_jsonl_found or any_resolved) gate — partial is only visible
+        # when combined with at least one resolved/JSONL row (see mixed test).
+        assert result is None
+
+    def test_mixed_resolved_and_unresolvable_sets_partial_true_with_usd(self, tmp_path):
+        """A task with one resolved row and one unresolvable row must return
+        mode=usd with the resolved amount AND partial=True — the never-silent
+        combination this whole stage exists to guarantee."""
+        home = tmp_path / "empty-home"
+        project_root = tmp_path / "project"
+        project_root.mkdir(parents=True)
+
+        uuid1 = "11110000-0001-0001-0001-000000000001"
+        uuid2 = "11110000-0002-0002-0002-000000000002"
+        rows = _make_rows_with_attribution([
+            (uuid1, "implement", "usd=1.0;tok=100;src=nested_jsonl"),
+            (uuid2, "implement", "tok=45;src=unresolved"),
+        ])
+        provider = make_cost_provider(project_root, home=home)
+        result = provider("mixed-task", rows)
+
+        assert result is not None
+        assert result["mode"] == "usd"
+        assert result["usd"] == pytest.approx(1.0)
+        assert result["partial"] is True
+
+    def test_legacy_rows_unaffected_by_attribution_key_absence(self, tmp_path):
+        """Rows with no 'attribution' key at all (pre-stage-4 callers) must
+        behave exactly as before — this is the R-01 back-compat guarantee."""
+        home = tmp_path / "home"
+        project_root = tmp_path / "project"
+        project_root.mkdir(parents=True)
+        proj_hash = project_hash(str(project_root))
+
+        uuid1 = "22220000-0001-0001-0001-000000000001"
+        _make_jsonl(
+            home / ".claude" / "projects" / proj_hash / f"{uuid1}.jsonl",
+            model="claude-sonnet-4-6",
+            input_tokens=100_000,
+            output_tokens=10_000,
+        )
+        rows = _make_rows([(uuid1, "plan")])  # no "attribution" key at all
+        provider = make_cost_provider(project_root, home=home)
+        result = provider("legacy-task", rows)
+
+        assert result is not None
+        assert result["mode"] == "usd"
+        assert result["usd"] > 0
+        assert result["partial"] is False
 
 
 # ---------------------------------------------------------------------------

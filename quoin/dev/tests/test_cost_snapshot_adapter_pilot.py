@@ -248,3 +248,61 @@ def test_install_fresh_clone_lists_cost_snapshot_in_migrated_skills():
         'test_install_fresh_clone.py MIGRATED_SKILLS tuple must include "cost_snapshot" '
         "(T-06 edit). The entry was reverted — restore it."
     )
+
+
+# ---------------------------------------------------------------------------
+# T-08 (stage 4, T-05 doc-token coverage): the /cost_snapshot SKILL.md prose
+# must document the inline-first precedence rule, and the §0 dispatch block
+# + the line-127 [quoin-onbehalf] predicate/sentinel must be byte-unchanged.
+# ---------------------------------------------------------------------------
+
+def _cost_snapshot_adapter_text() -> str:
+    return _adapter_skill("cost_snapshot").read_text(encoding="utf-8")
+
+
+def test_step1_documents_8col_first_class_and_precedence_rule():
+    text = _cost_snapshot_adapter_text()
+    assert "8th column" in text or "8 fields" in text
+    assert "attribution" in text
+    assert "Inline-first precedence rule" in text
+    assert "unresolvable" in text
+    assert "src=unresolved" in text or "src ≠ `unresolved`" in text or "src=" in text
+
+
+def test_step1_documents_9col_tolerance_warn():
+    text = _cost_snapshot_adapter_text()
+    assert "9 or more fields" in text
+    assert "expected ≤8" in text
+
+
+def test_step2_documents_inline_resolved_uuid_exclusion():
+    text = _cost_snapshot_adapter_text()
+    assert "JSONL-lookup set" in text
+    assert "resolved-inline UUIDs" in text or "resolved-inline UUID" in text
+    assert "double-representation" in text or "double representation" in text
+
+
+def test_step3_documents_single_unresolvable_counter_and_partial_surface():
+    text = _cost_snapshot_adapter_text()
+    assert "unresolvable_count" in text
+    assert "REPLACES the old" in text or "replaces the old" in text
+    assert "(partial)" in text
+    # The old competing "unknown cost" line name must not still be documented
+    # as the primary counter — it is folded into unresolvable_count.
+    assert "sessions unresolvable" in text
+
+
+def test_quoin_onbehalf_predicate_and_sentinel_intact():
+    """The stage-3 [quoin-onbehalf] cost-ledger self-write skip predicate and
+    sentinel comment must be byte-unchanged by the T-05 prose edit."""
+    text = _cost_snapshot_adapter_text()
+    assert "[quoin-onbehalf]" in text
+    assert "SKIP this cost-ledger self-write" in text
+    assert "<!-- quoin:ledger-self-write -->" in text
+
+
+def test_section_0_dispatch_block_present():
+    """§0 model dispatch preamble must still be present (T-05 touches only
+    the human-authored Process/Step sections, never the generated §0 block)."""
+    text = _cost_snapshot_adapter_text()
+    assert "## §0 Model dispatch" in text

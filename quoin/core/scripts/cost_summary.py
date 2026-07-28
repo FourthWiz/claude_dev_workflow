@@ -10,8 +10,9 @@ normalize_total(data: dict) -> tuple[float | None, bool]
     Returns (value, is_partial).
     - value is the first finite numeric total found, or None if unavailable.
     - is_partial is True when a total IS present and any signal suggests it is
-      a partial estimate (fallback_used=True, truthy fallback_note, or any *_partial
-      key True). Null total is "unavailable", NOT partial.
+      a partial estimate (fallback_used=True, truthy fallback_note, any *_partial
+      key True, or a positive unresolvable_count). Null total is "unavailable",
+      NOT partial.
 
 Runtime-neutral: pure stdlib only. MUST NOT import cost_from_jsonl, pricing tables,
 or any adapter-owned module. Boundary rule: quoin/docs/runtime-portability.md §31.
@@ -105,6 +106,12 @@ def normalize_total(data: dict) -> Tuple[Optional[float], bool]:
         if k.endswith("_partial") and v is True:
             is_partial = True
             break
+    # A positive unresolvable_count is an additional partial trigger (belt-and-
+    # suspenders backstop for a summary that omits fallback_used) — see T-06's
+    # cost-summary.json schema (resolved_total/unresolvable_count).
+    unresolvable_count = data.get("unresolvable_count")
+    if _is_finite_number(unresolvable_count) and unresolvable_count > 0:
+        is_partial = True
 
     return value, is_partial
 

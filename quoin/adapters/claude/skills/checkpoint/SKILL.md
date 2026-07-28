@@ -603,6 +603,8 @@ Note: the guard keys on empty-string OR the exact literal `unknown` — it does 
 
 The `sessionstart.sh` hook surfaces this sentinel on next session start.
 
+If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 alongside `[no-redispatch]`/`[autonomous]` (per-spawn, non-inherited — do NOT propagate it to any child you spawn). Otherwise self-write as today (col 8 empty).
+
 ### Step 4: Append cost-ledger row
 
 Append a row to `.workflow_artifacts/<task-name>/cost-ledger.md`.
@@ -610,6 +612,8 @@ Include a mode tag in the NOTE column:
 - "save (restore mode)"
 - "save (load-as-reference mode)"
 - "save (mid-agent mode)"
+
+<!-- quoin:ledger-self-write -->
 
 ```
 <uuid> | <date> | checkpoint | sonnet | task | save (MODE mode) | 0

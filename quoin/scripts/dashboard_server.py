@@ -151,6 +151,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     # Project root injected at server startup (D-15 shared root invariant)
     project_root: Path = None  # type: ignore[assignment]
+    # NOTE (stage-4 T-12 fix): cost_provider MUST be assigned as
+    # staticmethod(fn), never a bare function. A plain function object is a
+    # descriptor — assigning it directly to a class attribute causes
+    # `self.cost_provider` to auto-bind as a method (injecting `self` as an
+    # extra first positional arg), which raises TypeError on every call.
+    # dashboard_model._task_summary swallows that TypeError
+    # (`except Exception: ... using counts mode`), so this previously
+    # degraded EVERY real (non-None) cost_provider to silent counts-mode —
+    # discovered via the T-12 end-to-end propagation test, which wires a
+    # real provider through the actual HTTP server for the first time.
     cost_provider = None
 
     def log_message(self, format, *args):
@@ -510,9 +520,12 @@ def main(argv=None):
     # Build cost provider once at startup (D-03/D-05)
     provider = make_cost_provider(project_root)
 
-    # Inject into handler class (class-level, thread-safe for reads)
+    # Inject into handler class (class-level, thread-safe for reads).
+    # cost_provider MUST be wrapped in staticmethod() — see the class-body
+    # NOTE above — otherwise `self.cost_provider` auto-binds as a method and
+    # every call silently raises, degrading to counts-mode (stage-4 T-12 fix).
     DashboardHandler.project_root = project_root
-    DashboardHandler.cost_provider = provider
+    DashboardHandler.cost_provider = staticmethod(provider)
 
     # Determine if port was explicitly set (not the default 8787)
     explicit_port = args.port != 8787 and args.port != 0

@@ -665,7 +665,19 @@ Spawn an Agent subagent:
     4. Cost aggregation — read cost-ledger.md and compute:
        a. Binary check: `command -v npx` — if unavailable, skip ccusage and use
           cost_from_jsonl.py fallback for ALL UUIDs (see below).
-       b. For each UUID in ledger (<5 sessions): `timeout 15 npx ccusage session -i <UUID> --json`
+       a2. Inline-first precedence rule (per ledger row, applied BEFORE the UUID
+          lookups in (b)/(c) below — mirrors the core `classify_attribution()`
+          verdict used by the Python readers): a row whose 8th column carries a
+          parseable `usd` with `src` ≠ `unresolved` is **resolved** — use that
+          inline `usd` directly for the row's UUID and EXCLUDE it from the
+          ccusage/`cost_from_jsonl.py` lookup set below (no lookup needed, no risk
+          of a failed or duplicated resolution). A row with `src=unresolved` (or no
+          usable `usd`) is **unresolvable** — count it into `unresolvable_count`
+          (used in step 5) and contribute NOTHING to any total (never fold it into
+          $0). A row with an empty/absent 8th column is **legacy** — unchanged,
+          falls through to (b)/(c); if its JSONL lookup also fails, it is ALSO
+          counted into `unresolvable_count`.
+       b. For each REMAINING (legacy, not-yet-resolved) UUID in ledger (<5 sessions): `timeout 15 npx ccusage session -i <UUID> --json`
           For ≥5 sessions (bulk): `npx ccusage session --json --since <earliest-date-from-ledger>`
           then filter returned sessions against the UUIDs in the ledger.
           Parsing bulk responses: ccusage v20+ wraps results as
@@ -682,7 +694,12 @@ Spawn an Agent subagent:
           Filter results to only UUIDs in the ledger. Parse output identically to ccusage.
           Prepend: `[fallback: cost_from_jsonl.py — prices as of <LAST_UPDATED>]`
           Read LAST_UPDATED via: `python3 -c "from pathlib import Path; import sys; sys.path.insert(0, str(Path.home() / '.claude' / 'scripts')); import cost_from_jsonl; print(cost_from_jsonl.LAST_UPDATED)"`
-       d. Aggregate: per-phase totals, per-model totals, grand total.
+       d. Aggregate: per-phase totals, per-model totals, `resolved_total` (sum of
+          resolved-inline `usd` from (a2) plus successfully-resolved legacy JSONL
+          costs from (b)/(c) — NEVER includes an unresolvable row as $0), and
+          `unresolvable_count` (col-8 `unresolvable` rows plus legacy rows whose
+          JSONL lookup failed, per (a2)). `grand_total` = `resolved_total` (kept as
+          an explicit alias for backward compatibility with existing consumers).
        **Re-runnable (T-11):** this whole computation reads from cost-ledger.md
        (append-only, never mutated by this step) and OVERWRITES cost-summary.json
        (fixed name — see step 5) — re-running it after a kill/resume recomputes the
@@ -696,17 +713,27 @@ Spawn an Agent subagent:
          "task_total": 1.68,
          "off_topic_total": 0.00,
          "grand_total": 1.68,
+         "resolved_total": 1.68,
+         "unresolvable_count": 0,
          "fallback_used": false,
          "fallback_note": ""
        }
        ```
+       `resolved_total` == `grand_total` (an explicit alias — both are the RESOLVED-only
+       total from step 4d, never a total that silently folds an unresolvable row into
+       $0). `unresolvable_count` is the count from step 4d (col-8 `unresolvable` rows
+       plus legacy rows whose JSONL lookup failed). **Set `"fallback_used": true` and a
+       non-empty `"fallback_note"` whenever `unresolvable_count > 0`** (in addition to
+       the existing ccusage-unavailable trigger) — this is what makes the existing
+       `costService`/`normalize_total` partial-detection fire for cost-attribution
+       partiality, not just for the ccusage-fallback case.
        NOTE: `fallback_used=true` means "partial estimate — some ledger UUIDs did not
-       resolve to JSONL sessions". It does NOT mean the cost is unavailable. A present
-       `grand_total` with `fallback_used=true` should be rendered as `~$X (partial)`.
-       Only a null or absent total key means unavailable. Consumer map: this file is
-       consumed only by `costService.ts` (extension). `/cost_snapshot` and
-       `dashboard_model.py` consume `cost-ledger.md` instead — do NOT wire them to
-       this file.
+       resolve to JSONL sessions, OR some ledger rows are col-8-unresolvable". It does
+       NOT mean the cost is unavailable. A present `grand_total`/`resolved_total` with
+       `fallback_used=true` should be rendered as `~$X (partial)`. Only a null or absent
+       total key means unavailable. Consumer map: this file is consumed only by
+       `costService.ts` (extension). `/cost_snapshot` and `dashboard_model.py` consume
+       `cost-ledger.md` instead — do NOT wire them to this file.
     6. Report: lessons appended (yes/no, or "skipped — already recorded"), session state
        updated, finalized-task sessions flipped (count, or "skipped —
        QUOIN_DISABLE_EOT_FLAG_FLIP set" / "skipped — script unavailable"), cost summary

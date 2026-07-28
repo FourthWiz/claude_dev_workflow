@@ -189,7 +189,11 @@ This skill may run in a fresh chat session with no prior context. On start:
 3. Read `.workflow_artifacts/memory/sessions/` for any active session state for this task
 4. Read the task subfolder if it exists: architecture.md is ALWAYS at task root (`<task-root>/architecture.md`); for `current-plan.md`, resolve via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` and read `<task_dir>/current-plan.md`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md` (line 5 — NOT edited per D-03).
 5. Read `<task-root>/spec.md` if present (task feature spec — ALWAYS at task root, read-if-exists; absence is normal/grandfather). Treat its `## Acceptance criteria` as a binding design input — the synthesis (Phase 2/3) MUST satisfy them. When present, spec.md is the preferred first input, upstream of architecture.md.
+If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 alongside `[no-redispatch]`/`[autonomous]` (per-spawn, non-inherited — do NOT propagate it to any child you spawn). Otherwise self-write as today (col 8 empty).
+
 6. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `architect`
+
+<!-- quoin:ledger-self-write -->
 7. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`.
 8. Then proceed with the work below
 
@@ -535,12 +539,44 @@ while round <= max_rounds:
 
     # Spawn /critic as a FRESH subagent (model: opus — non-negotiable per CLAUDE.md model assignments).
     # Convey target via spawn-prompt (D-01 spawn-prompt convention, not CLI flag):
+    #
+    # On-behalf cost capture (flag-gated, D-1/D-2/D-3, IVG-111 stage 3): when
+    # QUOIN_INLINE_COST_CAPTURE=1, prepend [quoin-onbehalf] to the critic spawn
+    # prompt (stack after any existing sentinel) so the child skips its own
+    # session-start cost-ledger self-write (T-06 predicate) — this orchestrator
+    # writes the row on its behalf instead. Marker is per-spawn / non-inherited.
+    onbehalf = (env QUOIN_INLINE_COST_CAPTURE == "1")
+    spawn_prompt = "Target: <ABS_PATH>/architecture.md — critique this architecture."
+    if onbehalf:
+        spawn_prompt = "[quoin-onbehalf] " + spawn_prompt
     spawn_critic_subagent(
         model="opus",
-        prompt="Target: <ABS_PATH>/architecture.md — critique this architecture."
+        prompt=spawn_prompt
     )
     # Read from TASK ROOT (NOT stage-N/ — D-03 corollary):
     read .workflow_artifacts/<task-name>/architecture-critic-{round}.md
+
+    if onbehalf:
+        # proc:agentid-capture (MAJ-1) — model-in-the-loop, NOT a shell capture:
+        # AID = the `agentId` field from the Agent tool's return for the critic
+        # spawn above, transcribed literally by this orchestrator. TUID = this
+        # spawn's OWN Agent tool_use id (secondary key). Fallback (R-12, agentId
+        # absent/empty/unparseable): AID = TUID if present, else
+        # "<parent-session-uuid>-critic-<utc-ts>"; force ATTR="src=unresolved"
+        # (MIN-2: deliberately discard any sidecar hit once agentId capture failed).
+        #
+        # AFTER architecture-critic-{round}.md is verified on disk (the read
+        # above), run proc:onbehalf-write with phase=critic, model=opus,
+        # uuid=<AID> — REPLACES the child's suppressed self-write (D-2):
+        #   SID="$CLAUDE_CODE_SESSION_ID"
+        #   ATTR="$(python3 __QUOIN_HOME__/scripts/agent_transcript_cost.py \
+        #             --sid "$SID" --agent-id "$AID" --tool-use-id "$TUID" 2>/dev/null)"
+        #   [ -z "$ATTR" ] && ATTR="src=unresolved"   # MIN-1: key on empty stdout, not exit code
+        #   printf '%s | %s | %s | %s | task | %s | %s | %s\n' \
+        #     "$AID" "$(date -u +%Y-%m-%d)" "critic" "opus" \
+        #     "on-behalf: critic via /architect" "0" "$ATTR" >> "$LEDGER"
+        # Flag unset (onbehalf=false): this block does nothing; the critic child
+        # self-writes as today (6/7-col, col 8 empty).
 
     verdict = parse_verdict(architecture-critic-{round}.md)
     if verdict == PASS: break

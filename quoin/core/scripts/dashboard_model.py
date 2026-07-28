@@ -31,7 +31,7 @@ from typing import Callable, Optional
 # CostProvider interface (Python 3.8-safe alias):
 #   provider(task_name: str, rows: list[dict]) -> Optional[dict]
 # rows: list of ledger-row dicts with frozen key set
-#   {uuid, date, phase, model_or_effort, note, fallback_fires}
+#   {uuid, date, phase, model_or_effort, note, fallback_fires, attribution}
 # return: {"mode": "usd"|"tokens", "usd": float|None, "tokens": int|None,
 #          "by_phase": {phase: {"usd"|"tokens": ...}}}
 #   or None (caller stays in counts mode)
@@ -146,7 +146,7 @@ def compute_version_token(root: Path, scope: str) -> str:
 # Receives:
 #   - task_name: str — name of the task
 #   - rows: list[dict] — list of ledger-row dicts with the FROZEN key set
-#     {uuid, date, phase, model_or_effort, note, fallback_fires}
+#     {uuid, date, phase, model_or_effort, note, fallback_fires, attribution}
 #
 # Returns:
 #   - None: no enrichment, use counts mode
@@ -169,7 +169,7 @@ def _read_ledger_rows(task_dir: Path) -> list:
     """Read and parse ledger rows from the task root's cost-ledger.md.
 
     Returns a list of JSON-serializable dicts with the FROZEN key set:
-    {uuid, date, phase, model_or_effort, note, fallback_fires}
+    {uuid, date, phase, model_or_effort, note, fallback_fires, attribution}
 
     Gracefully handles missing files (returns []).
     """
@@ -190,6 +190,7 @@ def _read_ledger_rows(task_dir: Path) -> list:
                 "model_or_effort": event.model_or_effort,
                 "note": event.note,
                 "fallback_fires": event.fallback_fires,
+                "attribution": event.attribution,
             })
     except FileNotFoundError:
         # iter_events raises this if file disappears mid-read (race condition)
@@ -332,6 +333,7 @@ def _task_summary(
         "total": len(rows),
         "usd": None,
         "tokens": None,
+        "partial": False,
     }
 
     # Apply provider enrichment if available
@@ -340,8 +342,10 @@ def _task_summary(
         try:
             enrichment = cost_provider(task_name, rows)
             if enrichment is not None and isinstance(enrichment, dict):
-                # Merge provider output over counts default
-                for key in ["mode", "usd", "tokens", "by_phase"]:
+                # Merge provider output over counts default. "partial"
+                # propagates the never-silent-$0 signal into the emitted
+                # dashboard JSON (MAJOR-1 fix — previously dropped here).
+                for key in ["mode", "usd", "tokens", "by_phase", "partial"]:
                     if key in enrichment:
                         cost[key] = enrichment[key]
         except Exception:

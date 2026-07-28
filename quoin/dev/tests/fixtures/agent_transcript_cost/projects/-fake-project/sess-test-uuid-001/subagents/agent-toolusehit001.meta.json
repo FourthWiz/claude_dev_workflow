@@ -1,0 +1,1 @@
+{"agentType": "claude", "description": "fixture tooluse secondary resolver", "toolUseId": "toolu_FIXTURE_TOOLUSE_HIT_001", "parentAgentId": "parentFixture", "spawnDepth": 2, "model": "sonnet"}

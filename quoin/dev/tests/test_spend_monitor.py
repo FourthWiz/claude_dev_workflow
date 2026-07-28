@@ -661,6 +661,84 @@ def test_main_empty_home(sm, tmp_path):
     assert "$0.00" in buf.getvalue()
 
 
+# ---------------------------------------------------------------------------
+# T-08 (stage 4): scan_ledgers_today inline-first precedence
+# ---------------------------------------------------------------------------
+
+def test_scan_ledgers_resolved_col8_bypasses_jsonl_with_empty_home(sm, tmp_path):
+    """A resolved col-8 row must contribute its inline usd even when the JSONL
+    tree is completely empty — proving no JSONL lookup occurred (R-01/R-04)."""
+    project_root = tmp_path / "project"
+    home = tmp_path / "empty-home"  # deliberately no .claude/projects/ tree
+    artifacts_dir = project_root / ".workflow_artifacts" / "inline-task"
+    artifacts_dir.mkdir(parents=True)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    ledger = artifacts_dir / "cost-ledger.md"
+    ledger.write_text(
+        f"# Cost Ledger\n"
+        f"onbehalf-uuid | {today_str} | implement | opus | task | \"resolved\" | 0 | "
+        f"usd=2.5;tok=1000;src=nested_jsonl\n"
+    )
+
+    day_start, day_end = sm._local_day_bounds()
+    by_task, by_phase, by_task_partial = sm.scan_ledgers_today(project_root, day_start, day_end, home=home)
+
+    assert by_task.get("inline-task") == pytest.approx(2.5)
+    assert by_phase.get("implement") == pytest.approx(2.5)
+    assert by_task_partial is False
+
+
+def test_scan_ledgers_unresolved_col8_sets_partial_never_adds_zero(sm, tmp_path):
+    """An unresolvable col-8 row must set by_task_partial=True and add NOTHING
+    (never a $0 contribution) — D-3's never-silent-$0 discipline."""
+    project_root = tmp_path / "project"
+    home = tmp_path / "empty-home"
+    artifacts_dir = project_root / ".workflow_artifacts" / "unresolvable-task"
+    artifacts_dir.mkdir(parents=True)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    ledger = artifacts_dir / "cost-ledger.md"
+    ledger.write_text(
+        f"# Cost Ledger\n"
+        f"na-jsonl-uuid | {today_str} | implement | opus | task | \"unresolved\" | 0 | "
+        f"tok=45;src=unresolved\n"
+    )
+
+    day_start, day_end = sm._local_day_bounds()
+    by_task, by_phase, by_task_partial = sm.scan_ledgers_today(project_root, day_start, day_end, home=home)
+
+    assert "unresolvable-task" not in by_task
+    assert by_task_partial is True
+
+
+def test_scan_ledgers_load_core_fail_open_degrades_to_legacy(sm, tmp_path, monkeypatch):
+    """When classify_attribution fails to load (simulated via monkeypatch),
+    every row must be treated as legacy — inline-first silently disabled,
+    never a crash (R-06)."""
+    monkeypatch.setattr(sm, "classify_attribution", None)
+
+    project_root = tmp_path / "project"
+    home = tmp_path / "empty-home"  # no JSONL — legacy resolution will fail
+    artifacts_dir = project_root / ".workflow_artifacts" / "failopen-task"
+    artifacts_dir.mkdir(parents=True)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    ledger = artifacts_dir / "cost-ledger.md"
+    ledger.write_text(
+        f"# Cost Ledger\n"
+        f"some-uuid | {today_str} | implement | opus | task | \"col8 ignored\" | 0 | "
+        f"usd=2.5;tok=1000;src=nested_jsonl\n"
+    )
+
+    day_start, day_end = sm._local_day_bounds()
+    # Must not raise even though classify_attribution is None.
+    by_task, by_phase, by_task_partial = sm.scan_ledgers_today(project_root, day_start, day_end, home=home)
+
+    # Fail-open means the col-8 usd is IGNORED (treated as legacy); since no
+    # JSONL exists for this UUID, it degrades to unresolved/partial, NOT the
+    # inline $2.5 — proving inline-first precedence was actually bypassed.
+    assert "failopen-task" not in by_task
+    assert by_task_partial is True
+
+
 def test_prices_single_source(sm):
     """PRICES is the only pricing dict in spend_monitor — no second price dict defined."""
     import inspect

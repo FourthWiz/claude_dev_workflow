@@ -15,7 +15,11 @@ This skill orchestrates the planning convergence loop by invoking sub-skills —
 
 On start:
 1. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights
+If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 alongside `[no-redispatch]`/`[autonomous]` (per-spawn, non-inherited — do NOT propagate it to any child you spawn). Otherwise self-write as today (col 8 empty).
+
 2. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `thorough-plan`
+
+<!-- quoin:ledger-self-write -->
 
 ## Setup
 
@@ -232,7 +236,12 @@ Before the spec pre-flight below, offer via `AskUserQuestion` to run `/enrich` o
 - Option 1: label: "Run /enrich first" — description: "Sharpen the raw task prompt before continuing (fills genuine gaps against real codebase context)."
 - Option 2: label: "Skip enrichment" — description: "Proceed directly to the spec pre-flight / planning loop. Enrichment can always be run later; its absence is a normal, non-blocking outcome."
 
-This is default-on but NON-BLOCKING — the loop proceeds regardless of the answer. If run, append a best-effort cost-ledger row for the `enrich` phase if the subagent didn't record one: `unknown-enrich-<timestamp> | <date> | enrich | opus | task | /thorough_plan subagent (no UUID recorded)`. No `/gate` runs after enrich.
+This is default-on but NON-BLOCKING — the loop proceeds regardless of the answer. If run: under
+`QUOIN_INLINE_COST_CAPTURE=1`, the cost row is the on-behalf write described in "Invoking each
+agent" → "On-behalf cost capture" below (phase=enrich, model=opus) — NOT a guess. With the flag
+unset (today's default), append a best-effort cost-ledger row for the `enrich` phase if the
+subagent didn't record one: `unknown-enrich-<timestamp> | <date> | enrich | opus | task |
+/thorough_plan subagent (no UUID recorded)`. No `/gate` runs after enrich.
 
 **Under `[autonomous]`:** skip the `AskUserQuestion` — do not wait for a choice. When `/thorough_plan` was itself spawned with `[autonomous]` from `/run`, enrichment has typically already run at `/run` Phase 1.4 — skip re-running it here. When `/thorough_plan` is invoked standalone under `[autonomous]` (no upstream enrich), run `/enrich` best-effort without blocking; if it is unavailable, errors, or times out, proceed directly to the spec pre-flight below without waiting. Either way this stays non-blocking, exactly as the non-autonomous default already is.
 
@@ -309,6 +318,34 @@ those leaf skills' own `[autonomous]` / §0' / §0″ branches. Sentinels stack 
 prefix (e.g. `[no-redispatch] [autonomous] <spawn instructions>`); each leaf skill parses and
 strips its own copy independently at its own bootstrap. This is the deeper-spawn re-prefix rule
 referenced by `/run`'s "Transitive propagation rule" (`D-07`).
+
+**On-behalf cost capture (`QUOIN_INLINE_COST_CAPTURE`, flag-gated, D-1/D-2/D-3, IVG-111 stage 3):**
+When `QUOIN_INLINE_COST_CAPTURE=1`, this applies to EVERY managed spawn below — `/plan` (round 1),
+`/critic` (every round), `/revise`|`/revise-fast` (rounds 2+), and `/enrich` (3b-1): (1) prepend
+`[quoin-onbehalf]` to the spawn prompt (stacks with `[autonomous]`/`[no-redispatch]` per the
+re-prefix rule above — order-independent, each leaf strips its own copy) so the child SKIPS its
+own session-start cost-ledger self-write (T-06 predicate); (2) bind `AID`/`TUID` per
+`proc:agentid-capture` — `AID` is the `agentId` field from the Agent tool's return for that spawn,
+transcribed literally by this orchestrator (model-in-the-loop, not a shell capture); `TUID` is this
+spawn's own Agent tool_use id; fallback (agentId absent/empty, R-12): `AID = TUID` if present, else
+`"<parent-session-uuid>-<phase>-<utc-ts>"`, forcing `ATTR="src=unresolved"` (MIN-2: discard any
+sidecar hit); (3) AFTER the subagent returns and its artifact is verified on disk, run
+`proc:onbehalf-write` with that phase's model (plan=opus, critic=opus, revise=sonnet|opus per the
+Model-selection table, enrich=opus) and `uuid=<AID>` — this REPLACES the suppressed child
+self-write (D-2), net exactly one row per managed phase:
+```
+SID="$CLAUDE_CODE_SESSION_ID"
+ATTR="$(python3 __QUOIN_HOME__/scripts/agent_transcript_cost.py \
+          --sid "$SID" --agent-id "$AID" --tool-use-id "$TUID" 2>/dev/null)"
+[ -z "$ATTR" ] && ATTR="src=unresolved"   # MIN-1: key on empty stdout, not exit code
+printf '%s | %s | %s | %s | task | %s | %s | %s\n' \
+  "$AID" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" \
+  "on-behalf: PHASE via /thorough_plan" "0" "$ATTR" >> "$LEDGER"
+```
+This FOLDS the enrich fallback row (3b-1, previously "if the subagent didn't record one") into
+this same mechanism — under the flag, enrich's cost row is always the on-behalf write, not a guess.
+**Flag unset:** none of the above applies; every spawn below behaves exactly as documented — the
+child self-writes today's 6/7-col row.
 
 **`/plan` (Round 1 only)**
 - Always spawn `/plan` (Opus) — the initial plan is always Opus-quality regardless of mode

@@ -176,7 +176,11 @@ This skill tolerates a missing task context — a resolvable task is a bonus, no
 # Detection MUST be string-comparison only — no LLM call (per lesson 2026-04-23
 # on LLM-replay non-determinism).
 
+If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 alongside `[no-redispatch]`/`[autonomous]` (per-spawn, non-inherited — do NOT propagate it to any child you spawn). Otherwise self-write as today (col 8 empty).
+
 4. **Ledger rule (D-07):** if a task dir resolved, append your session to that task's own `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `review`. If no task is resolvable, create `.workflow_artifacts/security-review/` on demand and append to `.workflow_artifacts/security-review/cost-ledger.md` instead — same phase, same format, just rooted at the standalone dir.
+
+<!-- quoin:ledger-self-write -->
 5. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`.
 6. Then proceed with the OWASP checklist below.
 

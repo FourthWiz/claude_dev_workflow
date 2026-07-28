@@ -46,6 +46,7 @@ class CostEvent:
                                  any other value
         col 6: note            — free-form note; double-quotes preserved verbatim
         col 7: fallback_fires  — int, defaults to 0 for 6-column rows
+        col 8: attribution     — optional micro-map string; "" = none
     """
 
     uuid: str
@@ -55,6 +56,7 @@ class CostEvent:
     category: str
     note: str
     fallback_fires: int = 0
+    attribution: str = ""
 
 
 def parse_row(
@@ -101,9 +103,12 @@ def parse_row(
     if category != "task":
         return None
 
-    # Handle 7th column (fallback_fires)
+    # Handle 7th column (fallback_fires) and 8th column (attribution).
+    # Exactly 8 columns is first-class (no warning); >=9 columns emits the
+    # extra-columns warning and ignores parts[8:].
     fallback_fires = 0
-    if len(parts) == 7:
+    attribution = ""
+    if len(parts) >= 7:
         raw_7th = parts[6].strip()
         try:
             fallback_fires = int(raw_7th)
@@ -114,20 +119,12 @@ def parse_row(
                 file=sys.stderr,
             )
             fallback_fires = 0
-    elif len(parts) > 7:
-        raw_7th = parts[6].strip()
-        try:
-            fallback_fires = int(raw_7th)
-        except ValueError:
-            print(
-                f"cost_snapshot.WARN: malformed fallback_fires column at "
-                f"{source}:{lineno}: {raw_7th!r}",
-                file=sys.stderr,
-            )
-            fallback_fires = 0
+    if len(parts) >= 8:
+        attribution = parts[7].strip()
+    if len(parts) >= 9:
         print(
             f"cost_snapshot.WARN: extra columns at {source}:{lineno} "
-            f"(found {len(parts)}, expected ≤7)",
+            f"(found {len(parts)}, expected ≤8)",
             file=sys.stderr,
         )
 
@@ -139,22 +136,115 @@ def parse_row(
         category=category,
         note=note,
         fallback_fires=fallback_fires,
+        attribution=attribution,
     )
 
 
 def format_row(event: CostEvent) -> str:
-    """Emit the canonical 7-column ledger row for a CostEvent.
+    """Emit the canonical ledger row for a CostEvent.
 
     Never appends a trailing newline; caller adds one if needed.
+    Emits 8 columns only when event.attribution is non-empty; otherwise
+    emits exactly the 7-column form (col 8 is omitted, not written as an
+    empty trailing segment).
+
     Round-trip guarantee: format_row(parse_row(line)) == line.strip() for
-    every valid 7-column row. For 6-column rows the output appends ' | 0'
-    (documented one-way upgrade per D-07).
+    (a) every valid 6- or 7-column row (6-column rows upgrade one-way to
+    7-column, appending ' | 0', per D-07) and (b) every valid 8-column row
+    whose attribution is NON-EMPTY. An 8-column row with an EMPTY col 8
+    normalizes one-way to the 7-column form (same class as the 6->7
+    upgrade) — NOT a byte-identity case.
     """
-    return (
+    base = (
         f"{event.uuid} | {event.date} | {event.phase} | "
         f"{event.model_or_effort} | {event.category} | "
         f"{event.note} | {event.fallback_fires}"
     )
+    if event.attribution:
+        return f"{base} | {event.attribution}"
+    return base
+
+
+def parse_attribution(s: str) -> dict:
+    """Parse an attribution micro-map string into a dict.
+
+    Grammar: k=v(;k=v)* — semicolon-delimited key=value tokens, each side
+    stripped of surrounding whitespace. Tolerant, pure, never raises:
+    - Empty/whitespace-only input returns {}.
+    - Tokens without '=' are skipped.
+    - Tokens with an empty key after stripping (e.g. a lone '=') are
+      skipped — this guard prevents a stray '=' from injecting a "" key.
+    - Values are NOT coerced (stay str); numeric interpretation of 'usd'/
+      'tok' is the reader-precedence stage's responsibility, not this
+      module's.
+
+    Canonical asserted cases:
+        "usd=0.01;tok=45;src=<tag>" -> {"usd": "0.01", "tok": "45", "src": "<tag>"}
+        ""                          -> {}
+        "src=unresolved"            -> {"src": "unresolved"}
+        "usd=;=;;foo;tok=9"         -> {"usd": "", "tok": "9"}
+        " a = b ; c=d "             -> {"a": "b", "c": "d"}
+    """
+    out: dict = {}
+    for tok in s.split(";"):
+        tok = tok.strip()
+        if not tok or "=" not in tok:
+            continue
+        k, v = tok.split("=", 1)
+        if not k.strip():
+            continue
+        out[k.strip()] = v.strip()
+    return out
+
+
+def classify_attribution(attribution: str) -> tuple[str, float | None]:
+    """Classify a raw col-8 attribution string into a precedence verdict.
+
+    Provenance-agnostic: the verdict is keyed on usd-presence plus the
+    neutral 'unresolved' sentinel, NOT a hand-maintained allowlist of
+    resolved 'src' tags — a new resolved src auto-classifies without a
+    code change here.
+
+    Returns exactly one of:
+        ("legacy", None)        — attribution is empty (no col 8); caller
+                                   does its own legacy session-log resolution.
+        ("resolved", usd_float) — col 8 present, a parseable 'usd' value
+                                   is present, AND 'src' is NOT the
+                                   unresolvable sentinel. Never returns
+                                   ("resolved", 0.0) for an unresolvable row
+                                   — a parsed 0.0 here is a genuine resolved
+                                   zero, distinct from "no usd present".
+        ("unresolvable", None)  — col 8 present but src == "unresolved",
+                                   OR usd is absent/unparseable.
+
+    Pure, tolerant, never raises — mirrors parse_attribution's discipline.
+
+    Canonical asserted cases:
+        classify_attribution("") -> ("legacy", None)
+        classify_attribution("usd=0.0123;tok=45210;src=<tag>")
+            -> ("resolved", 0.0123)
+        classify_attribution("tok=45;src=unresolved") -> ("unresolvable", None)
+        classify_attribution("src=unresolved") -> ("unresolvable", None)
+        classify_attribution("usd=abc;src=<tag>") -> ("unresolvable", None)
+        classify_attribution("usd=0.0;tok=9;src=<tag>") -> ("resolved", 0.0)
+    """
+    if not attribution.strip():
+        return ("legacy", None)
+
+    fields = parse_attribution(attribution)
+    src = fields.get("src", "")
+    if src == "unresolved":
+        return ("unresolvable", None)
+
+    raw_usd = fields.get("usd")
+    if raw_usd is None:
+        return ("unresolvable", None)
+    try:
+        usd = float(raw_usd)
+    except ValueError:
+        return ("unresolvable", None)
+
+    return ("resolved", usd)
 
 
 def iter_events(path: Path) -> Iterator[CostEvent]:

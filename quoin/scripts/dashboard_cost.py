@@ -9,13 +9,20 @@
 # Implements make_cost_provider(project_root, home=None) -> CostProvider.
 # CostProvider signature: provider(task_name, rows) -> dict|None
 #   where rows is a list of ledger-row dicts with keys:
-#     {uuid, date, phase, model_or_effort, note, fallback_fires}
+#     {uuid, date, phase, model_or_effort, note, fallback_fires, attribution}
 # Returns:
-#   {"mode": "usd", "usd": float, "tokens": int,
+#   {"mode": "usd", "usd": float, "tokens": int, "partial": bool,
 #    "by_phase": {phase: {"usd": float}}}  # usd mode
-#   {"mode": "tokens", "usd": None, "tokens": int,
+#   {"mode": "tokens", "usd": None, "tokens": int, "partial": bool,
 #    "by_phase": {phase: {"tokens": int}}}  # tokens mode
-#   None  # no JSONL found for any row UUID — caller stays in counts mode
+#   None  # nothing resolved and no JSONL found for any row UUID — counts mode
+#
+# Inline-first precedence (stage 4, D-1/D-2): a row whose col-8 attribution
+# classifies as "resolved" contributes its inline usd directly (no JSONL
+# lookup); "unresolvable" sets partial=True and contributes nothing (never a
+# silent $0); "legacy" (no col 8) uses the existing JSONL path, and a missing
+# JSONL there also sets partial=True. The "partial" key only reaches the
+# dashboard JSON via dashboard_model's merge whitelist.
 #
 # Per D-04/D-05: memo-cache keyed by (uuid, jsonl_mtime); missing JSONL cached
 # as sentinel (uuid, None) to avoid repeated stat storms.
@@ -53,6 +60,35 @@ _cfj = _load_sibling("cost_from_jsonl")
 project_hash = _cfj.project_hash
 jsonl_path_for = _cfj.jsonl_path_for
 parse_session = _cfj.parse_session
+
+
+def _load_core_cost_event():
+    """Import cost_event from core/scripts/ (adapter -> core, allowed).
+
+    Works at source (relative traversal) and deployed (sibling core/scripts/
+    dir, same shape verified for analyze_cost_ledger.py). Fail-open: returns
+    None on any load failure — the provider then treats every row as legacy.
+    """
+    try:
+        core_path = pathlib.Path(__file__).resolve().parent.parent / "core" / "scripts" / "cost_event.py"
+        if not core_path.exists():
+            return None
+        module_key = "_dashboard_cost_cost_event"
+        if module_key in sys.modules:
+            return sys.modules[module_key]
+        spec = importlib.util.spec_from_file_location(module_key, core_path)
+        if spec is None or spec.loader is None:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_key] = module
+        spec.loader.exec_module(module)
+        return module
+    except (ImportError, OSError):
+        return None
+
+
+_ce = _load_core_cost_event()
+classify_attribution = _ce.classify_attribution if _ce is not None else None
 
 
 # ---------------------------------------------------------------------------
@@ -112,6 +148,8 @@ def make_cost_provider(project_root, home=None):
         total_usd = 0.0
         total_tokens = 0
         any_jsonl_found = False
+        any_resolved = False
+        partial = False
 
         # Phase aggregators — values differ by mode but we build both and pick
         by_phase_usd = {}    # {phase: float}
@@ -123,6 +161,25 @@ def make_cost_provider(project_root, home=None):
             if not uuid:
                 continue
 
+            verdict, inline_usd = ("legacy", None)
+            if classify_attribution is not None:
+                verdict, inline_usd = classify_attribution(row.get("attribution", ""))
+
+            if verdict == "resolved":
+                # Inline-first: no JSONL lookup. any_resolved is set on EVERY
+                # resolved row (including a genuine resolved usd=0.0 — D-8).
+                any_resolved = True
+                usd = inline_usd or 0.0
+                total_usd += usd
+                if phase:
+                    by_phase_usd[phase] = by_phase_usd.get(phase, 0.0) + usd
+                continue
+
+            if verdict == "unresolvable":
+                partial = True
+                continue
+
+            # verdict == "legacy": existing JSONL path, unchanged.
             jsonl_path = jsonl_path_for(uuid, proj_hash, home=home or pathlib.Path.home())
             cached_result, cache_key = _lookup_cached(cache, uuid, jsonl_path)
 
@@ -139,7 +196,8 @@ def make_cost_provider(project_root, home=None):
                 cached_result = result
 
             if cached_result is None:
-                # JSONL absent or unreadable — skip this row
+                # JSONL absent or unreadable — never a silent contribution.
+                partial = True
                 continue
 
             any_jsonl_found = True
@@ -153,16 +211,19 @@ def make_cost_provider(project_root, home=None):
                 by_phase_usd[phase] = by_phase_usd.get(phase, 0.0) + usd
                 by_phase_tokens[phase] = by_phase_tokens.get(phase, 0) + tokens
 
-        if not any_jsonl_found:
+        if not (any_jsonl_found or any_resolved):
             return None
 
-        if total_usd > 0:
+        # MINOR-5/D-8: a resolved row (even usd=0.0) forces usd mode — it is
+        # a genuine resolved value, distinguishable from no-data/tokens-only.
+        if total_usd > 0 or any_resolved:
             # USD mode — nested by_phase: {phase: {"usd": float}}
             by_phase = {ph: {"usd": usd_val} for ph, usd_val in by_phase_usd.items()}
             return {
                 "mode": "usd",
                 "usd": total_usd,
                 "tokens": total_tokens,
+                "partial": partial,
                 "by_phase": by_phase,
             }
         elif total_tokens > 0:
@@ -172,6 +233,7 @@ def make_cost_provider(project_root, home=None):
                 "mode": "tokens",
                 "usd": None,
                 "tokens": total_tokens,
+                "partial": partial,
                 "by_phase": by_phase,
             }
         else:

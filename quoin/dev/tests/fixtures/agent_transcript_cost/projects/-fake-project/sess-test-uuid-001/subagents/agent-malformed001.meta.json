@@ -1,0 +1,1 @@
+{"agentType": "claude", "description": "fixture malformed-line tolerance", "toolUseId": "toolu_FIXTURE_MALFORMED_001", "parentAgentId": "parentFixture", "spawnDepth": 1, "model": "opus"}

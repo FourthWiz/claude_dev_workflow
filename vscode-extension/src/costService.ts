@@ -124,7 +124,11 @@ function hasFallbackIndicator(obj: Record<string, unknown>): boolean {
   if (obj['fallback_used'] === true) { return true; }
   if (typeof obj['fallback_note'] === 'string' && obj['fallback_note']) { return true; }
   // Check for *_partial keys
-  return Object.keys(obj).some((k) => k.endsWith('_partial') && obj[k] === true);
+  if (Object.keys(obj).some((k) => k.endsWith('_partial') && obj[k] === true)) { return true; }
+  // A positive unresolvable_count is a belt-and-suspenders backstop for a
+  // summary that omits fallback_used (mirrors cost_summary.py normalize_total).
+  if (isFiniteNumber(obj['unresolvable_count']) && (obj['unresolvable_count'] as number) > 0) { return true; }
+  return false;
 }
 
 // ── Pure parse functions ──────────────────────────────────────────────────────

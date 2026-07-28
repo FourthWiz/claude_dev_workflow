@@ -21,9 +21,10 @@ class SkipLine(Exception):
 def parse_ledger_line(line: str, *, ledger: str = "<test>", lineno: int = 0) -> dict:
     """Parse a single cost-ledger line.
 
-    Returns a dict with keys: uuid, date, phase, model, category, note, fallback_fires.
+    Returns a dict with keys: uuid, date, phase, model, category, note,
+    fallback_fires, attribution.
     Raises SkipLine if the line should be ignored (comment, blank, non-task category).
-    Emits stderr WARN for malformed or extra-column rows.
+    Emits stderr WARN for malformed or extra-column (>=9) rows.
     """
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
@@ -45,7 +46,8 @@ def parse_ledger_line(line: str, *, ledger: str = "<test>", lineno: int = 0) -> 
         raise SkipLine(f"non-task category: {category!r}")
 
     fallback_fires = 0
-    if len(parts) == 7:
+    attribution = ""
+    if len(parts) >= 7:
         raw = parts[6]
         try:
             fallback_fires = int(raw)
@@ -55,14 +57,11 @@ def parse_ledger_line(line: str, *, ledger: str = "<test>", lineno: int = 0) -> 
                 file=sys.stderr,
             )
             fallback_fires = 0
-    elif len(parts) > 7:
-        raw = parts[6]
-        try:
-            fallback_fires = int(raw)
-        except ValueError:
-            fallback_fires = 0
+    if len(parts) >= 8:
+        attribution = parts[7]
+    if len(parts) >= 9:
         print(
-            f"cost_snapshot.WARN: extra columns at {ledger}:{lineno} (found {len(parts)}, expected ≤7)",
+            f"cost_snapshot.WARN: extra columns at {ledger}:{lineno} (found {len(parts)}, expected ≤8)",
             file=sys.stderr,
         )
 
@@ -74,6 +73,7 @@ def parse_ledger_line(line: str, *, ledger: str = "<test>", lineno: int = 0) -> 
         "category": category,
         "note": note,
         "fallback_fires": fallback_fires,
+        "attribution": attribution,
     }
 
 
@@ -83,7 +83,8 @@ ROW_6_COL = "abc123 | 2026-04-30 | plan | opus | task | 6-col legacy row"
 ROW_7_COL_ZERO = "abc124 | 2026-04-30 | implement | sonnet | task | 7-col zero | 0"
 ROW_7_COL_THREE = "abc125 | 2026-04-30 | review | opus | task | 7-col three fires | 3"
 ROW_7_COL_MALFORMED = "abc126 | 2026-04-30 | critic | opus | task | 7-col bad int | oops"
-ROW_8_COL = "abc127 | 2026-04-30 | gate | sonnet | task | 8-col extra | 2 | IGNORED"
+ROW_8_COL = "abc127 | 2026-04-30 | gate | sonnet | task | 8-col extra | 2 | usd=0.02;tok=100;src=nested_jsonl"
+ROW_9_COL = "abc130 | 2026-04-30 | gate | sonnet | task | 9-col extra | 2 | usd=0.02;tok=100;src=nested_jsonl | ninth"
 ROW_EXTRA_SPACES = "abc128 | 2026-04-30 | plan | opus | task | extra-spaces row | 2"
 ROW_NON_TASK = "abc129 | 2026-04-30 | gate | sonnet | event | non-task category"
 
@@ -121,13 +122,24 @@ def test_7col_malformed_emits_warn(capsys):
     assert "malformed fallback_fires" in captured.err
 
 
-def test_8col_extra_columns_emits_warn(capsys):
-    """Row (5): 8-column row → 7th column used as fallback_fires, extra ignored with WARN."""
+def test_8col_attribution_first_class(capsys):
+    """Row (5): 8-column row is first-class — fallback_fires + attribution taken, no WARN."""
     result = parse_ledger_line(ROW_8_COL, ledger="test.md", lineno=5)
     assert result["fallback_fires"] == 2
+    assert result["attribution"] == "usd=0.02;tok=100;src=nested_jsonl"
+    captured = capsys.readouterr()
+    assert "cost_snapshot.WARN" not in captured.err
+
+
+def test_9col_extra_columns_emits_warn(capsys):
+    """9-column row → fallback_fires/attribution taken from cols 7/8; extra-columns WARN (expected ≤8)."""
+    result = parse_ledger_line(ROW_9_COL, ledger="test.md", lineno=6)
+    assert result["fallback_fires"] == 2
+    assert result["attribution"] == "usd=0.02;tok=100;src=nested_jsonl"
     captured = capsys.readouterr()
     assert "cost_snapshot.WARN" in captured.err
     assert "extra columns" in captured.err
+    assert "expected ≤8" in captured.err
 
 
 def test_extra_spaces_split_and_strip():

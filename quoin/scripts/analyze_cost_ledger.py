@@ -45,6 +45,41 @@ parse_session = _cfj.parse_session
 
 
 # ---------------------------------------------------------------------------
+# Sibling import: core/scripts/cost_event.py (adapter -> core, allowed)
+# ---------------------------------------------------------------------------
+_CORE_SCRIPTS_DIR = _SCRIPTS_DIR.parent / "core" / "scripts"
+_COST_EVENT_PATH = _CORE_SCRIPTS_DIR / "cost_event.py"
+
+
+def _load_core_cost_event():
+    """Import cost_event from core/scripts/ — works at source (relative
+    traversal) and deployed (flat sibling dir, same shape as cost_from_jsonl).
+    Fail-open: returns None on any load failure — callers treat every row
+    as legacy, never crash.
+    """
+    try:
+        path = _COST_EVENT_PATH if _COST_EVENT_PATH.exists() else _SCRIPTS_DIR / "cost_event.py"
+        if not path.exists():
+            return None
+        module_key = "_analyze_cost_ledger_cost_event"
+        if module_key in sys.modules:
+            return sys.modules[module_key]
+        spec = importlib.util.spec_from_file_location(module_key, path)
+        if spec is None or spec.loader is None:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_key] = module
+        spec.loader.exec_module(module)
+        return module
+    except (ImportError, OSError):
+        return None
+
+
+_ce = _load_core_cost_event()
+classify_attribution = _ce.classify_attribution if _ce is not None else None
+
+
+# ---------------------------------------------------------------------------
 # Optional Anthropic SDK — lazy-imported ONLY for --list-models
 # ---------------------------------------------------------------------------
 def _list_models() -> Optional[list]:
@@ -85,9 +120,11 @@ def discover_ledgers(project_root: pathlib.Path) -> list:
 def _parse_row(line: str) -> Optional[dict]:
     """Parse a single ledger row. Returns None to skip (blank, comment, non-task).
     Returns a dict with keys: uuid, date_str, phase, model, category, note,
-    fallback_fires. Emits a warning to stderr on malformed rows (non-fatal).
+    fallback_fires, attribution. Emits a warning to stderr on malformed rows
+    (non-fatal).
 
-    Tolerates 6-column and 7-column rows per the CLAUDE.md spec.
+    Tolerates 6-column and 7-column rows per the CLAUDE.md spec. The 8th
+    column (attribution) is optional and first-class when present.
     Skips rows with UUID containing '$(' (template artifacts).
     Skips non-'task' category rows silently.
     """
@@ -112,6 +149,7 @@ def _parse_row(line: str) -> Optional[dict]:
     category = parts[4]
     note = parts[5]
     fallback_fires = int(parts[6]) if len(parts) >= 7 and parts[6].isdigit() else 0
+    attribution = parts[7].strip() if len(parts) >= 8 else ""
 
     # Skip template artifacts
     if "$(" in uuid_val:
@@ -128,6 +166,7 @@ def _parse_row(line: str) -> Optional[dict]:
         "model": model,
         "note": note,
         "fallback_fires": fallback_fires,
+        "attribution": attribution,
     }
 
 
@@ -182,9 +221,19 @@ def build_report(
     """
     Compute cost for each row and aggregate into a report dict.
 
+    Precedence rule (D-1/D-2, classify_attribution): a row whose col-8
+    attribution classifies as "resolved" uses the inline usd directly (no
+    JSONL lookup); "unresolvable" contributes NOTHING to the resolved total
+    and is counted in unresolvable_count (never folded into $0); "legacy"
+    (no col 8) uses the existing lookup_session_cost path — a missing JSONL
+    there also counts into unresolvable_count (was previously folded into a
+    silent $0 contribution — the fix for spec acceptance item 3).
+
     Returns:
       {
-        "total_cost": float,
+        "total_cost": float,           # alias of resolved_total
+        "resolved_total": float,       # resolved inline usd + legacy-with-JSONL cost
+        "unresolvable_count": int,     # col-8-unresolved rows + legacy-no-JSONL rows
         "by_phase": {phase: {"cost": float, "count": int}},
         "by_model": {model: {"cost": float, "count": int}},
         "top_sessions": [(cost, task_name, phase, uuid_short, date_str), ...],
@@ -209,10 +258,11 @@ def build_report(
     by_phase: dict = {}
     by_model: dict = {}
     top_candidates = []
-    total_cost = 0.0
+    resolved_total = 0.0
     total_fallback_fires = 0
     sessions_with_fires = 0
     no_jsonl_count = 0
+    unresolvable_count = 0
 
     for row in rows:
         uuid = row["uuid"]
@@ -222,12 +272,23 @@ def build_report(
         task_name = row.get("task_name", "")
         ff = row.get("fallback_fires", 0)
 
-        cost, has_jsonl = lookup_session_cost(uuid, proj_hash, home)
+        verdict, inline_usd = ("legacy", None)
+        if classify_attribution is not None:
+            verdict, inline_usd = classify_attribution(row.get("attribution", ""))
 
-        if not has_jsonl:
-            no_jsonl_count += 1
+        if verdict == "resolved":
+            cost = inline_usd or 0.0
+        elif verdict == "unresolvable":
+            unresolvable_count += 1
+            continue  # never contributes to resolved_total/by_phase/by_model/top-N
+        else:  # legacy
+            cost, has_jsonl = lookup_session_cost(uuid, proj_hash, home)
+            if not has_jsonl:
+                no_jsonl_count += 1
+                unresolvable_count += 1
+                continue  # missing JSONL is unresolvable, not a silent $0
 
-        total_cost += cost
+        resolved_total += cost
 
         # By phase
         if phase not in by_phase:
@@ -253,7 +314,9 @@ def build_report(
     top_sessions = top_candidates[:top_n]
 
     return {
-        "total_cost": total_cost,
+        "total_cost": resolved_total,  # alias — never includes unresolvable as $0
+        "resolved_total": resolved_total,
+        "unresolvable_count": unresolvable_count,
         "by_phase": by_phase,
         "by_model": by_model,
         "top_sessions": top_sessions,
@@ -278,11 +341,22 @@ def format_report(
 
     lines.append(f"Cost Analysis — {project_root} — {report_date}")
     lines.append(sep_full)
-    lines.append(
-        f"Ledgers scanned: {ledger_count}  |  "
-        f"Sessions: {report['session_count']}  |  "
-        f"Total cost: ${report['total_cost']:.2f}"
-    )
+    unresolvable_count = report.get("unresolvable_count", 0)
+    if unresolvable_count > 0:
+        total_line = (
+            f"Ledgers scanned: {ledger_count}  |  "
+            f"Sessions: {report['session_count']}  |  "
+            f"Resolved cost: ${report['resolved_total']:.2f}  |  "
+            f"Unresolvable: {unresolvable_count} (labeled, not $0)  |  "
+            f"Total: ~${report['resolved_total']:.2f} (partial)"
+        )
+    else:
+        total_line = (
+            f"Ledgers scanned: {ledger_count}  |  "
+            f"Sessions: {report['session_count']}  |  "
+            f"Resolved cost: ${report['resolved_total']:.2f}"
+        )
+    lines.append(total_line)
     lines.append(sep_part)
 
     # By phase
@@ -318,7 +392,7 @@ def format_report(
 
     lines.append("")
     lines.append(
-        f"Sessions with no JSONL (cost=0): {report['no_jsonl_count']}"
+        f"Sessions with no JSONL (unresolvable, not $0): {report['no_jsonl_count']}"
     )
     lines.append(sep_full)
 
