@@ -253,3 +253,56 @@ def test_format_report_no_partial_marker_when_fully_resolved(tmp_path):
     text = format_report(report, project_root, ledger_count=1, top_n=10, report_date="2026-07-27")
 
     assert "(partial)" not in text
+
+
+# ---------------------------------------------------------------------------
+# IVG-157 T-06: shared-UUID cohort attribution (analyze surface)
+#
+# Non-negotiable (Q-01 = LABELED BUCKET, locked): a UUID shared by two or
+# more legacy rows must be resolved ONCE and shown as a labeled
+# shared_bucket, never as a whole-session dollar figure duplicated onto each
+# participating phase, never a silent $0.
+# ---------------------------------------------------------------------------
+
+_SHARED_UUID = "uuid-shared-cohort"
+_SHARED_ROW_PLAN = f"{_SHARED_UUID} | 2026-07-27 | thorough-plan | opus | task | plan note"
+_SHARED_ROW_CHECKPOINT = f"{_SHARED_UUID} | 2026-07-27 | checkpoint | opus | task | save"
+
+
+def test_shared_uuid_cohort_counted_once_not_per_phase(tmp_path):
+    """Two legacy rows (plan + checkpoint) sharing one UUID with a real
+    fixture JSONL: shared_bucket.cost == session cost ONCE, resolved_total
+    == session cost (NOT 2x), and neither phase shows the whole-session
+    dollar in by_phase."""
+    ledger_path = _write_ledger(tmp_path, [_SHARED_ROW_PLAN, _SHARED_ROW_CHECKPOINT])
+    project_root = tmp_path / "project"
+    home = tmp_path / "home"
+    ph = project_hash(str(project_root))
+    _make_jsonl(home, _SHARED_UUID, ph)  # ~$5.00 session per _make_jsonl default
+
+    rows = parse_ledger_file(ledger_path, task_name="my-task")
+    report = build_report(rows, project_root, ph, home)
+
+    assert report["shared_bucket"]["uuids"] == 1
+    assert report["shared_bucket"]["cost"] == pytest.approx(5.00)
+    assert abs(report["resolved_total"] - 5.00) < 1e-9  # NOT 2x
+    assert "thorough-plan" not in report["by_phase"]
+    assert "checkpoint" not in report["by_phase"]
+    assert report["shared_bucket"]["phases"]["checkpoint"] == {
+        "save": 1, "restore": 0, "count": 1,
+    }
+
+
+def test_format_report_renders_shared_session_bucket_line(tmp_path):
+    ledger_path = _write_ledger(tmp_path, [_SHARED_ROW_PLAN, _SHARED_ROW_CHECKPOINT])
+    project_root = tmp_path / "project"
+    home = tmp_path / "home"
+    ph = project_hash(str(project_root))
+    _make_jsonl(home, _SHARED_UUID, ph)
+
+    rows = parse_ledger_file(ledger_path, task_name="my-task")
+    report = build_report(rows, project_root, ph, home)
+    text = format_report(report, project_root, ledger_count=1, top_n=10, report_date="2026-07-27")
+
+    assert "shared-session (multi-phase)" in text
+    assert "not separately attributable" in text

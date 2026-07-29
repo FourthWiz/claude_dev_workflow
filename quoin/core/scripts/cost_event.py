@@ -23,9 +23,10 @@ from __future__ import annotations
 
 import re
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import Callable, Iterator
 
 
 class RowParseError(ValueError):
@@ -259,3 +260,236 @@ def iter_events(path: Path) -> Iterator[CostEvent]:
             event = parse_row(raw_line, source=str(path), lineno=lineno)
             if event is not None:
                 yield event
+
+
+def checkpoint_op(note: str) -> str:
+    """Classify a checkpoint ledger row's note as 'save' or 'restore'.
+
+    'restore' iff note.strip() == 'restore'; every other value is 'save'.
+    Deliberately NOT a substring test (`"restore" in note`) — the real save
+    note 'save (restore mode)' contains the substring 'restore' and must
+    still classify as 'save'. Only meaningful for rows whose phase is
+    'checkpoint'; callers should not apply this to other phases.
+    """
+    return "restore" if note.strip() == "restore" else "save"
+
+
+@dataclass(frozen=True)
+class CohortResult:
+    """Result of session-cohort attribution over a set of parsed ledger rows.
+
+    Field names are runtime-neutral — this module is scanned by a
+    core-purity guard test that forbids adapter-specific vocabulary.
+
+    resolved_total: sum of every distinct session's cost, counted exactly
+        once each (resolved-inline rows + solo-legacy rows + each distinct
+        shared-cohort session).
+    by_phase: {phase: {"cost": float, "count": int}} — solo-legacy and
+        resolved-inline rows ONLY. A phase that only ever appears via a
+        shared cohort is absent here (its participation lives in
+        shared_bucket.phases instead) — never a fabricated per-phase dollar
+        figure for a shared session.
+    by_model: {model: {"cost": float, "count": int}} — same rule as
+        by_phase: shared rows contribute neither cost nor count here.
+    shared_bucket: {"cost": float, "phases": {phase: {"save": int,
+        "restore": int, "count": int}}, "uuids": int} for sessions shared by
+        two or more phases (a "cohort"). Empty dict when there is no shared
+        cohort in the input. The session cost is counted ONCE per distinct
+        UUID, never once per participating phase.
+    unresolvable_count: rows whose cost could not be attributed at all —
+        col-8-unresolvable rows, plus solo-legacy and shared-cohort UUIDs
+        whose session-cost source came back with no cost. Never folded into
+        a silent $0.
+    unpriced_count: subset of unresolvable_count — specifically the rows/
+        UUIDs whose session-cost source had no cost available (as opposed to
+        an explicit col-8 "unresolved" marker). Adapters may map this onto
+        their own report key (e.g. a session-log-specific counter name) at
+        the adapter boundary; this module stays vocabulary-neutral.
+    """
+
+    resolved_total: float
+    by_phase: dict
+    by_model: dict
+    shared_bucket: dict
+    unresolvable_count: int
+    unpriced_count: int
+
+
+def _cohort_row_get(row, key: str, default=""):
+    """Read `key` off a row that may be a CostEvent, a dict with that exact
+    key, or a dict using the `model` alias for `model_or_effort` (the shape
+    used by some adapter readers). Pure accessor, never raises."""
+    if hasattr(row, key):
+        return getattr(row, key)
+    if isinstance(row, dict):
+        if key in row:
+            return row[key]
+        if key == "model_or_effort" and "model" in row:
+            return row["model"]
+    return default
+
+
+def _cohort_resolve_safe(
+    resolve_session_cost: Callable[[str], tuple],
+    uuid: str,
+    memo: dict,
+) -> tuple:
+    """Call resolve_session_cost(uuid) at most once per distinct uuid,
+    memoizing the result in `memo`. A resolver that raises is treated as
+    (0.0, False) for that uuid — fail-open, never a crash."""
+    if uuid in memo:
+        return memo[uuid]
+    try:
+        result = resolve_session_cost(uuid)
+        cost, has_cost = float(result[0]), bool(result[1])
+    except Exception:
+        cost, has_cost = 0.0, False
+    memo[uuid] = (cost, has_cost)
+    return memo[uuid]
+
+
+def _cohort_attribution_impl(
+    rows,
+    resolve_session_cost: Callable[[str], tuple],
+) -> CohortResult:
+    by_phase: dict = {}
+    by_model: dict = {}
+    resolved_total = 0.0
+    unresolvable_count = 0
+    unpriced_count = 0
+
+    legacy_rows = []
+    resolved_rows = []
+    for row in rows:
+        attribution = _cohort_row_get(row, "attribution", "")
+        verdict, inline_usd = classify_attribution(attribution)
+        if verdict == "resolved":
+            resolved_rows.append((row, inline_usd if inline_usd is not None else 0.0))
+        elif verdict == "unresolvable":
+            unresolvable_count += 1
+        else:  # legacy — candidate for cohort grouping
+            legacy_rows.append(row)
+
+    def _accumulate(phase: str, model: str, cost: float) -> None:
+        nonlocal resolved_total
+        resolved_total += cost
+        p_entry = by_phase.setdefault(phase, {"cost": 0.0, "count": 0})
+        p_entry["cost"] += cost
+        p_entry["count"] += 1
+        m_entry = by_model.setdefault(model, {"cost": 0.0, "count": 0})
+        m_entry["cost"] += cost
+        m_entry["count"] += 1
+
+    for row, usd in resolved_rows:
+        phase = _cohort_row_get(row, "phase", "")
+        model = _cohort_row_get(row, "model_or_effort", "")
+        _accumulate(phase, model, usd)
+
+    counts = Counter(_cohort_row_get(row, "uuid", "") for row in legacy_rows)
+    memo: dict = {}
+
+    # uuid -> {"phases": {phase: {"save": int, "restore": int, "count": int}}}
+    shared_participants: dict = {}
+
+    for row in legacy_rows:
+        uuid = _cohort_row_get(row, "uuid", "")
+        phase = _cohort_row_get(row, "phase", "")
+        model = _cohort_row_get(row, "model_or_effort", "")
+
+        if counts[uuid] == 1:
+            cost, has_cost = _cohort_resolve_safe(resolve_session_cost, uuid, memo)
+            if not has_cost:
+                unresolvable_count += 1
+                unpriced_count += 1
+                continue
+            _accumulate(phase, model, cost)
+        else:
+            participant = shared_participants.setdefault(uuid, {"phases": {}})
+            phase_entry = participant["phases"].setdefault(
+                phase, {"save": 0, "restore": 0, "count": 0}
+            )
+            phase_entry["count"] += 1
+            if phase == "checkpoint":
+                note = _cohort_row_get(row, "note", "")
+                phase_entry[checkpoint_op(note)] += 1
+
+    shared_bucket: dict = {"cost": 0.0, "phases": {}, "uuids": 0}
+    for uuid, participant in shared_participants.items():
+        cost, has_cost = _cohort_resolve_safe(resolve_session_cost, uuid, memo)
+        if not has_cost:
+            unresolvable_count += 1
+            unpriced_count += 1
+            continue
+        shared_bucket["cost"] += cost
+        shared_bucket["uuids"] += 1
+        resolved_total += cost
+        for phase, ph_counts in participant["phases"].items():
+            entry = shared_bucket["phases"].setdefault(
+                phase, {"save": 0, "restore": 0, "count": 0}
+            )
+            entry["save"] += ph_counts["save"]
+            entry["restore"] += ph_counts["restore"]
+            entry["count"] += ph_counts["count"]
+
+    return CohortResult(
+        resolved_total=resolved_total,
+        by_phase=by_phase,
+        by_model=by_model,
+        shared_bucket=shared_bucket if shared_bucket["uuids"] > 0 else {},
+        unresolvable_count=unresolvable_count,
+        unpriced_count=unpriced_count,
+    )
+
+
+def cohort_attribution(rows, resolve_session_cost: Callable[[str], tuple]):
+    """Pure session-cohort attribution over parsed ledger rows.
+
+    rows: iterable of objects/dicts exposing uuid/phase/model_or_effort/note/
+        attribution (accepts CostEvent instances or the row-dict shape used
+        by adapter readers — a small internal accessor normalizes access;
+        CostEvent is not hard-required).
+    resolve_session_cost: callable(uuid) -> tuple[float, bool] returning
+        (whole_session_cost, has_cost). Injected by the caller — each adapter
+        supplies its own session-cost source. Called AT MOST ONCE per
+        distinct legacy UUID (memoized internally). This injection is what
+        keeps this module free of any adapter-owned import: session-cost
+        resolution stays entirely the caller's responsibility.
+
+    Algorithm: rows are split into three streams — resolved-inline (their
+    own already-priced usd, summed directly), unresolvable (contribute
+    nothing, counted honestly), and legacy (no col-8 attribution at all,
+    candidates for cohort grouping). Legacy rows are grouped by uuid: a uuid
+    used by exactly one row (solo) has its session cost resolved and
+    attributed to that row's phase exactly as before (byte-identical to the
+    pre-cohort behavior); a uuid shared by two or more legacy rows (a
+    "cohort") does NOT charge any participating phase the session cost —
+    instead the session cost is resolved once and added to a single labeled
+    shared bucket, and each participating phase is recorded (with a
+    checkpoint-specific save/restore split) as a shared, not separately
+    attributable participant. Every distinct session's cost is counted
+    exactly once in resolved_total, regardless of how many rows or phases
+    reference its UUID.
+
+    Cohort membership and the `--since` interaction: this function groups
+    the rows it is GIVEN — any date-window filtering must happen in the
+    caller BEFORE calling this function, so cohorts form over the filtered
+    row set. If a `--since` filter splits a shared session across the
+    filter boundary, only the in-window rows form the cohort; the session
+    cost is still resolved once from the injected session-cost source
+    (which reports a lifetime total) — so a windowed cohort may attribute a
+    session cost whose rows are partly out of window. This matches today's
+    lifetime session-cost semantics and is not a regression; the labeled
+    shared bucket makes the situation visible rather than misleading.
+
+    Fail-open: any internal error while computing the cohort returns None,
+    signaling the caller to fall back to its own per-row legacy
+    accumulation. A `resolve_session_cost` that itself raises for a given
+    uuid is treated as (0.0, False) for that uuid only — it does not fail
+    the whole call.
+
+    Returns a CohortResult (frozen dataclass), or None on internal failure.
+    """
+    try:
+        return _cohort_attribution_impl(list(rows), resolve_session_cost)
+    except Exception:
+        return None

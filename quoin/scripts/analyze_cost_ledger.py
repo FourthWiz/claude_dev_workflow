@@ -77,6 +77,7 @@ def _load_core_cost_event():
 
 _ce = _load_core_cost_event()
 classify_attribution = _ce.classify_attribution if _ce is not None else None
+cohort_attribution = _ce.cohort_attribution if _ce is not None else None
 
 
 # ---------------------------------------------------------------------------
@@ -210,51 +211,19 @@ def lookup_session_cost(
 # ---------------------------------------------------------------------------
 # Report generation
 # ---------------------------------------------------------------------------
-def build_report(
-    rows: list,
-    project_root: pathlib.Path,
-    proj_hash: str,
-    home: pathlib.Path,
-    top_n: int = 10,
-    since_date: Optional[date] = None,
+def _row_verdict(row: dict) -> tuple:
+    """classify_attribution wrapper with the fail-open "no classifier" default."""
+    if classify_attribution is None:
+        return ("legacy", None)
+    return classify_attribution(row.get("attribution", ""))
+
+
+def _legacy_build_report_core(
+    rows: list, proj_hash: str, home: pathlib.Path, top_n: int
 ) -> dict:
-    """
-    Compute cost for each row and aggregate into a report dict.
-
-    Precedence rule (D-1/D-2, classify_attribution): a row whose col-8
-    attribution classifies as "resolved" uses the inline usd directly (no
-    JSONL lookup); "unresolvable" contributes NOTHING to the resolved total
-    and is counted in unresolvable_count (never folded into $0); "legacy"
-    (no col 8) uses the existing lookup_session_cost path — a missing JSONL
-    there also counts into unresolvable_count (was previously folded into a
-    silent $0 contribution — the fix for spec acceptance item 3).
-
-    Returns:
-      {
-        "total_cost": float,           # alias of resolved_total
-        "resolved_total": float,       # resolved inline usd + legacy-with-JSONL cost
-        "unresolvable_count": int,     # col-8-unresolved rows + legacy-no-JSONL rows
-        "by_phase": {phase: {"cost": float, "count": int}},
-        "by_model": {model: {"cost": float, "count": int}},
-        "top_sessions": [(cost, task_name, phase, uuid_short, date_str), ...],
-        "total_fallback_fires": int,
-        "sessions_with_fires": int,
-        "no_jsonl_count": int,
-        "session_count": int,
-      }
-    """
-    # Apply --since filter
-    if since_date is not None:
-        filtered = []
-        for row in rows:
-            try:
-                row_date = datetime.strptime(row["date_str"], "%Y-%m-%d").date()
-                if row_date >= since_date:
-                    filtered.append(row)
-            except ValueError:
-                filtered.append(row)  # keep rows with unparseable dates
-        rows = filtered
-
+    """Pre-cohort per-row accumulation (fail-open fallback when the cohort
+    helper is unavailable, e.g. the core module failed to load). Kept
+    byte-for-byte equivalent to the original stage-4 implementation."""
     by_phase: dict = {}
     by_model: dict = {}
     top_candidates = []
@@ -272,9 +241,7 @@ def build_report(
         task_name = row.get("task_name", "")
         ff = row.get("fallback_fires", 0)
 
-        verdict, inline_usd = ("legacy", None)
-        if classify_attribution is not None:
-            verdict, inline_usd = classify_attribution(row.get("attribution", ""))
+        verdict, inline_usd = _row_verdict(row)
 
         if verdict == "resolved":
             cost = inline_usd or 0.0
@@ -290,22 +257,18 @@ def build_report(
 
         resolved_total += cost
 
-        # By phase
         if phase not in by_phase:
             by_phase[phase] = {"cost": 0.0, "count": 0}
         by_phase[phase]["cost"] += cost
         by_phase[phase]["count"] += 1
 
-        # By model
         if model not in by_model:
             by_model[model] = {"cost": 0.0, "count": 0}
         by_model[model]["cost"] += cost
         by_model[model]["count"] += 1
 
-        # Top-N candidates
         top_candidates.append((cost, task_name, phase, uuid[:8], date_str))
 
-        # Fallback fires
         total_fallback_fires += ff
         if ff > 0:
             sessions_with_fires += 1
@@ -314,15 +277,182 @@ def build_report(
     top_sessions = top_candidates[:top_n]
 
     return {
-        "total_cost": resolved_total,  # alias — never includes unresolvable as $0
+        "total_cost": resolved_total,
         "resolved_total": resolved_total,
         "unresolvable_count": unresolvable_count,
         "by_phase": by_phase,
         "by_model": by_model,
+        "shared_bucket": {},
         "top_sessions": top_sessions,
         "total_fallback_fires": total_fallback_fires,
         "sessions_with_fires": sessions_with_fires,
         "no_jsonl_count": no_jsonl_count,
+        "session_count": len(rows),
+    }
+
+
+def _build_top_sessions(
+    rows: list, resolve_session_cost, top_n: int
+) -> list:
+    """One entry per solo/resolved row, PLUS one combined entry per distinct
+    shared UUID (never N per-phase rows for a shared session)."""
+    legacy_uuid_counts: dict = {}
+    for row in rows:
+        verdict, _ = _row_verdict(row)
+        if verdict == "legacy":
+            legacy_uuid_counts[row["uuid"]] = legacy_uuid_counts.get(row["uuid"], 0) + 1
+
+    candidates = []
+    seen_shared_uuids: set = set()
+
+    for row in rows:
+        uuid = row["uuid"]
+        phase = row["phase"]
+        date_str = row["date_str"]
+        task_name = row.get("task_name", "")
+
+        verdict, inline_usd = _row_verdict(row)
+
+        if verdict == "resolved":
+            candidates.append((inline_usd or 0.0, task_name, phase, uuid[:8], date_str))
+        elif verdict == "unresolvable":
+            continue
+        else:  # legacy
+            if legacy_uuid_counts.get(uuid, 0) == 1:
+                cost, has_cost = resolve_session_cost(uuid)
+                if not has_cost:
+                    continue
+                candidates.append((cost, task_name, phase, uuid[:8], date_str))
+            else:
+                if uuid in seen_shared_uuids:
+                    continue
+                seen_shared_uuids.add(uuid)
+                cost, has_cost = resolve_session_cost(uuid)
+                if not has_cost:
+                    continue
+                candidates.append(
+                    (cost, task_name, "shared-session (multi-phase)", uuid[:8], date_str)
+                )
+
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    return candidates[:top_n]
+
+
+def _fallback_fire_tally(rows: list, resolve_session_cost) -> tuple:
+    """MIN-1: recompute total_fallback_fires/sessions_with_fires over the SAME
+    resolved-row set the cohort helper attributed (solo-legacy with a resolved
+    cost + resolved-inline rows) — shared-cohort rows and unresolvable/no-cost
+    rows are excluded, mirroring today's pre-tally `continue` semantics."""
+    legacy_uuid_counts: dict = {}
+    for row in rows:
+        verdict, _ = _row_verdict(row)
+        if verdict == "legacy":
+            legacy_uuid_counts[row["uuid"]] = legacy_uuid_counts.get(row["uuid"], 0) + 1
+
+    total_fallback_fires = 0
+    sessions_with_fires = 0
+    for row in rows:
+        verdict, _ = _row_verdict(row)
+        if verdict == "unresolvable":
+            continue
+        if verdict == "legacy":
+            if legacy_uuid_counts.get(row["uuid"], 0) != 1:
+                continue  # shared — excluded from the tally
+            _, has_cost = resolve_session_cost(row["uuid"])
+            if not has_cost:
+                continue
+        ff = row.get("fallback_fires", 0)
+        total_fallback_fires += ff
+        if ff > 0:
+            sessions_with_fires += 1
+    return total_fallback_fires, sessions_with_fires
+
+
+def build_report(
+    rows: list,
+    project_root: pathlib.Path,
+    proj_hash: str,
+    home: pathlib.Path,
+    top_n: int = 10,
+    since_date: Optional[date] = None,
+) -> dict:
+    """
+    Compute cost for each row and aggregate into a report dict.
+
+    Precedence rule (D-1/D-2, classify_attribution): a row whose col-8
+    attribution classifies as "resolved" uses the inline usd directly (no
+    JSONL lookup); "unresolvable" contributes NOTHING to the resolved total
+    and is counted in unresolvable_count (never folded into $0); "legacy"
+    (no col 8) is grouped into session cohorts by `cohort_attribution`
+    (IVG-157): a UUID used by exactly one legacy row is resolved and
+    attributed to that row's phase exactly as before (byte-identical);
+    a UUID shared by two or more legacy rows (e.g. an inline checkpoint
+    sharing its parent phase's session UUID) is NEVER charged in full to
+    each participating phase — instead its cost is resolved once and shown
+    as a single labeled `shared_bucket` ("not separately attributable"). A
+    missing session cost (solo or shared) counts into unresolvable_count,
+    never a silent $0.
+
+    Returns:
+      {
+        "total_cost": float,           # alias of resolved_total
+        "resolved_total": float,       # each distinct session counted ONCE
+        "unresolvable_count": int,     # col-8-unresolved + no-cost rows/UUIDs
+        "by_phase": {phase: {"cost": float, "count": int}},   # solo+resolved only
+        "by_model": {model: {"cost": float, "count": int}},   # solo+resolved only
+        "shared_bucket": {"cost": float, "phases": {...}, "uuids": int},
+        "top_sessions": [(cost, task_name, phase, uuid_short, date_str), ...],
+        "total_fallback_fires": int,
+        "sessions_with_fires": int,
+        "no_jsonl_count": int,
+        "session_count": int,
+      }
+    """
+    # Apply --since filter FIRST — cohorts form over the filtered row set.
+    if since_date is not None:
+        filtered = []
+        for row in rows:
+            try:
+                row_date = datetime.strptime(row["date_str"], "%Y-%m-%d").date()
+                if row_date >= since_date:
+                    filtered.append(row)
+            except ValueError:
+                filtered.append(row)  # keep rows with unparseable dates
+        rows = filtered
+
+    if cohort_attribution is None:
+        return _legacy_build_report_core(rows, proj_hash, home, top_n)
+
+    memo: dict = {}
+
+    def resolve_session_cost(uuid: str) -> tuple:
+        if uuid in memo:
+            return memo[uuid]
+        result = lookup_session_cost(uuid, proj_hash, home)
+        memo[uuid] = result
+        return result
+
+    cohort_result = cohort_attribution(rows, resolve_session_cost)
+
+    if cohort_result is None:
+        return _legacy_build_report_core(rows, proj_hash, home, top_n)
+
+    top_sessions = _build_top_sessions(rows, resolve_session_cost, top_n)
+    total_fallback_fires, sessions_with_fires = _fallback_fire_tally(
+        rows, resolve_session_cost
+    )
+
+    return {
+        "total_cost": cohort_result.resolved_total,
+        "resolved_total": cohort_result.resolved_total,
+        "unresolvable_count": cohort_result.unresolvable_count,
+        "by_phase": cohort_result.by_phase,
+        "by_model": cohort_result.by_model,
+        "shared_bucket": cohort_result.shared_bucket,
+        "top_sessions": top_sessions,
+        "total_fallback_fires": total_fallback_fires,
+        "sessions_with_fires": sessions_with_fires,
+        "no_jsonl_count": cohort_result.unpriced_count,
         "session_count": len(rows),
     }
 
@@ -365,6 +495,29 @@ def format_report(
         lines.append(f"  {phase:<20} ${data['cost']:.2f}  ({data['count']} sessions)")
 
     lines.append("")
+
+    # Shared sessions (cohort attribution, IVG-157) — additive, not a
+    # replacement for the solo By-phase block above.
+    shared_bucket = report.get("shared_bucket") or {}
+    if shared_bucket.get("uuids", 0) > 0:
+        phases = shared_bucket.get("phases", {})
+        phase_list = ", ".join(sorted(phases.keys()))
+        lines.append("Shared sessions (multi-phase — not separately attributable):")
+        lines.append(
+            f"  shared-session (multi-phase)   ${shared_bucket['cost']:.2f}   "
+            f"({shared_bucket['uuids']} session(s), {phase_list})"
+        )
+        for phase, counts in sorted(phases.items()):
+            if phase == "checkpoint":
+                lines.append(
+                    f"    checkpoint: save x {counts['save']}, restore x {counts['restore']}"
+                    "  (not separately attributable)"
+                )
+            else:
+                lines.append(
+                    f"    {phase}: {counts['count']}  (not separately attributable)"
+                )
+        lines.append("")
 
     # By model
     lines.append("By model:")
