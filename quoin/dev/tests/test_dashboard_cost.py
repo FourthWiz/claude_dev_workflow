@@ -463,6 +463,142 @@ class TestImportBoundary:
 # T-01 tests: spaced project root (R-07)
 # ---------------------------------------------------------------------------
 
+class TestCohortAttribution:
+    """T-08 (IVG-157): shared-UUID cohort attribution on the dashboard
+    provider — the same non-negotiable as the analyze surface: a shared
+    session UUID is counted ONCE, never once per participating phase, and
+    never silently folded to $0."""
+
+    def test_shared_uuid_two_row_cohort_counted_once(self, tmp_path):
+        home = tmp_path / "home"
+        project_root = tmp_path / "project"
+        project_root.mkdir(parents=True)
+        proj_hash = project_hash(str(project_root))
+
+        uuid = "cohort2-0001-0001-0001-000000000001"
+        # 100k input + 10k output @ claude-sonnet-4-6 => $0.45
+        _make_jsonl(
+            home / ".claude" / "projects" / proj_hash / f"{uuid}.jsonl",
+            model="claude-sonnet-4-6",
+            input_tokens=100_000,
+            output_tokens=10_000,
+        )
+        rows = _make_rows([(uuid, "thorough-plan"), (uuid, "checkpoint")])
+        provider = make_cost_provider(project_root, home=home)
+        result = provider("my-task", rows)
+
+        assert result is not None
+        assert result["mode"] == "usd"
+        assert result["usd"] == pytest.approx(0.45)  # NOT 2x
+        assert "shared-session (multi-phase)" in result["by_phase"]
+        assert result["by_phase"]["shared-session (multi-phase)"]["usd"] == pytest.approx(0.45)
+        assert "thorough-plan" not in result["by_phase"]
+        assert "checkpoint" not in result["by_phase"]
+
+    def test_shared_uuid_six_row_cohort_counted_once(self, tmp_path):
+        home = tmp_path / "home"
+        project_root = tmp_path / "project"
+        project_root.mkdir(parents=True)
+        proj_hash = project_hash(str(project_root))
+
+        uuid = "cohort6-0001-0001-0001-000000000001"
+        _make_jsonl(
+            home / ".claude" / "projects" / proj_hash / f"{uuid}.jsonl",
+            model="claude-opus-4-8",
+            input_tokens=1_000_000,
+            output_tokens=0,
+        )
+        rows = _make_rows([
+            (uuid, "thorough-plan"),
+            (uuid, "thorough-plan"),
+            (uuid, "architect"),
+            (uuid, "implement"),
+            (uuid, "review"),
+            (uuid, "checkpoint"),
+        ])
+        provider = make_cost_provider(project_root, home=home)
+        result = provider("my-task", rows)
+
+        assert result is not None
+        assert result["mode"] == "usd"
+        expected_single_session_cost = result["by_phase"]["shared-session (multi-phase)"]["usd"]
+        assert result["usd"] == pytest.approx(expected_single_session_cost)  # NOT 6x
+        for phase in ("thorough-plan", "architect", "implement", "review", "checkpoint"):
+            assert phase not in result["by_phase"]
+
+    def test_no_participating_phase_carries_whole_session_usd(self, tmp_path):
+        """A phase that only ever appears via a shared cohort must NOT show
+        the whole-session dollar figure under its own name."""
+        home = tmp_path / "home"
+        project_root = tmp_path / "project"
+        project_root.mkdir(parents=True)
+        proj_hash = project_hash(str(project_root))
+
+        uuid = "cohortphase-0001-0001-0001-00000000001"
+        _make_jsonl(
+            home / ".claude" / "projects" / proj_hash / f"{uuid}.jsonl",
+            model="claude-opus-4-8",
+            input_tokens=1_000_000,
+            output_tokens=0,
+        )
+        rows = _make_rows([(uuid, "review"), (uuid, "checkpoint")])
+        provider = make_cost_provider(project_root, home=home)
+        result = provider("my-task", rows)
+
+        assert "review" not in result["by_phase"]
+        assert "checkpoint" not in result["by_phase"]
+
+
+class TestAnalyzeDashboardParity:
+    """T-08 parity test: the SAME shared-UUID row set + same session cost
+    fed to both analyze_cost_ledger.build_report and the dashboard provider
+    must agree on the resolved total — a single shared helper, no drift."""
+
+    def test_analyze_and_dashboard_agree_on_shared_uuid_total(self, tmp_path):
+        import sys as _sys
+
+        _acl_path = _SCRIPTS_PATH / "analyze_cost_ledger.py"
+        _acl_spec = importlib.util.spec_from_file_location(
+            "_quoin_parity_test_analyze_cost_ledger", _acl_path
+        )
+        _acl = importlib.util.module_from_spec(_acl_spec)
+        _sys.modules["_quoin_parity_test_analyze_cost_ledger"] = _acl
+        _acl_spec.loader.exec_module(_acl)
+
+        home = tmp_path / "home"
+        project_root = tmp_path / "project"
+        project_root.mkdir(parents=True)
+        proj_hash = project_hash(str(project_root))
+
+        uuid = "parity-0001-0001-0001-000000000001"
+        _make_jsonl(
+            home / ".claude" / "projects" / proj_hash / f"{uuid}.jsonl",
+            model="claude-sonnet-4-6",
+            input_tokens=200_000,
+            output_tokens=20_000,
+        )
+
+        # Dashboard side
+        dashboard_rows = _make_rows([(uuid, "thorough-plan"), (uuid, "checkpoint")])
+        provider = make_cost_provider(project_root, home=home)
+        dashboard_result = provider("my-task", dashboard_rows)
+
+        # Analyze side — raw pipe-delimited ledger rows, same uuid/phases
+        task_dir = tmp_path / "project" / ".workflow_artifacts" / "my-task"
+        task_dir.mkdir(parents=True, exist_ok=True)
+        ledger_path = task_dir / "cost-ledger.md"
+        ledger_path.write_text(
+            "# Cost Ledger — my-task\n"
+            f"{uuid} | 2026-07-27 | thorough-plan | opus | task | plan note\n"
+            f"{uuid} | 2026-07-27 | checkpoint | opus | task | save\n"
+        )
+        analyze_rows = _acl.parse_ledger_file(ledger_path, task_name="my-task")
+        analyze_report = _acl.build_report(analyze_rows, project_root, proj_hash, home)
+
+        assert dashboard_result is not None
+        assert dashboard_result["usd"] == pytest.approx(analyze_report["resolved_total"])
+
+
 class TestSpacedProjectRoot:
     """Verify project_hash handles paths with spaces (Google Drive root pattern)."""
 

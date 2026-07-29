@@ -89,6 +89,7 @@ def _load_core_cost_event():
 
 _ce = _load_core_cost_event()
 classify_attribution = _ce.classify_attribution if _ce is not None else None
+cohort_attribution = _ce.cohort_attribution if _ce is not None else None
 
 
 # ---------------------------------------------------------------------------
@@ -139,20 +140,72 @@ def make_cost_provider(project_root, home=None):
     proj_hash = project_hash(str(root))
     cache = _make_cache()
 
+    def _resolve_via_cache(uuid: str):
+        """(cost, has_cost) for uuid via the shared memo-cache. Returns
+        (0.0, False) when the JSONL is absent or unreadable."""
+        jsonl_path = jsonl_path_for(uuid, proj_hash, home=home or pathlib.Path.home())
+        cached_result, cache_key = _lookup_cached(cache, uuid, jsonl_path)
+        if cached_result is _MISS:
+            if jsonl_path.exists():
+                try:
+                    result = parse_session(jsonl_path)
+                except (IOError, OSError, Exception):
+                    result = None
+            else:
+                result = None
+            cache[cache_key] = result
+            cached_result = result
+        if cached_result is None:
+            return 0.0, False
+        return cached_result.get("totalCost", 0.0) or 0.0, True
+
+    def _legacy_usd_accumulation(rows):
+        """Pre-cohort per-row usd accumulation — fail-open fallback used only
+        when the cohort helper is unavailable (core module failed to load).
+        Kept byte-for-byte equivalent to the original stage-4 usd logic."""
+        total_usd = 0.0
+        by_phase_usd: dict = {}
+        for row in rows:
+            uuid = row.get("uuid", "")
+            phase = row.get("phase", "")
+            if not uuid:
+                continue
+            verdict, inline_usd = ("legacy", None)
+            if classify_attribution is not None:
+                verdict, inline_usd = classify_attribution(row.get("attribution", ""))
+            if verdict == "resolved":
+                usd = inline_usd or 0.0
+                total_usd += usd
+                if phase:
+                    by_phase_usd[phase] = by_phase_usd.get(phase, 0.0) + usd
+                continue
+            if verdict == "unresolvable":
+                continue
+            usd, has_cost = _resolve_via_cache(uuid)
+            if not has_cost:
+                continue
+            total_usd += usd
+            if phase:
+                by_phase_usd[phase] = by_phase_usd.get(phase, 0.0) + usd
+        return total_usd, by_phase_usd
+
     def provider(task_name, rows):
         """Resolve cost for a task given its ledger rows.
 
         Returns dict with mode/usd/tokens/by_phase, or None if no JSONL found.
         per D-04 ladder and D-14 nested by_phase contract.
+
+        USD totals/by_phase are shaped by `cohort_attribution` (IVG-157) so a
+        shared session UUID (e.g. an inline checkpoint sharing its parent
+        phase's session UUID) is counted ONCE, not once per participating
+        phase. Tokens-mode aggregation is unchanged (documented residual,
+        MIN-3): the cohort helper is USD-oriented only.
         """
-        total_usd = 0.0
         total_tokens = 0
         any_jsonl_found = False
         any_resolved = False
         partial = False
 
-        # Phase aggregators — values differ by mode but we build both and pick
-        by_phase_usd = {}    # {phase: float}
         by_phase_tokens = {}  # {phase: int}
 
         for row in rows:
@@ -169,22 +222,16 @@ def make_cost_provider(project_root, home=None):
                 # Inline-first: no JSONL lookup. any_resolved is set on EVERY
                 # resolved row (including a genuine resolved usd=0.0 — D-8).
                 any_resolved = True
-                usd = inline_usd or 0.0
-                total_usd += usd
-                if phase:
-                    by_phase_usd[phase] = by_phase_usd.get(phase, 0.0) + usd
                 continue
 
             if verdict == "unresolvable":
                 partial = True
                 continue
 
-            # verdict == "legacy": existing JSONL path, unchanged.
+            # verdict == "legacy": existing JSONL path, unchanged for tokens.
             jsonl_path = jsonl_path_for(uuid, proj_hash, home=home or pathlib.Path.home())
             cached_result, cache_key = _lookup_cached(cache, uuid, jsonl_path)
-
             if cached_result is _MISS:
-                # Cache miss — parse or record absence
                 if jsonl_path.exists():
                     try:
                         result = parse_session(jsonl_path)
@@ -201,18 +248,32 @@ def make_cost_provider(project_root, home=None):
                 continue
 
             any_jsonl_found = True
-            usd = cached_result.get("totalCost", 0.0) or 0.0
             tokens = cached_result.get("totalTokens", 0) or 0
-
-            total_usd += usd
             total_tokens += tokens
-
             if phase:
-                by_phase_usd[phase] = by_phase_usd.get(phase, 0.0) + usd
                 by_phase_tokens[phase] = by_phase_tokens.get(phase, 0) + tokens
 
         if not (any_jsonl_found or any_resolved):
             return None
+
+        # ---- USD shaping via cohort_attribution (F-04, fixes N x-inflation) ----
+        if cohort_attribution is not None:
+            cohort_result = cohort_attribution(rows, _resolve_via_cache)
+        else:
+            cohort_result = None
+
+        if cohort_result is not None:
+            total_usd = cohort_result.resolved_total
+            by_phase_usd = {ph: d["cost"] for ph, d in cohort_result.by_phase.items()}
+            if cohort_result.shared_bucket:
+                # MIN-5 (UX, confirmed intended): the shared bucket surfaces
+                # as a labeled pseudo-phase row so the dashboard total stays
+                # correct without inventing a per-phase dollar figure.
+                by_phase_usd["shared-session (multi-phase)"] = cohort_result.shared_bucket["cost"]
+            if cohort_result.unresolvable_count > 0:
+                partial = True
+        else:
+            total_usd, by_phase_usd = _legacy_usd_accumulation(rows)
 
         # MINOR-5/D-8: a resolved row (even usd=0.0) forces usd mode — it is
         # a genuine resolved value, distinguishable from no-data/tokens-only.
@@ -228,6 +289,11 @@ def make_cost_provider(project_root, home=None):
             }
         elif total_tokens > 0:
             # Tokens mode — nested by_phase: {phase: {"tokens": int}}
+            # KNOWN RESIDUAL (MIN-3): a shared cohort's tokens remain summed
+            # per-row here (N x over-counted) — the cohort helper is USD-
+            # oriented; this path is a rare unpriceable-model fallback, and
+            # the loud user-facing USD overstatement is what this fix
+            # addresses. See memory/cost-ledger-format.md.
             by_phase = {ph: {"tokens": tok_val} for ph, tok_val in by_phase_tokens.items()}
             return {
                 "mode": "tokens",
