@@ -137,6 +137,91 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
 
 
 # ---------------------------------------------------------------------------
+# Non-collectable allowlist (FR-6 / AC-6)
+# ---------------------------------------------------------------------------
+#
+# A committed allowlist of intentionally-non-collectable .py files lives at
+# quoin/dev/tests/non-collectable.txt (repo-root-relative).  A changed file that
+# matches an allowlist entry is routed to the `noncollectable` bucket instead of
+# `unmatched_sources`/selectors, so an uncollectable non-test .py never drives
+# exit 3 and an allowlisted collect-nothing test spike never reaches pytest.
+#
+# Matching MIRRORS the _DOCS_TO_TESTS anchoring idiom verbatim:
+#   posix == entry OR posix.endswith("/" + entry).
+# Absent/unreadable file degrades to an EMPTY allowlist (FR-9 fail-safe): repos
+# without the file behave byte-for-byte as before.
+
+_NONCOLLECTABLE_REL = "quoin/dev/tests/non-collectable.txt"
+
+
+def _parse_noncollectable(text: str) -> list[str]:
+    """Parse allowlist file text into effective entries.
+
+    Drops blank lines and comment lines (stripped form starts with `#`).
+    Returns the remaining stripped entries in file order.
+    """
+    entries: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        entries.append(stripped)
+    return entries
+
+
+def _noncollectable_path(repo_root: Path) -> Path:
+    """Resolve the allowlist path.
+
+    QUOIN_NONCOLLECTABLE_FILE (non-empty) wins as an absolute override; otherwise
+    resolve repo-root-relative (repo_root / quoin/dev/tests/non-collectable.txt) —
+    NOT relative to the deployed __file__, so a self-hosting quoin run finds its
+    own committed list and a foreign repo without the file degrades to empty.
+    """
+    override = os.environ.get("QUOIN_NONCOLLECTABLE_FILE", "").strip()
+    if override:
+        return Path(override)
+    return repo_root / _NONCOLLECTABLE_REL
+
+
+def load_noncollectable(repo_root: Path) -> list[str]:
+    """Load + parse the allowlist; absent/unreadable file → [] (fail-safe)."""
+    path = _noncollectable_path(repo_root)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    return _parse_noncollectable(text)
+
+
+def _is_noncollectable(changed_path: str, entries: list[str]) -> bool:
+    """True if changed_path matches any allowlist entry (anchored, MIRRORS _DOCS_TO_TESTS)."""
+    posix = PurePosixPath(changed_path).as_posix()
+    for entry in entries:
+        if posix == entry or posix.endswith("/" + entry):
+            return True
+    return False
+
+
+def partition_noncollectable(
+    changed: list[str],
+    entries: list[str],
+) -> tuple[list[str], list[str]]:
+    """Split changed into (remaining, noncollectable), preserving input order.
+
+    An empty allowlist (the default for repos without the file) leaves `changed`
+    entirely in `remaining` — byte-for-byte the pre-change behavior.
+    """
+    remaining: list[str] = []
+    noncollectable: list[str] = []
+    for path in changed:
+        if entries and _is_noncollectable(path, entries):
+            noncollectable.append(path)
+        else:
+            remaining.append(path)
+    return remaining, noncollectable
+
+
+# ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
 
@@ -151,6 +236,13 @@ class Selection:
     pytest_returncode: int | None
     exit_reason: str              # see exit code doc above
     unmatched_warning: bool = False  # set when --allow-unmatched in use
+    # Files matched by the committed non-collectable allowlist
+    # (quoin/dev/tests/non-collectable.txt).  These are intentionally-uncollectable
+    # .py files (collect-nothing test spikes or designated non-test sources) that
+    # must NEVER become a pytest selector or an unmatched_source — routing them here
+    # kills the spurious exit-3/hard-RED false block (FR-6/AC-6).  Placed AFTER
+    # unmatched_warning to satisfy dataclass default-ordering.
+    noncollectable: list[str] = dataclasses.field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -158,6 +250,7 @@ class Selection:
             "selectors": self.selectors,
             "unmatched_sources": self.unmatched_sources,
             "ignored": self.ignored,
+            "noncollectable": self.noncollectable,
             "ran_pytest": self.ran_pytest,
             "pytest_returncode": self.pytest_returncode,
             "exit_reason": self.exit_reason,
@@ -570,6 +663,8 @@ def _format_text(sel: Selection) -> str:
         lines.append(f"unmatched_sources ({len(sel.unmatched_sources)}): {', '.join(sel.unmatched_sources)}")
     if sel.ignored:
         lines.append(f"ignored ({len(sel.ignored)}): {', '.join(sel.ignored)}")
+    if sel.noncollectable:
+        lines.append(f"noncollectable ({len(sel.noncollectable)}): {', '.join(sel.noncollectable)}")
     if sel.unmatched_warning:
         lines.append("unmatched_warning: true (--allow-unmatched in use)")
     return "\n".join(lines)
@@ -808,7 +903,14 @@ def main(argv: list[str] | None = None) -> int:
     if repo_root is None:
         repo_root = Path.cwd()
 
-    selectors, unmatched_sources, ignored = map_changed_to_tests(changed, repo_root)
+    # FR-6/AC-6: partition intentionally-non-collectable files OUT of `changed`
+    # BEFORE mapping.  An allowlisted .py (test or non-test) must never become a
+    # selector or an unmatched_source.  Absent allowlist → empty entries →
+    # `changed_remaining == changed`, so mapping is byte-for-byte unchanged.
+    nc_entries = load_noncollectable(repo_root)
+    changed_remaining, noncollectable = partition_noncollectable(changed, nc_entries)
+
+    selectors, unmatched_sources, ignored = map_changed_to_tests(changed_remaining, repo_root)
 
     # ------------------------------------------------------------------
     # Step 3: --select-only path — print and exit without running pytest
@@ -823,6 +925,7 @@ def main(argv: list[str] | None = None) -> int:
             pytest_returncode=None,
             exit_reason="select-only",
             unmatched_warning=bool(unmatched_sources and args.allow_unmatched),
+            noncollectable=noncollectable,
         )
         if fmt == "text":
             print(_format_text(sel))
@@ -844,6 +947,7 @@ def main(argv: list[str] | None = None) -> int:
             ran_pytest=False,
             pytest_returncode=None,
             exit_reason="unmatched-sources",
+            noncollectable=noncollectable,
         )
         if fmt == "text":
             print(_format_text(sel))
@@ -873,6 +977,7 @@ def main(argv: list[str] | None = None) -> int:
                 pytest_returncode=None,
                 exit_reason="docs-only-no-selectors",
                 unmatched_warning=True,
+                noncollectable=noncollectable,
             )
             if fmt == "text":
                 print(_format_text(sel))
@@ -880,8 +985,13 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(sel.to_dict(), indent=2))
             return 0
 
-        # Docs-only: zero changed .py sources → exit 0b
+        # Docs-only / non-collectable-only: zero changed .py selectors → exit 0b.
         # (also catches genuinely-empty changed list when called via --files [])
+        # AC-6: a changeset of ONLY non-collectable (and/or ignored) files resolves
+        # to exit 0 with a distinct exit_reason for gate/audit observability.
+        # unmatched_sources is empty here (4a already returned exit 3 for the
+        # unmatched-without-allow case; the allow-unmatched case returned above).
+        empty_reason = "noncollectable-skip" if noncollectable else "docs-only-no-selectors"
         sel = Selection(
             changed=changed,
             selectors=[],
@@ -889,7 +999,8 @@ def main(argv: list[str] | None = None) -> int:
             ignored=ignored,
             ran_pytest=False,
             pytest_returncode=None,
-            exit_reason="docs-only-no-selectors",
+            exit_reason=empty_reason,
+            noncollectable=noncollectable,
         )
         if fmt == "text":
             print(_format_text(sel))
@@ -921,6 +1032,7 @@ def main(argv: list[str] | None = None) -> int:
             pytest_returncode=None,
             exit_reason="pytest-missing",
             unmatched_warning=bool(unmatched_sources and args.allow_unmatched),
+            noncollectable=noncollectable,
         )
         if fmt == "text":
             print(_format_text(sel))
@@ -940,6 +1052,7 @@ def main(argv: list[str] | None = None) -> int:
             pytest_returncode=None,
             exit_reason="pytest-timeout",
             unmatched_warning=bool(unmatched_sources and args.allow_unmatched),
+            noncollectable=noncollectable,
         )
         if fmt == "text":
             print(_format_text(sel))
@@ -947,7 +1060,22 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(sel.to_dict(), indent=2))
         return 3
 
-    exit_reason = "affected-green" if rc == 0 else "affected-red"
+    # T-05 / AC-6(b) / R-06: classify the pytest return code.
+    #   rc == 0 → affected-green (exit 0).
+    #   rc == 5 → "no tests collected": a collect-nothing test spike is NOT a real
+    #             failure, so remap to a clean skip (exit 0, distinct exit_reason).
+    #             This is INDEPENDENT of the allowlist.
+    #   else    → affected-red (exit 1) — covers rc 1/2/3/4 so a genuine collection,
+    #             internal, or usage error is NEVER masked (R-06).
+    if rc == 0:
+        exit_reason = "affected-green"
+        code = 0
+    elif rc == 5:
+        exit_reason = "no-tests-collected-skip"
+        code = 0
+    else:
+        exit_reason = "affected-red"
+        code = 1
     sel = Selection(
         changed=changed,
         selectors=selectors,
@@ -957,12 +1085,13 @@ def main(argv: list[str] | None = None) -> int:
         pytest_returncode=rc,
         exit_reason=exit_reason,
         unmatched_warning=bool(unmatched_sources and args.allow_unmatched),
+        noncollectable=noncollectable,
     )
     if fmt == "text":
         print(_format_text(sel))
     else:
         print(json.dumps(sel.to_dict(), indent=2))
-    return 0 if rc == 0 else 1
+    return code
 
 
 if __name__ == "__main__":
