@@ -282,7 +282,7 @@ If the task profile is Small, do NOT enter the critic loop. Instead:
 
 1. Invoke `/plan` (Opus) — same as round 1 of the normal loop. Output: `current-plan.md`.
 2. Run a smoke gate (plan artifact exists, has tasks with file paths and acceptance criteria).
-3. Add the convergence summary to the top of `current-plan.md` with `Task profile: Small`, `Rounds: 1`, and `Key revisions: N/A — single-pass plan`.
+3. Add the convergence summary in `current-plan.md` (below the `## For human` block) with `Task profile: Small`, `Rounds: 1`, and `Key revisions: N/A — single-pass plan`.
 4. Print an **inline summary** in the chat (do NOT rely on the user reading `current-plan.md`): (a) "Task classified as Small — produced a single-pass plan in 1 round." (b) 3–5 bullets of what the plan covers in plain language. (c) Remaining concerns or decisions ("none" if clean). (d) Plan path: `<task_dir>/current-plan.md` — note that the plan body is terse and can be `/expand`-ed for detail. (where `<task_dir>` was resolved in Setup §1 via `path_resolve.py`)
 5. **STOP.** Do not invoke `/implement`. Wait for the user.
 
@@ -400,7 +400,7 @@ After each critic round, before continuing:
 
 ## Final output
 
-When converged, add a convergence summary to the top of `current-plan.md`:
+When converged, add a convergence summary in `current-plan.md` (below the `## For human` block):
 
 ```markdown
 ## Convergence Summary
@@ -411,7 +411,7 @@ When converged, add a convergence summary to the top of `current-plan.md`:
 - **Remaining concerns:** <any MINOR issues not addressed, or none>
 ```
 
-For Small-profile tasks that took the single-pass path, the convergence summary still appears at the top of `current-plan.md` but with `Rounds: 1` and `Key revisions: N/A — single-pass plan`. This signals to downstream skills that the plan was not critic-reviewed.
+For Small-profile tasks that took the single-pass path, the convergence summary still appears in `current-plan.md` (below the `## For human` block) but with `Rounds: 1` and `Key revisions: N/A — single-pass plan`. This signals to downstream skills that the plan was not critic-reviewed.
 
 **Convergence cleanup (IVG-98):** After writing the converged plan, trash-move or delete the
 phase-boundary progress checkpoint and its sentinel so this completed run is NOT re-offered as

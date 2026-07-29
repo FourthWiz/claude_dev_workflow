@@ -566,6 +566,32 @@ def test_convergence_summary_heading_passes_validator():
     assert 'FAIL V-02' not in stderr
 
 
+# ── IVG-140: V-06 vs. Convergence Summary ordering ─────────────────────────────
+
+def test_v06_fail_convergence_summary_before_for_human():
+    """current-plan fixture with ## Convergence Summary BEFORE ## For human must FAIL V-06 only.
+
+    The fixture retains all required current-plan sections (## For human, ## State,
+    ## Tasks, ## Risks), so the only tripped invariant is V-06 (ordering), not V-07
+    (missing sections) — isolating the ordering signal from a confounding failure.
+    """
+    rc, stderr = run_validator(
+        artifact=fixture('v06-convergence-first-fail.md'), artifact_type='current-plan'
+    )
+    assert rc == 1, f'Expected validator failure; stderr: {stderr}'
+    assert 'FAIL V-06' in stderr
+    assert 'FAIL V-07' not in stderr
+
+
+def test_v06_pass_convergence_summary_after_for_human():
+    """current-plan fixture with ## Convergence Summary AFTER ## For human must NOT FAIL V-06."""
+    rc, stderr = run_validator(
+        artifact=fixture('v03-convergence-summary-pass.md'), artifact_type='current-plan'
+    )
+    assert rc == 0, f'Expected validator pass; stderr: {stderr}'
+    assert 'FAIL V-06' not in stderr
+
+
 # ── T-08: detect_type ordering — architecture-critic- before architecture- ─────
 
 def test_detect_type_architecture_critic_returns_critic_response():
