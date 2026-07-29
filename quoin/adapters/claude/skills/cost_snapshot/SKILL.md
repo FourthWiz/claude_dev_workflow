@@ -257,6 +257,7 @@ Using the UUID-to-cost map from Step 2 PLUS the resolved-inline `usd` values fro
 
 - **`resolved_total`** — sum of (a) resolved-inline `usd` (Step-1 precedence rule) and (b) successfully-resolved JSONL costs (legacy rows, Step 2). This is the trustworthy total — it NEVER includes an unresolvable row as $0.
 - **`unresolvable_count`** — count of (a) col-8 **unresolvable** rows (Step 1) PLUS (b) legacy rows whose JSONL lookup failed, timed out, or returned null (skip `unknown-`-prefixed UUIDs, per Step 2 — those were never in the lookup set to begin with). This single counter REPLACES the old "sessions with unknown cost" line — do not maintain two competing counters for the same idea; both failure modes are the same "cost not trustworthy for this row" fact.
+- **Per-task dedup (IVG-157):** a UUID lives in exactly one task, but a task's rows can share one UUID more than once (e.g. an inline `/checkpoint` writes the same UUID as the phase it ran inside of). When summing an **`open_task_entries`** total for a task, dedup the resolved-cost contribution by UUID **within that task** before summing — mirror the `all_entries` dedup-by-UUID rule above (Step 1) so a shared UUID's cost is added to that task's total exactly ONCE, not once per row/phase sharing it. Session counts for the task may still count every row (they describe activity, not cost); only the dollar sum needs this dedup.
 
 Print in this format:
 
@@ -288,5 +289,5 @@ Formatting rules:
 - **Read-only.** Never write files (except optionally appending to the cost ledger per bootstrap rules). This is a reporting tool only.
 - **Fast.** Aim for under 30 seconds. Use the bulk ccusage call when 5+ UUIDs are needed.
 - **Graceful degradation.** If ccusage fails or is unavailable, print what you can (session counts, task names) with a clear explanation of what's missing. Do not error out silently.
-- **No double-counting.** Deduplicate UUIDs before summing. A UUID appearing in both active and finalized ledgers (shouldn't happen, but possible) counts only once toward the lifetime total.
+- **No double-counting.** Deduplicate UUIDs before summing. A UUID appearing in both active and finalized ledgers (shouldn't happen, but possible) counts only once toward the lifetime total. Within a single task's total, a UUID shared by more than one row (e.g. an inline `/checkpoint`) also counts only once (see Step 3's per-task dedup note) — never once per participating phase.
 - **Project root detection.** If invoked from a subdirectory, walk up to find the directory containing `.workflow_artifacts/`. If not found, tell the user and stop.

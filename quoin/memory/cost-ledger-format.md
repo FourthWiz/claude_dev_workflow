@@ -78,3 +78,18 @@ Always write `task`. The ledger is append-only — never delete or rewrite rows.
 ## Portable shape
 
 See also `quoin/core/workflow/cost-ledger.md` for the runtime-neutral specification.
+
+## Checkpoint cost attribution (IVG-157)
+
+Inline `/checkpoint` runs in the parent session and writes the PARENT session
+UUID; its cost is attributed via session-cohort attribution (labeled
+`shared-session (multi-phase)` bucket), NOT the parent-session total.
+Checkpoint behavior is unchanged. Concretely: `analyze_cost_ledger.py`,
+`dashboard_cost.py`, and `cost_snapshot`'s per-task totals resolve each
+distinct session UUID's cost exactly once — a UUID shared by two or more
+phase rows (a "cohort") is never charged in full to each participating
+phase, and never silently shown as $0. See `cohort_attribution` in
+`quoin/core/scripts/cost_event.py` for the implementation. Note: tokens-mode
+shared cohorts (unpriceable models) remain over-counted in tokens — the USD
+per-phase overstatement is what is fixed here; this is a documented,
+accepted residual gap for a rare fallback path.
