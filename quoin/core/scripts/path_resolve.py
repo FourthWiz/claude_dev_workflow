@@ -76,6 +76,11 @@ def _marker_artifact_root(marker_path: Path):
     """
     try:
         data = json.loads(marker_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            # Valid JSON that is not an object (list / number / string / null)
+            # has no .get(...) — treat as an absent/invalid marker and fall
+            # through, exactly like the corrupt-marker path (fail-OPEN).
+            return None
         ar = data.get("artifact_root")
     except (OSError, ValueError, TypeError):
         return None

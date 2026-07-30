@@ -601,6 +601,37 @@ def test_resolve_artifact_root_corrupt_marker_fail_open(tmp_path):
     assert result == rootA.resolve()
 
 
+@pytest.mark.parametrize(
+    "marker_body",
+    [
+        "[]",       # empty JSON array
+        "[1, 2]",   # non-empty JSON array
+        "42",       # JSON number
+        '"str"',    # JSON string
+        "null",     # JSON null
+    ],
+)
+def test_resolve_artifact_root_nonobject_marker_fail_open(tmp_path, marker_body):
+    """GUARD (MAJ-1, DISCRIMINATING): a marker whose body is VALID JSON but is NOT
+    an object (array / number / string / null) must NOT raise AttributeError from
+    the internal ``data.get(...)`` — it must fail-OPEN to the walk-up root exactly
+    like a corrupt marker. Pre-fix, ``json.loads`` succeeds for these bodies, then
+    ``data.get("artifact_root")`` raises an uncaught AttributeError that propagates
+    out of resolve_artifact_root and crashes --print-project-root. The isinstance
+    gate makes each of these fall through to rootA."""
+    rootA = tmp_path / "rootA"
+    (rootA / ".workflow_artifacts").mkdir(parents=True)
+    workspace_repo = rootA / ".workspaces" / "feat" / "repoA"
+    workspace_repo.mkdir(parents=True)
+
+    marker = rootA / ".workspaces" / "feat" / ".quoin-workspace.json"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(marker_body, encoding="utf-8")
+
+    result = resolve_artifact_root(workspace_repo)
+    assert result == rootA.resolve()
+
+
 def test_resolve_artifact_root_env_override(tmp_path, monkeypatch):
     """QUOIN_ARTIFACT_ROOT, when set and valid, wins over the walk even from an
     unrelated start dir."""
