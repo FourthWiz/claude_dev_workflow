@@ -1,0 +1,33 @@
+# non-collectable.txt — affected_tests.py allowlist of intentionally-non-collectable files
+#
+# Purpose
+#   Lists .py files that are DELIBERATELY never collected by pytest — collect-nothing
+#   test spikes, or designated non-test .py sources that legitimately have no runnable
+#   test. affected_tests.py routes a changed file matching this list to a `noncollectable`
+#   bucket (never `unmatched_sources`, never a pytest selector), so an intentionally
+#   uncollectable file no longer drives a spurious exit 3 (unmatched) or a hard RED.
+#
+# Format
+#   - One entry per line.
+#   - Blank lines and lines whose first non-whitespace character is `#` are ignored.
+#   - An entry matches a changed path (as reported by git diff, i.e. repo-root-relative,
+#     e.g. `quoin/dev/tests/spike_x.py`) when it is EXACTLY equal to the changed path,
+#     OR the changed path ends with `/` + entry (a `/`-anchored path-suffix). Bare
+#     basenames are anchored: `spike_x.py` matches `.../spike_x.py` but NOT
+#     `.../other_spike_x.py`.
+#   - Prefer a full repo-root-relative path (e.g. `quoin/dev/tests/spike_x.py`) to avoid
+#     accidentally allowlisting a same-named file elsewhere in the tree.
+#
+# Resolution
+#   The allowlist file is read from the resolved git repo root at
+#   `quoin/dev/tests/non-collectable.txt`. Override the path with the environment
+#   variable QUOIN_NONCOLLECTABLE_FILE (absolute path). An absent/unreadable file
+#   degrades to an EMPTY allowlist, so any repo without this file behaves exactly as
+#   before (fail-safe, FR-9).
+#
+# NOTE: quoin itself ships with NO active entries — this list is intentionally empty
+# so quoin's own self-hosting behavior is unchanged. Add an entry below only when a real
+# intentionally-non-collectable spike is introduced.
+#
+# example (commented — not active):
+# quoin/dev/tests/spike_example.py

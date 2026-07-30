@@ -771,3 +771,279 @@ class TestRequireTaskContext:
         foreign.mkdir()
         rc = _cli(["--project-root", str(foreign)])
         assert rc == 3, f"flag-less legacy path must be exit 3, got {rc}"
+
+
+# ---------------------------------------------------------------------------
+# FR-6 / AC-6 (S-01): non-collectable allowlist + rc-5 clean-skip
+# ---------------------------------------------------------------------------
+
+class TestNoncollectableParsing:
+    """T-03 pure-function units: parser, path resolver, loader, matcher, partition."""
+
+    def test_parse_drops_comment_and_blank_lines(self):
+        text = (
+            "# header comment\n"
+            "\n"
+            "   # indented comment\n"
+            "quoin/dev/tests/spike_a.py\n"
+            "  spike_b.py  \n"
+            "\n"
+            "# trailing comment\n"
+        )
+        entries = _at._parse_noncollectable(text)
+        assert entries == ["quoin/dev/tests/spike_a.py", "spike_b.py"]
+
+    def test_parse_empty_text(self):
+        assert _at._parse_noncollectable("") == []
+        assert _at._parse_noncollectable("# only comments\n\n") == []
+
+    def test_is_noncollectable_exact_match(self):
+        entries = ["quoin/dev/tests/spike_a.py"]
+        assert _at._is_noncollectable("quoin/dev/tests/spike_a.py", entries) is True
+
+    def test_is_noncollectable_anchored_suffix_match(self):
+        """A `/`-anchored suffix entry matches a longer path ending in /entry."""
+        entries = ["spike_a.py"]
+        assert _at._is_noncollectable("quoin/dev/tests/spike_a.py", entries) is True
+        assert _at._is_noncollectable("spike_a.py", entries) is True
+
+    def test_is_noncollectable_anchor_guard(self):
+        """Bare basename entry must NOT match a differently-prefixed longer basename."""
+        entries = ["spike_a.py"]
+        # 'other_spike_a.py' ends with 'spike_a.py' as a raw substring but NOT with
+        # '/spike_a.py', so the anchor guard must reject it.
+        assert _at._is_noncollectable("quoin/dev/tests/other_spike_a.py", entries) is False
+
+    def test_is_noncollectable_no_match(self):
+        entries = ["quoin/dev/tests/spike_a.py"]
+        assert _at._is_noncollectable("quoin/dev/tests/spike_b.py", entries) is False
+
+    def test_load_absent_file_returns_empty(self, tmp_path):
+        """FR-9 fail-safe: absent allowlist file -> [] (no override, no repo file)."""
+        # tmp_path has no quoin/dev/tests/non-collectable.txt
+        assert _at.load_noncollectable(tmp_path) == []
+
+    def test_load_env_override_honored(self, tmp_path, monkeypatch):
+        """QUOIN_NONCOLLECTABLE_FILE absolute override wins over repo-relative path."""
+        override = tmp_path / "custom-list.txt"
+        override.write_text("# hi\nquoin/dev/tests/spike_x.py\n")
+        monkeypatch.setenv("QUOIN_NONCOLLECTABLE_FILE", str(override))
+        # repo_root is an unrelated dir with no repo-relative file; override still loads.
+        assert _at.load_noncollectable(tmp_path / "somewhere") == [
+            "quoin/dev/tests/spike_x.py"
+        ]
+
+    def test_load_repo_relative_resolution(self, tmp_path, monkeypatch):
+        """Repo-relative resolution: repo_root/quoin/dev/tests/non-collectable.txt found."""
+        monkeypatch.delenv("QUOIN_NONCOLLECTABLE_FILE", raising=False)
+        rel = tmp_path / "quoin" / "dev" / "tests"
+        rel.mkdir(parents=True)
+        (rel / "non-collectable.txt").write_text("# c\nspike_y.py\n")
+        assert _at.load_noncollectable(tmp_path) == ["spike_y.py"]
+
+    def test_partition_preserves_order_and_splits(self):
+        changed = ["a.py", "quoin/dev/tests/spike_a.py", "b.py"]
+        entries = ["quoin/dev/tests/spike_a.py"]
+        remaining, nc = _at.partition_noncollectable(changed, entries)
+        assert remaining == ["a.py", "b.py"]
+        assert nc == ["quoin/dev/tests/spike_a.py"]
+
+    def test_partition_empty_entries_is_identity(self):
+        """Empty allowlist -> everything stays in remaining (byte-for-byte legacy)."""
+        changed = ["a.py", "b.py"]
+        remaining, nc = _at.partition_noncollectable(changed, [])
+        assert remaining == ["a.py", "b.py"]
+        assert nc == []
+
+
+class TestSelectionNoncollectableField:
+    """T-02: dataclass field default + to_dict + text formatter."""
+
+    def test_default_empty(self):
+        sel = _at.Selection(
+            changed=[], selectors=[], unmatched_sources=[], ignored=[],
+            ran_pytest=False, pytest_returncode=None, exit_reason="x",
+        )
+        assert sel.noncollectable == []
+        assert sel.to_dict()["noncollectable"] == []
+
+    def test_populated_emitted(self):
+        sel = _at.Selection(
+            changed=[], selectors=[], unmatched_sources=[], ignored=[],
+            ran_pytest=False, pytest_returncode=None, exit_reason="x",
+            noncollectable=["spike.py"],
+        )
+        assert sel.to_dict()["noncollectable"] == ["spike.py"]
+
+    def test_text_formatter_emits_only_when_nonempty(self):
+        empty = _at.Selection(
+            changed=[], selectors=[], unmatched_sources=[], ignored=[],
+            ran_pytest=False, pytest_returncode=None, exit_reason="x",
+        )
+        assert "noncollectable" not in _at._format_text(empty)
+        populated = _at.Selection(
+            changed=[], selectors=[], unmatched_sources=[], ignored=[],
+            ran_pytest=False, pytest_returncode=None, exit_reason="x",
+            noncollectable=["spike.py"],
+        )
+        assert "noncollectable (1): spike.py" in _at._format_text(populated)
+
+
+class TestAc6NoncollectablePaths:
+    """AC-6(a): a designated non-collectable non-test .py (today exit 3) -> exit 0."""
+
+    def test_allowlisted_source_exit_0(self, tmp_path, monkeypatch):
+        """--files spike_src.py with the allowlist listing it -> exit 0,
+        exit_reason=noncollectable-skip, in noncollectable, NOT in unmatched_sources."""
+        (tmp_path / "spike_src.py").write_text("def spike(): pass\n")
+        allow = tmp_path / "non-collectable.txt"
+        allow.write_text("# list\nspike_src.py\n")
+        monkeypatch.setenv("QUOIN_NONCOLLECTABLE_FILE", str(allow))
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = _cli(["--files", "spike_src.py", "--repo-root", str(tmp_path)])
+        assert rc == 0, f"allowlisted non-test .py should exit 0, got {rc}"
+        data = json.loads(buf.getvalue())
+        assert data["exit_reason"] == "noncollectable-skip"
+        assert "spike_src.py" in data["noncollectable"]
+        assert data["unmatched_sources"] == []
+        assert data["selectors"] == []
+        assert data["ran_pytest"] is False
+
+    def test_control_same_file_without_allowlist_exit_3(self, tmp_path, monkeypatch):
+        """Control: SAME orphan .py WITHOUT the allowlist -> exit 3 (today-BLOCKED
+        baseline; proves the allowlist is load-bearing)."""
+        monkeypatch.delenv("QUOIN_NONCOLLECTABLE_FILE", raising=False)
+        (tmp_path / "spike_src.py").write_text("def spike(): pass\n")
+        rc = _cli(["--files", "spike_src.py", "--repo-root", str(tmp_path)])
+        assert rc == 3, f"orphan .py without allowlist must still exit 3, got {rc}"
+
+    def test_allowlisted_test_spike_never_reaches_pytest(self, tmp_path, monkeypatch):
+        """AC-6: an allowlisted test_*.py spike -> exit 0, in noncollectable, and pytest
+        is NEVER invoked (partition happens before selectors are built)."""
+        (tmp_path / "test_spike.py").write_text("# no test functions here\n")
+        allow = tmp_path / "non-collectable.txt"
+        allow.write_text("test_spike.py\n")
+        monkeypatch.setenv("QUOIN_NONCOLLECTABLE_FILE", str(allow))
+        import io, contextlib
+        buf = io.StringIO()
+        with mock.patch("subprocess.run") as mock_run:
+            with contextlib.redirect_stdout(buf):
+                rc = _cli(["--files", "test_spike.py", "--repo-root", str(tmp_path)])
+            for call in mock_run.call_args_list:
+                assert "pytest" not in str(call), (
+                    f"allowlisted test spike must not reach pytest, got {call}"
+                )
+        assert rc == 0, f"allowlisted test spike should exit 0, got {rc}"
+        data = json.loads(buf.getvalue())
+        assert "test_spike.py" in data["noncollectable"]
+        assert data["exit_reason"] == "noncollectable-skip"
+
+    def test_noncollectable_plus_ignored_only_exit_0(self, tmp_path, monkeypatch):
+        """AC-6: a changeset of ONLY non-collectable + ignored files -> exit 0."""
+        (tmp_path / "spike_src.py").write_text("def spike(): pass\n")
+        allow = tmp_path / "non-collectable.txt"
+        allow.write_text("spike_src.py\n")
+        monkeypatch.setenv("QUOIN_NONCOLLECTABLE_FILE", str(allow))
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = _cli(["--files", "spike_src.py", "notes.md",
+                       "--repo-root", str(tmp_path)])
+        assert rc == 0
+        data = json.loads(buf.getvalue())
+        assert data["exit_reason"] == "noncollectable-skip"
+        assert "spike_src.py" in data["noncollectable"]
+        assert "notes.md" in data["ignored"]
+
+
+class TestAc6Rc5CleanSkip:
+    """AC-6(b) + R-06: pytest rc-5 remap semantics (no allowlist involved)."""
+
+    def test_collect_nothing_test_spike_exit_0(self, tmp_path):
+        """A real changed test_*.py that collects nothing -> pytest rc 5 -> exit 0,
+        exit_reason=no-tests-collected-skip, pytest_returncode=5. Genuinely runs pytest."""
+        # A test file with NO test_* functions -> pytest collects nothing -> rc 5.
+        (tmp_path / "test_spike.py").write_text(
+            "# a spike with no collectable tests\n"
+            "def helper_not_a_test():\n"
+            "    return 1\n"
+        )
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = _cli(["--files", "test_spike.py", "--repo-root", str(tmp_path)])
+        assert rc == 0, f"collect-nothing test spike should exit 0 (rc-5 remap), got {rc}"
+        data = json.loads(buf.getvalue())
+        assert data["exit_reason"] == "no-tests-collected-skip"
+        assert data["pytest_returncode"] == 5
+        assert data["ran_pytest"] is True
+
+    def test_rc2_still_blocks(self, tmp_path):
+        """R-06: pytest rc 2 (interrupted) must NOT be remapped -> exit 1 (blocking)."""
+        (tmp_path / "test_x.py").write_text("def test_x(): pass\n")
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.MagicMock(returncode=2)
+            rc = _cli(["--files", "test_x.py", "--repo-root", str(tmp_path)])
+        assert rc == 1, f"rc 2 must stay blocking (exit 1), got {rc}"
+
+    def test_rc3_still_blocks(self, tmp_path):
+        """R-06: pytest rc 3 (internal error) must NOT be remapped -> exit 1."""
+        (tmp_path / "test_x.py").write_text("def test_x(): pass\n")
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.MagicMock(returncode=3)
+            rc = _cli(["--files", "test_x.py", "--repo-root", str(tmp_path)])
+        assert rc == 1, f"rc 3 must stay blocking (exit 1), got {rc}"
+
+    def test_rc1_still_blocks(self, tmp_path):
+        """rc 1 (failures) stays blocking -> exit 1."""
+        (tmp_path / "test_x.py").write_text("def test_x(): pass\n")
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.MagicMock(returncode=1)
+            rc = _cli(["--files", "test_x.py", "--repo-root", str(tmp_path)])
+        assert rc == 1, f"rc 1 must stay blocking (exit 1), got {rc}"
+
+    def test_rc5_remaps_only_via_mock(self, tmp_path):
+        """rc 5 -> exit 0 (mock control, complements the real-pytest test above)."""
+        (tmp_path / "test_x.py").write_text("def test_x(): pass\n")
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.MagicMock(returncode=5)
+            rc = _cli(["--files", "test_x.py", "--repo-root", str(tmp_path)])
+        assert rc == 0, f"rc 5 must remap to exit 0, got {rc}"
+
+
+class TestAc6NonRegression:
+    """FR-9 fail-safe non-regression: absent allowlist behaves exactly as before."""
+
+    def test_sh_only_still_exit_0_weak_guard(self, tmp_path, monkeypatch):
+        """WEAK guard (NOT the BLOCKED repro): .sh-only changeset already exits 0
+        (routed to `ignored` pre-change). Included as a non-regression check only."""
+        monkeypatch.delenv("QUOIN_NONCOLLECTABLE_FILE", raising=False)
+        (tmp_path / "x.sh").write_text("#!/usr/bin/env bash\necho ok\n")
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = _cli(["--files", "x.sh", "--repo-root", str(tmp_path)])
+        assert rc == 0
+        data = json.loads(buf.getvalue())
+        assert "x.sh" in data["ignored"]
+
+    def test_docs_only_run_noncollectable_empty(self, fake_repo, monkeypatch):
+        """Absent allowlist: a docs-only run has noncollectable == [] and unchanged
+        exit_reason (docs-only-no-selectors, NOT noncollectable-skip)."""
+        monkeypatch.delenv("QUOIN_NONCOLLECTABLE_FILE", raising=False)
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = _cli(["--files", "README.md", "--repo-root", str(fake_repo)])
+        assert rc == 0
+        data = json.loads(buf.getvalue())
+        assert data["noncollectable"] == []
+        assert data["exit_reason"] == "docs-only-no-selectors"
+
+    def test_orphan_still_exit_3_with_empty_allowlist(self, fake_repo, monkeypatch):
+        """Absent allowlist: orphan.py still exits 3 (regression intact)."""
+        monkeypatch.delenv("QUOIN_NONCOLLECTABLE_FILE", raising=False)
+        rc = _cli(["--files", "orphan.py", "--repo-root", str(fake_repo)])
+        assert rc == 3

@@ -306,7 +306,7 @@ Based on what exists and what's next, run the appropriate checks:
   The helper resolves the git repo from `--project-root` itself (CRIT-1 fix: the outer project root is NOT a git repo; the caller does NOT run `git` directly). Result mapping:
   - exit 0 + `ran_pytest=true` → ✓ PASS: affected-area suite GREEN.
   - exit 0 + `ran_pytest=false` → ✓ PASS / N/A: no affected tests to run (docs-only changeset or clean tree — no affected tests ran). Report "N/A — no affected tests" (not "tests green").
-  - exit 1 → ✗ BLOCKING FAIL: affected tests RED; verdict MUST be FAIL; gate MUST NOT pass.
+  - exit 1 → affected tests RED. BEFORE blocking, run the IVG-144 known-red consult against the SAME captured run (no re-run by `known_red.py` — MAJ-3): capture the affected-area suite's own `-rA` stdout to a file as part of the run that produced this exit code, source in-scope selectors via `python3 __QUOIN_HOME__/scripts/affected_tests.py --project-root "$PROJECT_ROOT" --select-only` (Q-01), then `python3 __QUOIN_HOME__/scripts/known_red.py --pytest-output <captured-file> --selectors <selectors> --observed-rc <that run's RC> --project-root "$PROJECT_ROOT" --format text` (NO `--full-suite` → no staleness on the affected area). Branch on the result, keyed on the payload's `downgrade` field (never bare exit): exit 0 with `downgrade=true` (every affected red is known-baseline, reconciled) → ✓ PASS as **known-baseline WARN** (audit-log the downgrade name/reason/date VERBATIM); exit 1 (net-new) → ✗ BLOCKING FAIL: verdict MUST be FAIL; gate MUST NOT pass; exit 2 (malformed manifest) → ✗ BLOCKING-SURFACE (surface the stderr error; fail-CLOSED); exit 3 (reconcile-mismatch, CRIT-1) → ✗ BLOCKING-SURFACE (embed the `## Reconciliation` line; treat as blocking); script missing → ✗ BLOCKING FAIL as today (fail-CLOSED — no consult means no downgrade).
   - exit 3 or 4 → ⚠️ BLOCKING-SURFACE: affected-area suite undeterminable / no affected tests found for changed `.py` sources. Surface to the user; do NOT auto-pass. The user must explicitly acknowledge before the gate can proceed (fail-CLOSED rule: detection failure does not silently green-light).
   - exit 5 (exit_reason: no-quoin-task-context) → ✓ CLEAN SKIP / N/A — no active quoin task context (NOT a warning, NOT a gate FAIL; the affected-area check is not applicable in a non-quoin session).
   - script missing (FileNotFoundError / not installed) → ⚠️ WARN non-blocking (fail-OPEN on absent binary only — a brand-new install lacking the script must not hard-block legacy tasks). This is the ONLY fail-OPEN carve-out; it is scoped strictly to "script binary absent", never to "script ran and could not confirm green".
@@ -333,7 +333,7 @@ Based on what exists and what's next, run the appropriate checks:
 
 *Full gate (Large tasks) — includes everything in Standard, plus:*
 - [ ] All planned tasks are implemented (cross-reference plan task list)
-- [ ] Affected-area test suite (BLOCKING hard precondition — same invocation and result mapping as the Standard gate item above, including the exit 5 clean-skip / N/A row inherited from that item above). The full repo suite (`pytest` whole tree) MAY carry pre-existing failures (e.g., `test_quoin_pollution_preamble.py`, `test_install_fresh_clone.py[bash]`) and is REPORTED but NON-BLOCKING for those known-baseline entries; the AFFECTED-AREA suite MUST be green and IS blocking. A red affected-area suite blocks even if the full suite is also red from known baselines.
+- [ ] Affected-area test suite (BLOCKING hard precondition — same invocation and result mapping as the Standard gate item above, including the exit 5 clean-skip / N/A row inherited from that item above). The full repo suite (`pytest` whole tree) MAY carry pre-existing failures; the manifest-driven known-red consult (see the full-suite line below) OWNS which full-suite failures are known-baseline (never a hardcoded name list) — those are REPORTED but NON-BLOCKING only when `known_red.py` returns `downgrade=true`. The AFFECTED-AREA suite MUST be green and IS blocking. A red affected-area suite blocks even if the full suite is also red from known baselines.
 - [ ] CI mirror (BLOCKING hard precondition — same invocation and result mapping as the Standard gate item above): run:
   ```
   PROJECT_ROOT="$(pwd)"
@@ -347,7 +347,24 @@ Based on what exists and what's next, run the appropriate checks:
   - exit 2 → ⚠️ WARN non-blocking (argparse/invocation error).
   - exit 5 (exit_reason: no-quoin-task-context) → ✓ CLEAN SKIP / N/A — no active quoin task context (NOT a warning, NOT a gate FAIL; the CI-parity check is not applicable in a non-quoin session).
   - script missing (FileNotFoundError / not installed) → ⚠️ WARN non-blocking (fail-OPEN on absent binary only — a brand-new install lacking the script must not hard-block legacy tasks). This is the ONLY fail-OPEN carve-out; it is scoped strictly to "script binary absent", never to "script ran and could not confirm green".
-- [ ] Run full test suite (non-blocking for known pre-existing baseline failures per IVG-66/IVG-69 — report but do not auto-fail on those specific tests; a red affected-area suite is the hard block)
+- [ ] Run full test suite with the known-red manifest consult (IVG-144 — non-blocking for known pre-existing baseline failures; a red affected-area suite remains the hard block). Capture BOTH surfaces from ONE run — `-rA` stdout is the PRIMARY node-id identity surface; junit-xml rides along purely as an independent count oracle for reconciliation (never for node-id identity):
+  ```
+  PROJECT_ROOT="$(pwd)"
+  JUNIT="$PROJECT_ROOT/.workflow_artifacts/cache/gate-fullsuite-<date>.junit.xml"
+  RA="$PROJECT_ROOT/.workflow_artifacts/cache/gate-fullsuite-<date>.txt"
+  python3 -m pytest -rA --junitxml="$JUNIT" quoin/ > "$RA" 2>&1; RC=$?
+  python3 __QUOIN_HOME__/scripts/known_red.py --pytest-output "$RA" --junit "$JUNIT" \
+    --observed-rc "$RC" --full-suite --run-token "<gate session UUID>" \
+    --project-root "$PROJECT_ROOT" --format text
+  ```
+  `RC=$?` MUST be captured on the line directly after the pytest invocation (before any other command clobbers `$?`). Result mapping (branch on `known_red.py`'s exit, every branch one row):
+  - full suite green (RC 0), `known_red.py` exit 0 with `downgrade=false` → ✓ PASS (genuinely clean; no warning needed).
+  - full suite red (RC≠0), `known_red.py` exit 0 with `downgrade=true` (ALL red are known-baseline, reconciled) → ✓ PASS as **known-baseline WARN** — record the downgraded failures (name/reason/date) and any staleness WARN in the audit log `## Warnings (non-blocking)` (⚠️), embedding the `known_red.py --format text` block VERBATIM.
+  - `known_red.py` exit 1 (net-new) → ✗ BLOCKING FAIL (list the net-new selectors).
+  - `known_red.py` exit 2 (malformed manifest) → ✗ BLOCKING-SURFACE (surface the stderr error; fail-CLOSED, NEVER auto-pass).
+  - `known_red.py` exit 3 (reconcile-mismatch — a junit-count disagreement or an unaccounted-for red run per RC, CRIT-1) → ✗ BLOCKING-SURFACE (embed the `## Reconciliation` line VERBATIM; treat identically to exit 1 — the report could not be trusted, so the run is NOT known-baseline-safe).
+  - script missing → ⚠️ WARN non-blocking (fail-OPEN on absent binary only).
+  The gate audit MUST key its known-baseline-WARN language on the payload's `downgrade==true`, never on bare `exit==0` (CRIT-1 — exit 0 alone is ambiguous between "clean" and "downgraded").
 - [ ] Run type checker if applicable
 - [ ] Verify no unrelated file changes
 - [ ] Branch hygiene — run `PROJECT_ROOT="$(pwd)"; python3 __QUOIN_HOME__/scripts/branch_hygiene.py --project-root "$PROJECT_ROOT"`. Exit 1 means a repo has commits ahead of its upstream while on a protected branch (`has_task_commits: true`) — this is a **blocking FAIL** (verdict FAIL); the work is mis-placed and must be recovered before review. Exit 0 (no task commits on a protected branch, including a clean repo legitimately on main with zero ahead commits) → PASS. Exit 3 or script missing → non-blocking ⚠️ WARN ("branch hygiene undeterminable"), do not fail (fail-OPEN). (recovery recipe: `__QUOIN_HOME__/memory/branch-recovery.md`)
