@@ -130,6 +130,7 @@ DEPLOYED_SCRIPTS = (
     "agent_transcript_cost.py",      # IVG-111 S-2: nested subagent-transcript resolver + pricer (adapter-only, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS twin, mirrors cost_from_jsonl.py)
     "backfill_cost_attribution.py",  # IVG-111 S-5: historical col-8 backfill (adapter-only, DEPLOYED-only — no CORE twin, mirrors cost_from_jsonl.py / agent_transcript_cost.py)
     "known_red.py",  # IVG-144: known-red manifest reader/matcher (wrapped portable-core — also in CORE_SCRIPTS)
+    "workspace.py",  # IVG-158: parallel-feature-isolation workspace create core+wrapper
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -427,6 +428,7 @@ CORE_SCRIPTS = (
     "context_budget_guard.py",      # IVG-141: on-demand context-budget guard core impl; required by ~/.claude/scripts/context_budget_guard.py parents[1] loader
     "boundary_checkpoint.py",       # IVG-141: phase/task-boundary checkpoint writer core impl; required by ~/.claude/scripts/boundary_checkpoint.py parents[1] loader
     "known_red.py",  # IVG-144: known-red manifest reader/matcher core impl (wrapped portable-core — also in DEPLOYED_SCRIPTS)
+    "workspace.py",  # IVG-158: parallel-feature-isolation workspace create core+wrapper
 )
 
 
