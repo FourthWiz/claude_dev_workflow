@@ -29,6 +29,11 @@ from path_resolve import _find_nested_ancestor
 # Copied (NOT imported) from branch_hygiene._EXCLUDE_NAMES minus `.workflow_artifacts`
 # — that name is exactly what we hunt for, so it must NOT be in the descent-prune set.
 # Copying a trivial literal avoids a cross-file coupling (D-03).
+# `.workspaces` is an IVG-158 addition BEYOND that copy: a workspace's per-repo
+# worktree has a `.git` FILE (not a pruned `.git` dir), so without pruning
+# `.workspaces` the full-recursive os.walk descends into every worktree of every
+# repo (perf blow-up) and could false-positive on any stray nested
+# `.workflow_artifacts` a worktree happens to contain (R-09).
 _PRUNE_NAMES: frozenset = frozenset({
     ".git",
     "node_modules",
@@ -37,6 +42,7 @@ _PRUNE_NAMES: frozenset = frozenset({
     "__pycache__",
     ".idea",
     ".vscode",
+    ".workspaces",
 })
 
 # Test-fixture subtrees are pruned unconditionally: a `.workflow_artifacts` under a

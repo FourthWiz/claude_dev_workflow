@@ -6,6 +6,8 @@ All cases use the T-01 fixture corpus under fixtures/path_resolve/.
 """
 
 import ast
+import json
+import os
 import re
 import shutil
 import subprocess
@@ -16,10 +18,28 @@ import pytest
 
 # Add core scripts dir so `from path_resolve import ...` tests the portable implementation.
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "core" / "scripts"))
-from path_resolve import task_path, _lookup_stage_by_name
+from path_resolve import (
+    task_path,
+    _lookup_stage_by_name,
+    resolve_artifact_root,
+    _find_self_or_ancestor_root,
+)
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "path_resolve"
 SCRIPT_PATH = Path(__file__).parent.parent.parent / "core" / "scripts" / "path_resolve.py"
+
+_ENV_ARTIFACT_ROOT = "QUOIN_ARTIFACT_ROOT"
+
+
+# T-05 MIN-1: autouse, module-scoped scrub so EVERY test in this file (not just the
+# new marker cases) is protected from an ambient QUOIN_ARTIFACT_ROOT. T-02 rewires
+# --print-project-root to resolve_artifact_root, which makes the env override
+# highest-precedence — the four pre-existing test_print_project_root_* subprocess
+# tests are newly env-sensitive. Because those are SUBPROCESS tests, scrubbing the
+# actual process env (which subprocess.run inherits by default) covers them too.
+@pytest.fixture(autouse=True, scope="function")
+def _scrub_artifact_root_env(monkeypatch):
+    monkeypatch.delenv(_ENV_ARTIFACT_ROOT, raising=False)
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +168,9 @@ def test_explicit_int_negative_raises():
 
 def test_module_imports_stdlib_only():
     """T-04 case (o): assert no non-stdlib imports in path_resolve.py."""
-    allowed = {"pathlib", "re", "argparse", "sys"}
+    # os/json added for the IVG-158 S-02 marker-aware resolve_artifact_root() branch
+    # (env override + marker JSON parse) — both stdlib.
+    allowed = {"pathlib", "re", "argparse", "sys", "os", "json"}
     source = SCRIPT_PATH.read_text(encoding="utf-8")
     tree = ast.parse(source)
     for node in ast.walk(tree):
@@ -480,3 +502,156 @@ def test_task_still_resolves_without_print_flag(tmp_path):
     )
     assert result.returncode == 0
     assert result.stdout.strip() == str(tmp_path.resolve() / ".workflow_artifacts" / "foo")
+
+
+# ---------------------------------------------------------------------------
+# T-05 — resolve_artifact_root() marker-branch tests (IVG-158 S-02, R-01 mitigation)
+# ---------------------------------------------------------------------------
+
+
+def _write_marker(marker_path: Path, artifact_root, feature="feat", repos=None):
+    marker_path.parent.mkdir(parents=True, exist_ok=True)
+    marker_path.write_text(
+        json.dumps({
+            "artifact_root": str(artifact_root),
+            "feature": feature,
+            "repos": repos or ["repoA"],
+            "created": "2026-07-30T00:00:00Z",
+        }),
+        encoding="utf-8",
+    )
+
+
+def test_resolve_artifact_root_byte_identity_no_marker(tmp_path):
+    """R-01 GUARD: with no marker anywhere and no env var, resolve_artifact_root
+    must return EXACTLY what the untouched _find_self_or_ancestor_root oracle
+    returns, across a corpus of start-dir shapes. Proves the no-marker path is
+    byte-identical to today, not eyeballed."""
+    # (i) start dir IS a project root
+    root = tmp_path / "root_is_start"
+    (root / ".workflow_artifacts").mkdir(parents=True)
+    assert resolve_artifact_root(root) == _find_self_or_ancestor_root(root)
+
+    # (ii) deep descendant under a project root
+    deep_root = tmp_path / "deep_root"
+    (deep_root / ".workflow_artifacts").mkdir(parents=True)
+    deep_start = deep_root / "a" / "b" / "c"
+    deep_start.mkdir(parents=True)
+    assert resolve_artifact_root(deep_start) == _find_self_or_ancestor_root(deep_start)
+
+    # (iii) no .workflow_artifacts ancestor at all — fallback-to-start
+    no_root_start = tmp_path / "no_root_here"
+    no_root_start.mkdir(parents=True)
+    assert resolve_artifact_root(no_root_start) == _find_self_or_ancestor_root(no_root_start)
+
+
+def test_resolve_artifact_root_from_inside_workspace(tmp_path):
+    """POSITIVE, DISCRIMINATING (MAJ-1): the marker's artifact_root points at a
+    DISTINCT valid root (rootB) that plain walk-up would NEVER return — walk-up
+    from inside the workspace halts at rootA. Asserting == rootB (not rootA)
+    fails if the marker-honor branch is removed."""
+    rootA = tmp_path / "rootA"
+    (rootA / ".workflow_artifacts").mkdir(parents=True)
+    workspace_repo = rootA / ".workspaces" / "feat" / "repoA"
+    workspace_repo.mkdir(parents=True)
+
+    rootB = tmp_path / "rootB"
+    (rootB / ".workflow_artifacts").mkdir(parents=True)
+
+    marker = rootA / ".workspaces" / "feat" / ".quoin-workspace.json"
+    _write_marker(marker, rootB.resolve())
+
+    result = resolve_artifact_root(workspace_repo)
+    assert result == rootB.resolve()
+    assert result != rootA.resolve()
+
+
+def test_resolve_artifact_root_invalid_marker_falls_through(tmp_path):
+    """GUARD: a marker whose artifact_root lacks .workflow_artifacts/ is IGNORED —
+    resolver falls through to the real canonical walk-up root (rootA), not the bad
+    artifact_root, and does not raise."""
+    rootA = tmp_path / "rootA"
+    (rootA / ".workflow_artifacts").mkdir(parents=True)
+    workspace_repo = rootA / ".workspaces" / "feat" / "repoA"
+    workspace_repo.mkdir(parents=True)
+
+    bad_target = tmp_path / "no_workflow_artifacts_here"
+    bad_target.mkdir()
+
+    marker = rootA / ".workspaces" / "feat" / ".quoin-workspace.json"
+    _write_marker(marker, bad_target.resolve())
+
+    result = resolve_artifact_root(workspace_repo)
+    assert result == rootA.resolve()
+
+
+def test_resolve_artifact_root_corrupt_marker_fail_open(tmp_path):
+    """GUARD: a marker that is not valid JSON does not raise — fail-OPEN to the
+    walk-up root."""
+    rootA = tmp_path / "rootA"
+    (rootA / ".workflow_artifacts").mkdir(parents=True)
+    workspace_repo = rootA / ".workspaces" / "feat" / "repoA"
+    workspace_repo.mkdir(parents=True)
+
+    marker = rootA / ".workspaces" / "feat" / ".quoin-workspace.json"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("{ broken", encoding="utf-8")
+
+    result = resolve_artifact_root(workspace_repo)
+    assert result == rootA.resolve()
+
+
+def test_resolve_artifact_root_env_override(tmp_path, monkeypatch):
+    """QUOIN_ARTIFACT_ROOT, when set and valid, wins over the walk even from an
+    unrelated start dir."""
+    env_root = tmp_path / "env_root"
+    (env_root / ".workflow_artifacts").mkdir(parents=True)
+
+    unrelated_start = tmp_path / "unrelated"
+    (unrelated_start / ".workflow_artifacts").mkdir(parents=True)
+
+    monkeypatch.setenv(_ENV_ARTIFACT_ROOT, str(env_root))
+    result = resolve_artifact_root(unrelated_start)
+    assert result == env_root.resolve()
+
+
+def test_resolve_artifact_root_env_invalid_ignored(tmp_path, monkeypatch):
+    """QUOIN_ARTIFACT_ROOT set to a dir WITHOUT .workflow_artifacts/ is ignored —
+    the walk result is returned instead."""
+    invalid_env_root = tmp_path / "invalid_env_root"
+    invalid_env_root.mkdir()
+
+    real_root = tmp_path / "real_root"
+    (real_root / ".workflow_artifacts").mkdir(parents=True)
+
+    monkeypatch.setenv(_ENV_ARTIFACT_ROOT, str(invalid_env_root))
+    result = resolve_artifact_root(real_root)
+    assert result == real_root.resolve()
+
+
+def test_cli_print_project_root_from_workspace(tmp_path):
+    """CLI parity, DISCRIMINATING (MAJ-1): --print-project-root from inside a
+    workspace prints the marker's target (rootB), NOT the walk-up target (rootA).
+    Env is explicitly cleared from the subprocess so an ambient value cannot
+    hijack the result."""
+    rootA = tmp_path / "rootA"
+    (rootA / ".workflow_artifacts").mkdir(parents=True)
+    workspace_repo = rootA / ".workspaces" / "feat" / "repoA"
+    workspace_repo.mkdir(parents=True)
+
+    rootB = tmp_path / "rootB"
+    (rootB / ".workflow_artifacts").mkdir(parents=True)
+
+    marker = rootA / ".workspaces" / "feat" / ".quoin-workspace.json"
+    _write_marker(marker, rootB.resolve())
+
+    clean_env = {k: v for k, v in os.environ.items() if k != _ENV_ARTIFACT_ROOT}
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--print-project-root",
+         "--start", str(workspace_repo)],
+        capture_output=True, text=True, env=clean_env,
+    )
+    assert result.returncode == 0, f"stderr={result.stderr!r}"
+    lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
+    assert len(lines) == 1
+    assert Path(lines[0]) == rootB.resolve()
