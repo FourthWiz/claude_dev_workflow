@@ -1,0 +1,27 @@
+# known-red manifest (IVG-144) — intentionally-red baseline tests.
+#
+# Schema: TOML array-of-tables. Each [[entry]] documents ONE known-baseline
+# failure that /gate and /review may downgrade from BLOCK to a non-blocking WARN.
+#
+# Required keys (all double-quoted strings):
+#   id     — a pytest node-id ("path::test") OR a bare file path (whole file).
+#            The id MUST be written EXACTLY as pytest emits it in its
+#            "FAILED/PASSED <nodeid>" short-summary lines when the suite is run
+#            from the repo root (<proj>/quoin) — i.e. "quoin/"-prefixed and
+#            repo-root-relative. Path components are compared VERBATIM (no
+#            canonicalization / realpath in v1).
+#   reason — why this test is a known baseline failure.
+#   added  — ISO date (YYYY-MM-DD) the entry was added.
+# Optional keys (double-quoted strings): issue, owner.
+#
+# The internal parser accepts ONLY: [[entry]] headers, key = "double-quoted"
+# assignments, "#" comments, and blank lines. Any other construct (nested
+# tables, arrays, numbers, bools, single/bare values, multiline strings) is
+# rejected as malformed (fail-closed → the CLI exits 2, never exempt-all).
+
+[[entry]]
+id = "quoin/dev/tests/test_sleep_scoring.py"
+reason = "time-dependent; fails under Drive-mount clock skew (IVG-116)"
+added = "2026-07-29"
+issue = "IVG-116"
+owner = "ivgo"
