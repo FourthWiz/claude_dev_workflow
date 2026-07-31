@@ -371,6 +371,8 @@ Do NOT append the changelog as a trailing markdown block after the assembled fil
 
 ### 5. Signal readiness
 
+**Plan-path self-check (advisory, IVG-143 I-2).** Before handing off to the next critic round, run `python3 __QUOIN_HOME__/scripts/plan_path_lint.py <plan-path> --format text` against the revised `current-plan.md`, so the author can fix any cited-path typos before `/critic` re-reviews. Surface any `UNRESOLVED` tokens and their hints. Advisory only — ALWAYS continue regardless of the result. Fail-OPEN: exit 2, a missing script, or any crash → emit a one-line `[quoin: plan-path-lint unavailable; proceeding]` warning and continue. Never aborts `/revise` on this check.
+
 After updating the plan, the file is ready for the next critic round. If this is part of `/thorough_plan` orchestration, the orchestrator will invoke `/critic` next.
 
 If running standalone, tell the user:
