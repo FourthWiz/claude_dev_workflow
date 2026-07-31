@@ -10,8 +10,10 @@ Exit codes (CLI only):
   3 — nested root detected (--verify-root flag only)
 """
 
+import os
 import re
 import sys
+import json
 import argparse
 from pathlib import Path
 
@@ -24,6 +26,11 @@ ROW_RE = re.compile(
     r"^[0-9]+\.\s+(?:[✅✓✗⏳⛔⚠️\s])*S-([0-9]+):\s*(.+?)\s*$",
     re.MULTILINE,
 )
+
+# IVG-158 S-02: marker-aware artifact-root resolution (D-02). Both stdlib
+# additions (os, json) — see test_module_imports_stdlib_only allowlist widening.
+_WORKSPACE_MARKER = ".quoin-workspace.json"
+_ENV_ARTIFACT_ROOT = "QUOIN_ARTIFACT_ROOT"
 
 
 def _find_nested_ancestor(project_root: Path):
@@ -47,6 +54,62 @@ def _find_self_or_ancestor_root(start: Path) -> Path:
     start = Path(start).resolve()
     cur = start
     while True:
+        if (cur / ".workflow_artifacts").is_dir():
+            return cur
+        if cur == cur.parent:
+            return start
+        cur = cur.parent
+
+
+def _valid_artifact_root(candidate) -> bool:
+    """True iff candidate is a dir containing .workflow_artifacts/. Fail-OPEN."""
+    try:
+        return (Path(candidate) / ".workflow_artifacts").is_dir()
+    except (OSError, TypeError):
+        return False
+
+
+def _marker_artifact_root(marker_path: Path):
+    """Read + parse a .quoin-workspace.json marker; return its artifact_root as a
+    resolved Path, or None on any missing key / invalid root / parse error
+    (fail-OPEN — a corrupt or non-.workflow_artifacts marker is ignored, never fatal).
+    """
+    try:
+        data = json.loads(marker_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            # Valid JSON that is not an object (list / number / string / null)
+            # has no .get(...) — treat as an absent/invalid marker and fall
+            # through, exactly like the corrupt-marker path (fail-OPEN).
+            return None
+        ar = data.get("artifact_root")
+    except (OSError, ValueError, TypeError):
+        return None
+    if ar and _valid_artifact_root(ar):
+        return Path(ar).resolve()
+    return None
+
+
+def resolve_artifact_root(start=None) -> Path:
+    """Marker-aware, env-aware artifact-root resolution (IVG-158 S-02, D-02).
+
+    Precedence: QUOIN_ARTIFACT_ROOT env override (if valid) > nearest
+    .quoin-workspace.json marker's artifact_root (if valid) > the existing
+    .workflow_artifacts/ walk-up (byte-identical to _find_self_or_ancestor_root
+    when no marker/env is present — see test_resolve_artifact_root_byte_identity_no_marker).
+    """
+    start = Path(start or Path.cwd()).resolve()
+
+    env = os.environ.get(_ENV_ARTIFACT_ROOT)
+    if env and _valid_artifact_root(env):
+        return Path(env).resolve()
+
+    cur = start
+    while True:
+        marker = cur / _WORKSPACE_MARKER
+        if marker.is_file():
+            ar = _marker_artifact_root(marker)
+            if ar is not None:
+                return ar
         if (cur / ".workflow_artifacts").is_dir():
             return cur
         if cur == cur.parent:
@@ -216,7 +279,7 @@ def main(argv=None):
     # path line; the nested-root advisory goes to stderr only.
     if args.print_project_root:
         start = Path(args.start or Path.cwd()).resolve()
-        root = _find_self_or_ancestor_root(start)
+        root = resolve_artifact_root(start)
         print(str(root))
         ancestor = _find_nested_ancestor(root)
         if ancestor is not None:

@@ -144,3 +144,28 @@ def test_argparse_error_exit_2(tree):
     with pytest.raises(SystemExit) as exc:
         main(["--format", "bogus"])
     assert exc.value.code == 2
+
+
+def test_workspaces_subtree_pruned(tree):
+    """T-06 (IVG-158 R-09): .workspaces subtree is pruned before descent — a deeply
+    nested .workflow_artifacts inside a workspace worktree must NOT be found, while
+    a genuine nested root OUTSIDE .workspaces still IS — proving the prune is scoped
+    to .workspaces, not a blanket suppression."""
+    # The trap: a deep nested root inside a workspace worktree.
+    _mkroot(tree / ".workspaces" / "feat" / "repoA" / "sub")
+    # Simulate the worktree shape: a `.git` FILE (not dir), documenting the R-09
+    # rationale (a `.git` file is not pruned like a `.git` dir would be).
+    git_file_dir = tree / ".workspaces" / "feat" / "repoA"
+    git_file_dir.mkdir(parents=True, exist_ok=True)
+    (git_file_dir / ".git").write_text("gitdir: /elsewhere/.git/worktrees/repoA\n")
+    # A genuine nested root OUTSIDE .workspaces — must still be flagged.
+    _mkroot(tree / "pkg")
+
+    found = _finding_strs(tree)
+
+    assert not any(".workspaces" in f for f in found), (
+        f".workspaces subtree should be pruned before descent, but found: "
+        f"{[f for f in found if '.workspaces' in f]}"
+    )
+    assert str(tree / "pkg" / ".workflow_artifacts") in found
+    assert str(tree / ".workflow_artifacts") not in found
