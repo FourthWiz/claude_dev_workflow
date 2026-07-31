@@ -95,6 +95,7 @@ MINTIER_SONNET_TARGET_SKILLS = [
     "pr",
     "revise-fast",
     "rollback",
+    "workspace",
 ]
 
 # HEADING BYTE-IDENTITY: the ‴ (U+2034 TRIPLE PRIME) must match exactly across

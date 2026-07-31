@@ -25,7 +25,7 @@ claude
 ## What the script does
 
 **`install.sh` — user-level, run once per machine:**
-1. **Copies skills** — all 28 skills into `~/.claude/skills/` (globally available in every project)
+1. **Copies skills** — all 32 skills into `~/.claude/skills/` (globally available in every project)
 2. **Writes workflow rules** — appends shared rules to `~/.claude/CLAUDE.md` (auto-loaded by Claude Code everywhere)
 
 **`/init_workflow` — run once per project inside Claude:**
@@ -83,7 +83,7 @@ After installation, your project looks like:
 ```
 ~/.claude/
 ├── CLAUDE.md                ← workflow rules (auto-loaded everywhere)
-└── skills/                  ← all 21 workflow skills (global)
+└── skills/                  ← all 32 workflow skills (global)
     ├── discover/
     ├── triage/
     ├── architect/
@@ -172,7 +172,7 @@ claude
 
 ## Troubleshooting
 
-**Skills not recognized:** check that skills are in `~/.claude/skills/` — `ls ~/.claude/skills/` should list all 28 skills. Re-run `bash install.sh` to reinstall them.
+**Skills not recognized:** check that skills are in `~/.claude/skills/` — `ls ~/.claude/skills/` should list all 32 skills. Re-run `bash install.sh` to reinstall them.
 
 **Claude doesn't follow workflow rules:** check that `~/.claude/CLAUDE.md` contains the quoin section (look for `# === DEV WORKFLOW START ===`). Re-run `bash install.sh` to rewrite it.
 

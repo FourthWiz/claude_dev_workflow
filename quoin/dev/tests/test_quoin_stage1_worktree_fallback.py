@@ -95,7 +95,8 @@ SENTINEL_END = "<!-- §0-worktree-fallback-end -->"
 # artifact-only exclusion below and Tests 7-11 all reference the same set — no stale
 # hand-copied literal. `pr` carries a sidecar (T-05) and so is included here; it is
 # therefore excluded from the artifact-only fallback byte-equal set below.
-SOURCE_MUTATING_WORKTREE_SKILLS = {"implement", "rollback", "end_of_task", "pr"}
+# `workspace` (IVG-158 S-06) also byte-copies the §0-sidecar block from `pr` (D-02).
+SOURCE_MUTATING_WORKTREE_SKILLS = {"implement", "rollback", "end_of_task", "pr", "workspace"}
 
 
 def extract_worktree_block(skill_path: Path) -> str:
