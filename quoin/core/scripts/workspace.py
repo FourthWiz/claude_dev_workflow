@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Portable core implementation of feature-workspace create/takeover/heartbeat (IVG-158).
+"""Portable core implementation of feature-workspace create/teardown/takeover/heartbeat (IVG-158).
 
 Gives each in-flight feature its own isolated per-repo git worktree so
 concurrent Claude Code sessions never share a mutable branch on the same
-repo. S-01 added ``create``; S-04 adds real owner-liveness (owner-keyed JSONL
-transcript-mtime PRIMARY signal + last_seen/record-mtime fallback), a
-NON-DESTRUCTIVE ``takeover`` (record-only flip), and an owner-only ``heartbeat``.
-No teardown (S-03) / no status-merge (S-05) here. See architecture.md D-01..D-09.
+repo. This module owns ``create`` (S-01), ``teardown`` (S-03), and — from
+S-04 — real owner-liveness (owner-keyed JSONL transcript-mtime PRIMARY signal
++ last_seen/record-mtime fallback), a NON-DESTRUCTIVE ``takeover`` (record-only
+flip), and an owner-only ``heartbeat``. No status-merge (S-05) here.
+See architecture.md D-01..D-09.
 
 Public API:
   discover_workspace_repos(project_root, named=None) -> list[Path]
@@ -20,6 +21,8 @@ Public API:
                     session_uuid=None) -> CreateResult
   _owner_jsonl_mtime(record, home=None) -> float | None
   _owner_is_live(record, home=None) -> bool
+  discover_workspace_worktrees(ws_root) -> list[Path]
+  teardown_workspace(feature, project_root, force=False) -> TeardownResult
   TakeoverResult
   takeover_workspace(feature, project_root, session_uuid=None, force=False,
                      home=None) -> TakeoverResult
@@ -42,6 +45,12 @@ Exit codes (CLI ``takeover`` subcommand):
 Exit codes (CLI ``heartbeat`` subcommand):
   0 — always (fail-OPEN); prints {"refreshed": <bool>}
 
+Exit codes (CLI ``teardown`` subcommand):
+  0 — torn down, OR graceful nothing-to-tear-down
+  2 — argparse error
+  3 — refused-unsafe (uncommitted/unpushed guard tripped, ``--force`` not passed)
+  4 — partial teardown failure (>=1 ``git worktree remove`` failed; resumable)
+
 Env:
   QUOIN_SUBPROCESS_TIMEOUT — seconds, default 30; bounds every git subprocess.
   QUOIN_WORKSPACE_STALE_HOURS — hours, default 6; owner-liveness staleness
@@ -58,6 +67,7 @@ import dataclasses
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -668,6 +678,137 @@ class TakeoverResult:
         return dataclasses.asdict(self)
 
 
+# ---------------------------------------------------------------------------
+# S-03 teardown (IVG-158): guarded removal of a feature workspace.
+# ---------------------------------------------------------------------------
+
+def _proven_merged(worktree: Path | str, orig_repo: str | None) -> bool:
+    """S-05 seam — is this worktree's branch provably pushed/merged?
+
+    In S-03 this is a STUB that ALWAYS returns False: a no-upstream (never
+    pushed) branch is therefore never treated as safe, so teardown refuses it
+    unless --force. S-05 replaces this single function with the real
+    gh-MERGED / `git branch --merged` detection (D-06). This is the ONLY call
+    site of the proven-merged override, consumed only by
+    _classify_worktree_safety.
+    """
+    return False
+
+
+def _classify_worktree_safety(
+    rc: "branch_hygiene.RepoResult", proven_merged: bool
+) -> tuple[bool, list[str]]:
+    """Classify a worktree as safe-to-discard (True) or unsafe (False + reasons).
+
+    Conservative S-03 rule — never silently discards work (arch R-06):
+      - rc.error truthy                         -> UNSAFE (cannot prove safe)
+      - rc.dirty                                -> UNSAFE (uncommitted changes)
+      - rc.upstream is None AND not proven_merged -> UNSAFE (never pushed)
+      - rc.upstream is not None AND ahead > 0   -> UNSAFE (unpushed commits)
+      - else                                    -> SAFE (clean + upstream + not-ahead)
+
+    Reasons accumulate (dirty + no-upstream can co-occur). safe = not reasons.
+
+    Known limitation (critic MIN-3): rc.dirty is best-effort — a `git status`
+    failure inside check_repo yields dirty=False WITHOUT setting rc.error, so a
+    status-check failure is invisible here and the worktree may score SAFE. The
+    git-level backstop is the non-force `git worktree remove`, which itself
+    refuses a modified/untracked tree (surfaces as partial_failure/exit 4, not a
+    silent discard). Not fixed in S-03 — check_repo is merged/rostered.
+    """
+    reasons: list[str] = []
+    if rc.error:
+        reasons.append(f"git error: {rc.error}")
+    if rc.dirty:
+        reasons.append("uncommitted changes")
+    if rc.upstream is None and not proven_merged:
+        reasons.append(
+            "no upstream (cannot prove pushed/merged; "
+            "proven-merged override deferred to S-05)"
+        )
+    elif rc.upstream is not None and rc.commits_ahead > 0:
+        reasons.append(f"{rc.commits_ahead} unpushed commit(s)")
+    return (not reasons, reasons)
+
+
+def discover_workspace_worktrees(ws_root: Path) -> list[Path]:
+    """Deterministically enumerate a workspace's worktree subdirs.
+
+    Immediate subdirectories of ws_root that contain a `.git` entry (a linked
+    worktree has a `.git` FILE). The `.quoin-workspace.json` marker (a file, not
+    a dir) and any stray non-worktree dir are skipped. Returns [] when ws_root
+    is absent. Discovery never depends on the ownership record (D-06) — a
+    missing/corrupt record can never block teardown.
+    """
+    if not ws_root.exists():
+        return []
+    result: list[Path] = []
+    try:
+        for sub in sorted(ws_root.iterdir()):
+            if sub.is_dir() and (sub / ".git").exists():
+                result.append(sub)
+    except OSError:
+        return []
+    return result
+
+
+def _worktree_orig_repo(worktree: Path | str) -> str | None:
+    """Derive a worktree's ORIGINAL repo path from `git worktree list --porcelain`.
+
+    The FIRST `worktree ` line is always the main working tree = the original
+    repo. Returns its path, or None on git error (worktree then skipped from
+    removal — resumable). The S-01 record stores repo NAMES, not original-repo
+    absolute paths, so this derivation is what teardown targets with
+    `git -C <orig-repo> worktree remove`.
+    """
+    stdout, _, rc = _run(["git", "-C", str(worktree), "worktree", "list", "--porcelain"])
+    if rc != 0:
+        return None
+    for line in stdout.splitlines():
+        if line.startswith("worktree "):
+            return line[len("worktree "):].strip()
+    return None
+
+
+def _read_record_safe(project_root: Path, slug: str) -> dict | None:
+    """Read the ownership record, guarding against a valid-JSON non-object (S-02).
+
+    read_ownership_record can return any JSON value (a list, number, or bare
+    string) for a corrupt record. Guard isinstance(dict) so a non-object record
+    yields None (fall back to deterministic ws_root discovery) instead of an
+    AttributeError on `.get()`. The record is advisory only in teardown.
+    """
+    rec = read_ownership_record(project_root, slug)
+    if isinstance(rec, dict):
+        return rec
+    return None
+
+
+def _unlink_record_if_present(project_root: Path, slug: str) -> bool:
+    """Unlink the ownership record file if it exists. Fail-OPEN (never raises)."""
+    path = _record_path(project_root, slug)
+    try:
+        if path.exists():
+            path.unlink()
+            return True
+    except OSError as exc:
+        print(f"[workspace] failed to unlink record {path}: {exc}", file=sys.stderr)
+    return False
+
+
+@dataclasses.dataclass
+class WorktreeStatus:
+    worktree: str
+    orig_repo: str | None
+    safe: bool
+    reasons: list[str]
+    removed: bool
+    error: str | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+
 def takeover_workspace(
     feature: str,
     project_root: Path,
@@ -807,7 +948,166 @@ def heartbeat_workspace(cwd: Any, session_uuid: str | None = None, home: str | N
 
 
 # ---------------------------------------------------------------------------
-# T-05/T-06: CLI + main (create / takeover / heartbeat subcommands)
+# S-03 teardown: TeardownResult + teardown_workspace (D-06, FR5)
+# ---------------------------------------------------------------------------
+
+@dataclasses.dataclass
+class TeardownResult:
+    slug: str
+    workspace_path: str
+    per_repo: list[WorktreeStatus] = dataclasses.field(default_factory=list)
+    refused: bool = False
+    forced: bool = False
+    record_removed: bool = False
+    folder_removed: bool = False
+    partial_failure: bool = False
+    message: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "slug": self.slug,
+            "workspace_path": self.workspace_path,
+            "per_repo": [s.to_dict() for s in self.per_repo],
+            "refused": self.refused,
+            "forced": self.forced,
+            "record_removed": self.record_removed,
+            "folder_removed": self.folder_removed,
+            "partial_failure": self.partial_failure,
+            "message": self.message,
+        }
+
+
+def _render_unsafe(statuses: list[WorktreeStatus]) -> str:
+    return "; ".join(
+        f"{Path(s.worktree).name}: {', '.join(s.reasons)}"
+        for s in statuses if not s.safe
+    )
+
+
+def teardown_workspace(
+    feature: str, project_root: Path, force: bool = False
+) -> TeardownResult:
+    """Tear down a feature workspace: guard, remove worktrees, prune, clean up.
+
+    Order is load-bearing (D-06, FR5) — a crash leaves a resumable state:
+    discover -> guard (refuse-unless-force) -> remove worktrees FIRST -> prune
+    -> rmtree folder+marker (CONFIRM removal) -> unlink record ONLY IF the
+    folder is confirmed gone. See architecture.md D-06 and the plan Decisions.
+    """
+    slug = slugify(feature)
+    project_root = project_root.resolve()
+    ws_root = project_root / ".workspaces" / slug
+    # Record is advisory (discovery is deterministic); read only for the
+    # dangling-record cleanup below and never load-bearing for discovery.
+    _read_record_safe(project_root, slug)
+
+    worktrees = discover_workspace_worktrees(ws_root)
+
+    # MISSING-WORKSPACE (graceful, exit 0): nothing to remove. If a stray record
+    # file lingers, unlink it to clear a dangling record.
+    if not ws_root.exists() and not worktrees:
+        record_removed = _unlink_record_if_present(project_root, slug)
+        return TeardownResult(
+            slug=slug,
+            workspace_path=str(ws_root),
+            record_removed=record_removed,
+            message="nothing to tear down",
+        )
+
+    # GUARD: classify every worktree (read-only reuse of branch_hygiene).
+    statuses: list[WorktreeStatus] = []
+    for wt in worktrees:
+        orig = _worktree_orig_repo(wt)
+        rc = branch_hygiene.check_repo(Path(wt))
+        safe, reasons = _classify_worktree_safety(rc, _proven_merged(wt, orig))
+        statuses.append(
+            WorktreeStatus(
+                worktree=str(wt), orig_repo=orig, safe=safe, reasons=reasons,
+                removed=False, error=None,
+            )
+        )
+
+    unsafe = [s for s in statuses if not s.safe]
+    if unsafe and not force:
+        return TeardownResult(
+            slug=slug,
+            workspace_path=str(ws_root),
+            per_repo=statuses,
+            refused=True,
+            message=f"refused (unsafe): {_render_unsafe(unsafe)}",
+        )
+
+    # FORCE bypass MUST be explicit AND logged (audit trail — critic MIN-1).
+    if force and unsafe:
+        print(
+            f"[workspace] --force teardown: bypassing guard for {slug}; "
+            f"unsafe: {_render_unsafe(unsafe)}",
+            file=sys.stderr,
+        )
+
+    # REMOVE worktrees FIRST (git --force IFF teardown --force: user-force =>
+    # git-force). All git ops run -C <orig_repo>, never from the worktree.
+    removed_repos: set[str] = set()
+    for s in statuses:
+        if s.orig_repo is None:
+            s.error = "could not derive original repo"
+            continue
+        wt_path = Path(s.worktree)
+        # Idempotency: already-gone worktree -> treat as removed (re-runnable).
+        if not wt_path.exists() or not _worktree_registered(
+            Path(s.orig_repo), wt_path
+        ):
+            s.removed = True
+            continue
+        args = ["git", "-C", s.orig_repo, "worktree", "remove"]
+        if force:
+            args.append("--force")
+        args.append(s.worktree)
+        _, err, rc = _run(args)
+        if rc == 0:
+            s.removed = True
+            removed_repos.add(s.orig_repo)
+        else:
+            s.error = err or "git worktree remove failed"
+
+    # PRUNE stale admin entries for each repo that had a removal.
+    for orig in removed_repos:
+        _run(["git", "-C", orig, "worktree", "prune"])
+
+    # PARTIAL-FAILURE gate (exit 4): leave folder+record so a re-run finishes.
+    if any(s.error and not s.removed for s in statuses):
+        failed = [Path(s.worktree).name for s in statuses if s.error and not s.removed]
+        return TeardownResult(
+            slug=slug,
+            workspace_path=str(ws_root),
+            per_repo=statuses,
+            forced=force,
+            partial_failure=True,
+            message=f"partial teardown; re-run (failed: {', '.join(failed)})",
+        )
+
+    # CLEANUP (all removals succeeded): rmtree folder+marker, CONFIRM removal,
+    # unlink record ONLY IF folder confirmed gone (critic MIN-4) — keeps the
+    # resumability invariant exact if a locked file leaves ws_root behind.
+    shutil.rmtree(ws_root, ignore_errors=True)
+    folder_removed = not ws_root.exists()
+    record_removed = (
+        _unlink_record_if_present(project_root, slug) if folder_removed else False
+    )
+
+    return TeardownResult(
+        slug=slug,
+        workspace_path=str(ws_root),
+        per_repo=statuses,
+        forced=force,
+        folder_removed=folder_removed,
+        record_removed=record_removed,
+        message="torn down",
+    )
+
+
+# ---------------------------------------------------------------------------
+# T-06: CLI + main (create / teardown / takeover / heartbeat subcommands)
 # ---------------------------------------------------------------------------
 
 def main(argv: list[str] | None = None) -> int:
@@ -877,6 +1177,26 @@ def main(argv: list[str] | None = None) -> int:
         help="Emit the refresh result as JSON (default: on).",
     )
 
+    teardown_parser = subparsers.add_parser(
+        "teardown", help="Tear down a feature workspace (uncommitted/unpushed guarded)."
+    )
+    teardown_parser.add_argument(
+        "feature", help="Feature name (slugified for the workspace folder)."
+    )
+    teardown_parser.add_argument(
+        "--project-root", default=None,
+        help="Project root (default: cwd).",
+    )
+    teardown_parser.add_argument(
+        "--force", action="store_true", default=False,
+        help="Explicit escape hatch: bypass the uncommitted/unpushed guard "
+             "(logged to stderr) and discard the worktrees anyway.",
+    )
+    teardown_parser.add_argument(
+        "--json", dest="json_output", action="store_true", default=True,
+        help="Emit the TeardownResult as JSON (default: on).",
+    )
+
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
@@ -938,6 +1258,36 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps({"refreshed": refreshed}, indent=2))
         return 0  # ALWAYS 0 (fail-OPEN, like get_session_uuid)
+
+    if args.command == "teardown":
+        project_root = Path(args.project_root) if args.project_root else Path.cwd()
+
+        try:
+            result = teardown_workspace(
+                feature=args.feature,
+                project_root=project_root,
+                force=args.force,
+            )
+        except ValueError as exc:
+            print(json.dumps({"error": str(exc)}, indent=2))
+            print(f"[workspace] {exc}", file=sys.stderr)
+            return 3
+
+        print(json.dumps(result.to_dict(), indent=2))
+        for s in result.per_repo:
+            name = Path(s.worktree).name
+            if result.refused and not s.safe:
+                print(f"refused {name}: {', '.join(s.reasons)}", file=sys.stderr)
+            elif s.error and not s.removed:
+                print(f"failed {name}: {s.error}", file=sys.stderr)
+            elif s.removed:
+                print(f"removed {name}", file=sys.stderr)
+
+        if result.refused:
+            return 3
+        if result.partial_failure:
+            return 4
+        return 0
 
     return 2
 
