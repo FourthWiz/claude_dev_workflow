@@ -161,12 +161,19 @@ def test_no_autonomous_line_references_hooks_dir() -> None:
 def test_hooks_dir_untouched_git_diff_if_available() -> None:
     """Best-effort structural corroboration: if this checkout is a git repo
     with a resolvable merge-base against origin/main or main, confirm the
-    quoin/hooks/ diff vs. that base introduces no *autonomous-mode* logic
-    (the test's actual intent — see module docstring). Legitimate NON-autonomous
-    hook edits on a feature branch (e.g. the IVG-158 S-04 opt-in workspace
-    heartbeat block in sessionstart.sh) are allowed; only an added line
-    mentioning "autonomous" fails here. Skips (does not fail) when git or a base
-    ref is unavailable — the content-check tests above are the primary,
+    quoin/hooks/ diff vs. that base introduces no *autonomous-mode / unattended
+    approval-gate* logic (the test's actual intent — see module docstring).
+
+    Legitimate NON-autonomous hook edits on a feature branch (e.g. the IVG-158
+    S-04 opt-in workspace heartbeat block in sessionstart.sh) are allowed. What
+    is NOT allowed is any added hook line that reintroduces the very machinery
+    this guard exists to keep out: autonomous/unattended-run gating, approval
+    bypasses, advisory silencing, or a change to the context-utilization
+    threshold constants. We reject a BROAD forbidden-token set rather than only
+    the literal word "autonomous", so equivalent gating logic phrased without
+    that word (e.g. an `UNATTENDED` env gate or a `_BPS` threshold override) is
+    still caught here. Skips (does not fail) when git or a base ref is
+    unavailable — the content-check tests above are the primary,
     environment-independent guard."""
     import subprocess
 
@@ -194,17 +201,24 @@ def test_hooks_dir_untouched_git_diff_if_available() -> None:
         )
         if diff.returncode != 0:
             pytest.skip("git diff failed; skipping best-effort corroboration")
-        # Intent (module docstring): autonomous work must not introduce autonomous
-        # logic into the hooks dir. Assert the diff adds no line mentioning
-        # "autonomous" — rather than requiring a byte-for-byte untouched hooks dir,
-        # which would wrongly reject unrelated legitimate hook edits (S-04).
-        added_autonomous = [
+        # Intent (module docstring): autonomous/unattended work must not sneak
+        # gating, approval-bypass, advisory-silencing, or threshold-tuning logic
+        # into the hooks dir. Rather than requiring a byte-for-byte untouched
+        # hooks dir (which wrongly rejects unrelated legitimate hook edits like
+        # the S-04 heartbeat), reject any ADDED line matching a broad forbidden-
+        # token set — so equivalent logic phrased without the literal word
+        # "autonomous" is still caught.
+        _FORBIDDEN = re.compile(
+            r"autonomous|unattend|approv|silence|_BPS\b|\bBPS\b|threshold",
+            re.IGNORECASE,
+        )
+        added_forbidden = [
             ln for ln in diff.stdout.splitlines()
-            if ln.startswith("+") and not ln.startswith("+++") and "autonomous" in ln.lower()
+            if ln.startswith("+") and not ln.startswith("+++") and _FORBIDDEN.search(ln)
         ]
-        assert not added_autonomous, (
-            "autonomous-mode logic was introduced into quoin/hooks/ vs base:\n"
-            + "\n".join(added_autonomous)
+        assert not added_forbidden, (
+            "autonomous/unattended-gating or threshold-tuning logic was "
+            "introduced into quoin/hooks/ vs base:\n" + "\n".join(added_forbidden)
         )
     except FileNotFoundError:
         pytest.skip("git binary not available")
