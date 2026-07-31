@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Portable core implementation of feature-workspace create/teardown/takeover/heartbeat (IVG-158).
+"""Portable core implementation of feature-workspace create/teardown/takeover/heartbeat/status (IVG-158).
 
 Gives each in-flight feature its own isolated per-repo git worktree so
 concurrent Claude Code sessions never share a mutable branch on the same
-repo. This module owns ``create`` (S-01), ``teardown`` (S-03), and — from
-S-04 — real owner-liveness (owner-keyed JSONL transcript-mtime PRIMARY signal
-+ last_seen/record-mtime fallback), a NON-DESTRUCTIVE ``takeover`` (record-only
-flip), and an owner-only ``heartbeat``. No status-merge (S-05) here.
-See architecture.md D-01..D-09.
+repo. This module owns ``create`` (S-01), ``teardown`` (S-03), the read-only
+``status``/``list`` subcommand (S-05), and — from S-04 — real owner-liveness
+(owner-keyed JSONL transcript-mtime PRIMARY signal + last_seen/record-mtime
+fallback), a NON-DESTRUCTIVE ``takeover`` (record-only flip), and an owner-only
+``heartbeat``. See architecture.md D-01..D-10.
 
 Public API:
   discover_workspace_repos(project_root, named=None) -> list[Path]
@@ -23,6 +23,8 @@ Public API:
   _owner_is_live(record, home=None) -> bool
   discover_workspace_worktrees(ws_root) -> list[Path]
   teardown_workspace(feature, project_root, force=False) -> TeardownResult
+  enumerate_workspaces(project_root) -> list[str]
+  collect_status(project_root) -> list[WorkspaceStatusView]
   TakeoverResult
   takeover_workspace(feature, project_root, session_uuid=None, force=False,
                      home=None) -> TakeoverResult
@@ -51,6 +53,10 @@ Exit codes (CLI ``teardown`` subcommand):
   3 — refused-unsafe (uncommitted/unpushed guard tripped, ``--force`` not passed)
   4 — partial teardown failure (>=1 ``git worktree remove`` failed; resumable)
 
+Exit codes (CLI ``status``/``list`` subcommand):
+  0 — always (read-only informational; never fails on workspace state)
+  2 — argparse error
+
 Env:
   QUOIN_SUBPROCESS_TIMEOUT — seconds, default 30; bounds every git subprocess.
   QUOIN_WORKSPACE_STALE_HOURS — hours, default 6; owner-liveness staleness
@@ -59,6 +65,9 @@ Env:
       the fallback (freshest-of-all-signals; architecture.md D-04).
   QUOIN_WORKSPACE_HEARTBEAT — sessionstart.sh opt-in gate (=1 enables the
       owner-only last_seen heartbeat shell-out; default off, Q-06).
+  QUOIN_WORKSPACE_DISABLE_GH — when truthy, ``_gh_pr_merged`` always returns
+      None (gh-free path only) — an escape hatch (risk R-08) and the
+      deterministic switch for the gh-free tests.
 """
 from __future__ import annotations
 
@@ -102,14 +111,20 @@ def _subprocess_timeout() -> int:
         return 30
 
 
-def _run(args: list[str]) -> tuple[str, str, int]:
-    """Run a subprocess and return (stdout, stderr, returncode)."""
+def _run(args: list[str], cwd: str | Path | None = None) -> tuple[str, str, int]:
+    """Run a subprocess and return (stdout, stderr, returncode).
+
+    `cwd` is OPTIONAL and defaults to None (current behavior, byte-identical —
+    every pre-S-05 caller passes no cwd and is unaffected). S-05 uses it to run
+    `gh` inside a worktree/orig-repo dir (D-06).
+    """
     try:
         proc = subprocess.run(
             args,
             capture_output=True,
             text=True,
             timeout=_subprocess_timeout(),
+            cwd=cwd,
         )
         return proc.stdout.strip(), proc.stderr.strip(), proc.returncode
     except subprocess.TimeoutExpired:
@@ -682,17 +697,84 @@ class TakeoverResult:
 # S-03 teardown (IVG-158): guarded removal of a feature workspace.
 # ---------------------------------------------------------------------------
 
-def _proven_merged(worktree: Path | str, orig_repo: str | None) -> bool:
-    """S-05 seam — is this worktree's branch provably pushed/merged?
+def _worktree_branch(worktree: Path | str) -> str | None:
+    """Return the branch checked out at `worktree`, or None if undetectable.
 
-    In S-03 this is a STUB that ALWAYS returns False: a no-upstream (never
-    pushed) branch is therefore never treated as safe, so teardown refuses it
-    unless --force. S-05 replaces this single function with the real
-    gh-MERGED / `git branch --merged` detection (D-06). This is the ONLY call
-    site of the proven-merged override, consumed only by
-    _classify_worktree_safety.
+    Empty output, a detached-HEAD `HEAD` result, or a non-zero return code all
+    yield None (fail-OPEN — treated as "cannot prove merged" by the caller).
     """
-    return False
+    stdout, _, rc = _run(["git", "-C", str(worktree), "rev-parse", "--abbrev-ref", "HEAD"])
+    if rc != 0 or not stdout or stdout == "HEAD":
+        return None
+    return stdout
+
+
+def _gh_pr_merged(branch: str, cwd: str | Path | None) -> bool | None:
+    """Query `gh` for whether `branch`'s PR is MERGED. None = inconclusive (fail-OPEN).
+
+    Skips entirely (returns None) when QUOIN_WORKSPACE_DISABLE_GH is truthy —
+    the escape hatch (risk R-08) and the deterministic switch for the gh-free
+    tests. Any failure mode (gh not installed, unauthenticated, no matching
+    PR, malformed JSON, JSON that isn't an object) also yields None so the
+    caller falls through to the git-reachability path — never an error.
+    """
+    if os.environ.get("QUOIN_WORKSPACE_DISABLE_GH"):
+        return None
+    stdout, _, rc = _run(["gh", "pr", "view", branch, "--json", "state,mergedAt"], cwd=cwd)
+    if rc != 0 or not stdout:
+        return None
+    try:
+        data = json.loads(stdout)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data.get("state") == "MERGED"
+
+
+def _git_branch_merged(branch: str, repo: str, default: str) -> bool:
+    """True if `branch` is reachable from `default` per `git branch --merged`.
+
+    `git branch` (unlike `git branch --merged` alone) lists every local
+    branch regardless of which linked worktree currently has it checked out
+    (marked with a leading `*`/`+`), so this sees a feature branch checked out
+    in a sibling worktree of `repo`. rc != 0 (e.g. bad `default` ref) yields
+    False — conservative, matches the fail-OPEN-to-unsafe posture upstream.
+    """
+    stdout, _, rc = _run(["git", "-C", str(repo), "branch", "--merged", default])
+    if rc != 0:
+        return False
+    names: set[str] = set()
+    for line in stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("* ") or stripped.startswith("+ "):
+            stripped = stripped[2:].strip()
+        if stripped:
+            names.add(stripped)
+    return branch in names
+
+
+def _proven_merged(worktree: Path | str, orig_repo: str | None) -> bool:
+    """Is this worktree's branch provably pushed/merged? (S-05, D-06)
+
+    OR semantics: True if `gh` reports the branch's PR as MERGED, OR the
+    branch is reachable from the repo's default branch (`git branch
+    --merged`). gh is tried first (authoritative for the delete-on-merge case
+    where the remote branch is already gone); the git-reachability path is
+    the gh-free fallback and also covers locally-merged-not-yet-synced-to-gh
+    state. gh inconclusive (None) at any point falls through to the git path
+    — never an error. This is the ONLY call site of the proven-merged
+    override, consumed by _classify_worktree_safety (teardown) and
+    collect_status (status/list).
+    """
+    branch = _worktree_branch(worktree)
+    if branch is None:
+        return False
+    repo = orig_repo or str(worktree)
+    default = default_branch(Path(repo))
+    if _gh_pr_merged(branch, cwd=worktree) is True:
+        return True
+    return _git_branch_merged(branch, repo, default)
 
 
 def _classify_worktree_safety(
@@ -1107,7 +1189,149 @@ def teardown_workspace(
 
 
 # ---------------------------------------------------------------------------
-# T-06: CLI + main (create / teardown / takeover / heartbeat subcommands)
+# S-05 status/list (IVG-158): read-only enumeration + post-merge teardown offer.
+# ---------------------------------------------------------------------------
+
+def enumerate_workspaces(project_root: Path) -> list[str]:
+    """Union of workspace slugs: `.workspaces/*` subdirs + ownership record stems.
+
+    Deterministic (sorted, deduped). Either source alone can be incomplete —
+    a record without a live worktree dir (already torn down elsewhere) or a
+    worktree dir with a missing/corrupt record — so this unions both rather
+    than trusting one exclusively.
+    """
+    project_root = Path(project_root)
+    slugs: set[str] = set()
+
+    ws_parent = project_root / ".workspaces"
+    if ws_parent.exists():
+        try:
+            for sub in ws_parent.iterdir():
+                if sub.is_dir():
+                    slugs.add(sub.name)
+        except OSError:
+            pass
+
+    records_dir = project_root / ".workflow_artifacts" / "memory" / "workspaces"
+    if records_dir.exists():
+        try:
+            for rec in records_dir.glob("*.json"):
+                slugs.add(rec.stem)
+        except OSError:
+            pass
+
+    return sorted(slugs)
+
+
+@dataclasses.dataclass
+class WorktreeStatusView:
+    worktree: str
+    orig_repo: str | None
+    branch: str | None
+    dirty: bool
+    upstream: str | None
+    commits_ahead: int
+    merged: bool
+    safe: bool
+    reasons: list[str]
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+
+@dataclasses.dataclass
+class WorkspaceStatusView:
+    feature: str
+    slug: str
+    workspace_path: str
+    owner_session_uuid: str | None
+    hostname: str | None
+    live: bool
+    worktrees: list[WorktreeStatusView] = dataclasses.field(default_factory=list)
+    offer_teardown: bool = False
+    message: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "feature": self.feature,
+            "slug": self.slug,
+            "workspace_path": self.workspace_path,
+            "owner_session_uuid": self.owner_session_uuid,
+            "hostname": self.hostname,
+            "live": self.live,
+            "worktrees": [w.to_dict() for w in self.worktrees],
+            "offer_teardown": self.offer_teardown,
+            "message": self.message,
+        }
+
+
+def collect_status(project_root: Path) -> list[WorkspaceStatusView]:
+    """Read-only enumeration + classification of every known workspace.
+
+    READ-ONLY INVARIANT: this never writes, deletes, or mutates any file or
+    git state — no record writes, no worktree removal, nothing. The teardown
+    OFFER (`offer_teardown`) is data (a bool + a stderr hint from the CLI),
+    never an action; declining an offer is simply doing nothing, satisfied by
+    construction. Actioning belongs to the (later) skill-wiring stage, which
+    is fail-closed under `[no-interactive]`/autonomous.
+    """
+    project_root = Path(project_root).resolve()
+    views: list[WorkspaceStatusView] = []
+
+    for slug in enumerate_workspaces(project_root):
+        record = _read_ownership_record_with_mtime(project_root, slug)
+        record = record if isinstance(record, dict) else None
+        live = _owner_is_live(record) if record else False
+        ws_root = project_root / ".workspaces" / slug
+        worktrees = discover_workspace_worktrees(ws_root)
+
+        wt_views: list[WorktreeStatusView] = []
+        for wt in worktrees:
+            orig = _worktree_orig_repo(wt)
+            rc = branch_hygiene.check_repo(Path(wt))
+            merged = _proven_merged(wt, orig)
+            safe, reasons = _classify_worktree_safety(rc, merged)
+            wt_views.append(
+                WorktreeStatusView(
+                    worktree=str(wt),
+                    orig_repo=orig,
+                    branch=rc.current_branch,
+                    dirty=rc.dirty,
+                    upstream=rc.upstream,
+                    commits_ahead=rc.commits_ahead,
+                    merged=merged,
+                    safe=safe,
+                    reasons=reasons,
+                )
+            )
+
+        offer_teardown = bool(wt_views) and all(w.merged for w in wt_views)
+        if offer_teardown:
+            message = "merged — teardown available"
+        elif wt_views:
+            message = "not yet provably merged"
+        else:
+            message = "no worktrees found"
+
+        views.append(
+            WorkspaceStatusView(
+                feature=(record or {}).get("feature", slug),
+                slug=slug,
+                workspace_path=str(ws_root),
+                owner_session_uuid=(record or {}).get("owner_session_uuid"),
+                hostname=(record or {}).get("hostname"),
+                live=live,
+                worktrees=wt_views,
+                offer_teardown=offer_teardown,
+                message=message,
+            )
+        )
+
+    return views
+
+
+# ---------------------------------------------------------------------------
+# T-06: CLI + main (create / teardown / takeover / heartbeat / status subcommands)
 # ---------------------------------------------------------------------------
 
 def main(argv: list[str] | None = None) -> int:
@@ -1195,6 +1419,19 @@ def main(argv: list[str] | None = None) -> int:
     teardown_parser.add_argument(
         "--json", dest="json_output", action="store_true", default=True,
         help="Emit the TeardownResult as JSON (default: on).",
+    )
+
+    status_parser = subparsers.add_parser(
+        "status", aliases=["list"],
+        help="Read-only: list known workspaces with safety + merge state (never mutates).",
+    )
+    status_parser.add_argument(
+        "--project-root", default=None,
+        help="Project root (default: cwd).",
+    )
+    status_parser.add_argument(
+        "--json", dest="json_output", action="store_true", default=True,
+        help="Emit the status list as JSON (default: on).",
     )
 
     try:
@@ -1288,6 +1525,18 @@ def main(argv: list[str] | None = None) -> int:
         if result.partial_failure:
             return 4
         return 0
+
+    if args.command in ("status", "list"):
+        project_root = Path(args.project_root) if args.project_root else Path.cwd()
+        views = collect_status(project_root)
+
+        print(json.dumps({"workspaces": [v.to_dict() for v in views]}, indent=2))
+        for v in views:
+            print(
+                f"{v.feature}: live={v.live} offer_teardown={v.offer_teardown}",
+                file=sys.stderr,
+            )
+        return 0  # read-only informational; always 0 (argparse errors stay exit 2)
 
     return 2
 
