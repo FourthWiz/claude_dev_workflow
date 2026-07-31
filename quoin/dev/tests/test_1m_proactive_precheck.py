@@ -62,6 +62,7 @@ SECTION0_TARGETS = [
     ("next_steps",     "haiku",  "§1"),
     ("checkpoint",     "sonnet", "§0c"),
     ("continue_work",  "sonnet", "§1"),
+    ("workspace",      "sonnet", "§1"),
 ]
 SECTION0_SKILLS: list[str] = [t[0] for t in SECTION0_TARGETS]
 

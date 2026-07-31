@@ -84,6 +84,7 @@ CANONICAL_SKILLS = (
     "thorough_plan",
     "triage",
     "weekly_review",
+    "workspace",
 )
 
 # T-05: canonical script list — adapter scripts deployed to ~/.claude/scripts/
@@ -171,6 +172,7 @@ SKILL_OVERRIDES: dict[str, str] = {
     "next_steps": "name-only",
     "continue_work": "name-only",
     "security_review": "name-only",
+    "workspace": "name-only",
 }
 
 _MARKER_START = "# === DEV WORKFLOW START ==="

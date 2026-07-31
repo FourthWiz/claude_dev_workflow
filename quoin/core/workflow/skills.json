@@ -279,6 +279,15 @@
       "claude_model": "opus",
       "section_0": false,
       "spawn_target": true
+    },
+    {
+      "name": "workspace",
+      "phase": "workspace",
+      "effort": "medium",
+      "user_facing": true,
+      "claude_model": "sonnet",
+      "section_0": true,
+      "spawn_target": false
     }
   ]
 }

@@ -95,6 +95,7 @@ MINTIER_SONNET_TARGET_SKILLS = [
     "pr",
     "revise-fast",
     "rollback",
+    "workspace",
 ]
 
 # HEADING BYTE-IDENTITY: the ‴ (U+2034 TRIPLE PRIME) must match exactly across
@@ -1084,7 +1085,7 @@ def run_check() -> int:
         return 7
     print("inject_pollution_dispatch --check: all 10 adapter files are fresh")
     print("inject_pollution_dispatch --check: all 10 §0doubleprime files are fresh")
-    print("inject_pollution_dispatch --check: all 10 §0tripleprime files are fresh")
+    print("inject_pollution_dispatch --check: all 11 §0tripleprime files are fresh")
     return 0
 
 

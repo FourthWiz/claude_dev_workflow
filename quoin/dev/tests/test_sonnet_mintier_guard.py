@@ -66,6 +66,7 @@ SONNET_MINTIER_SKILLS = [
     "pr",
     "revise-fast",
     "rollback",
+    "workspace",
 ]
 
 # Tier-swapped mirror of MINTIER_REQUIRED_TOKENS PLUS "[no-redispatch:N]" (MIN-2).
