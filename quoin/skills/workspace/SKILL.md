@@ -1,0 +1,20 @@
+---
+name: workspace
+description: "Manage per-repo git-worktree workspaces for concurrent sessions: create isolated worktrees, check status, take over ownership non-destructively, and tear down safely (refusing on uncommitted/unpushed work unless forced). Use this skill for: /workspace, 'create a workspace', 'new worktree', 'check workspace status', 'take over this workspace', 'tear down this workspace'. Triggers when the user wants isolated per-repo git worktrees for parallel session work."
+model: sonnet
+---
+
+# Workspace
+
+*Portable intent doc: `quoin/core/skills/workspace.md`*
+
+Adapter override: the active Claude adapter SKILL.md for this skill lives at
+`quoin/adapters/claude/skills/workspace/SKILL.md`. The runtime-neutral intent doc
+lives at `quoin/core/skills/workspace.md`.
+
+`bash quoin/install.sh` deploys the adapter file (not this stub) to
+`~/.claude/skills/workspace/SKILL.md`.
+
+Do NOT add behavior here. Edit the adapter file. This stub remains only
+so that `quoin/skills/*/SKILL.md` glob-based tests and the manifest
+frontmatter parser continue to find a valid SKILL.md at this path.

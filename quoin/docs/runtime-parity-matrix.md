@@ -86,6 +86,7 @@ natural-language invocation guidance, not generated Codex commands.
 | `specify` | `quoin/core/skills/specify.md` | `quoin/adapters/claude/skills/specify/SKILL.md` | `quoin/adapters/codex/skills/specify/README.md` | `skills.json`, adapter drift validator, Codex generator/readiness tests |
 | `enrich` | `quoin/core/skills/enrich.md` | `quoin/adapters/claude/skills/enrich/SKILL.md` | `quoin/adapters/codex/skills/enrich/README.md` | `skills.json`, adapter drift validator, Codex generator/readiness tests |
 | `security_review` | `quoin/core/skills/security_review.md` | `quoin/adapters/claude/skills/security_review/SKILL.md` | `quoin/adapters/codex/skills/security_review/README.md` | `skills.json`, adapter drift validator, Codex generator/readiness tests |
+| `workspace` | `quoin/core/skills/workspace.md` | `quoin/adapters/claude/skills/workspace/SKILL.md` | `quoin/adapters/codex/skills/workspace/README.md` | `skills.json`, adapter drift validator, Codex generator/readiness tests |
 
 ## Claude-Only Runtime Mechanics
 
