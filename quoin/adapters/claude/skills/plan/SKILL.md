@@ -290,6 +290,8 @@ This guarantees the assembled file contains exactly one `## For human` line, reg
 
 The final file at `<plan-path>` IS what `/critic`, `/implement`, `/review`, `/gate` will read. Do NOT write a `.original.md` side-file.
 
+**Plan-path self-check (advisory, IVG-143 I-1).** After the atomic rename, run `python3 __QUOIN_HOME__/scripts/plan_path_lint.py <plan-path> --format text` against the freshly-written `current-plan.md`. Surface any `UNRESOLVED` tokens and their hints to the author before finishing. This is advisory only — ALWAYS continue regardless of the result. Fail-OPEN: exit 2, a missing script, or any crash → emit a one-line `[quoin: plan-path-lint unavailable; proceeding]` warning and continue. Never aborts `/plan` on this check.
+
 ## Task subfolder naming
 
 Derive a descriptive kebab-case name from the task. Ask the user if not obvious. Examples: `auth-refactor`, `payment-migration`, `api-v2-endpoints`.

@@ -293,6 +293,7 @@ Based on what exists and what's next, run the appropriate checks:
 - [ ] (Large only) Integration analysis covers all affected service boundaries
 - [ ] (Large only) Risk mitigations are concrete
 - [ ] Read the `## For human` summary block from `current-plan.md` (per architecture §5.7.1 detection rule — see Step 3a below) and display it to the user as part of the gate summary's 'Summary of what was produced' section. If no `## For human` block is detected (legacy v2-format file), fall back to displaying the first 2 KB of `current-plan.md` as v2 always did. v2 fallback path MUST be retained — do not error on missing block.
+- [ ] Plan path lint — run `python3 __QUOIN_HOME__/scripts/plan_path_lint.py <current-plan.md path> --format text` (MAY add `--project-root "$(pwd)"`). Flags file-path-looking tokens cited in the plan that don't resolve to anything on disk (IVG-143). WARN-only — NEVER blocks. Result mapping: exit 0 → ✓ PASS (all cited paths resolved); exit 1 → ⚠️ WARN non-blocking (list unresolved tokens + hints under `## Warnings (non-blocking)`); exit 2 → ⚠️ WARN non-blocking (invocation error); script missing → ⚠️ WARN non-blocking (undeterminable — fail-OPEN).
 
 **After /implement → before /review (Standard or Full gate — determined by task profile):**
 
