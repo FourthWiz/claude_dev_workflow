@@ -89,7 +89,12 @@ def make_workspace(project_root: Path, feature: str, repos: list[str]) -> Path:
 
 def make_pushed_safe(worktree: Path, feature: str, tmp_path: Path) -> None:
     """Give a worktree an upstream with commits_ahead==0 (the only provably-safe class)."""
-    origin = tmp_path / "origins" / f"{worktree.parent.name}-{worktree.name}.git"
+    # Namespace the bare origin by the worktree's FULL path under tmp_path, not just
+    # parent+name: two project sides (e.g. core_side/wrapper_side) can share the same
+    # feature+repo names, which collided on one shared origin and made the second push
+    # race-reject intermittently. The full relative path is unique per worktree.
+    origin_slug = str(worktree.relative_to(tmp_path)).replace("/", "-")
+    origin = tmp_path / "origins" / f"{origin_slug}.git"
     origin.parent.mkdir(parents=True, exist_ok=True)
     _git("init", "--bare", str(origin))
     _git("-C", str(worktree), "remote", "add", "origin", str(origin))
