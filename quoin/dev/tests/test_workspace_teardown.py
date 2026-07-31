@@ -107,6 +107,21 @@ def commit_in(worktree: Path, msg: str) -> None:
     _git("-C", str(worktree), "commit", "-m", msg)
 
 
+def merge_into_default(project_root: Path, worktree: Path, feature: str) -> None:
+    """Commit in `worktree`, then merge `feature` into the ORIG repo's default branch.
+
+    Makes the feature branch genuinely reachable from default — a real
+    gh-free proven-merged state (S-05 D-06 crossover), exercised via
+    `_git_branch_merged`. Reads the repo's actual default branch rather than
+    hardcoding main/master (this file's existing determinism convention).
+    """
+    commit_in(worktree, "mergeme")
+    orig_repo = project_root / worktree.name
+    default = ws.default_branch(orig_repo)
+    _git("-C", str(orig_repo), "checkout", default)
+    _git("-C", str(orig_repo), "merge", feature)
+
+
 def run_cli(script_path: Path, *args, cwd=None):
     cmd = [sys.executable, str(script_path)] + list(args)
     return subprocess.run(cmd, capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT, cwd=cwd)
@@ -241,16 +256,61 @@ def test_teardown_refuses_commits_ahead(tmp_path):
     assert ws_root.exists()
 
 
-def test_teardown_refuses_no_upstream(tmp_path):
+def test_teardown_refuses_no_upstream(tmp_path, monkeypatch):
     # R-06 crux: create then teardown, no push, no force -> must refuse.
+    #
+    # S-05 note: a commit is added so the branch genuinely diverges from
+    # default (real, unmerged work) — a workspace with ZERO commits ever
+    # added is trivially identical to its default branch's tip, and
+    # `git branch --merged` (correctly, per R-05) reports a same-tip branch
+    # as "merged" since there is nothing unique to lose. That trivial-match
+    # case is a DIFFERENT (accepted, low-impact) risk from this test's crux:
+    # real, uncommitted-to-anywhere work must never be silently discarded.
+    # gh disabled for determinism (synthetic repo has no GitHub remote anyway).
+    monkeypatch.setenv("QUOIN_WORKSPACE_DISABLE_GH", "1")
     project_root = make_multi_repo_project(tmp_path, ["repo-a"])
     ws_root = make_workspace(project_root, "noup-feat", ["repo-a"])
+    commit_in(ws_root / "repo-a", "unmerged-work")
 
     result = ws.teardown_workspace("noup-feat", project_root, force=False)
     assert result.refused is True
     assert any("no upstream" in r for s in result.per_repo for r in s.reasons)
     assert ws_root.exists()
     assert record_path(project_root, ws.slugify("noup-feat")).exists()
+
+
+def test_teardown_merged_no_upstream_allowed(tmp_path, monkeypatch):
+    # S-05 D-06 crossover (AC6): a proven-merged no-upstream branch tears down
+    # cleanly WITHOUT --force. Force gh-free for determinism (synthetic repos
+    # have no GitHub remote anyway, but this pins the code path explicitly).
+    monkeypatch.setenv("QUOIN_WORKSPACE_DISABLE_GH", "1")
+    project_root = make_multi_repo_project(tmp_path, ["repo-a"])
+    ws_root = make_workspace(project_root, "merged-feat", ["repo-a"])
+    merge_into_default(project_root, ws_root / "repo-a", "merged-feat")
+
+    result = ws.teardown_workspace("merged-feat", project_root, force=False)
+    assert result.refused is False
+    assert result.folder_removed is True
+    assert result.record_removed is True
+    assert str(ws_root / "repo-a") not in worktree_list(project_root / "repo-a")
+
+
+def test_teardown_unmerged_no_upstream_still_refused(tmp_path, monkeypatch):
+    # Guards against the un-stub over-relaxing the guard: same setup WITHOUT
+    # the merge step must still refuse. A real divergent commit is added
+    # (mirrors merge_into_default's setup minus the merge) so the branch is
+    # genuinely NOT reachable from default — the true "unmerged" case, not
+    # the trivial same-tip-as-default case that a zero-commit workspace would
+    # produce (see test_teardown_refuses_no_upstream for that distinction).
+    monkeypatch.setenv("QUOIN_WORKSPACE_DISABLE_GH", "1")
+    project_root = make_multi_repo_project(tmp_path, ["repo-a"])
+    ws_root = make_workspace(project_root, "stillup-feat", ["repo-a"])
+    commit_in(ws_root / "repo-a", "mergeme")  # diverge, but never merge into default
+
+    result = ws.teardown_workspace("stillup-feat", project_root, force=False)
+    assert result.refused is True
+    assert ws_root.exists()
+    assert record_path(project_root, ws.slugify("stillup-feat")).exists()
 
 
 def test_teardown_force_overrides_dirty(tmp_path, capsys):
@@ -268,9 +328,13 @@ def test_teardown_force_overrides_dirty(tmp_path, capsys):
     assert "force" in capsys.readouterr().err.lower()
 
 
-def test_teardown_force_overrides_no_upstream(tmp_path, capsys):
+def test_teardown_force_overrides_no_upstream(tmp_path, capsys, monkeypatch):
+    # Divergent commit (see test_teardown_refuses_no_upstream) so this is
+    # genuinely unsafe and the --force audit-log line has something to log.
+    monkeypatch.setenv("QUOIN_WORKSPACE_DISABLE_GH", "1")
     project_root = make_multi_repo_project(tmp_path, ["repo-a"])
     ws_root = make_workspace(project_root, "fnoup-feat", ["repo-a"])
+    commit_in(ws_root / "repo-a", "unmerged-work")
 
     result = ws.teardown_workspace("fnoup-feat", project_root, force=True)
     assert result.folder_removed is True
@@ -376,18 +440,24 @@ def test_cli_teardown_clean_exit0(tmp_path):
     assert payload["record_removed"] is True
 
 
-def test_cli_teardown_refused_exit3(tmp_path):
+def test_cli_teardown_refused_exit3(tmp_path, monkeypatch):
+    # Divergent commit (see test_teardown_refuses_no_upstream) so this is
+    # genuinely unmerged/no-upstream -> unsafe, not the trivial same-tip case.
+    monkeypatch.setenv("QUOIN_WORKSPACE_DISABLE_GH", "1")
     project_root = make_multi_repo_project(tmp_path, ["repo-a"])
-    make_workspace(project_root, "cli-refuse", ["repo-a"])  # no-upstream -> unsafe
+    ws_root = make_workspace(project_root, "cli-refuse", ["repo-a"])
+    commit_in(ws_root / "repo-a", "unmerged-work")
     proc = run_cli(CORE_PATH, "teardown", "cli-refuse", "--project-root", str(project_root))
     assert proc.returncode == 3
     payload = json.loads(proc.stdout)
     assert payload["refused"] is True
 
 
-def test_cli_teardown_force_exit0(tmp_path):
+def test_cli_teardown_force_exit0(tmp_path, monkeypatch):
+    monkeypatch.setenv("QUOIN_WORKSPACE_DISABLE_GH", "1")
     project_root = make_multi_repo_project(tmp_path, ["repo-a"])
-    make_workspace(project_root, "cli-force", ["repo-a"])  # no-upstream -> unsafe
+    ws_root = make_workspace(project_root, "cli-force", ["repo-a"])
+    commit_in(ws_root / "repo-a", "unmerged-work")
     proc = run_cli(CORE_PATH, "teardown", "cli-force", "--project-root", str(project_root), "--force")
     assert proc.returncode == 0, proc.stderr
     payload = json.loads(proc.stdout)
