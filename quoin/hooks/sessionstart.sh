@@ -23,6 +23,7 @@ src=$(printf '%s' "$STDIN" | jq -r '.source // empty' 2>/dev/null) || exit 0
 session_id=$(printf '%s' "$STDIN" | jq -r '.session_id // empty' 2>/dev/null) || exit 0
 cwd=$(printf '%s' "$STDIN" | jq -r '.cwd // empty' 2>/dev/null) || exit 0
 [ -z "$cwd" ] && cwd="$PWD"
+raw_cwd="$cwd"   # S-04: capture RAW launch dir BEFORE resolve_project_root rewrites it to the project root
 cwd=$(resolve_project_root "$cwd")
 
 MEMORY_DIR="${cwd}/.workflow_artifacts/memory"
@@ -139,6 +140,20 @@ if [ "${_DISC_SKIP_S5:-0}" = "0" ]; then
   fi
 fi
 # === end S-5 discovery-staleness banner ===
+
+# === S-04 workspace heartbeat (opt-in) ===
+# Owner-only last_seen refresh for a session launched INSIDE a feature workspace.
+# Default OFF (opt-in per Q-06). Output fully suppressed and `|| true` so it can
+# NEVER change hook stdout/exit status — the hook stays fail-OPEN and its banner
+# JSON is untouched. Uses raw_cwd (captured before resolve_project_root) because
+# the marker lives BELOW the project root under .workspaces/<feat>/. INERT until
+# S-06 deploys workspace.py to ~/.claude/scripts/ (until then the shell-out errors
+# harmlessly into /dev/null).
+if [ "${QUOIN_WORKSPACE_HEARTBEAT:-0}" = "1" ] && command -v python3 >/dev/null 2>&1; then
+  python3 "$(dirname "$0")/../scripts/workspace.py" heartbeat \
+    --cwd "$raw_cwd" --session-uuid "$session_id" >/dev/null 2>&1 || true
+fi
+# === end S-04 workspace heartbeat (opt-in) ===
 
 # STEP 2: UUID-aware sweep of all 9 sentinel families.
 # Tight window (SESSIONSTART_SWEEP_DAYS, default 1d) when current session is known;
