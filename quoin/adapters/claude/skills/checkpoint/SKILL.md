@@ -823,9 +823,13 @@ fi
 ```
 
 Field types (compare as strings, never as booleans): `tier` is the literal string `"1"`, `"2"`,
-`"3"`, or `"4-B3"` (e.g. `[ "$tier" = "4-B3" ]`). `same_session`/`cross_task_ok`/`stale` are the
-literal strings `true`/`false`, or `""` when the underlying JSON value was `null` (e.g.
-`[ "$same_session" = "true" ]`). `selected_path`/`b3_prompt`/`kind` are `""` when JSON `null`.
+`"3"`, or `"4-B3"` (e.g. `[ "$tier" = "4-B3" ]`), and — since IVG-160 — may also be the literal
+`"ambiguous"` (the distinct-task ambiguity route; see Step 1.0b). `"ambiguous"` is truthy, so it
+passes the `if not d.get("tier")` guard above unchanged, and the fixed-field `\x1f` scalar
+extraction ignores the extra `candidates` list key (it is simply absent from the `fields` list).
+`same_session`/`cross_task_ok`/`stale` are the literal strings `true`/`false`, or `""` when the
+underlying JSON value was `null` (e.g. `[ "$same_session" = "true" ]`).
+`selected_path`/`b3_prompt`/`kind` are `""` when JSON `null`.
 
 **Fail-OPEN routing (any of):** the picker CALL fails (`_picker_rc != 0` — should never happen,
 the module always exits 0, but guard anyway), the script is absent, picker stdout is empty, OR
@@ -848,6 +852,60 @@ this case — they are the fail-OPEN path only.
    and STOP — do not proceed to bullet 1. This applies uniformly across tiers `1`, `2`, `3`, and
    `4-B3` (the check is a no-op for `4-B3`, since B3 routes always carry `kind=""`, but it must
    still run unconditionally so evaluation order stays uniform).
+
+   **Distinct-task ambiguity gate (IVG-160)** — evaluated immediately after bullet 0's `kind`
+   check and BEFORE bullet 1. When `tier == "ambiguous"` (the module found ≥ 2 distinct
+   `## Active task` values each with a candidate inside `QUOIN_RESTORE_AMBIGUITY_WINDOW`), the
+   Verdict deliberately carries `selected_path == None` and `consumed_sentinel_path == ""`; the
+   module made no single pick and SKILL.md renders an interactive picker instead. This branch is
+   SELF-CONTAINED: **do NOT execute bullets 1-5** — bullet 1 (`selected_path → cp_path`) and
+   bullet 2 (`consumed_sentinel_path`) would CLOBBER the just-bound values with empties. On a
+   valid pick, bind `cp_path`/`consumed_sentinel_path` here and jump DIRECTLY to Step 1.5.
+
+   The fixed-field `\x1f` scalar parse in Step 1.0a cannot carry the variable-length `candidates`
+   list, so run a SECOND, ambiguity-only `python3 -c` that `json.loads($_verdict_json)` and emits
+   `candidates` one row per line — fields `\x1f`-separated in the order
+   `task, saved_time, source, kind, path, sentinel_path` (`sentinel_path` LAST because it is the
+   only legitimately-empty field — `""` on disk-only rows — and last position is the only
+   empty-field-safe slot for a non-whitespace `\x1f` IFS). One `print` per candidate guarantees a
+   trailing newline on every row (including the last):
+
+   ```sh
+   _cands=$(python3 -c '
+   import json, sys
+   d = json.loads(sys.argv[1])
+   for c in d.get("candidates", []):
+       print("\x1f".join([
+           c["task"], c["saved_time"], c["source"], c["kind"],
+           c["path"], c["sentinel_path"]]))
+   ' "$_verdict_json" 2>/dev/null)
+   # INVARIANT: the emitter field order above == the read -r variable order below,
+   # with sentinel_path LAST. Do NOT transpose path↔sentinel_path (a swap silently
+   # maps the empty sentinel_path into path and breaks the cp_path binding).
+   _n=0
+   _tasks=(); _times=(); _srcs=(); _kinds=(); _paths=(); _sentinels=()
+   # `|| [ -n "$task" ]` processes the final row even if the trailing newline is ever absent.
+   while IFS=$'\x1f' read -r task saved_time source kind path sentinel_path || [ -n "$task" ]; do
+     [ -z "$task" ] && continue
+     _n=$((_n+1))
+     _tasks+=("$task"); _times+=("$saved_time"); _srcs+=("$source")
+     _kinds+=("$kind"); _paths+=("$path"); _sentinels+=("$sentinel_path")
+     [ "$_n" -ge 10 ] && break   # cap at 10 (module already returns mtime-descending)
+   done <<< "$_cands"
+   ```
+
+   Render the numbered picker by REUSING the existing "Two or more" numbered-picker presentation
+   shape (see the Fallback picker's "Two or more" branch below): one line per entry
+   `N. * Task: <task>  Branch: (n/a)  Saved: <saved_time>  (sentinel|disk-only)` — `*` marks
+   `source == sentinel`, branch is `(n/a)` since artifacts are branch-agnostic; entries are
+   already mtime-descending. Prompt `Enter number, or 'skip' to proceed to direct lookup:`.
+   - On a valid number `i`: if `_kinds[i] == thorough-plan-progress`, print
+     `[checkpoint] A thorough-plan progress file is pending — resume via /thorough_plan, not /checkpoint --restore.`
+     and STOP. Otherwise bind `cp_path="${_paths[i]}"` and
+     `consumed_sentinel_path="${_sentinels[i]}"` (already `""` on disk-only rows), then jump
+     DIRECTLY to Step 1.5 (skipping bullets 1-5 entirely).
+   - On `skip`/invalid input: re-prompt once; on a second invalid input, fall through to the
+     Step 3 graceful "no checkpoint" path.
 1. `selected_path` → bind `cp_path` (the variable Step 1.5 and Step 2 already consume). Leave
    Step 1.5, Step 2, Step 3, Step 4 byte-for-byte unchanged so the interactive UX (same-session
    `AskUserQuestion`, `Re-fire reads on artifacts now? [y/n]`, Read re-fire, pending-prompt
@@ -1051,6 +1109,38 @@ consumed_sentinel_path=""
 3. De-duplication: prefer the non-`-precompact` file over the `-precompact` file when one filename equals the other minus `-precompact.md` AND their mtimes are within `${QUOIN_PICKER_DEDUP_WINDOW:-7d}` (7 days) of each other. Pairs older than 7 days apart are treated as independent entries. **Note on timestamped voluntary saves:** with the `<YYYY-MM-DD>T<HHMM>-<task>.md` format introduced for voluntary saves, this filename-equality match will no longer fire against precompact files written the same date (precompact files retain the legacy `<YYYY-MM-DD>-<task>-precompact.md` shape). The dedup rule remains in force to handle older non-timestamped voluntary checkpoints still on disk (pre-migration files); it is effectively a no-op for new files.
 
 4. Backward-compat reader: tolerate missing `## Session ID` (older voluntary checkpoints). When absent, display `(legacy)` in the picker source column.
+
+**Distinct-task ambiguity gate — fallback parity (IVG-160)** — this NON-NUMBERED sub-step runs
+AFTER candidate annotation/dedup/backward-compat (steps 2-4 above) and BEFORE the step-5 B3
+Clause-A/B trigger, mirroring the module's placement (`checkpoint_picker.py:495-503`: the gate
+sits AFTER the Clause-A empty-check and BEFORE the Clause-B check). Placing it here — structurally
+ahead of BOTH the Clause-A and Clause-B checks — is load-bearing for module↔fallback parity
+(`FR-8`/`AC-8`): if it ran inside the Normal picker (after the step-5 trigger), the Clause-B check
+would be evaluated FIRST and, in the concurrent multi-session scenario (two distinct recent
+checkpoints plus a fresher
+`sessions/` file for one task), would silently route to B3 synthesis while the module shows the
+picker — the exact IVG-160 divergence.
+
+Compute the recent distinct-task set among the annotated candidate list using
+`QUOIN_RESTORE_AMBIGUITY_WINDOW` (**seconds**, default `14400` = 4h, anchored at `now`; `<= 0`
+disables the gate — do NOT route it through the day-based `-mtime` windows):
+
+```sh
+_amb_window="${QUOIN_RESTORE_AMBIGUITY_WINDOW:-14400}"
+# Among the annotated candidates, keep those with (now - mtime) <= _amb_window seconds,
+# then count DISTINCT `## Active task` values (c["task"]) — NOT filenames, NOT branches.
+# if the count of distinct recent tasks is >= 2 -> ambiguity.
+```
+
+- **If >= 2 distinct tasks** in the recent window → present the numbered picker over those recent
+  distinct-task entries (reuse the "Two or more" numbered-picker shape below; `*` marks
+  sentinel-backed rows; mtime-descending; cap 10) and do NOT fall into the step-5 B3 trigger. The
+  user's explicit selection binds `cp_path` (and `consumed_sentinel_path` if the chosen row is
+  sentinel-backed) and proceeds to Step 1.5.
+- **Else** (0-1 distinct recent task, or the knob disables the gate) → proceed UNCHANGED to the
+  step-5 B3 Clause-A/B trigger and the Normal picker / combined gate below. Ordering-safe against
+  Clause A: with zero candidates the recent set is empty (`< 2`), the gate is a no-op, and control
+  reaches the step-5 Clause-A trigger exactly as before.
 
 5. Auto-pick rules:
 
