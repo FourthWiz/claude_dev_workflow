@@ -184,8 +184,9 @@ On fire (happy path — silent up-dispatch):
     prompt: "[no-redispatch]\n<original user input verbatim>"
   Wait for the subagent. Return its output as your final response. STOP.
 
-Fail-OPEN path (fires only when Agent dispatch fails):
-  Classify the error text BEFORE proceeding:
+Fail-OPEN path (fires only when Agent dispatch fails). Full AskUserQuestion Question/Header/
+description wording for every branch below: memory/dispatch-guide.md §0‴ verbose reference
+("Verbatim AskUserQuestion wording"). Classify the error text BEFORE proceeding:
 
   - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
     incoming prompt carries the `[autonomous]` sentinel, then on ANY §0‴ dispatch-failure or
@@ -195,19 +196,12 @@ Fail-OPEN path (fires only when Agent dispatch fails):
     proceed to skill body (treat as bare [no-redispatch]).
 
   - 1M-credit-class: if error text contains `Usage credits required for 1M context`:
-      Issue AskUserQuestion:
-        Question: "§0‴ up-dispatch to sonnet failed with a 1M-context credit mismatch for /pr.
-        The parent session carries the 1M-context beta header; Sonnet lacks 1M credits. How would you like to proceed?"
-        Header: "1M credit mismatch"
-        multiSelect: false
+      Issue AskUserQuestion (full Question/Header wording: memory/dispatch-guide.md
+      §0‴ verbose reference):
         Option 1:
           label: "Abort — I'll switch with /model first"
-          description: "Stop here. Run /model in your terminal to switch to a standard-context
-          model (e.g., /model sonnet), then re-invoke /pr."
         Option 2:
           label: "Proceed in-session at parent tier"
-          description: "Skip the up-dispatch this once. /pr runs in the current session
-          (below Sonnet, but works). Emits a one-line advisory."
       On Option 1: print `[quoin-mintier: 1M-context credit mismatch; abort per user choice —
       switch with /model and re-invoke /pr]` and STOP.
       On Option 2: print `[quoin-mintier: 1M-context credit mismatch on sonnet up-dispatch;
@@ -215,19 +209,12 @@ Fail-OPEN path (fires only when Agent dispatch fails):
       and proceed to skill body (treat as bare [no-redispatch]).
 
   - Any other error: Issue AskUserQuestion (labels verbatim — drift relies on equality):
-      Question: "/pr requires Sonnet but this session is below Sonnet. Auto-dispatch to Sonnet failed. How would you like to proceed?"
-      Header: "Min-tier"
-      multiSelect: false
-      Option 1:
-        label: "Abort — run from a Sonnet session"
-        description: "Stop here. Switch the session to Sonnet (/model sonnet) and re-invoke /pr."
-      Option 2:
-        label: "Proceed at current tier (under-powered)"
-        description: "Run /pr on the current cheaper model. Quality may be reduced;
-        emits a one-line advisory."
-    Then:
-      - Option 1: print `[quoin-mintier: aborted; re-invoke /pr from a Sonnet session]` and STOP.
-      - Option 2: print `[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]`, then proceed to skill body (treat as bare [no-redispatch]).
+        Option 1:
+          label: "Abort — run from a Sonnet session"
+        Option 2:
+          label: "Proceed at current tier (under-powered)"
+      On Option 1: print `[quoin-mintier: aborted; re-invoke /pr from a Sonnet session]` and STOP.
+      On Option 2: print `[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]`, then proceed to skill body (treat as bare [no-redispatch]).
 <!-- §0tripleprime-end -->
 
 ## When to use
