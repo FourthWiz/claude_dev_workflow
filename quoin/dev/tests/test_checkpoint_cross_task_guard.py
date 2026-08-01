@@ -107,32 +107,35 @@ class TestPrimaryPickerDelegation:
             "Separator (\\x1f), not tab (CRIT-1 — tab collapses empty fields on bash 3.2)."
         )
 
-    def test_fallback_picker_retained(self):
-        """The fail-OPEN prose fallback must still be present and clearly labelled."""
+    def test_no_prose_fallback_retained(self):
+        """IVG-162 T-07: the duplicated Tier-1..4 prose fallback is GONE — retired the
+        opposite assertion from this test's prior form (D-03/IVG-139 S-3 planned this
+        removal explicitly: the section self-labelled "slated for removal one release
+        after S3 per Q-02"; IVG-162 executes it). checkpoint_picker.py is now the SOLE
+        restore-decision path; on module failure the skill degrades to the graceful
+        "no checkpoints found" path rather than re-deriving the decision in prose.
+        Module-boundary correctness remains verified by test_checkpoint_picker_roundtrip.py.
+        """
         text = _text()
-        assert "Fallback picker" in text and "fail-OPEN" in text, (
-            "checkpoint/SKILL.md must retain the prose picker as a labelled fail-OPEN "
-            "fallback for when checkpoint_picker.py is unavailable (D-03)."
-        )
-        # Fallback must still be reachable via the same Tier-1..4 anchors the other
-        # tests in this file assert on — i.e. it is not merely referenced, it is present.
-        assert "Tier 1 — Fast path" in text and "Tier 2 —" in text, (
-            "The fallback picker must retain the original Tier-1..4 prose verbatim."
+        assert "#### Fallback picker" not in text, (
+            "checkpoint/SKILL.md must NOT contain the retired '#### Fallback picker' "
+            "heading — IVG-162 T-07 deleted it; checkpoint_picker.py is authoritative."
         )
 
 
 class TestStalenessGuard:
-    """T-05: staleness guard (age-based)."""
+    """T-05: staleness guard (age-based).
 
-    def test_restore_stale_days_knob_present(self):
-        """SKILL.md must contain the QUOIN_RESTORE_STALE_DAYS inline knob with default 1."""
-        text = _text()
-        assert "QUOIN_RESTORE_STALE_DAYS" in text, (
-            "checkpoint/SKILL.md picker must reference QUOIN_RESTORE_STALE_DAYS."
-        )
-        assert ":-1" in text, (
-            "QUOIN_RESTORE_STALE_DAYS must have default value 1 (inline ':-1')."
-        )
+    IVG-162 T-07 retired two prose-content assertions that pinned the
+    QUOIN_RESTORE_STALE_DAYS knob and the OR-semantics shell snippet — both
+    lived exclusively in the deleted `#### Fallback picker` section. The
+    staleness guard's actual behavior (module implementation) remains
+    verified against checkpoint_picker.py directly by
+    test_staleness_suppresses_tier3_autopick_without_clause_b,
+    test_staleness_not_applied_at_tier1_fastpath, and
+    test_staleness_int_truncation_boundary_not_stale in
+    test_checkpoint_picker_roundtrip.py.
+    """
 
     def test_staleness_suppresses_autopick(self):
         """When candidate is older than threshold AND fresher session-state exists, suppress auto-pick."""
@@ -143,24 +146,18 @@ class TestStalenessGuard:
             "silent auto-pick when the candidate is too old."
         )
 
-    def test_combined_gate_or_semantics(self):
-        """The combined gate (D-03) must use OR semantics: stale OR cross-task → suppress."""
-        text = _text()
-        # Look for the OR gate pattern
-        assert any(phrase in text for phrase in [
-            "stale=1 ] || [ \"$cross_task",
-            "stale OR cross_task",
-            "stale\" -eq 1 ] || [ \"$cross",
-            "if [ \"$stale\" -eq 1 ] || [ \"$cross_task",
-        ]), (
-            "checkpoint/SKILL.md must implement the combined gate with OR semantics: "
-            "suppress auto-pick if EITHER stale OR cross-task. "
-            "Expected to find 'stale OR cross_task' or equivalent shell OR expression."
-        )
-
 
 class TestPendingPromptCrossRef:
-    """T-06: pending-prompt cross-reference (Step 1.0 anchor preamble)."""
+    """T-06: pending-prompt cross-reference (Step 1.0 anchor preamble).
+
+    IVG-162 T-07 retired two prose-content assertions (the literal "Tier 1"
+    .. "Tier 4" headings and the tier-2 "iterate ALL" enumeration wording) —
+    both lived exclusively in the deleted `#### Fallback picker` section.
+    `checkpoint_picker.py` implements the 4-tier priority order (and its
+    all-in-window pending-prompt enumeration) directly; module-boundary
+    correctness is verified by test_checkpoint_picker_roundtrip.py's
+    anchor-precedence and Tier-1/Tier-2 fixtures.
+    """
 
     def test_step_1_0_preamble_present(self):
         """SKILL.md must describe a Step 1.0 or equivalent anchor-selection preamble."""
@@ -168,30 +165,6 @@ class TestPendingPromptCrossRef:
         assert "Step 1.0" in text or "Anchor selection" in text or "anchor selection" in text, (
             "checkpoint/SKILL.md restore mode must describe a Step 1.0 anchor-selection "
             "preamble establishing the 4-tier priority order."
-        )
-
-    def test_four_tier_priority_documented(self):
-        """SKILL.md must document at least 4 priority tiers for restore anchor selection."""
-        text = _text()
-        assert "Tier 1" in text and "Tier 2" in text and "Tier 3" in text and "Tier 4" in text, (
-            "checkpoint/SKILL.md must document a 4-tier anchor-selection priority order."
-        )
-
-    def test_pending_prompt_enumeration_iterates_all(self):
-        """Tier-2 must iterate ALL in-window pending-prompt sentinels, not stop at first."""
-        text = _text()
-        assert "pending-prompt-" in text, (
-            "checkpoint/SKILL.md must enumerate pending-prompt-<SID> sentinels in tier-2."
-        )
-        # Must iterate (loop / for / all)
-        assert any(phrase in text for phrase in [
-            "iterate ALL",
-            "enumerate ALL",
-            "ALL in-window pending-prompt",
-            "all in-window",
-        ]), (
-            "checkpoint/SKILL.md tier-2 must iterate ALL in-window pending-prompt-*.txt "
-            "sentinels (mtime-descending), not stop at the first one found."
         )
 
     def test_no_pending_restore_fallthrough(self):
@@ -235,20 +208,17 @@ class TestAmbiguityGate:
         )
 
     def test_step_1_0b_ambiguity_branch_present(self):
+        """IVG-162 T-07: previously required >= 2 occurrences (Step-1.0b branch PLUS the
+        deleted Fallback picker's own copy of the gate). Only the Step-1.0b occurrence
+        survives the fallback-section deletion; requiring exactly 1 keeps this test
+        genuinely load-bearing (still fails if the Step-1.0b branch itself goes missing)."""
         text = _text()
         assert 'tier == "ambiguous"' in text, (
             "checkpoint/SKILL.md Step 1.0b must branch on the module's tier == \"ambiguous\" Verdict."
         )
-        # The shared substring appears in BOTH the Step-1.0b branch and the fallback section.
-        assert text.count("Distinct-task ambiguity gate") >= 2, (
-            "the 'Distinct-task ambiguity gate' marker must appear in BOTH the Step-1.0b branch "
-            "and the Fallback picker section."
-        )
-
-    def test_fallback_unique_label_present(self):
-        text = _text()
-        assert "Distinct-task ambiguity gate — fallback parity" in text, (
-            "the fallback gate must carry the section-unique '— fallback parity' label (IVG-160)."
+        assert text.count("Distinct-task ambiguity gate") == 1, (
+            "the 'Distinct-task ambiguity gate' marker must appear exactly once "
+            "(Step-1.0b branch only, since IVG-162 T-07 deleted the Fallback picker section)."
         )
 
     def test_second_ambiguity_only_json_parse_present(self):
@@ -260,12 +230,6 @@ class TestAmbiguityGate:
         )
         assert "\\x1f" in text, (
             "the ambiguity candidate rows must be \\x1f-separated (bash-3.2 empty-field safety)."
-        )
-
-    def test_fallback_distinct_task_picker_language_present(self):
-        text = _text()
-        assert ">= 2 distinct tasks" in text, (
-            "the fallback gate must present the picker when >= 2 distinct tasks are in the window."
         )
 
     def test_min1_bullet_skip_instruction_present(self):
@@ -284,21 +248,21 @@ class TestAmbiguityGate:
 
     # -- 8b. Ordering assert (the load-bearing parity guard) --
 
-    def test_fallback_gate_precedes_b3_trigger(self):
-        """The fallback distinct-task gate marker must appear BEFORE the step-5 B3-trigger anchor
-        WITHIN the Fallback picker section. Slicing to the section first (excluding the ~Step-1.0b
-        occurrence) and anchoring on the fallback-UNIQUE label makes this genuinely load-bearing:
-        a regression that moves the gate back inside the Normal picker (below the B3 trigger)
-        fails RED (round-2 MAJ-1 vacuity fix)."""
+    def test_ambiguity_gate_precedes_b3_branch_in_step_1_0b(self):
+        """IVG-162 T-07: retargeted from the deleted Fallback picker's internal ordering
+        (module↔prose parity, no longer applicable — the prose fallback is gone) to the
+        SURVIVING equivalent invariant within Step 1.0b itself: the ambiguity gate (bullet 0)
+        must still be evaluated BEFORE the tier == "4-B3" branch (bullet 3), so an ambiguous
+        Verdict is never mis-routed into B3 synthesis."""
         text = _text()
-        fb_start = text.find("#### Fallback picker")   # heading exists verbatim
-        assert fb_start != -1, "fallback section heading not found"
-        fb = text[fb_start:]
-        idx_gate = fb.find("Distinct-task ambiguity gate — fallback parity")  # 6c fallback-unique
-        idx_b3 = fb.find("check the B3 session-state fallback trigger")        # step-5 B3 anchor
-        assert idx_gate != -1, "fallback ambiguity-gate marker not found in fallback section"
-        assert idx_b3 != -1, "B3 trigger anchor not found in fallback section"
+        s10b_idx = text.find("Step 1.0b — Verdict")
+        assert s10b_idx != -1, "Step 1.0b heading not found"
+        block = text[s10b_idx:]
+        idx_gate = block.find("Distinct-task ambiguity gate")
+        idx_b3 = block.find('tier == "4-B3"')
+        assert idx_gate != -1, "ambiguity-gate marker not found in Step 1.0b"
+        assert idx_b3 != -1, "tier == \"4-B3\" branch not found in Step 1.0b"
         assert idx_gate < idx_b3, (
-            "fallback distinct-task gate must precede the step-5 B3 trigger (module↔prose "
-            "pre-Clause-B parity, AC-8/FR-8)."
+            "the ambiguity gate (bullet 0) must precede the tier == \"4-B3\" branch (bullet 3) "
+            "within Step 1.0b (AC-8/FR-8 module-driven-path ordering)."
         )

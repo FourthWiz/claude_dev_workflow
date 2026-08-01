@@ -131,49 +131,30 @@ def test_sentinel_families_section_contains_every_lib_sh_glob(spec_text):
 
 
 # ---------------------------------------------------------------------------
-# Assertion 2 — Picker tiers: literal '**Tier N — ...**' headings in the
-# DEPLOYED adapter SKILL.md must all be enumerated in checkpoint-spec.md's
-# "## Picker tiers" section.
+# Assertion 2 — Picker tiers cross-check.
+#
+# Retired (IVG-162 T-07): this cross-check's premise was that the DEPLOYED
+# adapter SKILL.md duplicated the picker's four-tier structure as literal
+# '**Tier N — ...**' prose headings, with checkpoint-spec.md's "## Picker
+# tiers" section required to enumerate the same set. That duplication is
+# GONE by design — the `#### Fallback picker` section (the sole place those
+# headings lived) was deleted; checkpoint_picker.py is now the sole
+# restore-decision path and the sole owner of the Tier structure (its own
+# "# ---- Tier N: ... ----" comment markers exist for Tiers 1-3, but there is
+# no uniform Tier-4/B3 marker to re-anchor a 4-way extraction on, and
+# checkpoint_picker.py must stay untouched per plan D-06/T-06 — adding one
+# would be an out-of-scope module edit). Re-deriving "expected" from SKILL.md
+# is no longer possible without reintroducing the deleted duplicate prose, so
+# the vacuity-guard and its cross-check are retired together rather than left
+# to pass trivially-vacuous (extracting zero tiers) with no signal either way.
+#
+# checkpoint-spec.md's "## Picker tiers" section itself is NOT deleted — it
+# remains a Tier-1 behavioral characterization of checkpoint_picker.py, but
+# its per-line "[src: ... SKILL.md:NNN]" citations are now STALE (pointing at
+# line numbers inside the deleted section) and were NOT re-derived in this
+# pass; a full checkpoint-spec.md re-basing against checkpoint_picker.py's
+# source (not SKILL.md prose) is flagged as a follow-up, out of scope here.
 # ---------------------------------------------------------------------------
-
-
-def _extract_tier_headings_from_skill_md() -> list[str]:
-    """Parse the deployed adapter SKILL.md for '**Tier N — <title>**'-style
-    headings and return the literal 'Tier N — <title>' strings (trailing
-    colon, if any, stripped) in the order they appear."""
-    content = CHECKPOINT_SKILL_MD.read_text(encoding="utf-8")
-    tiers: list[str] = []
-    for m in re.finditer(r"\*\*Tier (\d+) — ([^*]+?)\*\*", content):
-        num, title = m.group(1), m.group(2)
-        title = title.rstrip(":").strip()
-        heading = f"Tier {num} — {title}"
-        if heading not in tiers:
-            tiers.append(heading)
-    return tiers
-
-
-def test_tier_headings_extracted_from_skill_md_are_nonempty():
-    """Sanity: extraction must actually find tier headings in the deployed
-    SKILL.md, otherwise the drift assertion below is vacuous."""
-    tiers = _extract_tier_headings_from_skill_md()
-    assert len(tiers) > 0, (
-        f"Extracted zero '**Tier N —**' headings from {CHECKPOINT_SKILL_MD} — "
-        "extraction regex broken, or the deployed SKILL.md no longer uses this heading style?"
-    )
-
-
-def test_picker_tiers_section_enumerates_same_tiers_as_skill_md(spec_text):
-    """checkpoint-spec.md's '## Picker tiers' section must name the same set
-    of tier numbers/titles as the DEPLOYED adapter SKILL.md (source of
-    truth) — not the reverse."""
-    skill_tiers = _extract_tier_headings_from_skill_md()
-    section = _extract_section(spec_text, "Picker tiers")
-
-    missing = [t for t in skill_tiers if t not in section]
-    assert not missing, (
-        f"checkpoint-spec.md's '## Picker tiers' section does not enumerate these tier "
-        f"heading(s) found in the deployed SKILL.md ({CHECKPOINT_SKILL_MD}): {missing}"
-    )
 
 
 # ---------------------------------------------------------------------------

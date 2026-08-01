@@ -27,23 +27,11 @@ class TestCheckpointB3ClauseB:
             "are included in the mtime comparison."
         )
 
-    def test_clause_b_uses_all_candidate_mtimes(self):
-        """Clause B must use 'max(ALL candidate mtimes)' (fixed wording)."""
-        text = _text()
-        assert "max(ALL candidate mtimes)" in text, (
-            "checkpoint/SKILL.md B3 Clause B must use 'max(ALL candidate mtimes)' "
-            "(IVG-57 fix). Current text does not contain this string."
-        )
-
-    def test_clause_b_mentions_disk_only(self):
-        """Clause B explanation must mention 'disk-only' candidates."""
-        text = _text()
-        # Extract the region around Clause B for a focused check
-        idx = text.find("Clause B")
-        assert idx != -1, "checkpoint/SKILL.md missing 'Clause B' entirely"
-        # Check within 500 chars after the first Clause B occurrence
-        region = text[idx : idx + 500]
-        assert "disk-only" in region, (
-            "checkpoint/SKILL.md B3 Clause B explanation must mention 'disk-only' "
-            "to document why ALL candidates are used (IVG-57)."
-        )
+    # IVG-162 T-07 retired test_clause_b_uses_all_candidate_mtimes and
+    # test_clause_b_mentions_disk_only: the "Clause B: ... max(ALL candidate mtimes)"
+    # prose they pinned lived exclusively in the deleted "B3 session-state fallback"
+    # trigger description inside `#### Fallback picker`. checkpoint_picker.py now
+    # implements Clause B directly; module-boundary correctness (including the
+    # disk-only-candidate inclusion this IVG-57 fix targeted) is verified by
+    # test_b3_clause_b_all_candidates_older_than_freshest_session in
+    # test_checkpoint_picker_roundtrip.py.

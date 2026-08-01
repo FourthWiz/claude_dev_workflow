@@ -128,49 +128,14 @@ def test_defer_mode_empty_sid_guard():
 # ---------------------------------------------------------------------------
 
 def test_tier1_fast_path_empty_sid_skip():
-    """Tier-1 fast path must document skipping BEFORE constructing pending-restore-${id}.
-
-    The guard must appear BEFORE the `if exists pending-restore-${current_session_id}`
-    check so the orphan filename is never even constructed.
-    """
-    text = _checkpoint_text()
-
-    # Locate the Tier-1 description and the fast path pseudocode block
-    tier1_idx = text.find("**Tier 1 — Fast path (current-session sentinel, fast validation):**")
-    assert tier1_idx != -1, "Tier-1 fast path heading not found in checkpoint/SKILL.md"
-
-    # The fast path block ends before Tier 2
-    tier2_idx = text.find("**Tier 2 —", tier1_idx)
-    if tier2_idx == -1:
-        tier2_idx = len(text)
-    tier1_text = text[tier1_idx:tier2_idx]
-
-    # The guard must appear before the `pending-restore-${current_session_id}` construction
-    guard_phrases = ["empty string OR", "empty or", "empty/unknown", "SKIP the fast path"]
-    guard_found = any(phrase.lower() in tier1_text.lower() for phrase in guard_phrases)
-    assert guard_found, (
-        "Tier-1 fast path does not document skipping when current_session_id is empty/unknown.\n"
-        f"Tier-1 text (first 800 chars):\n{tier1_text[:800]}"
-    )
-
-    # Confirm the guard appears BEFORE `pending-restore-${current_session_id}`
-    guard_pos = min(
-        (tier1_text.lower().find(p.lower()) for p in guard_phrases
-         if p.lower() in tier1_text.lower()),
-        default=None,
-    )
-    construct_pos = tier1_text.find("pending-restore-${current_session_id}")
-    if construct_pos == -1:
-        # Also check the code block form
-        construct_pos = tier1_text.find("pending-restore-${current_session_id}")
-
-    if guard_pos is not None and construct_pos != -1:
-        assert guard_pos < construct_pos, (
-            "The empty/unknown-SID guard appears AFTER the pending-restore construction — "
-            "it must appear BEFORE to prevent the orphan filename from being constructed.\n"
-            f"Guard position in Tier-1 text: {guard_pos}\n"
-            f"Construction position in Tier-1 text: {construct_pos}"
-        )
+    """Retired (IVG-162 T-07): the "Tier 1 — Fast path" prose this test pinned lived
+    exclusively inside the deleted `#### Fallback picker` section. checkpoint_picker.py
+    is now the sole restore-decision path and implements the empty/unknown-SID skip
+    itself; that behavior is verified directly against the module in
+    test_empty_and_unknown_sid_skips_tier1 (test_checkpoint_picker_roundtrip.py).
+    Kept as a no-op (rather than deleted outright) so this file's test count/history
+    stays traceable to the original IVG-84 T-10 regression."""
+    pass
 
 
 # ---------------------------------------------------------------------------
