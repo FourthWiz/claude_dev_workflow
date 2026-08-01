@@ -83,6 +83,7 @@ _DEFAULT_SESSION_FALLBACK_WINDOW = 7
 _DEFAULT_PICKER_DEDUP_WINDOW = 7
 _DEFAULT_CHECKPOINT_ENUM_WINDOW = 30  # SKILL.md:823, not env-tunable in prose
 _MIN_CHECKPOINT_BYTES = 100  # SKILL.md:823 corrupt/0-byte guard, not env-tunable in prose
+_DEFAULT_RESTORE_AMBIGUITY_WINDOW = 14400  # seconds (4h); QUOIN_RESTORE_AMBIGUITY_WINDOW; <=0 disables (IVG-160)
 
 # ---------------------------------------------------------------------------
 # Reason machine-tags (non-exhaustive — the plan's list is "e.g.")
@@ -98,6 +99,7 @@ REASON_B3_CLAUSE_A = "b3:clause-a"
 REASON_B3_CLAUSE_B = "b3:clause-b"
 REASON_ROUTE_THOROUGH_PLAN = "route:thorough-plan-progress"
 REASON_NONE_NO_CANDIDATES = "none:no-candidates"
+REASON_AMBIGUOUS = "ambiguous:multi-task-recent"
 
 # ---------------------------------------------------------------------------
 # Deterministic B3 synthesis template (M-4) — mirrors
@@ -252,6 +254,7 @@ def _empty_verdict(derived_task: str) -> dict:
         "b3_prompt": None,
         "consumed_sentinel_path": "",
         "reason": None,
+        "candidates": [],
     }
 
 
@@ -431,6 +434,30 @@ def select_restore(memory_dir, current_sid, now, current_task=None) -> dict:
         verdict["reason"] = reason
         return verdict
 
+    def finalize_ambiguity(recent):
+        # Distinct-task ambiguity Verdict (IVG-160). Nested closure so it inherits
+        # the already-computed derived_task/anchor_task/baseline_task set at Tier-2.
+        # Read-only projection of the recent candidate dicts (D-05 / proc:FINALIZE).
+        verdict["tier"] = "ambiguous"
+        verdict["kind"] = None
+        verdict["selected_path"] = None
+        verdict["cross_task_ok"] = None
+        verdict["stale"] = None
+        verdict["same_session"] = False
+        verdict["b3_prompt"] = None
+        verdict["consumed_sentinel_path"] = ""
+        verdict["reason"] = REASON_AMBIGUOUS
+        verdict["candidates"] = [
+            {"task": c["task"],
+             "path": str(c["path"]),
+             "mtime": c["mtime"],
+             "saved_time": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(c["mtime"])),
+             "source": c["source"],
+             "sentinel_path": c["sentinel_path"],
+             "kind": c["kind"]}
+            for c in recent]
+        return verdict
+
     # ---- Tier 1: fast path (SKILL.md:706-796) ----
     if current_sid and current_sid != "unknown":
         sentinel_path = memory_dir / f"pending-restore-{current_sid}.txt"
@@ -494,6 +521,17 @@ def select_restore(memory_dir, current_sid, now, current_task=None) -> dict:
 
     if not candidates:
         return _apply_route_override(finalize_b3(REASON_B3_CLAUSE_A))
+
+    # NEW — distinct-task ambiguity gate (IVG-160). Sits AFTER the Clause-A
+    # empty-check and BEFORE Clause B + the combined stale/cross-task gate.
+    # The recent window is SECONDS, anchored at now, compared directly (NOT via
+    # _in_window, which multiplies by 86400). amb_window <= 0 disables the gate.
+    amb_window = _env_int("QUOIN_RESTORE_AMBIGUITY_WINDOW", _DEFAULT_RESTORE_AMBIGUITY_WINDOW)
+    recent = [c for c in candidates
+              if amb_window > 0 and (now - c["mtime"]) <= amb_window]
+    if len({c["task"] for c in recent}) >= 2:
+        recent.sort(key=lambda c: c["mtime"], reverse=True)
+        return finalize_ambiguity(recent)
 
     max_cand_mtime = max(c["mtime"] for c in candidates)
     in_window_sessions = [p for p in session_files if _in_window(_mtime(p), now, session_fallback_window)]

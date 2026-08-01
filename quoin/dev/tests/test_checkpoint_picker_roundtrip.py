@@ -492,11 +492,13 @@ def test_no_local_hash_derivation():
 # ===========================================================================
 
 def _default_knobs(monkeypatch, **overrides):
-    """Set the four env knobs to their spec defaults, with overrides."""
+    """Set the env knobs to their spec defaults, with overrides."""
     monkeypatch.setenv("QUOIN_RESTORE_STALE_DAYS", str(overrides.get("stale_days", 1)))
     monkeypatch.setenv("QUOIN_RESTORE_SENTINEL_WINDOW", str(overrides.get("sentinel_window", 7)))
     monkeypatch.setenv("QUOIN_SESSION_FALLBACK_WINDOW", str(overrides.get("session_fallback_window", 7)))
     monkeypatch.setenv("QUOIN_PICKER_DEDUP_WINDOW", str(overrides.get("dedup_window", 7)))
+    # IVG-160 distinct-task ambiguity window (SECONDS; default 4h = 14400).
+    monkeypatch.setenv("QUOIN_RESTORE_AMBIGUITY_WINDOW", str(overrides.get("ambiguity_window", 14400)))
 
 
 def test_anchor_task_precedence_not_suppressed(tmp_path, monkeypatch):
@@ -1004,3 +1006,202 @@ def test_corrupt_and_headless_checkpoints_dropped(tmp_path, monkeypatch):
     assert v2["selected_path"] is not None, v2
     assert v2["tier"] == 3, v2
     assert v2["reason"] == "tier3:autopick", v2
+
+
+# ===========================================================================
+# IVG-160 — distinct-task ambiguity gate (architecture §9 items 1-8, AC-1..AC-9)
+# ===========================================================================
+
+def test_ambiguity_two_distinct_tasks_recent_returns_picker(tmp_path, monkeypatch):
+    # AC-2: two distinct tasks, both checkpoints within the recent window ->
+    # tier=="ambiguous", reason=="ambiguous:multi-task-recent", selected_path
+    # None, candidates has both, mtime-descending.
+    _default_knobs(monkeypatch)
+
+    memory_dir = _build_memory(tmp_path, {
+        "checkpoints": [
+            {"name": "2026-07-14T0000-alpha.md", "mtime": NOW, "task": "alpha"},
+            {"name": "2026-07-13T2300-beta.md", "mtime": NOW - 3600, "task": "beta"},
+        ],
+    })
+
+    verdict = _MOD.select_restore(memory_dir, "unknown", NOW)
+
+    assert verdict["tier"] == "ambiguous", verdict
+    assert verdict["reason"] == "ambiguous:multi-task-recent", verdict
+    assert verdict["selected_path"] is None, verdict
+    cands = verdict["candidates"]
+    assert len(cands) == 2, cands
+    assert {c["task"] for c in cands} == {"alpha", "beta"}, cands
+    # mtime-descending
+    assert cands[0]["mtime"] >= cands[1]["mtime"], cands
+    assert cands[0]["task"] == "alpha", cands  # NOW is freshest
+
+
+def test_ambiguity_candidate_schema(tmp_path, monkeypatch):
+    # AC-2: each candidate entry carries task/path/mtime/saved_time/source/
+    # sentinel_path/kind; saved_time is deterministic (gmtime of mtime); path is
+    # a str (R-08).
+    import time as _time
+    _default_knobs(monkeypatch)
+
+    memory_dir = _build_memory(tmp_path, {
+        "checkpoints": [
+            {"name": "2026-07-14T0000-alpha.md", "mtime": NOW, "task": "alpha"},
+            {"name": "2026-07-13T2300-beta.md", "mtime": NOW - 3600, "task": "beta"},
+        ],
+    })
+
+    verdict = _MOD.select_restore(memory_dir, "unknown", NOW)
+    assert verdict["tier"] == "ambiguous", verdict
+
+    for c in verdict["candidates"]:
+        assert set(c.keys()) == {
+            "task", "path", "mtime", "saved_time", "source", "sentinel_path", "kind"
+        }, c
+        assert isinstance(c["path"], str), c  # R-08: Path stringified
+        assert c["source"] in ("sentinel", "disk-only"), c
+        assert c["kind"] in ("checkpoint", "thorough-plan-progress"), c
+        # deterministic UTC render of mtime (no wall-clock)
+        expected_saved = _time.strftime("%Y-%m-%d %H:%M UTC", _time.gmtime(c["mtime"]))
+        assert c["saved_time"] == expected_saved, c
+
+
+def test_ambiguity_single_task_recent_autopicks(tmp_path, monkeypatch):
+    # AC-1: one distinct recent task (even with the session present) -> no
+    # ambiguity, tier==3 autopick, verdict["candidates"] == [].
+    _default_knobs(monkeypatch)
+
+    memory_dir = _build_memory(tmp_path, {
+        "sessions": [{"name": "2026-07-13-solo.md", "mtime": NOW - DAY, "task": "solo"}],
+        "checkpoints": [
+            {"name": "2026-07-14T0000-solo.md", "mtime": NOW, "task": "solo"},
+        ],
+    })
+
+    verdict = _MOD.select_restore(memory_dir, "unknown", NOW)
+
+    assert verdict["tier"] == 3, verdict
+    assert verdict["reason"] == "tier3:autopick", verdict
+    assert verdict["candidates"] == [], verdict
+
+
+def test_ambiguity_same_task_multiplicity_collapses(tmp_path, monkeypatch):
+    # AC-4: several recent checkpoints of the SAME task -> auto-pick most recent,
+    # tier != "ambiguous" (same-task multiplicity is NOT ambiguity).
+    _default_knobs(monkeypatch)
+
+    memory_dir = _build_memory(tmp_path, {
+        "checkpoints": [
+            {"name": "2026-07-14T0000-solo.md", "mtime": NOW, "task": "solo"},
+            {"name": "2026-07-13T2300-solo.md", "mtime": NOW - 3600, "task": "solo"},
+        ],
+    })
+
+    verdict = _MOD.select_restore(memory_dir, "unknown", NOW)
+
+    assert verdict["tier"] != "ambiguous", verdict
+    assert verdict["tier"] == 3, verdict
+    assert verdict["reason"] == "tier3:autopick", verdict
+    assert verdict["candidates"] == [], verdict
+
+
+def test_ambiguity_window_env_tunable_wide_vs_narrow(tmp_path, monkeypatch):
+    # AC-5: same fixture (two distinct tasks 1h apart). Wide window -> both in
+    # the recent set -> ambiguous; narrow window -> only the freshest is recent
+    # -> collapse to one distinct task -> auto-pick.
+    spec = {
+        "checkpoints": [
+            {"name": "2026-07-14T0000-alpha.md", "mtime": NOW, "task": "alpha"},
+            {"name": "2026-07-13T2300-beta.md", "mtime": NOW - 3600, "task": "beta"},
+        ],
+    }
+
+    # Wide (2 days) -> ambiguous.
+    memory_wide = _build_memory(tmp_path / "wide", spec)
+    _default_knobs(monkeypatch, ambiguity_window=172800)
+    v_wide = _MOD.select_restore(memory_wide, "unknown", NOW)
+    assert v_wide["tier"] == "ambiguous", v_wide
+
+    # Narrow (60s) -> only the NOW candidate is recent -> not ambiguous.
+    memory_narrow = _build_memory(tmp_path / "narrow", spec)
+    _default_knobs(monkeypatch, ambiguity_window=60)
+    v_narrow = _MOD.select_restore(memory_narrow, "unknown", NOW)
+    assert v_narrow["tier"] != "ambiguous", v_narrow
+
+
+def test_ambiguity_stale_cross_task_never_offered(tmp_path, monkeypatch):
+    # AC-3/FR-7: a days-old cross-task checkpoint + a recent same-task checkpoint
+    # -> not ambiguous; the days-old task is absent from any offered set; routes
+    # exactly as the pre-fix stale/cross-task path (tier-3 autopick of the recent
+    # same-task candidate).
+    _default_knobs(monkeypatch)
+
+    memory_dir = _build_memory(tmp_path, {
+        "sessions": [{"name": "2026-07-13-current.md", "mtime": NOW - DAY, "task": "current"}],
+        "checkpoints": [
+            {"name": "2026-07-14T0000-current.md", "mtime": NOW, "task": "current"},
+            # 5 days old, different task -> outside the 4h window, never recent.
+            {"name": "2026-07-09T0000-old-other.md", "mtime": NOW - 5 * DAY, "task": "old-other"},
+        ],
+    })
+
+    verdict = _MOD.select_restore(memory_dir, "unknown", NOW)
+
+    assert verdict["tier"] != "ambiguous", verdict
+    assert verdict["tier"] == 3, verdict
+    assert verdict["reason"] == "tier3:autopick", verdict
+    assert verdict["candidates"] == [], verdict
+    # The days-old cross-task checkpoint is never surfaced or selected.
+    assert "old-other" not in (verdict["selected_path"] or ""), verdict
+
+
+def test_ambiguity_window_zero_disables(tmp_path, monkeypatch):
+    # Opt-out: QUOIN_RESTORE_AMBIGUITY_WINDOW=0 -> gate disabled -> legacy
+    # behaviour (no ambiguity route even with two distinct recent tasks).
+    _default_knobs(monkeypatch, ambiguity_window=0)
+
+    memory_dir = _build_memory(tmp_path, {
+        "checkpoints": [
+            {"name": "2026-07-14T0000-alpha.md", "mtime": NOW, "task": "alpha"},
+            {"name": "2026-07-13T2300-beta.md", "mtime": NOW - 3600, "task": "beta"},
+        ],
+    })
+
+    verdict = _MOD.select_restore(memory_dir, "unknown", NOW)
+
+    assert verdict["tier"] != "ambiguous", verdict
+    assert verdict["tier"] == 3, verdict
+    assert verdict["reason"] == "tier3:autopick", verdict
+
+
+def test_empty_verdict_has_candidates_key(tmp_path, monkeypatch):
+    # FR-9/AC-7: the `candidates` key is present as [] on every non-ambiguity
+    # Verdict, AND the ambiguity path performs no writes / no env mutation.
+    _default_knobs(monkeypatch)
+
+    # (1) Non-ambiguity Verdict (empty memory -> B3) carries candidates == [].
+    empty_mem = _build_memory(tmp_path / "empty", {})
+    v_b3 = _MOD.select_restore(empty_mem, "unknown", NOW)
+    assert "candidates" in v_b3, v_b3
+    assert v_b3["candidates"] == [], v_b3
+
+    # (2) Purity of the ambiguity path: no writes anywhere under tmp_path and no
+    # os.environ mutation (mirrors test_module_performs_no_writes /
+    # test_module_does_not_mutate_environ for the new route).
+    monkeypatch.chdir(tmp_path)
+    amb_mem = _build_memory(tmp_path / "amb", {
+        "checkpoints": [
+            {"name": "2026-07-14T0000-alpha.md", "mtime": NOW, "task": "alpha"},
+            {"name": "2026-07-13T2300-beta.md", "mtime": NOW - 3600, "task": "beta"},
+        ],
+    })
+    before_tree = _tree_snapshot(tmp_path)
+    before_env = dict(os.environ)
+    v_amb = _MOD.select_restore(amb_mem, "unknown", NOW)
+    after_tree = _tree_snapshot(tmp_path)
+    after_env = dict(os.environ)
+
+    assert v_amb["tier"] == "ambiguous", v_amb  # sanity: really the ambiguity path
+    assert before_tree == after_tree, "ambiguity path must not write/touch any file"
+    assert before_env == after_env, "ambiguity path must not mutate os.environ"
