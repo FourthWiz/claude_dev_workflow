@@ -58,13 +58,18 @@ SECTION0_SKILLS = [
     "workspace",
 ]
 
-# PROVISIONAL ceilings = current measured SOURCE size (Stage 1 / T-01 baseline
-# date 2026-08-02). Ratcheted DOWN post-slim by T-12 in Stage 6 — do not
+# Ceilings = current measured SOURCE size (Stage 1 / T-01 baseline
+# date 2026-08-02) for files this wave did NOT slim; RATCHETED (T-12, Stage 6,
+# 2026-08-02) to post-slim size * 1.10 (rounded up) for files that WERE slimmed
+# this wave (checkpoint, claude_md — see T-06/T-07/T-08). The 20 §0-carrying
+# skill ceilings remain PROVISIONAL/unslimmed: T-10/T-11 (the §0 generator
+# conversion) were NOT attempted this dispatch (see
+# .workflow_artifacts/ivg-162-token-optimization-wave1/s0-census.md) — do not
 # hand-raise a ceiling to "fix" a failure; a failure here means a file grew
 # and the wave's slim target for that file needs to shrink it back down.
 CEILINGS = {
     "skill:capture_insight": 12237,
-    "skill:checkpoint": 94408,
+    "skill:checkpoint": 77799,  # T-12 ratchet: post-slim 70726 * 1.10
     "skill:cleanup": 17429,
     "skill:continue_work": 15477,
     "skill:cost_snapshot": 20244,
@@ -83,7 +88,7 @@ CEILINGS = {
     "skill:triage": 31351,
     "skill:weekly_review": 17152,
     "skill:workspace": 18328,
-    "claude_md": 39136,
+    "claude_md": 40726,  # T-12 ratchet: post-slim 37023 * 1.10
 }
 
 
