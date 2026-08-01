@@ -215,3 +215,90 @@ class TestPendingPromptCrossRef:
             "checkpoint/SKILL.md tier-2 enumeration path must be '.workflow_artifacts/memory' "
             "(cwd-from-stdin discipline, lesson 2026-05-16) — not bare 'memory'."
         )
+
+
+class TestAmbiguityGate:
+    """IVG-160 (AC-8/FR-8): the distinct-task ambiguity gate must be present in BOTH the
+    module-driven Step-1.0b render and the fail-OPEN Fallback picker prose, and the fallback
+    gate must run BEFORE the step-5 B3 Clause-A/B trigger (module↔prose parity).
+
+    Reads the SOURCE adapters SKILL.md via `_text()` (the established prose-contract idiom;
+    marker/anchor strings are byte-identical in source and deployed, so correctness is
+    unaffected and the read is not deploy-order-dependent — MIN-1, round 2)."""
+
+    # -- 8a. Presence greps (existence of the T-06 markers) --
+
+    def test_ambiguity_window_knob_present(self):
+        text = _text()
+        assert "QUOIN_RESTORE_AMBIGUITY_WINDOW" in text, (
+            "checkpoint/SKILL.md must reference the QUOIN_RESTORE_AMBIGUITY_WINDOW knob (IVG-160)."
+        )
+
+    def test_step_1_0b_ambiguity_branch_present(self):
+        text = _text()
+        assert 'tier == "ambiguous"' in text, (
+            "checkpoint/SKILL.md Step 1.0b must branch on the module's tier == \"ambiguous\" Verdict."
+        )
+        # The shared substring appears in BOTH the Step-1.0b branch and the fallback section.
+        assert text.count("Distinct-task ambiguity gate") >= 2, (
+            "the 'Distinct-task ambiguity gate' marker must appear in BOTH the Step-1.0b branch "
+            "and the Fallback picker section."
+        )
+
+    def test_fallback_unique_label_present(self):
+        text = _text()
+        assert "Distinct-task ambiguity gate — fallback parity" in text, (
+            "the fallback gate must carry the section-unique '— fallback parity' label (IVG-160)."
+        )
+
+    def test_second_ambiguity_only_json_parse_present(self):
+        text = _text()
+        # Step 1.0a already uses one json.loads; Step 1.0b adds a SECOND, ambiguity-only parse.
+        assert text.count("json.loads") >= 2, (
+            "Step 1.0b must run a SECOND, ambiguity-only json.loads candidate parse "
+            "(the fixed-field scalar parse cannot carry the variable-length candidates list)."
+        )
+        assert "\\x1f" in text, (
+            "the ambiguity candidate rows must be \\x1f-separated (bash-3.2 empty-field safety)."
+        )
+
+    def test_fallback_distinct_task_picker_language_present(self):
+        text = _text()
+        assert ">= 2 distinct tasks" in text, (
+            "the fallback gate must present the picker when >= 2 distinct tasks are in the window."
+        )
+
+    def test_min1_bullet_skip_instruction_present(self):
+        text = _text()
+        assert "do NOT execute bullets 1-5" in text, (
+            "Step 1.0b ambiguity branch must explicitly skip bullets 1-5 (MIN-1) so the empty "
+            "top-level selected_path/consumed_sentinel_path cannot clobber the bound cp_path."
+        )
+
+    def test_min2_loop_guard_token_present(self):
+        text = _text()
+        assert '|| [ -n "$task" ]' in text, (
+            "the ambiguity candidate read loop must carry the '|| [ -n \"$task\" ]' guard so the "
+            "final row is processed even if the trailing newline is absent (bash 3.2.57, MIN-2)."
+        )
+
+    # -- 8b. Ordering assert (the load-bearing parity guard) --
+
+    def test_fallback_gate_precedes_b3_trigger(self):
+        """The fallback distinct-task gate marker must appear BEFORE the step-5 B3-trigger anchor
+        WITHIN the Fallback picker section. Slicing to the section first (excluding the ~Step-1.0b
+        occurrence) and anchoring on the fallback-UNIQUE label makes this genuinely load-bearing:
+        a regression that moves the gate back inside the Normal picker (below the B3 trigger)
+        fails RED (round-2 MAJ-1 vacuity fix)."""
+        text = _text()
+        fb_start = text.find("#### Fallback picker")   # heading exists verbatim
+        assert fb_start != -1, "fallback section heading not found"
+        fb = text[fb_start:]
+        idx_gate = fb.find("Distinct-task ambiguity gate — fallback parity")  # 6c fallback-unique
+        idx_b3 = fb.find("check the B3 session-state fallback trigger")        # step-5 B3 anchor
+        assert idx_gate != -1, "fallback ambiguity-gate marker not found in fallback section"
+        assert idx_b3 != -1, "B3 trigger anchor not found in fallback section"
+        assert idx_gate < idx_b3, (
+            "fallback distinct-task gate must precede the step-5 B3 trigger (module↔prose "
+            "pre-Clause-B parity, AC-8/FR-8)."
+        )

@@ -121,6 +121,21 @@ The restore picker in `/checkpoint --restore` Step 1.0 is organized into four li
    a minimal restore prompt directly from the freshest `sessions/*.md` file rather than from
    any checkpoint file (see the "B3 synthesized template" section below).
 
+> **Addendum (2026-08-01, IVG-160) — distinct-task ambiguity sub-step inside Tier 3.** Tier 3
+> now runs a NON-NUMBERED distinct-task ambiguity gate *before* the B3 Clause-A/B trigger and the
+> combined auto-pick gate (it is a sub-step of Tier 3, deliberately NOT a new numbered tier — the
+> four-tier structure above is unchanged). When ≥ 2 **distinct** `## Active task` values each have
+> a candidate whose mtime is within `QUOIN_RESTORE_AMBIGUITY_WINDOW` (**seconds**, default 14400 =
+> 4h; `<= 0` disables) of `now`, `select_restore` returns a new `tier == "ambiguous"` Verdict
+> carrying a `candidates` list (mtime-descending) instead of silently auto-picking, and SKILL.md
+> renders an interactive picker (module stays read-only — the module decides, the SKILL renders).
+> Same-task multiplicity collapses to one distinct task and does NOT trigger the picker. Because
+> the ~4h window is narrower than `QUOIN_RESTORE_STALE_DAYS` (default 1 day), a days-old cross-task
+> checkpoint can never enter the recent set, so the IVG-139 stale-suppression guarantee is
+> preserved: when the gate does not fire, control falls into the byte-for-byte-unchanged Clause-B
+> and combined stale/cross-task gate. `[src: quoin/core/scripts/checkpoint_picker.py `finalize_ambiguity`;
+> quoin/adapters/claude/skills/checkpoint/SKILL.md Step 1.0b + Fallback "Distinct-task ambiguity gate"]`
+
 ### B-labels vs. Tier-N structure
 
 The SKILL.md separately uses `B1`, `B2`, `B3` labels in its prose. These are **not** a 1:1
@@ -364,12 +379,14 @@ cleanup SKILL.md files (7 found — not assumed to be any particular count in ad
 | `QUOIN_RESTORE_SENTINEL_WINDOW` | **7** | `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:713, 806]` (not in `_lib.sh` — defined inline in the skill body) | Restore-picker Tier 2 (pending-prompt cross-reference) and Tier 3 B1 sentinel enumeration | "Narrows the long tail of orphaned sentinels; asymmetric with checkpoint-enum's 30d is INTENTIONAL: sentinels are transient pointers, not durable artifacts" `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:806]` |
 | `QUOIN_RESTORE_STALE_DAYS` | **1** | `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:901]` (inline in skill body, not `_lib.sh`) | Combined auto-pick gate (Tier 3), staleness clause | **This is the knob the task brief specifically warned about**: a prior draft of this spec wrongly assumed a default of 7. The verified default, read directly from the SKILL.md line, is **1**, not 7. |
 | `QUOIN_SESSION_FALLBACK_WINDOW` | **7** | `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:856, 927]` (inline in skill body) | B3 trigger Clause B, and B3 fallback's own session-state enumeration window | Determines how far back a "freshest session-state file" can be for the B3 fallback / Clause-B same-day-symptom check to consider it |
+| `QUOIN_RESTORE_AMBIGUITY_WINDOW` | **14400** | `[src: quoin/core/scripts/checkpoint_picker.py `_DEFAULT_RESTORE_AMBIGUITY_WINDOW`; SKILL.md Step 1.0b + Fallback "Distinct-task ambiguity gate" (IVG-160)]` | Tier-3 distinct-task ambiguity sub-step (`select_restore`, after the Clause-A empty-check and before Clause B) | **Unit is SECONDS, not days** (the seconds/days asymmetry is load-bearing — this knob is compared directly as `(now - mtime) <= window`, NOT via the day-based `_in_window`/`-mtime` machinery every other row above uses). Window during which ≥ 2 distinct-task candidates trigger the interactive ambiguity picker instead of a silent auto-pick. Default 14400 = 4h. **`<= 0` disables the gate** (legacy opt-out). |
 | `QUOIN_PICKER_DEDUP_WINDOW` | **7d** | `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:848]` (inline; note the default is written as `7d` with a literal `d` suffix in this one call site, unlike the bare-integer form used elsewhere) | Picker candidate de-duplication (precompact vs. voluntary same-task pairing) | Pairs older than this are treated as independent entries rather than deduplicated |
 | `QUOIN_CLEANUP_SENTINEL_WINDOW` | **1** (documented as "1d") | `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:313]`, also documented in `quoin/adapters/claude/skills/cleanup/SKILL.md:3, 168` | `/checkpoint` Step 1.47 auto-cleanup sentinel sweep, and standalone `/cleanup` | Age threshold for trashing sentinel files during auto-cleanup |
 | `QUOIN_CLEANUP_CKPT_WINDOW` | **30** | `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:314]`, also `quoin/adapters/claude/skills/cleanup/SKILL.md:3, 175` | Same cleanup sweep, checkpoint-file branch | Age threshold for trashing old `checkpoints/*.md` files |
 
-**Count found: 10 distinct env vars** across these two areas of concern (4 sourced from
-`_lib.sh:read_constants()`, 6 defined inline in the checkpoint/cleanup SKILL.md bodies) — not
+**Count found: 11 distinct env vars** across these two areas of concern (4 sourced from
+`_lib.sh:read_constants()`, 7 defined inline in the checkpoint/cleanup SKILL.md bodies — including
+`QUOIN_RESTORE_AMBIGUITY_WINDOW`, the sole SECONDS-unit knob, added for IVG-160) — not
 5 as a naive reading of the task brief's example list might suggest, and not exactly the
 brief's suggested candidate set either (`QUOIN_DISCOVERY_STALE_DAYS`/`QUOIN_SERENA_STALE_DAYS`
 are present in `_lib.sh` but are not restore/cleanup knobs at all — included above for
