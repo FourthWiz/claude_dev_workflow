@@ -121,6 +121,7 @@ Fail-graceful path with error-class triage (per architecture I-01):
       Then proceed to §1 at the current tier (fail-OPEN per I-01).
 <!-- §0-worktree-fallback-end -->
 Otherwise (already at or below declared tier, OR prompt has [no-redispatch] sentinel, OR dispatch unavailable): proceed to §0c.
+<!-- §0-end -->
 
 ## §0‴ Minimum-tier guard (execute after §0 — before any §0-sidecar block and the skill body)
 This skill is declared model: "sonnet". If the executing agent is running on a model

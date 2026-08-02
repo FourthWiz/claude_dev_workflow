@@ -61,33 +61,39 @@ SECTION0_SKILLS = [
 # Ceilings = current measured SOURCE size (Stage 1 / T-01 baseline
 # date 2026-08-02) for files this wave did NOT slim; RATCHETED (T-12, Stage 6,
 # 2026-08-02) to post-slim size * 1.10 (rounded up) for files that WERE slimmed
-# this wave (checkpoint, claude_md — see T-06/T-07/T-08). The 20 §0-carrying
-# skill ceilings remain PROVISIONAL/unslimmed: T-10/T-11 (the §0 generator
-# conversion) were NOT attempted this dispatch (see
-# .workflow_artifacts/ivg-162-token-optimization-wave1/s0-census.md) — do not
-# hand-raise a ceiling to "fix" a failure; a failure here means a file grew
-# and the wave's slim target for that file needs to shrink it back down.
+# this wave (checkpoint, claude_md — see T-06/T-07/T-08).
+#
+# The 20 §0-carrying skill ceilings were RE-BASELINED on 2026-08-02 (IVG-165
+# Commit N1): the generator-conversion boundary marker (`<!-- §0-end -->`)
+# adds exactly +17 bytes to every §0 region BY CONSTRUCTION (proc:marker-place
+# in the IVG-165 plan), not regrowth. This is an AUTHORIZED one-time exception
+# to the "do not hand-raise a ceiling" rule below, scoped exactly to the
+# marker's byte delta — do not treat this re-baseline as license to hand-raise
+# a ceiling for any OTHER reason. IVG-165 Commit R re-ratchets all 20 to
+# post-slim size * 1.10 once Step B slims the now generator-owned template.
+# Until Commit R lands, a failure here (outside the marker re-baseline) means
+# a file grew for a reason other than the marker and needs to shrink back down.
 CEILINGS = {
-    "skill:capture_insight": 12237,
-    "skill:checkpoint": 77799,  # T-12 ratchet: post-slim 70726 * 1.10
-    "skill:cleanup": 17429,
-    "skill:continue_work": 15477,
-    "skill:cost_snapshot": 20244,
-    "skill:end_of_day": 46351,
-    "skill:end_of_task": 51550,
-    "skill:expand": 20119,
-    "skill:gate": 57562,
-    "skill:implement": 50579,
-    "skill:next_steps": 11973,
-    "skill:pr": 19463,
-    "skill:revise-fast": 27687,
-    "skill:rollback": 22874,
-    "skill:sleep": 25021,
-    "skill:start_of_day": 26563,
-    "skill:status": 9005,
-    "skill:triage": 31351,
-    "skill:weekly_review": 17152,
-    "skill:workspace": 18328,
+    "skill:capture_insight": 12254,
+    "skill:checkpoint": 77799,  # T-12 ratchet: post-slim 70726 * 1.10 (unaffected by N1 re-baseline; already >= new size)
+    "skill:cleanup": 17446,
+    "skill:continue_work": 14691,
+    "skill:cost_snapshot": 20261,
+    "skill:end_of_day": 45583,
+    "skill:end_of_task": 50776,
+    "skill:expand": 19375,
+    "skill:gate": 56830,
+    "skill:implement": 49817,
+    "skill:next_steps": 11990,
+    "skill:pr": 18743,
+    "skill:revise-fast": 26913,
+    "skill:rollback": 22118,
+    "skill:sleep": 25038,
+    "skill:start_of_day": 26580,
+    "skill:status": 9022,
+    "skill:triage": 31368,
+    "skill:weekly_review": 17169,
+    "skill:workspace": 17566,
     "claude_md": 40726,  # T-12 ratchet: post-slim 37023 * 1.10
 }
 

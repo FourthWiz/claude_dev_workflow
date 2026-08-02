@@ -764,6 +764,15 @@ KNOWN_DEFERRED_ROSTERS: dict = {
         "self-guarded by test_section0_skills_set_matches_ceiling_keys in the "
         "same file — not a candidate for RG-TESTROSTER cross-file agreement."
     ),
+    "SECTION0_SKILLS@test_section0_marker.py": (
+        "IVG-165 T-02 marker-placement-assertion roster: a verbatim copy of "
+        "the same 20-skill §0-carrying population as "
+        "SECTION0_SKILLS@test_footprint_ceilings.py, duplicated (not "
+        "independently authored) so this structural-invariant test has no "
+        "cross-file import dependency on the ceilings test. Same rationale "
+        "applies: no skills.json field distinguishes '§0-carrying', editorial, "
+        "single-file, not a candidate for RG-TESTROSTER cross-file agreement."
+    ),
 }
 
 _ALLCAPS_RE = None  # populated lazily to avoid import cost at module load
