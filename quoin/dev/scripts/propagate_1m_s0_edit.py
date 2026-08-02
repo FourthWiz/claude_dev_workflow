@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Propagate the IVG-90 Stage 2 §0 proactive 1M-precheck edit to all 19 SKILL.md files.
+"""DEPRECATED (IVG-165, D-05): this was a one-shot historical migration script;
+its roster is stale (`workspace` absent) and no live pipeline imports it. §0
+is now generator-owned by `inject_pollution_dispatch.py` (IVG-165 Commit A),
+which supersedes this script's role for all future §0 edits. Kept intact
+(functions untouched) because `test_propagate_1m_s0_edit.py` dynamically
+imports and exercises its functions; do not extend or reuse this module for
+new work — see `inject_pollution_dispatch.py::render_section0_block`.
+
+Propagate the IVG-90 Stage 2 §0 proactive 1M-precheck edit to all 19 SKILL.md files.
 
 Applies three byte-identical insertions to each target file:
   1. DECIDE_BLOCK before SPAWN_AGENT_ANCHOR (pre-dispatch 1M check)

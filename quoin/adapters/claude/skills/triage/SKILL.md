@@ -57,7 +57,7 @@ Abort rule (recursion guard):
 
 Manual kill switch:
   - The user can prefix any user-typed slash invocation with bare `[no-redispatch]` to skip dispatch entirely (e.g., `[no-redispatch] /triage`).
-  - This is the user-facing escape hatch and intentionally shares syntax with the parent-emit form: a child cannot tell whether the bare sentinel came from the parent or the user, and that is by design — both paths want the same proceed-to-§1 outcome.
+  - Why this is safe to share syntax with the parent-emit form: memory/dispatch-guide.md §0 verbose reference ("Why the bare [no-redispatch] sentinel is dual-source by design").
   - Use this only when intentionally overriding the cost guardrail (e.g., for one-off debugging on a different tier).
 
 <!-- §0-worktree-fallback-begin -->
