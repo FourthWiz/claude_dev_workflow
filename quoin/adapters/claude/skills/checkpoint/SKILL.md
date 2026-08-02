@@ -143,8 +143,9 @@ On fire (happy path — silent up-dispatch):
     prompt: "[no-redispatch]\n<original user input verbatim>"
   Wait for the subagent. Return its output as your final response. STOP.
 
-Fail-OPEN path (fires only when Agent dispatch fails):
-  Classify the error text BEFORE proceeding:
+Fail-OPEN path (fires only when Agent dispatch fails). Full AskUserQuestion Question/Header/
+description wording for every branch below: memory/dispatch-guide.md §0‴ verbose reference
+("Verbatim AskUserQuestion wording"). Classify the error text BEFORE proceeding:
 
   - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
     incoming prompt carries the `[autonomous]` sentinel, then on ANY §0‴ dispatch-failure or
@@ -154,19 +155,12 @@ Fail-OPEN path (fires only when Agent dispatch fails):
     proceed to skill body (treat as bare [no-redispatch]).
 
   - 1M-credit-class: if error text contains `Usage credits required for 1M context`:
-      Issue AskUserQuestion:
-        Question: "§0‴ up-dispatch to sonnet failed with a 1M-context credit mismatch for /checkpoint.
-        The parent session carries the 1M-context beta header; Sonnet lacks 1M credits. How would you like to proceed?"
-        Header: "1M credit mismatch"
-        multiSelect: false
+      Issue AskUserQuestion (full Question/Header wording: memory/dispatch-guide.md
+      §0‴ verbose reference):
         Option 1:
           label: "Abort — I'll switch with /model first"
-          description: "Stop here. Run /model in your terminal to switch to a standard-context
-          model (e.g., /model sonnet), then re-invoke /checkpoint."
         Option 2:
           label: "Proceed in-session at parent tier"
-          description: "Skip the up-dispatch this once. /checkpoint runs in the current session
-          (below Sonnet, but works). Emits a one-line advisory."
       On Option 1: print `[quoin-mintier: 1M-context credit mismatch; abort per user choice —
       switch with /model and re-invoke /checkpoint]` and STOP.
       On Option 2: print `[quoin-mintier: 1M-context credit mismatch on sonnet up-dispatch;
@@ -174,19 +168,12 @@ Fail-OPEN path (fires only when Agent dispatch fails):
       and proceed to skill body (treat as bare [no-redispatch]).
 
   - Any other error: Issue AskUserQuestion (labels verbatim — drift relies on equality):
-      Question: "/checkpoint requires Sonnet but this session is below Sonnet. Auto-dispatch to Sonnet failed. How would you like to proceed?"
-      Header: "Min-tier"
-      multiSelect: false
-      Option 1:
-        label: "Abort — run from a Sonnet session"
-        description: "Stop here. Switch the session to Sonnet (/model sonnet) and re-invoke /checkpoint."
-      Option 2:
-        label: "Proceed at current tier (under-powered)"
-        description: "Run /checkpoint on the current cheaper model. Quality may be reduced;
-        emits a one-line advisory."
-    Then:
-      - Option 1: print `[quoin-mintier: aborted; re-invoke /checkpoint from a Sonnet session]` and STOP.
-      - Option 2: print `[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]`, then proceed to skill body (treat as bare [no-redispatch]).
+        Option 1:
+          label: "Abort — run from a Sonnet session"
+        Option 2:
+          label: "Proceed at current tier (under-powered)"
+      On Option 1: print `[quoin-mintier: aborted; re-invoke /checkpoint from a Sonnet session]` and STOP.
+      On Option 2: print `[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]`, then proceed to skill body (treat as bare [no-redispatch]).
 <!-- §0tripleprime-end -->
 
 ## When to use
@@ -836,12 +823,15 @@ the module always exits 0, but guard anyway), the script is absent, picker stdou
 the PARSE step itself fails (`_parse_rc != 0` — malformed JSON, the `{"error": ...}` fail-OPEN
 shape, empty dict, or a `tier` field that is missing/falsy), OR `_parsed` is empty after
 extraction. On any of these: print one line
-`[checkpoint] restore-picker module unavailable ($reason); using prose fallback` and drop into
-the retained "Fallback picker" prose below (skip Step 1.0b entirely — the Fallback picker
-tiers run in its place and produce `cp_path` + `consumed_sentinel_path` exactly as before).
+`[checkpoint] restore-picker module unavailable ($reason); no restore anchor could be determined`
+and fall through to the existing Step 3 graceful "no checkpoints found" path (skip Step 1.0b
+entirely — `checkpoint_picker.py` is authoritative and no prose duplicate is retained; IVG-162
+T-07 removed the ≈24.7KB fail-OPEN prose fallback that self-labelled itself "slated for removal
+one release after S3 per Q-02" — the module's behavior is verified independently by
+`test_checkpoint_picker_roundtrip.py` against `quoin/memory/checkpoint-spec.md`, not by
+duplicating its logic here).
 
-**On a successful parse:** proceed to Step 1.0b below. Do NOT run the Fallback picker tiers in
-this case — they are the fail-OPEN path only.
+**On a successful parse:** proceed to Step 1.0b below.
 
 **Step 1.0b — Verdict → step mapping (module-driven path only; runs after a successful Step 1.0a parse)**
 
@@ -894,10 +884,9 @@ this case — they are the fail-OPEN path only.
    done <<< "$_cands"
    ```
 
-   Render the numbered picker by REUSING the existing "Two or more" numbered-picker presentation
-   shape (see the Fallback picker's "Two or more" branch below): one line per entry
-   `N. * Task: <task>  Branch: (n/a)  Saved: <saved_time>  (sentinel|disk-only)` — `*` marks
-   `source == sentinel`, branch is `(n/a)` since artifacts are branch-agnostic; entries are
+   Render the numbered picker using the standard numbered-picker presentation shape: one line
+   per entry `N. * Task: <task>  Branch: (n/a)  Saved: <saved_time>  (sentinel|disk-only)` — `*`
+   marks `source == sentinel`, branch is `(n/a)` since artifacts are branch-agnostic; entries are
    already mtime-descending. Prompt `Enter number, or 'skip' to proceed to direct lookup:`.
    - On a valid number `i`: if `_kinds[i] == thorough-plan-progress`, print
      `[checkpoint] A thorough-plan progress file is pending — resume via /thorough_plan, not /checkpoint --restore.`
@@ -914,345 +903,34 @@ this case — they are the fail-OPEN path only.
    Step 5's cleanup reads (module returns `""` when no orphan sentinel was consumed — the
    Tier-1 current-session cleanup at Step 5 keys off `current_session_id`, independent of this
    value, so an empty `consumed_sentinel_path` on a Tier-1 Verdict is expected and correct).
-3. `tier == "4-B3"` → enter the same interactive B3 branch as the Fallback picker: surface the
-   synthesize `[y / n]` prompt (see "B3 session-state fallback" below). On `y`, proceed to Step 2
-   with:
-   - `TASK = derived_task` (pure delegation to the module's field — the same freshest-
-     `sessions/*.md`-filename-derived value the Fallback picker's own B3 lookup computes).
-   - `INTENT` — do NOT use `b3_prompt` (it is a fixed synthesis-instruction template, not the
-     extracted next-step, and must never be rendered into the "Last intent" slot). Instead,
-     independently locate the freshest `${_mem_dir}/sessions/*.md` file — the SAME lookup the
-     Fallback picker performs, using the same `QUOIN_SESSION_FALLBACK_WINDOW` (default 7d) — and
-     run the EXISTING `## Unfinished work` extraction + strip pipeline verbatim (see "B3
-     session-state fallback" below) to produce `INTENT`.
-   - `BRANCH = "(unknown — session-state has no branch field)"`.
-   - `IN_FLIGHT_ARTIFACTS = []`.
+3. `tier == "4-B3"` → independently locate the freshest in-window session-state file and
+   synthesize a minimal restore prompt from it. This is the FULL runnable pipeline (self-contained
+   — does not depend on any other section of this file):
 
-   **Fall-through:** if the SKILL's own windowed freshest-`sessions/*.md` lookup (the same
-   lookup used to derive `INTENT` above) finds no file, fall through to the existing Step 3
-   graceful "no checkpoints found" path. Key this fall-through on the SKILL's own lookup result,
-   NOT on the module's `reason` field — a gate-suppressed B3 route with no in-window session can
-   carry `reason == "tier3:gate-suppressed:cross-task"` or `":stale"` while `b3_prompt` is still
-   null, so `reason` and "no in-window session" are not strictly equivalent signals.
-4. `reason` (machine tag) → on any suppression reason (`tier3:gate-suppressed:stale`,
-   `tier3:gate-suppressed:cross-task`, `tier1:cross-task->b3`), print a generic warning:
-   `[checkpoint] WARNING: auto-pick suppressed (${reason}). Routing to session-state synthesis (B3). Run /checkpoint --restore and choose 'y' to synthesize.`
-   Detail is intentionally REDUCED in the module-driven path — do NOT attempt to reconstruct the
-   Fallback picker's `task='X' vs 'Y'` / `Nd old` detail; the module discards the suppressed
-   candidate's task/path/age on every B3 route, so that detail is not recoverable from the
-   Verdict alone. The Fallback picker (used only when the module is unavailable) still prints
-   the full-detail warning.
-5. `same_session`: do NOT remove Step 1.5, and the SKILL MUST NOT independently surface a
-   same-session warning from the Verdict's `same_session` field — only Step 1.5's own
-   `_SAME_SESSION` computation (which has `ckpt_sid` plus the compact-happened override) may
-   trigger the `AskUserQuestion`. The Verdict's `same_session` is available as a cross-check
-   only and must never independently fire a second same-session prompt.
-
-After bullet 0-5 resolve (and the process did not STOP or fall through), `cp_path` and
-`consumed_sentinel_path` are bound; proceed to Step 1.5 exactly as the Fallback picker path
-does.
-
----
-
-#### Fallback picker (fail-OPEN — used only when `checkpoint_picker.py` is unavailable; slated for removal one release after S3 per Q-02)
-
-This prose duplicates `checkpoint_picker.py:select_restore`; the module is authoritative. Do not
-diverge — see `quoin/memory/checkpoint-spec.md`. This block is reached from Step 1.0a's
-fail-OPEN routing above, or (defensively) if the module is not installed at all.
-
-**Step 1.0 — Anchor selection (priority order)**
-
-Before enumerating disk checkpoints, attempt to resolve a restore anchor from higher-priority signals. Proceed through tiers in order; stop at the first anchor found. Tier-1 applies a cross-task guard before returning (fast validation); Tier-2 cross-references pending-prompt sentinels; Tier-3 runs full enumeration with the combined cross-task + staleness gate.
-
-**Tier 1 — Fast path (current-session sentinel, fast validation):** If `current_session_id` is the empty string OR equals the literal `unknown`: SKIP the fast path entirely (do NOT construct `pending-restore-${current_session_id}.txt` — that would resolve to `pending-restore-.txt` and may spuriously hit a stale orphan sentinel). Fall through to Tier-2/Tier-3 enumeration.
-
-Otherwise: check for `pending-restore-${current_session_id}.txt`. If it exists and its checkpoint path is valid, apply the cross-task identity guard before returning (fast validation, not fast bypass). Resolve `freshest_task` from the freshest `sessions/*.md` filename — the tier-2 `_anchor_task` variable is not yet set at this execution position (it is assigned inside the Tier-2 loop below). If `freshest_task` is non-empty and the candidate's `## Active task` differs from `freshest_task`, emit a loud warning and route to B3 synthesis instead of returning. If `## Active task` cannot be parsed, drop the fast path and fall through to Tier-2/Tier-3 enumeration. Otherwise (same task, or `freshest_task` is empty — no session-state to compare) return immediately — the common case still returns sub-second without full enumeration. The staleness guard is NOT applied here; a same-task sentinel that is several days old passes unconditionally (see D-01 rationale in the plan: the Tier-3 picker handles stale-same-task via fresher alternatives; suppressing it at Tier-1 would break the normal save-tonight/resume-tomorrow workflow).
-
-**Tier 2 — Pending-prompt cross-reference (fix #5):** when the fast path misses (fresh session: current_session_id has no pending-restore), enumerate ALL in-window `pending-prompt-<SID>.txt` sentinels. This automates the manual "look into pending prompts to find today's real session" recovery.
-
-```sh
-_w="${QUOIN_RESTORE_SENTINEL_WINDOW:-7}"
-_mem_dir="${_PROJECT_ROOT}/.workflow_artifacts/memory"   # resolved root, NOT raw cwd
-_anchor=""
-_anchor_task=""
-# Iterate in mtime-descending order so the freshest pending-prompt is tried first
-for pp in $(find "$_mem_dir" -maxdepth 1 -name 'pending-prompt-*.txt' \
-              -mtime -"${_w}" -print0 2>/dev/null \
-            | xargs -0 ls -t 2>/dev/null); do
-  sid=$(basename "$pp" | sed 's/^pending-prompt-//; s/\.txt$//')
-  _pr_candidate="${_mem_dir}/pending-restore-${sid}.txt"
-  if [ -f "$_pr_candidate" ]; then
-    _cp_candidate=$(head -1 "$_pr_candidate" 2>/dev/null)
-    if [ -n "$_cp_candidate" ] && [ -f "$_cp_candidate" ]; then
-      _anchor="$_cp_candidate"          # strongest: both hook sentinels present for this SID
-      consumed_sentinel_path="$_pr_candidate"
-      break
-    fi
-  fi
-  # No pending-restore for this SID; extract task name from session-state to seed
-  # the tier-3 cross-task guard (T-04) even when no pending-restore exists.
-  # Use the existing Step 1.1 Session UUID grep to associate SID → session-state file:
-  _implied_ss=$(grep -iEl "^([[:space:]]*-[[:space:]]*)?(Session UUID:[[:space:]]*)${sid}" \
-                  "$_mem_dir/sessions/"*.md 2>/dev/null | head -1)
-  if [ -z "$_implied_ss" ]; then
-    # Fallback: most-recently-modified session-state file (mtime heuristic)
-    _implied_ss=$(ls -t "$_mem_dir/sessions/"*.md 2>/dev/null | head -1)
-  fi
-  if [ -n "$_implied_ss" ] && [ -z "$_anchor_task" ]; then
-    _basename=$(basename "$_implied_ss" .md)
-    _anchor_task="${_basename#????-??-??-}"   # strip YYYY-MM-DD- date prefix
-  fi
-  # Do NOT break — keep scanning for a stronger (anchor) candidate
-done
-```
-
-Explicit fallthrough behavior:
-- `_anchor` set → bind cp_path = <anchor file path>, proceed to Step 1.5 (same-session detection), then Step 2.
-- `_anchor` not set but `_anchor_task` set → feed `_anchor_task` to tier-3 freshest_task override; proceed to tier-3 full enumeration.
-- Neither set → fall through to tier-3 full enumeration (no silent failure; the combined gate at auto-pick applies).
-
-**Tier 3 — Full enumeration with combined gate:** standard B1 sentinel + 30d checkpoint scan below, with the cross-task + staleness combined gate applied at auto-pick (D-03). See "Normal picker" and "Combined auto-pick gate" below.
-
-**Tier 4 — B3 session-state synthesis:** fires when tier-3 auto-pick is suppressed or candidate_count == 0. See "B3 session-state fallback" below.
-
----
-
-**Fast path (sub-second, fast validation — cross-task guard applied):**
-Before building the candidate list, check for a current-session sentinel. If found,
-validate it with the cross-task guard (staleness is NOT evaluated — see Tier-1 description
-above for rationale; a same-task sentinel that is several days old passes and returns fast):
-```
-# Empty/unknown-SID guard: if current_session_id is empty or literal "unknown",
-# skip the fast path entirely — constructing pending-restore-.txt would match a stale orphan.
-if [ -z "$current_session_id" ] || [ "$current_session_id" = "unknown" ]; then
-  # Fall through to Tier-2/Tier-3 enumeration
-  goto full_enumeration
-fi
-
-if exists pending-restore-${current_session_id}.txt:
-  read its single-line content (cp_path)
-  verify cp_path exists; if no: drop fast path, fall through to Tier-2/Tier-3 enumeration
-
-  # Fast validation: cross-task guard only
-  cand_task=$(awk '/^## Active task[[:space:]]*$/{getline; gsub(/\r$/,""); print; exit}' "$cp_path")
-  if [ -z "$cand_task" ]: drop fast path, fall through to Tier-2/Tier-3 (parse failure)
-
-  freshest_task=$(ls -t "${_mem_dir}/sessions/"*.md 2>/dev/null | head -1 \
-    | xargs -I{} basename {} .md 2>/dev/null | sed 's/^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}-//')
-  # Note: freshest_task derives from sessions/*.md filename only.
-  # The tier-2 _anchor_task variable is empty at this point (assigned inside the Tier-2 loop below).
-
-  if [ -n "$freshest_task" ] && [ "$cand_task" != "$freshest_task" ]; then
-    # Cross-task mismatch: LOUD WARNING + route to B3 (do NOT silently return)
-    echo "[checkpoint] WARNING: auto-pick suppressed."
-    echo "  Cross-task: fast-path candidate task='${cand_task}' vs freshest session task='${freshest_task}'."
-    echo "  Routing to session-state synthesis (B3). Run /checkpoint --restore and choose 'y' to synthesize."
-    <invoke B3 session-state fallback>
-  else
-    # Same task, or freshest_task is empty (no session-state files — safe no-op, guard short-circuits)
-    proceed to Step 1.5 (same-session detection) with cp_path bound, then Step 2
-  fi
-```
-`current_session_id` is obtained via the same UUID-acquisition procedure as Step 1.1 (harness-provided UUID; else most recently modified JSONL filename stem).
-When `freshest_task` is empty (no `sessions/*.md` files exist), the guard short-circuits and the candidate is returned fast — no over-suppression on a clean slate.
-
-**Full enumeration path** (fires only when fast path finds nothing):
-
-Initialize at picker entry (BEFORE all 6 picker paths below — defeats shell-variable carry-over from any prior iteration):
-```
-consumed_sentinel_path=""
-```
-
-1. Build a candidate list from two sources, de-duplicated by checkpoint-file path:
-   - **All sentinels (B1 — mtime-filtered):** Use `find` with the `QUOIN_RESTORE_SENTINEL_WINDOW` env knob (default **7** days — narrows the long tail of orphaned sentinels; asymmetric with checkpoint-enum's 30d is INTENTIONAL: sentinels are transient pointers, not durable artifacts):
-     ```sh
-     _window="${QUOIN_RESTORE_SENTINEL_WINDOW:-7}"
-     _sentinel_dir="${_mem_dir}"
-     _total=$(find "$_sentinel_dir" -maxdepth 1 -name 'pending-restore-*.txt' | wc -l | tr -d ' ')
-     find "$_sentinel_dir" -maxdepth 1 -name 'pending-restore-*.txt' \
-       -mtime -"${_window}" -print0 \
-       | while IFS= read -r -d '' f; do
-           # each $f is a valid within-window sentinel; add to candidate list
-           echo "$f"
-         done
-     _stale_count=$(( _total - candidate_sentinel_count ))
-     if [ "$_stale_count" -gt 0 ]; then
-       echo "[checkpoint] ${_stale_count} stale pending-restore-*.txt sentinels older than ${_window}d skipped"
-     fi
-     ```
-     Each within-window sentinel contains a checkpoint path on line 1. Set `consumed_sentinel_path` to the absolute path of the chosen sentinel when the picker selects a sentinel-backed entry (see 6-path contract below).
-   - **All checkpoints (30-day window):** use `find .../checkpoints/ -maxdepth 1 -name '*.md' ! -name '*.tmp' -mtime -30 -print0 | while IFS= read -r -d '' cp; do ...` (null-delimited, space-safe for Google Drive paths with spaces). Skip any file whose byte-size < 100 bytes: `[ $(wc -c < "$cp") -ge 100 ] || continue`. This guards against 0-byte corrupt entries.
-
-   **`consumed_sentinel_path` 6-path contract** (implementer reference — ALWAYS initialize to `""` at picker entry):
-
-   | # | Picker path | `consumed_sentinel_path` value |
-   |---|-------------|-------------------------------|
-   | 1 | Fast-path (current-session sentinel, cross-task guard PASSED → return) | `""` (empty) — current-session cleanup at Step 5 covers it |
-   | 1a | Fast-path (current-session sentinel, cross-task guard SUPPRESSED → B3 route) | `""` (empty) — no sentinel consumed; current-session cleanup at Step 5 still runs (it keys off `current_session_id`, not `consumed_sentinel_path`) so re-running after suppression does not loop |
-   | 2 | Zero-candidates fall-through | `""` (empty) — no candidate, Step 5 unchanged |
-   | 3 | Auto-pick (exactly-1 candidate), source=sentinel | absolute path of the chosen sentinel file |
-   | 3a | Auto-pick (exactly-1 candidate), source=disk-only | `""` (empty) — no sentinel consumed |
-   | 4 | Numbered picker, picked entry source=sentinel | absolute path of the chosen sentinel file |
-   | 4a | Numbered picker, picked entry source=disk-only | `""` (empty) — no sentinel consumed |
-   | 5 | B3 session-state fallback synthesis | `""` (empty) — no sentinel consumed |
-   | 6 | Step-2 corrupt-file branch (read fails) | `""` (empty) — graceful surface (prints raw contents + "Manual recovery" prompt); Step 5 may still fire for current-session cleanup, which is safe because empty `consumed_sentinel_path` triggers only the existing cleanup path |
-
-2. Annotate each candidate: task name (from `## Active task`), branch (from `## Branch`), saved-time (from filename prefix — see below), source (`sentinel` or `disk-only`). Awk extraction: `awk '/^## Active task[[:space:]]*$/{getline; gsub(/\r$/,""); print; exit}'` — strips trailing CR and handles value-on-next-line form. If `## Active task` cannot be extracted (parse failure), drop the candidate silently.
-
-   **Saved-time extraction (handles both filename shapes):**
-   - **Timestamped (new):** `<YYYY-MM-DD>T<HHMM>-<task-name>.md` → display as `YYYY-MM-DD HH:MM UTC` (insert colon between HH and MM).
-   - **Legacy non-timestamped:** `<YYYY-MM-DD>-<task-name>.md` (no `T<HHMM>` between date and task name) → display as `YYYY-MM-DD (legacy)`.
-   - **Precompact:** `<YYYY-MM-DD>-<task-name>-precompact.md` → display as `YYYY-MM-DD (precompact)`.
-
-   Detection regex (POSIX bash): a basename matches the new form iff it matches `^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{4}-`. Otherwise treat as legacy. The `-precompact` suffix is orthogonal and detected separately on the basename before extension stripping.
-
-3. De-duplication: prefer the non-`-precompact` file over the `-precompact` file when one filename equals the other minus `-precompact.md` AND their mtimes are within `${QUOIN_PICKER_DEDUP_WINDOW:-7d}` (7 days) of each other. Pairs older than 7 days apart are treated as independent entries. **Note on timestamped voluntary saves:** with the `<YYYY-MM-DD>T<HHMM>-<task>.md` format introduced for voluntary saves, this filename-equality match will no longer fire against precompact files written the same date (precompact files retain the legacy `<YYYY-MM-DD>-<task>-precompact.md` shape). The dedup rule remains in force to handle older non-timestamped voluntary checkpoints still on disk (pre-migration files); it is effectively a no-op for new files.
-
-4. Backward-compat reader: tolerate missing `## Session ID` (older voluntary checkpoints). When absent, display `(legacy)` in the picker source column.
-
-**Distinct-task ambiguity gate — fallback parity (IVG-160)** — this NON-NUMBERED sub-step runs
-AFTER candidate annotation/dedup/backward-compat (steps 2-4 above) and BEFORE the step-5 B3
-Clause-A/B trigger, mirroring the module's placement (`checkpoint_picker.py:495-503`: the gate
-sits AFTER the Clause-A empty-check and BEFORE the Clause-B check). Placing it here — structurally
-ahead of BOTH the Clause-A and Clause-B checks — is load-bearing for module↔fallback parity
-(`FR-8`/`AC-8`): if it ran inside the Normal picker (after the step-5 trigger), the Clause-B check
-would be evaluated FIRST and, in the concurrent multi-session scenario (two distinct recent
-checkpoints plus a fresher
-`sessions/` file for one task), would silently route to B3 synthesis while the module shows the
-picker — the exact IVG-160 divergence.
-
-Compute the recent distinct-task set among the annotated candidate list using
-`QUOIN_RESTORE_AMBIGUITY_WINDOW` (**seconds**, default `14400` = 4h, anchored at `now`; `<= 0`
-disables the gate — do NOT route it through the day-based `-mtime` windows):
-
-```sh
-_amb_window="${QUOIN_RESTORE_AMBIGUITY_WINDOW:-14400}"
-# Among the annotated candidates, keep those with (now - mtime) <= _amb_window seconds,
-# then count DISTINCT `## Active task` values (c["task"]) — NOT filenames, NOT branches.
-# if the count of distinct recent tasks is >= 2 -> ambiguity.
-```
-
-- **If >= 2 distinct tasks** in the recent window → present the numbered picker over those recent
-  distinct-task entries (reuse the "Two or more" numbered-picker shape below; `*` marks
-  sentinel-backed rows; mtime-descending; cap 10) and do NOT fall into the step-5 B3 trigger. The
-  user's explicit selection binds `cp_path` (and `consumed_sentinel_path` if the chosen row is
-  sentinel-backed) and proceeds to Step 1.5.
-- **Else** (0-1 distinct recent task, or the knob disables the gate) → proceed UNCHANGED to the
-  step-5 B3 Clause-A/B trigger and the Normal picker / combined gate below. Ordering-safe against
-  Clause A: with zero candidates the recent set is empty (`< 2`), the gate is a no-op, and control
-  reaches the step-5 Clause-A trigger exactly as before.
-
-5. Auto-pick rules:
-
-   After applying the B1 mtime filter, check the B3 session-state fallback trigger (two-clause OR):
-   - **Clause A:** `candidate_count == 0` (zero candidates after B1 filter AND checkpoint enum).
-   - **Clause B:** `candidate_count > 0` AND `max(ALL candidate mtimes) < max(sessions/*.md mtime within ${QUOIN_SESSION_FALLBACK_WINDOW:-7}d)`.
-     Clause B is the same-day-symptom mitigation: when ALL candidates (both sentinel-backed and disk-only) are older than the user's freshest session-state file, that session-state file is a more relevant resume anchor. Using `max(ALL candidate mtimes)` prevents fresh disk-only checkpoints from being unfairly skipped when no sentinel file exists.
-     Note: the B3 trigger (Clause A or B) is evaluated BEFORE the Normal picker's auto-pick step. The cross-task identity guard and staleness guard (see "Combined auto-pick gate" below) are SECOND, INDEPENDENT safety nets that apply within the Normal picker when B3 does not trigger. Together these two layers catch the incident scenario: a stale cross-task checkpoint auto-picked when Clause B did not fire because the candidate mtime appeared fresher than the sessions mtime (e.g., due to a timestamp bump or wrong cwd in the sessions lookup).
-
-   **B3 trigger fires if EITHER clause holds** — see "B3 session-state fallback" below. If the trigger does NOT fire (candidate_count > 0 AND sessions are not fresher than candidates), proceed with the normal picker below.
-
-   **Normal picker (when B3 does not fire):**
-   - **Zero candidates:** fall through to Step 3 (graceful error message: no checkpoints found).
-   - **Exactly 1 candidate:** apply the combined auto-pick gate (see "Combined auto-pick gate" below) BEFORE silently auto-picking. If the gate suppresses auto-pick, route to B3 synthesis. Otherwise auto-pick with session-id mismatch warning. Set `consumed_sentinel_path` to the sentinel path if source=sentinel; else leave `""`.
-   - **Two or more:** present the numbered picker:
-     ```
-     Multiple recent checkpoints found. Which session do you want to restore?
-       1. * Task: TASK_1  Branch: BRANCH_1  Saved: DATETIME_1  (sentinel)
-       2.   Task: TASK_2  Branch: BRANCH_2  Saved: DATETIME_2  (disk-only)
-       ...
-     Enter number, or 'skip' to proceed to direct checkpoint lookup:
-     ```
-     Where `DATETIME_N` is the saved-time value derived per the filename-shape detection above (`YYYY-MM-DD HH:MM UTC`, `YYYY-MM-DD (legacy)`, or `YYYY-MM-DD (precompact)`).
-     `*` marks sentinel-backed entries. Cap at 10 items (mtime descending). If more: `... and <N> older. Use --defer to skip.`
-     - On a valid number: use that entry's checkpoint file. Apply the combined auto-pick gate before presenting (annotate the mismatch in the numbered list display; the user's explicit selection overrides the gate — they may still choose any entry). Set `consumed_sentinel_path` to the sentinel path if the chosen entry's source=sentinel; else leave `""`.
-     - On `skip`: fall through to Step 3.
-     - On invalid input: re-prompt once; on second invalid input, fall through to Step 3.
-
-   **Combined auto-pick gate (D-03 — T-04 cross-task + T-05 staleness):**
-
-   Before silently auto-picking a single candidate (or when annotating the numbered picker), apply both guards with OR semantics. A candidate is silently auto-picked ONLY IF it passes BOTH checks:
-
-   ```sh
-   # Resolve freshest_task: use tier-2 seed if available, else derive from freshest session-state
-   freshest_ss=$(ls -t "${_mem_dir}/sessions/"*.md 2>/dev/null | head -1)
-   freshest_task="${_anchor_task}"   # from tier-2 pending-prompt cross-ref (may be "")
-   if [ -z "$freshest_task" ] && [ -n "$freshest_ss" ]; then
-     _fs_basename=$(basename "$freshest_ss" .md)
-     freshest_task="${_fs_basename#????-??-??-}"
-   fi
-
-   cand_task=$(awk '/^## Active task[[:space:]]*$/{getline; gsub(/\r$/,""); print; exit}' "$cand_cp_file")
-   cand_age_days=$(python3 -c "
-   import os, datetime, sys
-   f = sys.argv[1]
-   mtime = os.path.getmtime(f)
-   age = (datetime.datetime.now().timestamp() - mtime) / 86400
-   print(int(age))
-   " "$cand_cp_file" 2>/dev/null || echo 999)
-
-   _stale_days="${QUOIN_RESTORE_STALE_DAYS:-1}"
-   stale=0
-   cross_task=0
-   [ -n "$freshest_ss" ] && [ "$cand_age_days" -gt "$_stale_days" ] && stale=1
-   [ -n "$freshest_task" ] && [ "$cand_task" != "$freshest_task" ] && cross_task=1
-
-   if [ "$stale" -eq 1 ] || [ "$cross_task" -eq 1 ]; then
-     # LOUD WARNING — do NOT silently auto-pick
-     echo "[checkpoint] WARNING: auto-pick suppressed."
-     [ "$stale" -eq 1 ]      && echo "  Stale: candidate is ${cand_age_days}d old (threshold: ${_stale_days}d)."
-     [ "$cross_task" -eq 1 ] && echo "  Cross-task: candidate task='${cand_task}' vs freshest session task='${freshest_task}'."
-     echo "  Routing to session-state synthesis (B3). Run /checkpoint --restore and choose 'y' to synthesize from the freshest session-state."
-     # Route to B3 session-state synthesis (same as Clause A/B trigger)
-     <invoke B3 session-state fallback>
-   else
-     # Guards passed — silent auto-pick (current behavior)
-     <auto-pick the candidate>
-   fi
-   ```
-
-   **Key guarantee:** a candidate is suppressed (stale=1 OR cross_task=1) when EITHER condition holds. This prevents the incident scenario (5-day-old pep-mvp checkpoint auto-picked instead of today's dgp-price-interactions session) even when B3 Clause B does not fire. The `test_checkpoint_picker_incident_repro.py` test verifies this gate cannot be silently inverted.
-
-   **B3 session-state fallback (fires when trigger is true — BEFORE Step 3 graceful-error path):**
-
-   Enumerate recent session-state files:
    ```sh
    _fb_window="${QUOIN_SESSION_FALLBACK_WINDOW:-7}"
    _sessions_dir="${_mem_dir}/sessions"
-   ```
-   Use portable mtime (Python first, then `stat` fallbacks — mirrors `sessionstart.sh:39-41`):
-   ```sh
-   _get_mtime() {
-     python3 -c "import os; print(int(os.path.getmtime('$1')))" 2>/dev/null \
-       || stat -f '%m' "$1" 2>/dev/null \
-       || stat -c '%Y' "$1" 2>/dev/null \
-       || echo 0
-   }
-   ```
-   ```sh
    _most_recent=$(find "$_sessions_dir" -maxdepth 1 -name '*.md' \
      -mtime -"${_fb_window}" -print0 \
      | xargs -0 ls -t 2>/dev/null | head -1)
    ```
-   If no session-state file found: fall through to existing Step 3 graceful "no checkpoints found" path.
 
-   Extract fields (REVISED: derive `active_task` from FILENAME — `## Active task` heading exists in only 2/46 session files; filename extraction mirrors `checkpoint/SKILL.md:249`):
+   **Fall-through:** if `_most_recent` is empty (no in-window session-state file), fall through to
+   the existing Step 3 graceful "no checkpoints found" path. Key this fall-through on this lookup
+   result, NOT on the module's `reason` field — a gate-suppressed B3 route with no in-window
+   session can carry `reason == "tier3:gate-suppressed:cross-task"` or `":stale"` while
+   `b3_prompt` is still null, so `reason` and "no in-window session" are not strictly equivalent
+   signals.
+
+   Otherwise extract fields and surface the synthesize prompt:
    ```sh
    _basename=$(basename "$_most_recent")
    active_task="${_basename#????-??-??-}"   # strip YYYY-MM-DD- date prefix
    active_task="${active_task%.md}"          # strip .md suffix
-   # Optional cross-check: parse YAML frontmatter `task:` field if present; assert equality.
-   ```
-   ```sh
    current_stage=$(awk '/^## Current stage[[:space:]]*$/{found=1; next} found && /^[^#]/ && /[^[:space:]]/{print; exit} found && /^##/{exit}' "$_most_recent")
    [ -z "$current_stage" ] && current_stage="(stage unknown)"
    unfinished=$(awk '/^## Unfinished work[[:space:]]*$/{found=1; next} found && /^[^#]/{print} found && /^##/{exit}' "$_most_recent")
-   # Optional: open_questions (11/46 hit rate — omit from prompt if absent)
-   open_questions=$(awk '/^## Open questions[[:space:]]*$/{found=1; next} found && /^[^#]/{print} found && /^##/{exit}' "$_most_recent")
-   _mtime_display=$(_get_mtime "$_most_recent")
    ```
-
-   Surface to user:
    ```
    No recent checkpoint files found, but a recent session-state file exists:
      `YYYY-MM-DD-TASKNAME.md`  (mtime: DATE TIME)
@@ -1261,15 +939,17 @@ _amb_window="${QUOIN_RESTORE_AMBIGUITY_WINDOW:-14400}"
    Synthesize a minimal restore from session-state only? [y / n]
    ```
 
-   On `y`:
-   - Extract INTENT (strip list glyphs and status glyphs from first non-empty line of `## Unfinished work`):
+   On `n`: fall through to the existing Step 3 graceful "no checkpoints found" path.
+
+   On `y`, proceed to Step 2 with:
+   - `TASK = derived_task` (pure delegation to the module's field — the same freshest-
+     `sessions/*.md`-filename-derived value `active_task` above independently computes).
+   - `INTENT` — do NOT use `b3_prompt` (it is a fixed synthesis-instruction template, not the
+     extracted next-step, and must never be rendered into the "Last intent" slot). Instead,
+     extract and strip the first non-empty line of `$unfinished` (in order: strip leading
+     whitespace; strip one of `- `/`* `/`<digit>+. `/`<digit>+) `; strip one of the four status
+     glyphs ✓ ✗ ⏳ 🚫 followed by optional whitespace; strip trailing whitespace):
      ```sh
-     # Strip pattern (in order):
-     #   1. leading whitespace
-     #   2. one of: "- ", "* ", "<digit>+. ", "<digit>+) "
-     #   3. one of the four status glyphs (✓ ✗ ⏳ 🚫) followed by optional whitespace
-     #   4. trailing whitespace
-     # Example: "- 1. ⏳ T-04 wire up X" → "T-04 wire up X"
      _raw_intent=$(echo "$unfinished" | grep -v '^[[:space:]]*$' | head -1)
      INTENT=$(echo "$_raw_intent" \
        | sed 's/^[[:space:]]*//' \
@@ -1278,18 +958,25 @@ _amb_window="${QUOIN_RESTORE_AMBIGUITY_WINDOW:-14400}"
        | sed 's/^[✓✗⏳🚫][[:space:]]*//' \
        | sed 's/[[:space:]]*$//')
      ```
-   - Synthesize structured prompt as Step 2 input (replaces checkpoint file fields):
-     - `TASK = active_task`
-     - `BRANCH = "(unknown — session-state has no branch field)"`
-     - `INTENT = INTENT` (stripped as above)
-     - `IN_FLIGHT_ARTIFACTS = []` (skip Step 3 re-fire — no `## In-flight artifacts` in session-state files; surface "no in-flight artifacts to re-fire (session-state synthesis)")
+     Example: `"- 1. ⏳ T-04 wire up X"` → `"T-04 wire up X"`.
+   - `BRANCH = "(unknown — session-state has no branch field)"`.
+   - `IN_FLIGHT_ARTIFACTS = []` (no `## In-flight artifacts` in session-state files; surface "no
+     in-flight artifacts to re-fire (session-state synthesis)").
    - Set `consumed_sentinel_path = ""` (no sentinel was consumed — path 5 in the 6-path contract).
-   - Proceed to Step 2 with the synthesized fields.
-   - Proceed to Step 5 (no sentinel cleanup for the synthesized path; current-session cleanup still runs if a sentinel exists).
+4. `reason` (machine tag) → on any suppression reason (`tier3:gate-suppressed:stale`,
+   `tier3:gate-suppressed:cross-task`, `tier1:cross-task->b3`), print a generic warning:
+   `[checkpoint] WARNING: auto-pick suppressed (${reason}). Routing to session-state synthesis (B3). Run /checkpoint --restore and choose 'y' to synthesize.`
+   Detail is intentionally REDUCED in the module-driven path — do NOT attempt to reconstruct a
+   `task='X' vs 'Y'` / `Nd old` detailed warning; the module discards the suppressed candidate's
+   task/path/age on every B3 route, so that detail is not recoverable from the Verdict alone.
+5. `same_session`: do NOT remove Step 1.5, and the SKILL MUST NOT independently surface a
+   same-session warning from the Verdict's `same_session` field — only Step 1.5's own
+   `_SAME_SESSION` computation (which has `ckpt_sid` plus the compact-happened override) may
+   trigger the `AskUserQuestion`. The Verdict's `same_session` is available as a cross-check
+   only and must never independently fire a second same-session prompt.
 
-   On `n`: fall through to existing Step 3 graceful "no checkpoints found" path.
-
-   **Note:** The session-state fallback fires BEFORE the Step 3 graceful-error path. Step 3 is only reached when both the normal picker and the B3 fallback are exhausted or declined.
+After bullet 0-5 resolve (and the process did not STOP or fall through), `cp_path` and
+`consumed_sentinel_path` are bound; proceed to Step 1.5 (same-session detection).
 
 ### Step 1.5: Same-session detection
 

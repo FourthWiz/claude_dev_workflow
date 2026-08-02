@@ -148,8 +148,9 @@ On fire (happy path — silent up-dispatch):
     prompt: "[no-redispatch]\\n<original user input verbatim>"
   Wait for the subagent. Return its output as your final response. STOP.
 
-Fail-OPEN path (fires only when Agent dispatch fails):
-  Classify the error text BEFORE proceeding:
+Fail-OPEN path (fires only when Agent dispatch fails). Full AskUserQuestion Question/Header/
+description wording for every branch below: memory/dispatch-guide.md §0″ verbose reference
+("Verbatim AskUserQuestion wording"). Classify the error text BEFORE proceeding:
 
   - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
     incoming prompt carries the `[autonomous]` sentinel, then on ANY §0″ dispatch-failure or
@@ -159,19 +160,12 @@ Fail-OPEN path (fires only when Agent dispatch fails):
     proceed to skill body (treat as bare [no-redispatch]).
 
   - 1M-credit-class: if error text contains `Usage credits required for 1M context`:
-      Issue AskUserQuestion:
-        Question: "§0″ up-dispatch to opus failed with a 1M-context credit mismatch for /{skill}.
-        The parent session carries the 1M-context beta header; Opus lacks 1M credits. How would you like to proceed?"
-        Header: "1M credit mismatch"
-        multiSelect: false
+      Issue AskUserQuestion (full Question/Header wording: memory/dispatch-guide.md
+      §0″ verbose reference):
         Option 1:
           label: "Abort — I'll switch with /model first"
-          description: "Stop here. Run /model in your terminal to switch to a standard-context
-          model (e.g., /model opus), then re-invoke /{skill}."
         Option 2:
           label: "Proceed in-session at parent tier"
-          description: "Skip the up-dispatch this once. /{skill} runs in the current session
-          (below Opus, but works). Emits a one-line advisory."
       On Option 1: print `[quoin-mintier: 1M-context credit mismatch; abort per user choice —
       switch with /model and re-invoke /{skill}]` and STOP.
       On Option 2: print `[quoin-mintier: 1M-context credit mismatch on opus up-dispatch;
@@ -179,19 +173,12 @@ Fail-OPEN path (fires only when Agent dispatch fails):
       and proceed to skill body (treat as bare [no-redispatch]).
 
   - Any other error: Issue AskUserQuestion (labels verbatim — drift relies on equality):
-      Question: "/{skill} requires Opus but this session is below Opus. Auto-dispatch to Opus failed. How would you like to proceed?"
-      Header: "Min-tier"
-      multiSelect: false
-      Option 1:
-        label: "Abort — run from an Opus session"
-        description: "Stop here. Switch the session to Opus (/model opus) and re-invoke /{skill}."
-      Option 2:
-        label: "Proceed at current tier (under-powered)"
-        description: "Run /{skill} on the current cheaper model. Quality may be reduced;
-        emits a one-line advisory."
-    Then:
-      - Option 1: print `[quoin-mintier: aborted; re-invoke /{skill} from an Opus session]` and STOP.
-      - Option 2: print `[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]`, then proceed to skill body (treat as bare [no-redispatch]).
+        Option 1:
+          label: "Abort — run from an Opus session"
+        Option 2:
+          label: "Proceed at current tier (under-powered)"
+      On Option 1: print `[quoin-mintier: aborted; re-invoke /{skill} from an Opus session]` and STOP.
+      On Option 2: print `[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]`, then proceed to skill body (treat as bare [no-redispatch]).
 <!-- §0doubleprime-end -->
 
 """
@@ -253,8 +240,9 @@ On fire (happy path — silent up-dispatch):
     prompt: "[no-redispatch]\\n<original user input verbatim>"
   Wait for the subagent. Return its output as your final response. STOP.
 
-Fail-OPEN path (fires only when Agent dispatch fails):
-  Classify the error text BEFORE proceeding:
+Fail-OPEN path (fires only when Agent dispatch fails). Full AskUserQuestion Question/Header/
+description wording for every branch below: memory/dispatch-guide.md §0‴ verbose reference
+("Verbatim AskUserQuestion wording"). Classify the error text BEFORE proceeding:
 
   - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
     incoming prompt carries the `[autonomous]` sentinel, then on ANY §0‴ dispatch-failure or
@@ -264,19 +252,12 @@ Fail-OPEN path (fires only when Agent dispatch fails):
     proceed to skill body (treat as bare [no-redispatch]).
 
   - 1M-credit-class: if error text contains `Usage credits required for 1M context`:
-      Issue AskUserQuestion:
-        Question: "§0‴ up-dispatch to sonnet failed with a 1M-context credit mismatch for /{skill}.
-        The parent session carries the 1M-context beta header; Sonnet lacks 1M credits. How would you like to proceed?"
-        Header: "1M credit mismatch"
-        multiSelect: false
+      Issue AskUserQuestion (full Question/Header wording: memory/dispatch-guide.md
+      §0‴ verbose reference):
         Option 1:
           label: "Abort — I'll switch with /model first"
-          description: "Stop here. Run /model in your terminal to switch to a standard-context
-          model (e.g., /model sonnet), then re-invoke /{skill}."
         Option 2:
           label: "Proceed in-session at parent tier"
-          description: "Skip the up-dispatch this once. /{skill} runs in the current session
-          (below Sonnet, but works). Emits a one-line advisory."
       On Option 1: print `[quoin-mintier: 1M-context credit mismatch; abort per user choice —
       switch with /model and re-invoke /{skill}]` and STOP.
       On Option 2: print `[quoin-mintier: 1M-context credit mismatch on sonnet up-dispatch;
@@ -284,19 +265,12 @@ Fail-OPEN path (fires only when Agent dispatch fails):
       and proceed to skill body (treat as bare [no-redispatch]).
 
   - Any other error: Issue AskUserQuestion (labels verbatim — drift relies on equality):
-      Question: "/{skill} requires Sonnet but this session is below Sonnet. Auto-dispatch to Sonnet failed. How would you like to proceed?"
-      Header: "Min-tier"
-      multiSelect: false
-      Option 1:
-        label: "Abort — run from a Sonnet session"
-        description: "Stop here. Switch the session to Sonnet (/model sonnet) and re-invoke /{skill}."
-      Option 2:
-        label: "Proceed at current tier (under-powered)"
-        description: "Run /{skill} on the current cheaper model. Quality may be reduced;
-        emits a one-line advisory."
-    Then:
-      - Option 1: print `[quoin-mintier: aborted; re-invoke /{skill} from a Sonnet session]` and STOP.
-      - Option 2: print `[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]`, then proceed to skill body (treat as bare [no-redispatch]).
+        Option 1:
+          label: "Abort — run from a Sonnet session"
+        Option 2:
+          label: "Proceed at current tier (under-powered)"
+      On Option 1: print `[quoin-mintier: aborted; re-invoke /{skill} from a Sonnet session]` and STOP.
+      On Option 2: print `[quoin-mintier: min-tier up-dispatch unavailable; proceeding at current tier per user choice]`, then proceed to skill body (treat as bare [no-redispatch]).
 <!-- §0tripleprime-end -->
 
 """
@@ -402,6 +376,8 @@ Dispatch action (when pollution detected AND no sentinel AND no prior §0 dispat
   Wait for the subagent. Return its output as your final response. STOP.
 
 Fail-OPEN path:
+  Full AskUserQuestion Question/Header/description wording for every branch below:
+  memory/dispatch-guide.md §0' verbose reference ("Verbatim AskUserQuestion wording").
   If Agent tool unavailable or errors — classify the error first:
 
   - Autonomous-class (checked FIRST, before 1M-credit or generic classification): if the
@@ -414,38 +390,15 @@ Fail-OPEN path:
       `Usage credits required for 1M context`:
       The §0' opus dispatch hit a 1M-context credit mismatch (IVG-89). Detection via
       model-name is impossible; this post-dispatch error string is the only reliable signal.
-      Issue an `AskUserQuestion`:
-        Question: "§0' opus dispatch failed with a 1M-context credit mismatch for /{skill}.
-        The parent session carries the 1M-context beta header which propagates to all
-        subagent calls; Opus lacks 1M credits. How would you like to proceed?"
-        Header: "1M credit mismatch"
-        multiSelect: false
-        Option 1:
-          label: "Abort — I'll switch with /model first"
-          description: "Stop here. Run /model in your terminal to switch to a
-          standard-context model (e.g., /model opus), then re-invoke /{skill}.
-          The §0' dispatch will then land on standard Opus successfully."
-        Option 2:
-          label: "Proceed in-session at parent tier"
-          description: "Skip the §0' dispatch this once. /{skill} runs in the
-          current session (may be polluted, but works). Emits a one-line advisory."
+      Issue an `AskUserQuestion` — Option 1 label "Abort — I'll switch with /model first";
+      Option 2 label "Proceed in-session at parent tier".
       On Option 1: print `[quoin: 1M-context credit mismatch; abort per user choice —
       switch with /model and re-invoke /{skill}]` and STOP. Do NOT proceed to skill body.
       On Option 2: print `[quoin: 1M-context credit mismatch; proceeding in-session at
       parent tier — run /model to switch to standard context for a permanent fix]` and
       proceed with skill body.
-  - Any other error (non-1M): Issue an `AskUserQuestion` (generic wording):
-      Question: "§0' pollution dispatch failed for /{skill}. Would you like to proceed
-      in the current (polluted) session, or abort?"
-      Header: "Dispatch error"
-      multiSelect: false
-      Option 1:
-        label: "Abort — I'll diagnose and retry"
-        description: "Stop here. Investigate the dispatch error, then re-invoke /{skill}."
-      Option 2:
-        label: "Proceed in-session (polluted)"
-        description: "Continue in the current session despite the dispatch failure.
-        Performance may be degraded due to context pollution."
+  - Any other error (non-1M): Issue an `AskUserQuestion` (generic wording; Option 1 = abort,
+      Option 2 = proceed in the current polluted session).
       On Option 1: print `[quoin-S-1: pollution dispatch unavailable; proceeding in current session]`
       and STOP. Do NOT proceed to skill body.
       On Option 2: print `[quoin-S-1: pollution dispatch unavailable; proceeding in current session]`

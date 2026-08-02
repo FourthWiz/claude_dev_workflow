@@ -751,6 +751,19 @@ KNOWN_DEFERRED_ROSTERS: dict = {
     "_REACHABLE_SOURCE_MUTATING_SKILLS@test_quoin_stage1_worktree_fallback.py": "2-skill autonomous-clause reachability fixture, no skills.json field, single-file",
     "_PIPELINE_NODES@test_status_graph.py": "status-graph pipeline-node render labels — the literal example T-04's design anticipated, not a skill roster",
     "EXPECTED@test_budget_roster_census.py": "IVG-141 budget-check roster: editorial 4-skill grouping (run/implement/thorough_plan/review) self-guarded by set-equality in the same file, no skills.json field, single-file",
+    "SECTION0_SKILLS@test_footprint_ceilings.py": (
+        "IVG-162 T-02 byte-ceiling target roster: the full 20-skill §0-carrying "
+        "set (source of truth: quoin/CLAUDE.md '### §0 Model dispatch preamble' "
+        "prose list), used only to key the CEILINGS dict for per-file byte "
+        "assertions. A DIFFERENT, smaller population from the 19-member "
+        "SECTION0_TARGETS@test_1m_*.py copies by design — SECTION0_TARGETS "
+        "mirrors propagate_1m_s0_edit.py's 19-file pilot-patch scope (one "
+        "skill was patched separately, per T-09's investigation), while "
+        "SECTION0_SKILLS is the full 20-file §0-heading set. No skills.json "
+        "field distinguishes '§0-carrying', so this is editorial, single-file, "
+        "self-guarded by test_section0_skills_set_matches_ceiling_keys in the "
+        "same file — not a candidate for RG-TESTROSTER cross-file agreement."
+    ),
 }
 
 _ALLCAPS_RE = None  # populated lazily to avoid import cost at module load
