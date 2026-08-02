@@ -59,8 +59,8 @@ Abort rule (recursion guard):
 
 Manual kill switch:
   - The user can prefix any user-typed slash invocation with bare `[no-redispatch]` to skip dispatch entirely (e.g., `[no-redispatch] /checkpoint`).
-  - This is the user-facing escape hatch. Both the parent-emit form and manual override share the same syntax — both want the same proceed-to-§0c outcome.
-  - Use only when intentionally overriding the cost guardrail.
+  - This is the user-facing escape hatch and intentionally shares syntax with the parent-emit form: a child cannot tell whether the bare sentinel came from the parent or the user, and that is by design — both paths want the same proceed-to-§0c outcome.
+  - Use this only when intentionally overriding the cost guardrail (e.g., for one-off debugging on a different tier).
 
 <!-- §0-worktree-fallback-begin -->
 Fail-graceful path with error-class triage (per architecture I-01):

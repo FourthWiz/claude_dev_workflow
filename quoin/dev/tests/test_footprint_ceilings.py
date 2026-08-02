@@ -64,31 +64,37 @@ SECTION0_SKILLS = [
 # this wave (checkpoint, claude_md — see T-06/T-07/T-08).
 #
 # The 20 §0-carrying skill ceilings were RE-BASELINED on 2026-08-02 (IVG-165
-# Commit N1): the generator-conversion boundary marker (`<!-- §0-end -->`)
-# adds exactly +17 bytes to every §0 region BY CONSTRUCTION (proc:marker-place
-# in the IVG-165 plan), not regrowth. This is an AUTHORIZED one-time exception
-# to the "do not hand-raise a ceiling" rule below, scoped exactly to the
-# marker's byte delta — do not treat this re-baseline as license to hand-raise
-# a ceiling for any OTHER reason. IVG-165 Commit R re-ratchets all 20 to
-# post-slim size * 1.10 once Step B slims the now generator-owned template.
-# Until Commit R lands, a failure here (outside the marker re-baseline) means
+# Commits N1 + N2): N1's generator-conversion boundary marker
+# (`<!-- §0-end -->`) adds exactly +17 bytes to every §0 region BY
+# CONSTRUCTION (proc:marker-place in the IVG-165 plan), not regrowth. N2
+# additionally normalizes 3 pre-existing off-axis prose residuals surfaced by
+# the D-08 residual protocol (cleanup/sleep: +256 bytes each, missing
+# "escape hatch" sentence added to match the other 17 carriers' wording;
+# implement: -1 byte, stray blank line removed) so the upcoming generator
+# (Commit A) can render all 20 with an EMPTY diff. This is an AUTHORIZED
+# one-time exception to the "do not hand-raise a ceiling" rule below, scoped
+# exactly to the marker delta + these 3 named residual normalizations — do
+# not treat this re-baseline as license to hand-raise a ceiling for any OTHER
+# reason. IVG-165 Commit R re-ratchets all 20 to post-slim size * 1.10 once
+# Step B slims the now generator-owned template. Until Commit R lands, a
+# failure here (outside the N1/N2 re-baseline above) means
 # a file grew for a reason other than the marker and needs to shrink back down.
 CEILINGS = {
     "skill:capture_insight": 12254,
-    "skill:checkpoint": 77799,  # T-12 ratchet: post-slim 70726 * 1.10 (unaffected by N1 re-baseline; already >= new size)
-    "skill:cleanup": 17446,
+    "skill:checkpoint": 77799,  # T-12 ratchet: post-slim 70726 * 1.10 (unaffected by N1/N2 re-baseline; already >= new size)
+    "skill:cleanup": 17702,  # N2: +256 bytes, escape-hatch sentence normalized in (D-08 class-b residue)
     "skill:continue_work": 14691,
     "skill:cost_snapshot": 20261,
     "skill:end_of_day": 45583,
     "skill:end_of_task": 50776,
     "skill:expand": 19375,
     "skill:gate": 56830,
-    "skill:implement": 49817,
+    "skill:implement": 49816,  # N2: -1 byte, stray blank line before "Otherwise" removed (D-08 class-b residue)
     "skill:next_steps": 11990,
     "skill:pr": 18743,
     "skill:revise-fast": 26913,
     "skill:rollback": 22118,
-    "skill:sleep": 25038,
+    "skill:sleep": 25294,  # N2: +256 bytes, escape-hatch sentence normalized in (D-08 class-b residue)
     "skill:start_of_day": 26580,
     "skill:status": 9022,
     "skill:triage": 31368,

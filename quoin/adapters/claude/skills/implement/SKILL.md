@@ -161,7 +161,6 @@ Fail-graceful path with error-class triage (per architecture I-01):
         `[quoin-stage-1: error-class=worktree; user-choice=c; proceeding at current tier]`
       Then proceed to §1 at the current tier (fail-OPEN per I-01).
 <!-- §0-worktree-fallback-end -->
-
 Otherwise (already at or below declared tier, OR prompt has [no-redispatch] sentinel, OR dispatch unavailable): proceed to §1 (skill body).
 <!-- §0-end -->
 
