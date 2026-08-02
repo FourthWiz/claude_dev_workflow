@@ -20,6 +20,11 @@ only once the wave's slims have landed.
 Each file is an INDEPENDENT parametrized assertion (hard constraint — not one
 aggregate budget), so a regression in one file never masks a regression in
 another, and a single ratchet edit (T-12) never has to touch every case.
+
+Update (IVG-165, 2026-08-02): the 20 §0-carrying skill ceilings are no
+longer provisional/unslimmed — they went through the full generator-
+conversion arc (see the CEILINGS comment below) and are now FINAL post-slim
+* 1.10 ratchets, same status as claude_md's existing ratchet.
 """
 
 import pathlib
@@ -63,43 +68,44 @@ SECTION0_SKILLS = [
 # 2026-08-02) to post-slim size * 1.10 (rounded up) for files that WERE slimmed
 # this wave (checkpoint, claude_md — see T-06/T-07/T-08).
 #
-# The 20 §0-carrying skill ceilings were RE-BASELINED on 2026-08-02 (IVG-165
-# Commits N1 + N2): N1's generator-conversion boundary marker
-# (`<!-- §0-end -->`) adds exactly +17 bytes to every §0 region BY
-# CONSTRUCTION (proc:marker-place in the IVG-165 plan), not regrowth. N2
-# additionally normalizes 3 pre-existing off-axis prose residuals surfaced by
-# the D-08 residual protocol (cleanup/sleep: +256 bytes each, missing
-# "escape hatch" sentence added to match the other 17 carriers' wording;
-# implement: -1 byte, stray blank line removed) so the upcoming generator
-# (Commit A) can render all 20 with an EMPTY diff. This is an AUTHORIZED
-# one-time exception to the "do not hand-raise a ceiling" rule below, scoped
-# exactly to the marker delta + these 3 named residual normalizations — do
-# not treat this re-baseline as license to hand-raise a ceiling for any OTHER
-# reason. IVG-165 Commit R re-ratchets all 20 to post-slim size * 1.10 once
-# Step B slims the now generator-owned template. Until Commit R lands, a
-# failure here (outside the N1/N2 re-baseline above) means
-# a file grew for a reason other than the marker and needs to shrink back down.
+# The 20 §0-carrying skill ceilings went through the full IVG-165 §0
+# generator-conversion arc on 2026-08-02 (Commits N1 -> N2 -> A -> B -> R):
+# N1 added the generator-conversion boundary marker (+17 bytes/file BY
+# CONSTRUCTION); N2 normalized 3 pre-existing off-axis prose residuals
+# (cleanup/sleep +256 bytes each, implement -1 byte); A made
+# inject_pollution_dispatch.py the generator-owner of §0 with a zero-diff
+# gate (no byte change); B slimmed the Manual-kill-switch rationale sentence
+# to a memory/dispatch-guide.md pointer (-bytes/file, see
+# .workflow_artifacts/ivg-165-s0-generator-conversion/footprint-report-B.md).
+# All 20 (INCLUDING checkpoint, re-derived from its NEW post-slim size, not
+# skipped) are now FINAL post-slim * 1.10 ratchets, same discipline as the
+# claude_md ratchet below — NOT provisional/unslimmed, NOT "not attempted."
+# The generator (`inject_pollution_dispatch.py::render_section0_block`) is
+# the SOURCE OF TRUTH for §0 content going forward; a failure here after this
+# point means a file genuinely grew and needs to shrink back down (the
+# authorized marker/residual/slim exceptions above are one-time, 2026-08-02
+# only — do not hand-raise a ceiling to "fix" a future failure).
 CEILINGS = {
-    "skill:capture_insight": 12254,
-    "skill:checkpoint": 77799,  # T-12 ratchet: post-slim 70726 * 1.10 (unaffected by N1/N2 re-baseline; already >= new size)
-    "skill:cleanup": 17702,  # N2: +256 bytes, escape-hatch sentence normalized in (D-08 class-b residue)
-    "skill:continue_work": 14691,
-    "skill:cost_snapshot": 20261,
-    "skill:end_of_day": 45583,
-    "skill:end_of_task": 50776,
-    "skill:expand": 19375,
-    "skill:gate": 56830,
-    "skill:implement": 49816,  # N2: -1 byte, stray blank line before "Otherwise" removed (D-08 class-b residue)
-    "skill:next_steps": 11990,
-    "skill:pr": 18743,
-    "skill:revise-fast": 26913,
-    "skill:rollback": 22118,
-    "skill:sleep": 25294,  # N2: +256 bytes, escape-hatch sentence normalized in (D-08 class-b residue)
-    "skill:start_of_day": 26580,
-    "skill:status": 9022,
-    "skill:triage": 31368,
-    "skill:weekly_review": 17169,
-    "skill:workspace": 17566,
+    "skill:capture_insight": 13396,  # R: post-slim 12178 * 1.10
+    "skill:checkpoint": 77901,  # R: post-slim 70819 * 1.10 (re-derived, not skipped)
+    "skill:cleanup": 19388,  # R: post-slim 17625 * 1.10
+    "skill:continue_work": 16077,  # R: post-slim 14615 * 1.10
+    "skill:cost_snapshot": 22204,  # R: post-slim 20185 * 1.10
+    "skill:end_of_day": 50058,  # R: post-slim 45507 * 1.10
+    "skill:end_of_task": 55771,  # R: post-slim 50700 * 1.10
+    "skill:expand": 21229,  # R: post-slim 19299 * 1.10
+    "skill:gate": 62430,  # R: post-slim 56754 * 1.10
+    "skill:implement": 54715,  # R: post-slim 49740 * 1.10
+    "skill:next_steps": 13106,  # R: post-slim 11914 * 1.10
+    "skill:pr": 20534,  # R: post-slim 18667 * 1.10
+    "skill:revise-fast": 29521,  # R: post-slim 26837 * 1.10
+    "skill:rollback": 24247,  # R: post-slim 22042 * 1.10
+    "skill:sleep": 27739,  # R: post-slim 25217 * 1.10
+    "skill:start_of_day": 29155,  # R: post-slim 26504 * 1.10
+    "skill:status": 9841,  # R: post-slim 8946 * 1.10
+    "skill:triage": 34422,  # R: post-slim 31292 * 1.10
+    "skill:weekly_review": 18803,  # R: post-slim 17093 * 1.10
+    "skill:workspace": 19239,  # R: post-slim 17490 * 1.10
     "claude_md": 40726,  # T-12 ratchet: post-slim 37023 * 1.10
 }
 
