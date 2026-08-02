@@ -76,10 +76,10 @@ ZC_SKILLS = ["architect", "review"]
 
 # ─── §0‴ Minimum-tier guard (Sonnet tier) — IVG-117 ───────────────────────────
 # Anchor heading for the 19 cheap-tier §0 skills (hand-authored, always present).
-# SECTION0_HEADING is verified count==1 across the 10 Sonnet §0‴ target files.
+# SECTION0_HEADING is verified count==1 across the 11 Sonnet §0‴ target files.
 SECTION0_HEADING = "## §0 Model dispatch (FIRST STEP — execute before anything else)"
 
-# 10 Sonnet-declared cheap-tier skills that lack an under-tier guard (IVG-117 Gap 1).
+# 11 Sonnet-declared cheap-tier skills that lack an under-tier guard (IVG-117 Gap 1).
 # 9 Haiku-declared skills are structurally exempt (bottom tier — nothing cheaper to
 # guard against). Orchestrators /run and /thorough_plan are excluded per the
 # orchestrator-exclusion rule (mirrors MINTIER_TARGET_SKILLS D-04). Roster mirrors
@@ -285,6 +285,373 @@ def render_mintier_sonnet_block(skill: str) -> str:
     """
     body = _MINTIER_SONNET_BLOCK_BODY.replace("{skill}", skill)
     return MINTIER_SONNET_HEADING + body
+
+
+# ─── §0 Model dispatch generator conversion — IVG-165 ─────────────────────────
+# D-01: uniform explicit end marker closes every §0 region (fixes start_of_day's
+# next-`## `-boundary over-capture by construction; see D-01a/D-01b for the
+# marker-anchored region mechanics used by inject_section0_block_into_file below
+# — this is deliberately NOT _replace_existing_block, which stops at the next
+# `(?=^## )` and would not fix start_of_day's over-capture).
+SECTION0_END_MARKER = "<!-- §0-end -->"
+
+# 20-entry roster: the full §0-carrying skill set (mirrors SECTION0_SKILLS in
+# test_footprint_ceilings.py / test_section0_marker.py and the CLAUDE.md "§0
+# Model dispatch preamble" skill list). Each entry is
+#   skill -> (tier, proceed_ref, variant, has_autonomous_clause, extra_comment)
+# per the 5 template axes (D-03 — variants are template branches keyed to
+# these axes, never per-file text blobs):
+#   1. skill name (substituted in prose)
+#   2. tier: "haiku" (9) | "sonnet" (11, == MINTIER_SONNET_TARGET_SKILLS)
+#   3. proceed_ref: "§1" (17) | "§0c" (3: cleanup, sleep, checkpoint)
+#   4. variant: "worktree" (15 — 12 with clause + 3 without) | "sidecar" (5,
+#      always with clause, distinct wording per D-02)
+#   5. has_autonomous_clause: only meaningful for variant="worktree"
+#      (selects between the two Worktree-class-branch sub-templates)
+#   6. extra_comment: the `§0b: intentionally omitted` line (pr, workspace)
+SECTION0_TARGET_SKILLS: dict[str, tuple[str, str, str, bool, bool]] = {
+    "capture_insight": ("haiku", "§1", "worktree", True, False),
+    "checkpoint": ("sonnet", "§0c", "worktree", True, False),
+    "cleanup": ("haiku", "§0c", "worktree", False, False),
+    "continue_work": ("sonnet", "§1", "worktree", False, False),
+    "cost_snapshot": ("haiku", "§1", "worktree", True, False),
+    "end_of_day": ("sonnet", "§1", "worktree", True, False),
+    "end_of_task": ("sonnet", "§1", "sidecar", True, False),
+    "expand": ("sonnet", "§1", "worktree", True, False),
+    "gate": ("sonnet", "§1", "worktree", True, False),
+    "implement": ("sonnet", "§1", "sidecar", True, False),
+    "next_steps": ("haiku", "§1", "worktree", True, False),
+    "pr": ("sonnet", "§1", "sidecar", True, True),
+    "revise-fast": ("sonnet", "§1", "worktree", True, False),
+    "rollback": ("sonnet", "§1", "sidecar", True, False),
+    "sleep": ("haiku", "§0c", "worktree", True, False),
+    "start_of_day": ("haiku", "§1", "worktree", True, False),
+    "status": ("haiku", "§1", "worktree", False, False),
+    "triage": ("haiku", "§1", "worktree", True, False),
+    "weekly_review": ("haiku", "§1", "worktree", True, False),
+    "workspace": ("sonnet", "§1", "sidecar", True, True),
+}
+
+# next_steps' skill dir/dict key differs from its slash-invocation name
+# (/next-steps) -- the ONLY skill where the two forms diverge. All other
+# skill-name substitution sites (description, error message) use the dict key.
+_SECTION0_SLASH_NAME_OVERRIDES = {"next_steps": "next-steps"}
+
+# Base block: heading through the end of "Manual kill switch:" — shared
+# byte-for-byte across ALL 20 files (verified: sidecar and worktree families
+# diverge only AFTER this point). {tier}/{proc}/{skill}/{slash} are the only
+# substitution points in this block (D-03 axes 1-3); every other "proceed to
+# §1"/"§0c" occurrence elsewhere in the region is FIXED literal text that does
+# NOT vary with proceed_ref (verified against the live corpus — a pre-existing
+# corpus quirk reproduced byte-exactly per D-02/D-08, not a bug this generator
+# introduces or fixes).
+_SECTION0_BASE_BODY = """\
+
+This skill is declared `model: {tier}`. If the executing agent is running on a model
+strictly more expensive than the declared tier, you MUST self-dispatch before doing the
+skill's actual work.
+
+Detection:
+  - Read your current model from the system context ("powered by the model named X").
+  - Tier order: haiku < sonnet < opus.
+  - Sentinel parsing: the user's prompt is checked for the `[no-redispatch]` family.
+      * Bare `[no-redispatch]` (parent-emit form AND user manual override): skip dispatch, proceed to {proc} at the current tier.
+      * Counter form `[no-redispatch:N]` where N is a positive integer ≥ 2: ABORT (see "Abort rule" below).
+      * Counter form `[no-redispatch:1]` is reserved and treated as bare `[no-redispatch]` for forward-compatibility; do not emit it.
+  - If current_tier > declared_tier AND prompt does NOT start with any `[no-redispatch]` form:
+      Dispatch reason: cost-guardrail handoff. dispatched-tier: {tier}.
+<!-- §0-1m-decide-begin -->
+Pre-dispatch 1M check (IVG-90 Layer 1+2):
+  - Run: python3 __QUOIN_HOME__/scripts/dispatch_config.py --decide --tier <declared_tier> --verbose
+    where <declared_tier> is the tier declared for this skill (e.g. "sonnet" or "haiku",
+    as shown in the dispatched-tier line immediately above).
+  - If the command returns "safe-path" on line 1:
+      Read the reason token from line 2 (config|cache|probe).
+      Emit the one-line advisory (verbatim, substituting <reason> with the line-2 token):
+        `[quoin: 1M-unsafe declared-tier per <reason>; running SAFE PATH without dispatch]`
+      Then proceed to §1/§0c at the current tier (treat as if [no-redispatch] were present).
+      Do NOT call the Agent dispatch. Do NOT call AskUserQuestion.
+  - If the command returns "dispatch" on line 1, OR if the script is missing / errors:
+      Continue to the Agent dispatch call below (today's path — fail-OPEN).
+<!-- §0-1m-decide-end -->
+      Spawn an Agent subagent with the following arguments:
+        model: "{tier}"
+        description: "{skill} dispatched at {tier} tier"
+        prompt: "[no-redispatch]\\n<original user input verbatim>"
+      Wait for the subagent.
+<!-- §0-1m-cachewrite-begin -->
+      Cache the safe result (best-effort):
+        python3 __QUOIN_HOME__/scripts/dispatch_config.py --write-cache --tier <declared_tier> --result safe
+      (Fail-OPEN: if the script errors or is missing, silently skip and continue.)
+<!-- §0-1m-cachewrite-end -->
+      Return its output as your final response. STOP.
+      (Return the subagent's output as your final response.)
+
+Abort rule (recursion guard):
+  - If the prompt starts with `[no-redispatch:N]` AND N ≥ 2: ABORT before any tool calls.
+  - Print the one-line error: `Quoin self-dispatch hard-cap reached at N=<N> in {skill}. This indicates a recursion bug; aborting before any tool calls. Re-invoke with [no-redispatch] (bare) to override.`
+  - Then stop. Do NOT proceed to {proc}.
+
+Manual kill switch:
+  - The user can prefix any user-typed slash invocation with bare `[no-redispatch]` to skip dispatch entirely (e.g., `[no-redispatch] /{slash}`).
+  - This is the user-facing escape hatch and intentionally shares syntax with the parent-emit form: a child cannot tell whether the bare sentinel came from the parent or the user, and that is by design — both paths want the same proceed-to-{proc} outcome.
+  - Use this only when intentionally overriding the cost guardrail (e.g., for one-off debugging on a different tier).
+
+"""
+
+# Shared preamble of the worktree-fallback block: identical for BOTH the
+# "worktree" and "sidecar" variant families up through the fork point
+# (verified against the live corpus). Ends with two blank lines before the
+# variant-specific "Worktree-class branch:" content begins.
+_SECTION0_WORKTREE_PRE = """\
+<!-- §0-worktree-fallback-begin -->
+Fail-graceful path with error-class triage (per architecture I-01):
+  - If the Agent tool returns an error during dispatch, classify the error
+    message text BEFORE proceeding:
+
+  - Error classification:
+      * Worktree-class: the error text contains the substring
+        `Cannot create agent worktree`, OR (the substring `worktree` AND
+        the substring `not in a git repository`). This is recoverable —
+        the harness tried to create a git worktree for isolation and the
+        project root is not a git repo. Continue to Worktree-class branch.
+      * Other-class: any other tool error, exception, or harness rejection
+        — skip to Other-class path below (existing fail-OPEN behavior).
+
+  - 1M-credit-class: if the error text contains the substring
+      `Usage credits required for 1M context`:
+      This is the 1M-context credit mismatch (IVG-89). The parent session carries
+      the `context-1m-2025-08-07` beta header which propagates to all subagent calls;
+      the declared-tier model lacks 1M credits. Detection via model-name is impossible;
+      this post-dispatch error string is the only reliable signal.
+      Emit (verbatim):
+        `[quoin: 1M-context credit mismatch on <tier> subagent dispatch; proceeding in-session at parent tier — run /model to switch this session to standard context for a permanent fix]`
+<!-- §0-1m-cachewrite-begin -->
+      Cache the unsafe result (best-effort):
+        python3 __QUOIN_HOME__/scripts/dispatch_config.py --write-cache --tier <declared_tier> --result unsafe
+      (Fail-OPEN: if the script errors or is missing, silently skip and continue.)
+<!-- §0-1m-cachewrite-end -->
+      Then proceed to §1 at the current tier (treat as if `[no-redispatch]` were present).
+      Do NOT retry the Agent dispatch. Do NOT call AskUserQuestion.
+
+
+"""
+
+# Autonomous fail-OPEN prefix (artifact form, D-02 — rendered VERBATIM, zero
+# wording edits) prepended to the shared Worktree-class-branch body for the 12
+# worktree-variant skills that carry the clause. NOTE: the "§1" occurrence
+# inside this fragment is FIXED literal text (verified identical across both
+# proceed_ref=§1 and proceed_ref=§0c carriers in the live corpus) — do not
+# substitute it.
+_SECTION0_AUTONOMOUS_PREFIX = """\
+      Autonomous fail-OPEN (checked FIRST): if the incoming prompt carries
+      the `[autonomous]` sentinel, then on this worktree-class dispatch
+      error, proceed at current tier fail-OPEN and do NOT call
+      AskUserQuestion — skip straight to the Other-class path below (it
+      emits the bare warning and the `error-class=worktree` classification
+      line), then proceed to §1 at the current tier. Otherwise (no
+      `[autonomous]` sentinel — non-autonomous behavior unchanged):
+      """
+
+# Shared Worktree-class-branch body — present for ALL 15 worktree-variant
+# skills regardless of has_autonomous_clause; the 12 clause-bearing skills
+# prepend _SECTION0_AUTONOMOUS_PREFIX, the 3 clause-less skills (cleanup,
+# continue_work, status) prepend only the base "      " indent.
+_SECTION0_WORKTREE_CLASS_BODY = """\
+Worktree creation is hook-driven and cannot be skipped by omitting a
+      parameter. Use the AskUserQuestion tool to present the user with one
+      option:
+        (c) `proceed-current-tier` — Skip dispatch, proceed at the current
+            (more expensive) tier. This is the only available recovery path.
+      Question header: `Subagent dispatch failed (worktree creation). Proceeding at current tier.`
+      Note for the user: "Worktree dispatch failed and no retry mechanism
+      is available — worktree creation is unconditional in this harness.
+      Proceeding at current tier."
+
+"""
+
+# Sidecar block (5 skills: end_of_task, implement, pr, rollback, workspace —
+# all sonnet-tier, proceed_ref=§1). Distinct 2-phase worktree-isolation design
+# with its own Autonomous fail-OPEN clause form (D-02 — rendered VERBATIM,
+# distinct wording from the artifact form above by deliberate design, NOT
+# drift: implement/SKILL.md's §0b explicitly forbids AskUserQuestion or
+# proceed-current-tier for source-mutating skills, so this form documents an
+# unconditional no-op rather than an ordering rule). "(sonnet for this skill)"
+# is fixed literal text — all 5 sidecar carriers are sonnet-tier (T-01).
+_SECTION0_SIDECAR_BLOCK = """\
+<!-- §0-sidecar-begin -->
+  Source-mutating dispatch — two-phase worktree isolation (D-08):
+
+  STEP A0 — Consult the worktree-isolation decider FIRST (default is skip):
+     Run via Bash:
+       python3 __QUOIN_HOME__/scripts/worktree_isolation.py --decide
+     Isolation is opt-in (D-04): the decider prints `skip` unless
+     QUOIN_WORKTREE_ISOLATION=on, the dispatch.json config opts in, or a prior probe
+     wrote a `works` sentinel. If the output is `skip`, DO NOT write the sidecar and
+     DO NOT dispatch with isolation: "worktree" — skip STEP A / STEP B / STEP C and go
+     straight to a PLAIN Agent dispatch at the declared cheap-tier model (sonnet), with
+     no sidecar write and no worktree round-trip. Only when the output is `attempt` do
+     STEP A / STEP B / STEP C run.
+
+  STEP A — Write the dispatch sidecar BEFORE calling the Agent tool:
+     Run via Bash:
+       PROJECT_ROOT="$(python3 __QUOIN_HOME__/scripts/path_resolve.py --print-project-root)"
+       python3 __QUOIN_HOME__/scripts/dispatch_sidecar.py \\
+           --skill <skill-name> \\
+           --project-root "$PROJECT_ROOT" \\
+           --plan "<resolved-plan-path-or-empty>"
+     (The WorktreeCreate hook reads this sidecar to resolve the nested git root.)
+
+  STEP B — Phase 1: Agent dispatch WITH isolation: "worktree" (normal path):
+     Call the Agent tool with isolation: "worktree" at the declared cheap-tier
+     model (sonnet for this skill). The deployed WorktreeCreate hook at
+     __QUOIN_HOME__/hooks/worktreecreate.sh reads the sidecar, runs
+     git_root_for_dispatch.py, and (when a single nested repo resolves)
+     creates a worktree IN the nested git root and returns its path.
+     One-time probe (opt-in path only): when the probe sentinel is still unknown,
+     instruct the child to record its working directory to a marker; after the Agent
+     returns, compare it to the created worktree path and persist the result exactly
+     once via
+       python3 __QUOIN_HOME__/scripts/worktree_isolation.py --write-probe --result works|broken
+
+  STEP C — Phase 2 retry WITHOUT isolation (on Worktree-class error):
+     If Phase 1 fails with a Worktree-class error (regex above), the hook
+     either returned skip (no stdout → harness fails) or encountered an error.
+     Re-dispatch the Agent call WITHOUT isolation: "worktree", at the SAME
+     declared cheap-tier model (sonnet). Do NOT escalate to parent tier.
+     Emit one-line audit:
+       [quoin-stage-1: worktree dispatch skipped; proceeding at sonnet without isolation]
+     Autonomous fail-OPEN: if the incoming prompt carries the `[autonomous]`
+     sentinel, then on any worktree-class dispatch error, proceed at current
+     tier fail-OPEN and do NOT call AskUserQuestion — this is already
+     guaranteed unconditionally by this Phase 2 retry (no AskUserQuestion
+     exists in this path to skip), so behavior here is identical with or
+     without the sentinel.
+
+  STEP D — Done:
+     No child-side coordination required. The harness handles cwd correctly:
+     on Phase 1 success, child sees the worktree as cwd; on Phase 2, child
+     inherits the parent's session cwd (today's behavior, unchanged).
+<!-- §0-sidecar-end -->
+
+  - Worktree-class branch: handled by Phase 2 (§0-sidecar block above).
+    Phase 2 retries at the declared cheap-tier model without isolation.
+    Do NOT use AskUserQuestion or proceed-current-tier for source-mutating skills.
+
+"""
+
+# "Other-class path" closer for the 15 worktree-variant skills. Byte-identical
+# text also closes the sidecar variant (below) modulo the header line only.
+_SECTION0_WORKTREE_POST = """\
+  - Other-class path (also: worktree-class after user acknowledges c):
+      Do NOT abort the user's invocation.
+      Emit the bare warning (verbatim):
+        `[quoin-stage-1: subagent dispatch unavailable; proceeding at current tier]`
+      If this path was reached via a worktree-class error, ALSO emit the
+      classification line (second, separate):
+        `[quoin-stage-1: error-class=worktree; user-choice=c; proceeding at current tier]`
+      Then proceed to §1 at the current tier (fail-OPEN per I-01).
+<!-- §0-worktree-fallback-end -->
+"""
+
+# "Other-class path" closer for the 5 sidecar skills — same body, different
+# header line ("non-worktree Agent errors" vs "also: worktree-class after
+# user acknowledges c") reflecting the sidecar's distinct Worktree-class
+# handling (Phase 2 retry, not an AskUserQuestion prompt).
+_SECTION0_SIDECAR_POST = """\
+  - Other-class path (non-worktree Agent errors):
+      Do NOT abort the user's invocation.
+      Emit the bare warning (verbatim):
+        `[quoin-stage-1: subagent dispatch unavailable; proceeding at current tier]`
+      If this path was reached via a worktree-class error, ALSO emit the
+      classification line (second, separate):
+        `[quoin-stage-1: error-class=worktree; user-choice=c; proceeding at current tier]`
+      Then proceed to §1 at the current tier (fail-OPEN per I-01).
+<!-- §0-worktree-fallback-end -->
+"""
+
+
+def render_section0_block(skill: str) -> str:
+    """Render the §0 Model dispatch block for a given skill (D-03: pure
+    composition over the 5 axes in SECTION0_TARGET_SKILLS — no per-file free
+    text). Verified byte-exact (empty diff) against the marker-normalized
+    (N1/N2) corpus for all 20 skills before this generator became the owner.
+    """
+    tier, proc, variant, clause, extra_comment = SECTION0_TARGET_SKILLS[skill]
+    slash = _SECTION0_SLASH_NAME_OVERRIDES.get(skill, skill)
+
+    base = (
+        _SECTION0_BASE_BODY.replace("{tier}", tier)
+        .replace("{proc}", proc)
+        .replace("{skill}", skill)
+        .replace("{slash}", slash)
+    )
+
+    if variant == "worktree":
+        worktree_class = "  - Worktree-class branch:\n"
+        if clause:
+            worktree_class += _SECTION0_AUTONOMOUS_PREFIX + _SECTION0_WORKTREE_CLASS_BODY
+        else:
+            worktree_class += "      " + _SECTION0_WORKTREE_CLASS_BODY
+        body = _SECTION0_WORKTREE_PRE + worktree_class + _SECTION0_WORKTREE_POST
+    else:  # sidecar
+        body = _SECTION0_WORKTREE_PRE + _SECTION0_SIDECAR_BLOCK + _SECTION0_SIDECAR_POST
+
+    proc_suffix = " (skill body)." if proc == "§1" else "."
+    closer = (
+        "Otherwise (already at or below declared tier, OR prompt has "
+        f"[no-redispatch] sentinel, OR dispatch unavailable): proceed to {proc}{proc_suffix}\n"
+    )
+
+    tail = closer
+    if extra_comment:
+        tail += f"\n<!-- §0b: intentionally omitted — /{skill} has no sub-phase dispatch -->\n"
+    tail += SECTION0_END_MARKER + "\n"
+
+    return SECTION0_HEADING + "\n" + base + body + tail
+
+
+def inject_section0_block_into_file(skill: str, skill_md: pathlib.Path) -> None:
+    """Inject/refresh the §0 Model dispatch block into a single adapter
+    SKILL.md file — IVG-165.
+
+    D-01a: marker-anchored region replacement (heading through
+    SECTION0_END_MARKER inclusive), NOT `_replace_existing_block` (which
+    stops at the next `(?=^## )` and would not fix start_of_day's
+    over-capture — see D-01a rationale above SECTION0_END_MARKER).
+
+    FAIL LOUD if SECTION0_HEADING or SECTION0_END_MARKER is not exactly
+    count==1 in the existing file (both must already be present — this
+    generator only REFRESHES an existing marker-normalized region; it does
+    not perform first-time insertion for §0, unlike the §0'/§0″/§0‴ inject
+    functions above).
+    """
+    text = skill_md.read_text(encoding="utf-8")
+
+    heading_count = text.count(SECTION0_HEADING)
+    if heading_count != 1:
+        raise ValueError(
+            f"{skill_md}: SECTION0_HEADING appears {heading_count} times (expected exactly 1) "
+            "— FAIL LOUD. Cannot determine §0 region start."
+        )
+    marker_count = text.count(SECTION0_END_MARKER)
+    if marker_count != 1:
+        raise ValueError(
+            f"{skill_md}: SECTION0_END_MARKER appears {marker_count} times (expected exactly 1) "
+            "— FAIL LOUD. Cannot determine §0 region end."
+        )
+
+    heading_idx = text.index(SECTION0_HEADING)
+    marker_idx = text.index(SECTION0_END_MARKER)
+    region_end = marker_idx + len(SECTION0_END_MARKER) + 1  # include marker's own trailing \n
+
+    new_block = render_section0_block(skill)
+    new_text = text[:heading_idx] + new_block + text[region_end:]
+
+    # Atomic write: .tmp + os.replace(), mirrors the §0″/§0‴ inject functions.
+    tmp_path = skill_md.with_suffix(".md.tmp")
+    tmp_path.write_text(new_text, encoding="utf-8")
+    os.replace(tmp_path, skill_md)
 
 
 # ─── §0c block bodies (verbatim from f81b6ff, §0c path fixed to __QUOIN_HOME__) ─
@@ -655,7 +1022,7 @@ def inject_mintier_sonnet_block_into_file(skill: str, skill_md: pathlib.Path) ->
     SKILL.md file — IVG-117.
 
     Anchors on SECTION0_HEADING (the hand-authored §0 block, always present in the
-    10 Sonnet targets), NOT on §0'/§0″ (Opus-only, disjoint file set). D-06.
+    11 Sonnet targets), NOT on §0'/§0″ (Opus-only, disjoint file set). D-06.
 
     Strategy:
     - Refresh path: if MINTIER_SONNET_HEADING already in text, replace in place
@@ -793,6 +1160,31 @@ def run_inject(*, dry_run: bool = False) -> int:
             errors.append(f"ERROR processing §0‴ for {skill}: {e}")
             continue
         print(f"  injected §0‴ into {skill_md.relative_to(adapter_dir.parent.parent.parent.parent)}")
+
+    # ── Loop 4: §0 (Model dispatch) refresh — IVG-165 ──
+    # Independent of Loops 1-3: refreshes the hand-authored §0 block itself
+    # (heading through SECTION0_END_MARKER) via marker-anchored replacement
+    # (D-01a). SECTION0_TARGET_SKILLS is the full 20-skill §0-carrying roster
+    # (disjoint concern from MINTIER_SONNET_TARGET_SKILLS, which targets
+    # where §0‴ gets INSERTED after §0, not §0's own content).
+    for skill in SECTION0_TARGET_SKILLS:
+        skill_md = adapter_dir / skill / "SKILL.md"
+        if not skill_md.exists():
+            errors.append(f"MISSING (§0): {skill_md}")
+            continue
+
+        if dry_run:
+            print(f"=== {skill} §0 preview ===")
+            block = render_section0_block(skill)
+            print(block[:500])
+            continue
+
+        try:
+            inject_section0_block_into_file(skill, skill_md)
+        except (ValueError, OSError) as e:
+            errors.append(f"ERROR processing §0 for {skill}: {e}")
+            continue
+        print(f"  refreshed §0 in {skill_md.relative_to(adapter_dir.parent.parent.parent.parent)}")
 
     if errors:
         for err in errors:
@@ -1032,6 +1424,36 @@ def run_check() -> int:
         if s_idx != -1 and t_idx != -1 and t_idx <= s_idx:
             drifted.append(f"{skill}: §0‴ appears BEFORE or AT §0 (ordering violation)")
 
+    # ── §0 checks (SECTION0_TARGET_SKILLS) — IVG-165 ──
+    # Zero-tolerance: the live §0 region (heading through SECTION0_END_MARKER
+    # inclusive) must equal render_section0_block(skill) byte-for-byte
+    # (proc:empty-diff / D-08). This is stricter than the token-presence
+    # checks above (§0'/§0″/§0‴) because §0 itself is now generator-owned.
+    for skill in SECTION0_TARGET_SKILLS:
+        skill_md = adapter_dir / skill / "SKILL.md"
+        if not skill_md.exists():
+            drifted.append(f"{skill}: adapter SKILL.md missing at {skill_md} (§0 check)")
+            continue
+
+        text = skill_md.read_text(encoding="utf-8")
+
+        heading_count = text.count(SECTION0_HEADING)
+        if heading_count != 1:
+            drifted.append(f"{skill}: SECTION0_HEADING appears {heading_count} times (expected exactly 1)")
+            continue
+        marker_count = text.count(SECTION0_END_MARKER)
+        if marker_count != 1:
+            drifted.append(f"{skill}: SECTION0_END_MARKER appears {marker_count} times (expected exactly 1)")
+            continue
+
+        heading_idx = text.index(SECTION0_HEADING)
+        marker_idx = text.index(SECTION0_END_MARKER)
+        region_end = marker_idx + len(SECTION0_END_MARKER) + 1
+        live_block = text[heading_idx:region_end]
+        expected_block = render_section0_block(skill)
+        if live_block != expected_block:
+            drifted.append(f"{skill}: §0 block does not match generator output byte-for-byte (drift)")
+
     if drifted:
         for msg in drifted:
             print(f"DRIFT: {msg}", file=sys.stderr)
@@ -1039,6 +1461,7 @@ def run_check() -> int:
     print("inject_pollution_dispatch --check: all 10 adapter files are fresh")
     print("inject_pollution_dispatch --check: all 10 §0doubleprime files are fresh")
     print("inject_pollution_dispatch --check: all 11 §0tripleprime files are fresh")
+    print("inject_pollution_dispatch --check: all 20 §0 files are fresh")
     return 0
 
 
