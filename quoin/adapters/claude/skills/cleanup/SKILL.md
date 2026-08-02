@@ -59,6 +59,7 @@ Abort rule (recursion guard):
 
 Manual kill switch:
   - The user can prefix any user-typed slash invocation with bare `[no-redispatch]` to skip dispatch entirely (e.g., `[no-redispatch] /cleanup`).
+  - Why this is safe to share syntax with the parent-emit form: memory/dispatch-guide.md §0 verbose reference ("Why the bare [no-redispatch] sentinel is dual-source by design").
   - Use this only when intentionally overriding the cost guardrail (e.g., for one-off debugging on a different tier).
 
 <!-- §0-worktree-fallback-begin -->
@@ -113,6 +114,7 @@ Fail-graceful path with error-class triage (per architecture I-01):
       Then proceed to §1 at the current tier (fail-OPEN per I-01).
 <!-- §0-worktree-fallback-end -->
 Otherwise (already at or below declared tier, OR prompt has [no-redispatch] sentinel, OR dispatch unavailable): proceed to §0c.
+<!-- §0-end -->
 
 ## §0c Pidfile lifecycle (FIRST STEP after §0 dispatch)
 

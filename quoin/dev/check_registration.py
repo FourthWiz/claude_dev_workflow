@@ -557,6 +557,7 @@ def rg_genroster(dev_tests_dir: Path, scripts_dir: Path, manifest_skills: list, 
     opus_leaf = _opus_leaf_class(manifest_skills)
     sonnet_cheap = _sonnet_cheap_class(manifest_skills)
     opus_full = _opus_tier_full_class(manifest_skills)
+    all_s0 = _all_section0_class(manifest_skills)
     canonical_names = {rec["name"] for rec in manifest_skills}
 
     generators = {
@@ -627,6 +628,12 @@ def rg_genroster(dev_tests_dir: Path, scripts_dir: Path, manifest_skills: list, 
     # OPUS_TIER_SKILLS == full {section_0==false} complement (no exceptions)
     _check("OPUS_TIER_SKILLS", "test_quoin_stage1_preamble.py", opus_full, "{section_0==false} class (full complement)")
 
+    # SECTION0_TARGET_SKILLS == all-section_0 class (IVG-165 — the §0 generator's
+    # own 20-skill roster; mirrors the MINTIER_SONNET_TARGET_SKILLS pattern above).
+    # Dict-keyed roster (skill -> (tier, proceed_ref, variant, clause, comment));
+    # eval_collection extracts the key set.
+    _check("SECTION0_TARGET_SKILLS", "inject_pollution_dispatch.py", all_s0, "all-section_0 class")
+
     # ZC_SKILLS / WORKTREE_FALLBACK_SKILLS / SOURCE_MUTATING_WORKTREE_SKILLS:
     # no skills.json-derivable field — sanity-check members ⊆ CANONICAL_SKILLS only.
     for file_name, roster_name in [
@@ -670,6 +677,7 @@ COVERED_ROSTERS: frozenset = frozenset({
     "POLLUTION_TARGET_SKILLS@inject_pollution_dispatch.py",
     "MINTIER_TARGET_SKILLS@inject_pollution_dispatch.py",
     "MINTIER_SONNET_TARGET_SKILLS@inject_pollution_dispatch.py",
+    "SECTION0_TARGET_SKILLS@inject_pollution_dispatch.py",
     "OPUS_TIER_SKILLS@test_quoin_stage1_preamble.py",
     "ZC_SKILLS@inject_pollution_dispatch.py",
     "WORKTREE_FALLBACK_SKILLS@test_quoin_stage1_worktree_fallback.py",
@@ -763,6 +771,15 @@ KNOWN_DEFERRED_ROSTERS: dict = {
         "field distinguishes '§0-carrying', so this is editorial, single-file, "
         "self-guarded by test_section0_skills_set_matches_ceiling_keys in the "
         "same file — not a candidate for RG-TESTROSTER cross-file agreement."
+    ),
+    "SECTION0_SKILLS@test_section0_marker.py": (
+        "IVG-165 T-02 marker-placement-assertion roster: a verbatim copy of "
+        "the same 20-skill §0-carrying population as "
+        "SECTION0_SKILLS@test_footprint_ceilings.py, duplicated (not "
+        "independently authored) so this structural-invariant test has no "
+        "cross-file import dependency on the ceilings test. Same rationale "
+        "applies: no skills.json field distinguishes '§0-carrying', editorial, "
+        "single-file, not a candidate for RG-TESTROSTER cross-file agreement."
     ),
 }
 
