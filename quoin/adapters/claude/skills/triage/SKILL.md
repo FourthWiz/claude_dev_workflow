@@ -132,9 +132,9 @@ Otherwise (already at or below declared tier, OR prompt has [no-redispatch] sent
 `/triage` is a routing skill. It does minimal setup:
 
 1. **CLAUDE.md is injected by the harness** — no explicit read is needed.
-If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 alongside `[no-redispatch]`/`[autonomous]` (per-spawn, non-inherited — do NOT propagate it to any child you spawn). Otherwise self-write as today (col 8 empty).
+If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
 
-2. **Cost recording — explicit-only:** Record a cost-ledger entry ONLY if the user's prompt explicitly names a task folder (e.g., `/triage task=auth-refactor` or the prompt contains the exact folder name). In all other cases — including when exactly one non-reserved task folder exists — skip cost recording silently. This conservative policy prevents false ledger writes in multi-task-folder contexts.
+2. **Cost recording — explicit-only:** Record a cost-ledger entry ONLY if the user's prompt explicitly names a task folder (e.g., `/triage task=auth-refactor` or the prompt contains the exact folder name). In all other cases — including when exactly one non-reserved task folder exists — skip cost recording silently. This conservative policy prevents false ledger writes in multi-task-folder contexts. If the condition holds: append your session to `.workflow_artifacts/<task-name>/cost-ledger.md` — phase: `triage` — format/rules: `__QUOIN_HOME__/memory/cost-ledger-format.md`.
 
 <!-- quoin:ledger-self-write -->
 3. **Session state:** `/triage` does NOT write `.workflow_artifacts/memory/sessions/` files. Routing is not "meaningful work" in the session-state rule sense.

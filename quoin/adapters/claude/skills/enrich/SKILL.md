@@ -135,9 +135,7 @@ This skill may run in a fresh chat session with no prior context. On start:
 3. Read `.workflow_artifacts/memory/repos-inventory.md`, `architecture-overview.md`, and `dependencies-map.md` (if they exist) — this is your grounding context for judging whether the raw prompt has genuine gaps against the real codebase, not guessed ones.
 4. Read `.workflow_artifacts/memory/sessions/` for any active session state for this task.
 5. Resolve the task dir via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name>` (no `--stage` flag — `enriched-prompt.md` is ALWAYS at the task root, mirroring `spec.md`). If exit code 2: display stderr verbatim, fall back to the task root, and ask the user to disambiguate. Read `<task-root>/spec.md` if it already exists — a prior spec is useful grounding context (do not duplicate it; enrichment is upstream of specify, not a replacement for it).
-If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 alongside `[no-redispatch]`/`[autonomous]` (per-spawn, non-inherited — do NOT propagate it to any child you spawn). Otherwise self-write as today (col 8 empty).
-
-6. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `enrich`.
+6. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` — phase: `enrich` — format/rules: `__QUOIN_HOME__/memory/cost-ledger-format.md`. If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
 
 <!-- quoin:ledger-self-write -->
 7. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`.
