@@ -450,6 +450,8 @@ Prohibited write targets (non-exhaustive):
 
 If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
 
+format/rules: `__QUOIN_HOME__/memory/cost-ledger-format.md`
+
 At session start (after Step 0 passes), append a row to the task cost ledger:
 
 <!-- quoin:ledger-self-write -->

@@ -82,6 +82,8 @@ After creating the task folder, initialize the cost ledger:
    ```
 If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
 
+format/rules: `__QUOIN_HOME__/memory/cost-ledger-format.md`
+
 2. Record the orchestrator's own session as the first entry (see cost tracking rules in CLAUDE.md for UUID acquisition):
    ```
    <session-uuid> | <YYYY-MM-DD> | run-orchestrator | opus | task | /run pipeline start
