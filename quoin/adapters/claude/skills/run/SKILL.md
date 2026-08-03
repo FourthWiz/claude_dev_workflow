@@ -76,13 +76,11 @@ Derive a descriptive kebab-case name from the task description (e.g., `auth-toke
 
 After creating the task folder, initialize the cost ledger:
 
-1. Create `.workflow_artifacts/<task-name>/cost-ledger.md` with the header:
+1. Create `.workflow_artifacts/<task-name>/cost-ledger.md` with the header (format/rules: `__QUOIN_HOME__/memory/cost-ledger-format.md`):
    ```
    # Cost Ledger — <task-name>
    ```
 If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
-
-format/rules: `__QUOIN_HOME__/memory/cost-ledger-format.md`
 
 2. Record the orchestrator's own session as the first entry (see cost tracking rules in CLAUDE.md for UUID acquisition):
    ```

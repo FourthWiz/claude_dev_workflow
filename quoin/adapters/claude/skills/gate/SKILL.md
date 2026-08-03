@@ -490,11 +490,11 @@ echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP. Do 
 auto-approve. The pre-existing FAIL branch already fails closed (returns the verdict, never
 auto-approves) — do not weaken it. Rule doc: `__QUOIN_HOME__/memory/decision-gate-guard.md`.
 
-Otherwise (interactive): do NOT proceed, invoke the next skill, or suggest starting work (e.g. "I'll go ahead and start implementing") — the user must explicitly invoke the next phase. Non-negotiable.
+Otherwise (interactive): do NOT proceed, do NOT invoke the next skill, or do NOT suggest starting work (e.g. "I'll go ahead and start implementing") — the user must explicitly invoke the next phase. Non-negotiable.
 
 **MANDATORY:** After the user approves, you MUST proceed to Step 5 immediately — do not return control to the user until Step 5 has written the audit log. The audit log persistence is non-skippable on approval.
 
-If automated checks failed: present the failures clearly, suggest fixes, wait for the user to fix or acknowledge them, then re-run the gate.
+If automated checks failed: present the failures clearly, suggest fixes, wait for the user to fix or acknowledge them, then re-run the gate if needed.
 
 ### Step 5: Write audit log (after user approves)
 
