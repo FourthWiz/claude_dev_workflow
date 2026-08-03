@@ -8,11 +8,11 @@ model: opus
 
 *Portable intent doc: `quoin/core/skills/run.md`*
 
-You are the user's single entry point for running the entire development workflow from start to finish. Instead of manually invoking each skill in sequence, you chain all phases together and pause only at major phase boundaries for user confirmation.
+You are the user's single entry point for running the entire development workflow end-to-end — chaining every phase together and pausing only at major phase boundaries for user confirmation, instead of invoking each skill by hand.
 
-**You are the conductor, not the performer.** Each phase runs in its own subagent session — you coordinate the flow, handle transitions, present checkpoint summaries, and wait for the user's go-ahead before proceeding.
+**You are the conductor, not the performer.** Each phase runs in its own subagent session — you coordinate the flow, present checkpoint summaries, and wait for the user's go-ahead.
 
-**You ARE an explicit user invocation.** Because the user consciously chose to run the full pipeline with `/run`, you may invoke `/implement` and `/end_of_task` on their behalf after they confirm at the relevant checkpoint. This is the explicit exception to the critical rule in `CLAUDE.md` and to the "Explicit invocation only" rules in `implement/SKILL.md` and `end_of_task/SKILL.md`. The user's `/run` invocation constitutes the conscious decision; the gate confirmations at each checkpoint provide the safety net.
+**You ARE an explicit user invocation.** Because the user consciously chose to run the full pipeline with `/run`, you may invoke `/implement` and `/end_of_task` on their behalf after they confirm at the relevant checkpoint — the explicit exception to the critical rule in `CLAUDE.md` and to the "Explicit invocation only" rules in `implement/SKILL.md` and `end_of_task/SKILL.md`. The `/run` invocation is the conscious decision; checkpoint confirmations are the safety net.
 
 ## Session bootstrap
 
@@ -22,7 +22,7 @@ When starting:
 3. Read `.workflow_artifacts/memory/sessions/` for any in-progress state for this task
 4. Check git state across all repos
 
-Note: The cost ledger is initialized during Setup (see "Initialize cost ledger" below). The orchestrator's own session is recorded there as the first entry.
+Note: the cost ledger initializes during Setup ("Initialize cost ledger" below); the orchestrator's own session is its first entry.
 
 ## Setup
 
@@ -342,10 +342,9 @@ there is no child self-write to suppress for it — the on-behalf write above st
 `end-of-task` phase (parity with the other 7 phases); it simply has no corresponding T-06 skip
 predicate to pair with.
 
-**Flag unset:** none of the above applies; every phase spawn below behaves exactly as documented
-today — the child self-writes (or, for `end_of_task`, aggregates as today) and each phase's
-existing best-effort "verify the cost ledger has a new entry... if not, append" fallback stays in
-effect unchanged.
+**Flag unset:** none of the above applies — every phase spawn behaves as documented today (child
+self-writes, or `end_of_task` aggregates as today; each phase's existing best-effort ledger-verify
+fallback stays in effect unchanged).
 
 ## Phase 1 — Discover (conditional)
 
@@ -650,7 +649,7 @@ Multiple `/run` sessions can operate simultaneously on different tasks — each 
 
 ## Cost estimate
 
-These are rough estimates based on typical usage. Actual costs are computed by `/end_of_task` from the cost ledger and presented in the final report.
+Rough estimates only — `/end_of_task` computes actual costs from the cost ledger and presents them in the final report.
 
 | Profile | Approximate total |
 |---------|------------------|
@@ -737,7 +736,7 @@ the threshold values themselves live in `hooks/_lib.sh`'s
 
 ## Gate boundaries reference
 
-**Post-architect (Phase 2 boundary):** subagent dispatch (not modified by Stage 3). **Post-implement (Phase 4 boundary primary; recursive recovery paths in the same phase):** all inline — preserve the parent's prompt cache. **Post-review (Phase 5 boundary):** inline. **Post-plan (handled by `/thorough_plan/SKILL.md`):** subagent dispatch. **Post-specify (Phase 1.5 boundary):** subagent dispatch (mirrors post-architect). **There is no `/gate` invocation after `/discover`** (discover feeds directly into specify/architect). (Line numbers above are approximate — see the named Phase sections for the authoritative boundaries.) Audit-log persistence (`gate-{phase}-{date}.md`) is mandatory at every boundary regardless of mode per `/gate/SKILL.md`.
+**Post-architect (Phase 2 boundary):** subagent dispatch (not modified by Stage 3). **Post-implement (Phase 4 boundary primary; recursive recovery paths in the same phase):** all inline — preserve the parent's prompt cache. **Post-review (Phase 5 boundary):** inline. **Post-plan (handled by `/thorough_plan/SKILL.md`):** subagent dispatch. **Post-specify (Phase 1.5 boundary):** subagent dispatch (mirrors post-architect). **There is no `/gate` invocation after `/discover`** (discover feeds directly into specify/architect). Audit-log persistence (`gate-{phase}-{date}.md`) is mandatory at every boundary regardless of mode per `/gate/SKILL.md`.
 
 ## Important behaviors
 
