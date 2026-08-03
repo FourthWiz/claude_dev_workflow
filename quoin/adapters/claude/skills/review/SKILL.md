@@ -182,7 +182,7 @@ If v3-format: read the body sections per format-kit.md §2 — ## Tasks is the s
    - Cache entries are **context only**. They describe what the module/file normally does. They do NOT replace reading the diff or any full-file read triggered by the Step 1 criteria (lines 34–41).
    - If no cache exists, skip this step — fall through to step 8 (current behavior preserved).
 8. Read the git diff (`git diff <base-branch>...HEAD`) — every line. Then selectively read full files per Step 1 criteria below. Do NOT read all modified files unconditionally.
-If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 alongside `[no-redispatch]`/`[autonomous]` (per-spawn, non-inherited — do NOT propagate it to any child you spawn). Otherwise self-write as today (col 8 empty).
+If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
 
 9. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `review`
 
