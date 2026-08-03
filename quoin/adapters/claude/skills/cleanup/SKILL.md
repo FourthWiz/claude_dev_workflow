@@ -195,7 +195,7 @@ Reuses the same `QUOIN_CLEANUP_SENTINEL_WINDOW` (default 1 day) age threshold as
 
 If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
 
-**Step 7. Append cost-ledger row** (phase `cleanup`) IF task context is active: a `.workflow_artifacts/<task>/cost-ledger.md` exists at cwd. Skip if no task context (per Q-02: no ledger write when no task).
+**Step 7. Cost tracking (conditional):** append your session to `.workflow_artifacts/<task-name>/cost-ledger.md` — phase: `cleanup` — format/rules: `__QUOIN_HOME__/memory/cost-ledger-format.md` — IF task context is active. Skip if no task context (per Q-02: no ledger write when no task).
 
 <!-- quoin:ledger-self-write -->
 

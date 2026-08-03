@@ -134,9 +134,7 @@ This skill may run in a fresh chat session. On start:
 3. Read `.workflow_artifacts/memory/sessions/` for active session state
 4. Read the task subfolder using `task_path(<task-name>, stage=<N>)` from `__QUOIN_HOME__/scripts/path_resolve.py` (or pass `stage=None` for legacy/default-root tasks); read `architecture.md` from the TASK ROOT, `current-plan.md` from the resolved path. Call pattern: `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate with integer form. architecture.md path: ALWAYS `<task-root>/architecture.md` (never under stage-N/). cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md`.
 5. Read `<task-root>/spec.md` if present (task feature spec — ALWAYS at task root, read-if-exists; absence is normal/grandfather). Its `## Acceptance criteria` are a binding planning input — the plan MUST satisfy them.
-If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
-
-6. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `plan`
+6. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` — phase: `plan` — format/rules: `__QUOIN_HOME__/memory/cost-ledger-format.md`. If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
 
 <!-- quoin:ledger-self-write -->
 7. Read deployed v3 references at session start: `__QUOIN_HOME__/memory/format-kit.md` and `__QUOIN_HOME__/memory/glossary.md`

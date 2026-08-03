@@ -183,7 +183,7 @@ Read `__QUOIN_HOME__/skills/gate/preamble.md` if it exists; if missing or empty,
 
 If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
 
-Cost tracking note: `/gate` runs between workflow phases. Append to the cost ledger only if a task folder path is determinable from context. If running as part of a named task, append your session to `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `gate`. If the task context is unclear, skip cost recording.
+Cost tracking (conditional): `/gate` runs between workflow phases; append to the cost ledger only if a task folder path is determinable from context — if the task context is unclear, skip cost recording. If the condition holds: append your session to `.workflow_artifacts/<task-name>/cost-ledger.md` — phase: `gate` — format/rules: `__QUOIN_HOME__/memory/cost-ledger-format.md`.
 
 <!-- quoin:ledger-self-write -->
 

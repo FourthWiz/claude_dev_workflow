@@ -368,9 +368,7 @@ If v3-format: read the body sections per format-kit.md §2 — the ## Tasks sect
    - For stale repos: run `git diff --name-only <cached-head> <current-head>` to identify changed files. Trust cache entries for unchanged files; read source for changed files.
    - If no cache exists, skip this step — fall through to source reads (current behavior)
 5. Read the actual source code you'll modify — but now **targeted**: skip source reads where the cache entry was fresh and sufficient for understanding context. Always read source immediately before modifying a file (cache aids understanding, not editing).
-If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
-
-6. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `implement`
+6. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` — phase: `implement` — format/rules: `__QUOIN_HOME__/memory/cost-ledger-format.md`. If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
 
 <!-- quoin:ledger-self-write -->
 7. Then proceed with implementation

@@ -15,9 +15,7 @@ This skill orchestrates the planning convergence loop by invoking sub-skills —
 
 On start:
 1. Read `.workflow_artifacts/memory/lessons-learned.md` for past insights
-If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
-
-2. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `thorough-plan`
+2. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` — phase: `thorough-plan` — format/rules: `__QUOIN_HOME__/memory/cost-ledger-format.md`. If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
 
 <!-- quoin:ledger-self-write -->
 

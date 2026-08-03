@@ -223,9 +223,7 @@ description wording for every branch below: memory/dispatch-guide.md §0‴ verb
 On start:
 0. Parse the `[no-interactive]` sentinel from the incoming prompt (leading, stackable, strip before further parsing) into `_INTERACTIVE=false` (default `_INTERACTIVE=true`). `/rollback` has no `[autonomous]` arm; when `_INTERACTIVE` is false the destructive-undo confirm (Step 4) FAILS CLOSED instead of proceeding. See `__QUOIN_HOME__/memory/decision-gate-guard.md`.
 1. Read `<task_dir>/current-plan.md` to understand task structure. Resolve `<task_dir>` via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]`. architecture.md: ALWAYS `<task-root>/architecture.md`. cost-ledger.md: ALWAYS `<task-root>/cost-ledger.md` (line 2 below — NOT edited per D-03). If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate.
-If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
-
-2. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` (see cost tracking rules in CLAUDE.md) — phase: `rollback`
+2. Append your session to the cost ledger: `.workflow_artifacts/<task-name>/cost-ledger.md` — phase: `rollback` — format/rules: `__QUOIN_HOME__/memory/cost-ledger-format.md`. If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
 
 <!-- quoin:ledger-self-write -->
 
