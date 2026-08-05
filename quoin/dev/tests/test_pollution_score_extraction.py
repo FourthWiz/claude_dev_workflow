@@ -34,9 +34,23 @@ TARGET_SKILLS = [
 SKILLS_DIR = TESTS_DIR.parent.parent / "adapters" / "claude" / "skills"
 
 
-def _run_score(transcript_path: str, extra_env: dict | None = None) -> subprocess.CompletedProcess:
-    """Run compute_pollution_score via sh, sourcing _lib.sh."""
+def _run_score(
+    transcript_path: str,
+    extra_env: dict | None = None,
+    tmpdir: str | None = None,
+) -> subprocess.CompletedProcess:
+    """Run compute_pollution_score via sh, sourcing _lib.sh.
+
+    tmpdir, when given, sets TMPDIR for the subprocess so each call gets an
+    isolated pollution-cache directory (compute_pollution_score writes a
+    per-transcript-path cache file under ${TMPDIR:-/tmp} — see Stage 3,
+    IVG-163). Without per-call isolation, cache files written by one test
+    could be read back by another test that happens to score the same
+    transcript path.
+    """
     env = os.environ.copy()
+    if tmpdir is not None:
+        env["TMPDIR"] = str(tmpdir)
     if extra_env:
         env.update(extra_env)
     script = f'. "{LIB_SH}" && compute_pollution_score "{transcript_path}"'
@@ -44,6 +58,16 @@ def _run_score(transcript_path: str, extra_env: dict | None = None) -> subproces
         ["sh", "-c", script],
         capture_output=True, text=True, env=env
     )
+
+
+def _cold_score(transcript_path: str) -> int:
+    """Score a transcript with a brand-new, throwaway TMPDIR — always a full
+    parse with no pre-existing cache. Used as the equivalence oracle: a
+    cache-assisted score (warm/rotated/corrupted/rewritten) must match this."""
+    with tempfile.TemporaryDirectory() as d:
+        result = _run_score(transcript_path, tmpdir=d)
+        assert result.returncode == 0, f"cold score run failed: {result.stderr}"
+        return int(result.stdout.strip())
 
 
 # ─── 1. Hook-side computation unit tests ─────────────────────────────────────
@@ -54,7 +78,7 @@ class TestComputePollutionScore:
         """Empty file → score 0 (0 bytes, no tool calls)."""
         f = tmp_path / "empty.jsonl"
         f.write_text("")
-        result = _run_score(str(f))
+        result = _run_score(str(f), tmpdir=tmp_path)
         assert result.returncode == 0, f"Unexpected non-zero exit: {result.stderr}"
         score = int(result.stdout.strip())
         assert score == 0, f"Empty file should score 0, got {score}"
@@ -67,7 +91,7 @@ class TestComputePollutionScore:
         content = line * (5000 // len(line) + 1)
         content = content[:5000]
         f.write_bytes(content.encode("utf-8"))
-        result = _run_score(str(f))
+        result = _run_score(str(f), tmpdir=tmp_path)
         assert result.returncode == 0
         score = int(result.stdout.strip())
         # 5000 bytes / 1000 = 5 kB; no tool calls → score exactly 5
@@ -106,7 +130,7 @@ class TestComputePollutionScore:
             while len(content.encode()) < 1_000_000:
                 content += pad
         f.write_bytes(content.encode("utf-8")[:1_000_000])
-        result = _run_score(str(f))
+        result = _run_score(str(f), tmpdir=tmp_path)
         assert result.returncode == 0
         score = int(result.stdout.strip())
         # 1000 kB + (10×5) + (20×1) + (5×1) = 1075
@@ -137,7 +161,7 @@ class TestComputePollutionScore:
                 "message": {"content": [{"type": "tool_use", "id": "t3", "name": "Agent", "input": {}}]}
             }) + "\n")
         f.write_text("".join(lines), encoding="utf-8")
-        result = _run_score(str(f))
+        result = _run_score(str(f), tmpdir=tmp_path)
         assert result.returncode == 0
         score = int(result.stdout.strip())
         content_bytes = f.stat().st_size
@@ -149,14 +173,14 @@ class TestComputePollutionScore:
             f"If score == {kb} (kb only), the jq filter is not walking .message.content[] correctly."
         )
 
-    def test_missing_file_nonzero_exit(self):
+    def test_missing_file_nonzero_exit(self, tmp_path):
         """Missing file → non-zero exit code."""
-        result = _run_score("/tmp/quoin-test-nonexistent-file-xyz.jsonl")
+        result = _run_score("/tmp/quoin-test-nonexistent-file-xyz.jsonl", tmpdir=tmp_path)
         assert result.returncode != 0, "Missing file should return non-zero exit"
 
-    def test_empty_path_nonzero_exit(self):
+    def test_empty_path_nonzero_exit(self, tmp_path):
         """Empty path argument → non-zero exit code."""
-        result = _run_score("")
+        result = _run_score("", tmpdir=tmp_path)
         assert result.returncode != 0, "Empty path should return non-zero exit"
 
 
@@ -217,7 +241,7 @@ class TestThresholdBehavior:
         f = tmp_path / "just_below.jsonl"
         # 4999000 bytes = 4999 kB
         f.write_bytes(b"x" * 4_999_000)
-        result = _run_score(str(f))
+        result = _run_score(str(f), tmpdir=tmp_path)
         assert result.returncode == 0
         score = int(result.stdout.strip())
         assert score == 4999, f"4999KB file should score 4999, got {score}"
@@ -226,7 +250,7 @@ class TestThresholdBehavior:
         """Score at exactly 5000 → dispatch should trigger (>= comparison)."""
         f = tmp_path / "at_threshold.jsonl"
         f.write_bytes(b"x" * 5_000_000)
-        result = _run_score(str(f))
+        result = _run_score(str(f), tmpdir=tmp_path)
         assert result.returncode == 0
         score = int(result.stdout.strip())
         assert score == 5000, f"5000KB file should score 5000, got {score}"
@@ -235,7 +259,7 @@ class TestThresholdBehavior:
         """QUOIN_POLLUTION_THRESHOLD=2000: a 2000KB file hits the custom threshold."""
         f = tmp_path / "custom_threshold.jsonl"
         f.write_bytes(b"x" * 2_000_000)
-        result = _run_score(str(f))
+        result = _run_score(str(f), tmpdir=tmp_path)
         assert result.returncode == 0
         score = int(result.stdout.strip())
         # Score = 2000; with custom threshold 2000 this should trigger dispatch
@@ -244,3 +268,176 @@ class TestThresholdBehavior:
         # not by the shell function itself — this test verifies the score is at/above
         # the custom threshold, confirming dispatch would fire.
         assert score >= 2000, f"Score {score} should be >= custom threshold 2000"
+
+
+# ─── 4. Pollution cache (Stage 3, IVG-163) ────────────────────────────────────
+
+class TestPollutionCache:
+    """counts+offset cache in the jq path of compute_pollution_score.
+
+    Every case below gets its own isolated TMPDIR (via _run_score's tmpdir
+    param, defaulting to pytest's per-test tmp_path) — see the module-level
+    _run_score docstring. _cold_score() is the equivalence oracle: any
+    cache-assisted score must match a fresh full parse of the same file.
+    """
+
+    @staticmethod
+    def _tool_line(name: str) -> str:
+        return json.dumps({
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "id": "toolu_01", "name": name, "input": {}}]}
+        }) + "\n"
+
+    @classmethod
+    def _build(cls, agent: int = 0, read: int = 0, bash: int = 0) -> str:
+        lines = []
+        lines.extend([cls._tool_line("Agent")] * agent)
+        lines.extend([cls._tool_line("Read")] * read)
+        lines.extend([cls._tool_line("Bash")] * bash)
+        return "".join(lines)
+
+    @staticmethod
+    def _cache_file(tmpdir: Path) -> Path:
+        caches = list(Path(tmpdir).glob("quoin-pollution-*.cache"))
+        assert len(caches) == 1, f"expected exactly one cache file in {tmpdir}, found {caches}"
+        return caches[0]
+
+    def test_cold_creates_five_field_cache_offset_le_size(self, tmp_path):
+        """Cold run: cache file created, exactly 5 fields, offset <= file size."""
+        f = tmp_path / "cold.jsonl"
+        f.write_text(self._build(agent=1, read=2, bash=3), encoding="utf-8")
+        result = _run_score(str(f), tmpdir=tmp_path)
+        assert result.returncode == 0, result.stderr
+        cache_file = self._cache_file(tmp_path)
+        fields = cache_file.read_text(encoding="utf-8").strip().split()
+        assert len(fields) == 5, f"expected 5 fields, got {fields}"
+        off_str, fp_str, agent_str, read_str, bash_str = fields
+        assert off_str.isdigit(), f"offset field should be all-digit, got {off_str!r}"
+        assert agent_str.isdigit() and read_str.isdigit() and bash_str.isdigit()
+        assert "-" in fp_str, f"head fingerprint should be a crc-bytes token, got {fp_str!r}"
+        size = f.stat().st_size
+        assert int(off_str) <= size, f"offset {off_str} should be <= file size {size}"
+
+    def test_warm_append_matches_cold_score_of_final_file(self, tmp_path):
+        """Warm-append: append N tool_use lines, re-score, result equals a
+        cold score of the same final file."""
+        f = tmp_path / "warm.jsonl"
+        f.write_text(self._build(agent=1, read=1, bash=1), encoding="utf-8")
+        first = _run_score(str(f), tmpdir=tmp_path)
+        assert first.returncode == 0, first.stderr
+        with f.open("a", encoding="utf-8") as fh:
+            fh.write(self._build(agent=2, read=3, bash=4))
+        warm = _run_score(str(f), tmpdir=tmp_path)
+        assert warm.returncode == 0, warm.stderr
+        warm_score = int(warm.stdout.strip())
+        cold_score = _cold_score(str(f))
+        assert warm_score == cold_score, (
+            f"warm-append score {warm_score} should equal a fresh cold score "
+            f"{cold_score} of the same final file"
+        )
+
+    def test_truncate_rotate_matches_fresh_cold_score(self, tmp_path):
+        """Truncate/rotate: rewrite the file SHORTER, re-score; result equals
+        a fresh cold score (offset > size path)."""
+        f = tmp_path / "rotate.jsonl"
+        f.write_text(self._build(agent=5, read=5, bash=5), encoding="utf-8")
+        first = _run_score(str(f), tmpdir=tmp_path)
+        assert first.returncode == 0, first.stderr
+        f.write_text(self._build(agent=1), encoding="utf-8")
+        after = _run_score(str(f), tmpdir=tmp_path)
+        assert after.returncode == 0, after.stderr
+        after_score = int(after.stdout.strip())
+        fresh_cold = _cold_score(str(f))
+        assert after_score == fresh_cold, (
+            f"post-truncation score {after_score} should equal a fresh cold score {fresh_cold}"
+        )
+
+    @pytest.mark.parametrize(
+        "garbage",
+        ["not a cache line at all", "1 fp 2 3", "abc fp 1 2 3"],
+        ids=["garbage-text", "three-fields", "non-numeric-offset"],
+    )
+    def test_corrupt_cache_falls_back_to_cold_score(self, tmp_path, garbage):
+        """Corrupt cache (garbage / 3 fields / non-numeric offset): each
+        re-score equals the cold score and exits 0."""
+        f = tmp_path / "corrupt.jsonl"
+        f.write_text(self._build(agent=2, read=2, bash=2), encoding="utf-8")
+        first = _run_score(str(f), tmpdir=tmp_path)
+        assert first.returncode == 0, first.stderr
+        cache_file = self._cache_file(tmp_path)
+        cache_file.write_text(garbage, encoding="utf-8")
+        result = _run_score(str(f), tmpdir=tmp_path)
+        assert result.returncode == 0, result.stderr
+        score = int(result.stdout.strip())
+        cold = _cold_score(str(f))
+        assert score == cold, f"corrupt-cache re-score {score} should equal cold score {cold} ({garbage!r})"
+
+    def test_in_place_rewrite_same_length_matches_cold_score(self, tmp_path):
+        """In-place rewrite: same byte length, different first-1KB content —
+        score equals cold score (head-fingerprint mismatch path)."""
+        f = tmp_path / "rewrite.jsonl"
+        original = self._build(agent=1, read=1, bash=1)
+        f.write_text(original, encoding="utf-8")
+        first = _run_score(str(f), tmpdir=tmp_path)
+        assert first.returncode == 0, first.stderr
+        replaced = self._build(agent=3)
+        if len(replaced) < len(original):
+            replaced = replaced + ("x" * (len(original) - len(replaced)))
+        elif len(replaced) > len(original):
+            replaced = replaced[: len(original)]
+        assert len(replaced) == len(original)
+        f.write_text(replaced, encoding="utf-8")
+        result = _run_score(str(f), tmpdir=tmp_path)
+        assert result.returncode == 0, result.stderr
+        score = int(result.stdout.strip())
+        cold = _cold_score(str(f))
+        assert score == cold, f"in-place-rewrite re-score {score} should equal cold score {cold}"
+
+    def test_partial_trailing_line_counted_exactly_once(self, tmp_path):
+        """Partial trailing line: a JSONL line with NO trailing newline is
+        NOT counted; appending the rest of the line later counts it exactly
+        once (not double, not dropped)."""
+        f = tmp_path / "partial.jsonl"
+        f.write_text(self._build(agent=1, read=1, bash=1), encoding="utf-8")
+        first = _run_score(str(f), tmpdir=tmp_path)
+        assert first.returncode == 0, first.stderr
+        first_score = int(first.stdout.strip())
+
+        partial_line = json.dumps({
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "id": "t", "name": "Agent", "input": {}}]}
+        })
+        with f.open("a", encoding="utf-8") as fh:
+            fh.write(partial_line)  # deliberately no trailing newline
+        mid = _run_score(str(f), tmpdir=tmp_path)
+        assert mid.returncode == 0, mid.stderr
+        mid_score = int(mid.stdout.strip())
+        assert mid_score == first_score, (
+            f"an incomplete trailing line (no newline yet) must not be counted: "
+            f"expected {first_score}, got {mid_score}"
+        )
+
+        with f.open("a", encoding="utf-8") as fh:
+            fh.write("\n")
+        done = _run_score(str(f), tmpdir=tmp_path)
+        assert done.returncode == 0, done.stderr
+        done_score = int(done.stdout.strip())
+        cold = _cold_score(str(f))
+        assert done_score == cold, f"completed line should score {cold}, got {done_score}"
+        assert done_score > first_score, (
+            "completing the trailing line must raise the score exactly once "
+            f"(it did not: first={first_score}, done={done_score})"
+        )
+
+    def test_missing_cache_dir_still_exits_zero_with_correct_score(self, tmp_path):
+        """Missing/unwritable cache dir (TMPDIR pointed at a non-existent
+        path) → still exits 0 with a correct score (cache write is
+        best-effort; counts are already computed before the write)."""
+        f = tmp_path / "nodir.jsonl"
+        f.write_text(self._build(agent=1, read=2, bash=3), encoding="utf-8")
+        missing_dir = tmp_path / "does-not-exist"
+        result = _run_score(str(f), tmpdir=missing_dir)
+        assert result.returncode == 0, result.stderr
+        score = int(result.stdout.strip())
+        cold = _cold_score(str(f))
+        assert score == cold, f"unwritable TMPDIR should still score correctly: expected {cold}, got {score}"
