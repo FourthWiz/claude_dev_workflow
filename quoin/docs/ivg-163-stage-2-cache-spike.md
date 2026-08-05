@@ -5,7 +5,7 @@ live-spawn spend, with a corrected derivation.
 
 - **T-07(a)** (architect spawn-prompt prefix stabilization): NULL — the full
   stabilizable literal is 54 chars (~16 tokens), foreclosed on materiality
-  (~$0.00002/spawn at cache-read rates) and breakpoint placement (quoin does not
+  (~$0.000008/spawn at cache-read rates) and breakpoint placement (quoin does not
   control `cache_control` placement; all 7 sampled `cache-break-state` files read
   `globalCacheStrategy: "none"`). Not by a 16-vs-512-token comparison — the
   provider minimum governs the total prefix, not an increment.
