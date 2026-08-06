@@ -212,18 +212,19 @@ Under `AUTONOMOUS`, every hard stop writes a halt-sentinel **before exit**, then
 
 ## Autonomous progress sentinels (Stage 2 sentinel contract)
 
-Under `AUTONOMOUS`, the completion of each of the 8 resumable phases below is recorded by a per-phase completion sentinel, so a future resumed session (or an external supervisor relaunching one) can tell exactly which phases already finished without re-deriving it from session-state prose. This section is the T-05 contract declaration — the entry-marker write (Setup) and the resume-side read/idempotency logic (the later "Resume" section) land in a later Stage-2 task; this section fixes the write-site map they both consume.
+Under `AUTONOMOUS`, the completion of each of the 9 resumable phases below is recorded by a per-phase completion sentinel, so a future resumed session (or an external supervisor relaunching one) can tell exactly which phases already finished without re-deriving it from session-state prose. This section is the T-05 contract declaration — the entry-marker write (Setup) and the resume-side read/idempotency logic (the later "Resume" section) land in a later Stage-2 task; this section fixes the write-site map they both consume.
 
 - **Directory:** `.workflow_artifacts/memory/autonomous-progress-{task}/` — same OUTSIDE-the-task-folder rationale as the halt-sentinel above.
-- **Write-site map** (phase → completion sentinel, all 8 resumable phases, atomic write `printf > f.tmp && mv f.tmp f`):
+- **Write-site map** (phase → completion sentinel, all 9 resumable phases, atomic write `printf > f.tmp && mv f.tmp f`):
   1. **discover** (Phase 1) → writes `autonomous-progress-{task}/discover.done`.
   2. **enrich** (Phase 1.4) → writes `autonomous-progress-{task}/enrich.done`.
   3. **specify** (Phase 1.5) → writes `autonomous-progress-{task}/specify.done`.
-  4. **architect** (Phase 2) → writes `autonomous-progress-{task}/architect.done`.
-  5. **thorough_plan** (Phase 3) → writes `autonomous-progress-{task}/thorough_plan.done`.
-  6. **implement** (Phase 4) → writes `autonomous-progress-{task}/implement.done`.
-  7. **review** (Phase 5) → writes `autonomous-progress-{task}/review.done`.
-  8. **end_of_task** (Phase 6) → writes `autonomous-progress-{task}/end_of_task.done`.
+  4. **fast_path_triage** (Phase 1.6) → writes `autonomous-progress-{task}/fast_path_triage.done`.
+  5. **architect** (Phase 2) → writes `autonomous-progress-{task}/architect.done`.
+  6. **thorough_plan** (Phase 3) → writes `autonomous-progress-{task}/thorough_plan.done`.
+  7. **implement** (Phase 4) → writes `autonomous-progress-{task}/implement.done`.
+  8. **review** (Phase 5) → writes `autonomous-progress-{task}/review.done`.
+  9. **end_of_task** (Phase 6) → writes `autonomous-progress-{task}/end_of_task.done`.
 - **Sub-phase granularity (optional):** a phase MAY additionally write `autonomous-progress-{task}/{phase}.{subphase}.done` for finer-grained progress within itself (e.g. a long `implement` phase checkpointing partial task batches). The counting glob `autonomous-progress-{task}/*.done` is the UNION of both forms.
 - **Marker:** `autonomous-run-{task}.marker`, written once at autonomous-span entry (Setup, right after `AUTONOMOUS` is set) — the read/re-establish-on-resume side of this contract is Stage-2 groundwork, documented alongside the later "Resume" section.
 - **Done sentinel:** `autonomous-done-{task}.md`, written by `end_of_task` LAST, after its other terminal side effects, outside the archived folder — same rationale as the halt-sentinel.
@@ -235,6 +236,7 @@ Phase 1: DISCOVER     (conditional — skip if recent)
 Phase 1.4: ENRICH     (default-on prompt — user chooses run/skip each time)
 Phase 1.5: SPECIFY    (conditional — skip if Small OR task spec.md exists)
           ↓ Checkpoint A0: user confirms spec
+Phase 1.6: FAST_PATH_TRIAGE (conditional — evaluates only on Small or `fast:`; silent otherwise)
 Phase 2: ARCHITECT    (conditional — skip if Small)
           ↓ Checkpoint A: user confirms architecture
 Phase 3: THOROUGH_PLAN
@@ -252,7 +254,7 @@ Before each HEAVY phase spawn — Phase 2 (architect), Phase 3 (thorough_plan),
 Phase 4 (implement), Phase 5 (review) — run the on-demand context-budget guard in
 the FOREGROUND top-level `/run` session (this is the PRIMARY / authoritative
 measurement point; it measures the context that is about to spawn the phase). Do
-NOT run it before the lighter Phase 1 / 1.4 / 1.5 / 6 (heavy-phase-only scope).
+NOT run it before the lighter Phase 1 / 1.4 / 1.5 / 1.6 / 6 (Phase 1.6 is inline, `D-12`, and never spawned; heavy-phase-only scope).
 This is additive to the existing checkpoints; it never lowers or touches any hook
 threshold.
 
@@ -304,7 +306,9 @@ When `QUOIN_INLINE_COST_CAPTURE=1`, this applies at EVERY managed phase spawn be
 enrich, specify, architect, thorough_plan, implement, review, end_of_task — and the two post-phase
 `/gate` subagent spawns (spec→architect boundary at Checkpoint A0, architecture boundary at
 Checkpoint A). The implement-phase inline gate (no spawn) is NOT managed — it runs in-session,
-nothing to suppress.
+nothing to suppress. The fast-path triage step (Phase 1.6) is likewise NOT in this roster — it
+runs inline (`D-12`), never as a spawned subagent, so there is no child session to suppress the
+self-write for; this list is deliberately unchanged.
 
 At each spawn: (1) prepend `[quoin-onbehalf]` to the spawn prompt — stacks with
 `[autonomous]`/`[no-interactive]`/`[no-redispatch]` per the existing propagation rules
@@ -338,7 +342,9 @@ non-inherited, no double-suppression.
 self-writer today (it aggregates at task close rather than self-writing a session-start row), so
 there is no child self-write to suppress for it — the on-behalf write above still fires for the
 `end-of-task` phase (parity with the other 7 phases); it simply has no corresponding T-06 skip
-predicate to pair with.
+predicate to pair with. This "7" counts the on-behalf MANAGED phase roster (the 8 spawned phases
+enumerated above, of which `end_of_task` is one) — the fast-path triage step runs inline (`D-12`)
+and is never spawned, so it is deliberately outside this mechanism and this count is unchanged.
 
 **Flag unset:** none of the above applies — every phase spawn behaves as documented today (child
 self-writes, or `end_of_task` aggregates as today; each phase's existing best-effort ledger-verify
@@ -404,6 +410,10 @@ Gate: PASSED / FAILED
 
 Continue to architecture? (yes / no / show spec)
 ```
+
+## Phase 1.6 — Fast-path triage (conditional)
+
+Placeholder — full routing logic lands in a later task. Under `AUTONOMOUS`, once evaluated, also write the phase's completion sentinel `autonomous-progress-{task}/fast_path_triage.done` (atomic write — T-05/T-10 write-site map).
 
 ## Phase 2 — Architect (conditional)
 
@@ -546,7 +556,7 @@ Finalize and push? (yes / no / show review)
 
 Spawn `/end_of_task` as a subagent session. Because the user invoked `/run` and confirmed at Checkpoint D, the `/run` exception in `end_of_task/SKILL.md` applies. All 8 steps run as normal (pre-flight, commit, push, lessons, session state, cost aggregation, archive, report). Under `QUOIN_INLINE_COST_CAPTURE=1`, this spawn also follows "On-behalf cost capture" above (phase=end-of-task, model=sonnet) — see the `end_of_task` note there (no T-06 skip predicate to pair with; this write is additive, not a suppression-replace).
 
-Under `AUTONOMOUS`, once `/end_of_task` returns successfully, also write the phase's completion sentinel `autonomous-progress-{task}/end_of_task.done` (atomic write — T-05/T-10 write-site map). This is a separate sentinel from `end_of_task`'s own terminal `autonomous-done-{task}.md` (T-11) — this one records phase-level progress consistent with the other 7 phases; the done-sentinel is the overall supervisor-loop terminal signal.
+Under `AUTONOMOUS`, once `/end_of_task` returns successfully, also write the phase's completion sentinel `autonomous-progress-{task}/end_of_task.done` (atomic write — T-05/T-10 write-site map). This is a separate sentinel from `end_of_task`'s own terminal `autonomous-done-{task}.md` (T-11) — this one records phase-level progress consistent with the other 8 phases; the done-sentinel is the overall supervisor-loop terminal signal.
 
 After completion, present the final report:
 ```

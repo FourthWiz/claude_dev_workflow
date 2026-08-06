@@ -61,14 +61,15 @@ HALT_TEMPLATE = "autonomous-halt-{task}.md"
 COMPLETION_GLOB_TEMPLATE = "autonomous-progress-{task}/*.done"
 
 #: Full resumable `/run` phase roster (run/SKILL.md `## Phase sequence`,
-#: 8 phases). `enrich` (1.4) and `specify` (1.5) are IN-SET — never
-#: abbreviated as "Phases 1..6", which would silently drop them. This
-#: tuple is the single source of truth other tests/docs are checked
-#: against (see the coverage guard in test_autonomous_sentinel_contract.py).
+#: 9 phases). `enrich` (1.4), `specify` (1.5), and `fast_path_triage` (1.6)
+#: are IN-SET — never abbreviated as "Phases 1..6", which would silently
+#: drop them. This tuple is the single source of truth other tests/docs are
+#: checked against (see the coverage guard in test_autonomous_sentinel_contract.py).
 RESUMABLE_PHASES = (
     "discover",
     "enrich",
     "specify",
+    "fast_path_triage",
     "architect",
     "thorough_plan",
     "implement",
@@ -275,7 +276,10 @@ DEFAULT_PERMISSION_MODE = "allowedTools"
 
 #: Tool allow-list covering everything the `/run --resume --autonomous`
 #: pipeline's phases use (discover/enrich/specify/architect/thorough_plan/
-#: implement/review/end_of_task), per the T-01 POC decision note.
+#: implement/review/end_of_task), per the T-01 POC decision note. This is the
+#: TOOL-PERMISSION roster, not RESUMABLE_PHASES above — `fast_path_triage`
+#: (Phase 1.6) runs inline in the orchestrator's own session (never spawned
+#: as a subagent), so it needs no entry here; left unchanged deliberately.
 DEFAULT_ALLOWED_TOOLS = (
     "Read",
     "Write",

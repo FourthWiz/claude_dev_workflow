@@ -9,7 +9,7 @@ Covers:
 - `quoin.supervisor`'s path constants byte-match the templates named in
   the docs (drift guard).
 - The MAJ-1 coverage guard: the resumable-phase roster parsed from
-  `run/SKILL.md` `## Phase sequence` (8 phase names) is set-equal to
+  `run/SKILL.md` `## Phase sequence` (9 phase names) is set-equal to
   (a) the phase set `quoin.supervisor.RESUMABLE_PHASES` defines a
   `{phase}.done` template for, and (b) the phase set documented to
   WRITE a `{phase}.done` sentinel in run/SKILL.md's write-site map.
@@ -199,11 +199,12 @@ def test_coverage_guard_roster_matches_supervisor_and_write_sites() -> None:
     supervisor_phases = set(supervisor.RESUMABLE_PHASES)
     write_site_phases = _parse_write_site_phases_from_skill(skill_text)
 
-    # The roster must be exactly the 8-phase set (never a "1..6" abbreviation
-    # that silently drops enrich/specify) — asserted structurally, not as a
-    # frozen literal count.
+    # The roster must be exactly the 9-phase set (never a "1..6" abbreviation
+    # that silently drops enrich/specify/fast_path_triage) — asserted
+    # structurally, not as a frozen literal count.
     assert "enrich" in roster, "roster must include enrich (Phase 1.4)"
     assert "specify" in roster, "roster must include specify (Phase 1.5)"
+    assert "fast_path_triage" in roster, "roster must include fast_path_triage (Phase 1.6)"
 
     assert roster == supervisor_phases, (
         f"run/SKILL.md Phase-sequence roster {sorted(roster)} != "
