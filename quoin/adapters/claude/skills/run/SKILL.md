@@ -414,7 +414,53 @@ Continue to architecture? (yes / no / show spec)
 
 ## Phase 1.6 — Fast-path triage (conditional)
 
-Placeholder — full routing logic lands in a later task. Under `AUTONOMOUS`, once evaluated, also write the phase's completion sentinel `autonomous-progress-{task}/fast_path_triage.done` (atomic write — T-05/T-10 write-site map).
+`profile` (Small/Medium/Large) keeps today's meaning and classification. `route` is a separate,
+orthogonal concept — `full` (default) or `fast`. This phase always executes, so its place in the
+resumable-phase roster and its sentinel contract stay whole — but it has two behavioral modes:
+
+- **Silent no-op mode.** Setup profile is Medium or Large AND no `fast:` tag was given → emit
+  `route=full` with zero user-facing output, zero prompts, zero extra model calls, and no
+  `triage-decision.md`. This mirrors the existing skip behavior at Phase 1.4 and Phase 1.5 exactly.
+  A plain (non-autonomous) run adds zero artifacts and zero behavior delta here; an autonomous run
+  adds exactly one thing — its own completion sentinel (below) — and nothing else.
+- **Evaluating mode.** Fires when the Setup profile is Small, or a `fast:` tag was given from any
+  profile. Only in this mode is eligibility assessed, Checkpoint A1 raised (see below), and
+  `triage-decision.md` written.
+
+**Evidence ladder.** Read the strongest available input, in this precedence order:
+- `<task-root>/spec.md`, when it exists.
+- else `<task-root>/enriched-prompt.md`.
+- else the raw task description.
+
+A raw task description alone can never satisfy eligibility criterion 5 below, so evaluating mode
+with no spec and no enriched prompt degrades to `route=full` — silently, like any other ineligible
+evaluation.
+
+**Eligibility — all five must hold:**
+- Bounded file set inside a single module.
+- No new cross-module or cross-repo integration point.
+- Matches a pattern already present in the codebase.
+- No data migration, auth change, or public-contract change.
+- The evidence's acceptance criteria are already concrete enough to serve directly as an
+  implementation checklist.
+
+This is visibly stricter than the existing Small-task threshold: Small alone does not require all
+five of these, fast-path eligibility does.
+
+A Small task that evaluates to ineligible is ALSO silent: it emits `route=full`, raises no
+checkpoint, and writes no decision artifact.
+
+**Ledger row.** Write phase `triage` (the cost-ledger's fixed phase vocabulary is not extended) —
+note this is deliberately a DIFFERENT string from the roster/sentinel/heading name
+`fast_path_triage` used everywhere else in this file; do not write `fast_path_triage` into the
+ledger. Written inline by the orchestrator, since this step runs inline and never as a subagent.
+
+**Session state.** Gains the chosen route, its confidence, and the evidence tier that fed the
+decision, recorded at this phase boundary like every other phase.
+
+Under `AUTONOMOUS`, once evaluated (both modes), also write the phase's completion sentinel
+`autonomous-progress-{task}/fast_path_triage.done` (atomic write — T-05/T-10 write-site map). A
+plain (non-autonomous) run never writes this file, in either mode.
 
 ## Phase 2 — Architect (conditional)
 
