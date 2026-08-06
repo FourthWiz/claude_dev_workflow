@@ -208,6 +208,15 @@ Under `AUTONOMOUS`, every hard stop writes a halt-sentinel **before exit**, then
   4. **Git conflict** (any phase) — `phase: <phase where the conflict surfaced>`, `reason: <conflict summary>`.
   5. **Branch-hygiene violation** (Setup / any downstream precheck) — `phase: <phase where the violation was detected>`, `reason: <violation summary, e.g. protected-branch commits>`.
   6. **Below-bar formulation** (Formulation quality bar, between Phase 3 and Phase 4) — `phase: formulation`, `reason: <bar failure detail — critic REVISE at cap, or below-threshold Small confidence/smoke gate>`.
+<!-- decision-gate: fail-closed site=fast-route-escalation tokens=0 -->
+- **Fast-route carve-out for sites 1, 2, and 3.** On a fast-route run, sites 1 (Review BLOCKED), 2
+  (Gate FAIL after the retry cap), and 3 (Review CHANGES_REQUESTED after 3 rounds) are NOT unconditional halt-sentinel writers — each offers "escalate to full" as an alternative, and when
+  escalation is chosen under `[autonomous]` it routes through the NEEDS-DECISION return path
+  (`needs-decision-{task}.md`, written by `decision_gate_guard.py fail-closed`) instead of writing
+  `autonomous-halt-{task}.md`. This carve-out applies ONLY on the fast route; on the full path all
+  three sites remain unconditional halt-sentinel writers exactly as the six-site list states. See
+  each site's own phase section (Phase 4 Checkpoint C, Phase 5 CHANGES_REQUESTED, Phase 5 BLOCKED)
+  for the full escalation mechanism.
 - **Never auto-creates a PR.** At every one of the six sites, and everywhere else in this file, the orchestrator NEVER auto-creates a pull request — identical in interactive and autonomous mode. PR creation stays `/pr`, a separate explicit user action.
 - **Only under `AUTONOMOUS`.** In plain (non-autonomous) `/run`, these six situations still halt the workflow exactly as documented in their own phase sections — they present the existing interactive prompt instead of writing a halt-sentinel.
 
@@ -238,9 +247,10 @@ Phase 1.4: ENRICH     (default-on prompt — user chooses run/skip each time)
 Phase 1.5: SPECIFY    (conditional — skip if Small OR task spec.md exists)
           ↓ Checkpoint A0: user confirms spec
 Phase 1.6: FAST_PATH_TRIAGE (conditional — evaluates only on Small or `fast:`; silent otherwise)
-Phase 2: ARCHITECT    (conditional — skip if Small)
+          ↓ Checkpoint A1: user confirms fast vs full route (evaluating mode only)
+Phase 2: ARCHITECT    (conditional — skip if Small, OR skip if route=fast)
           ↓ Checkpoint A: user confirms architecture
-Phase 3: THOROUGH_PLAN
+Phase 3: THOROUGH_PLAN (conditional — skip if route=fast)
           ↓ Checkpoint B: user confirms plan
 Phase 4: IMPLEMENT
           ↓ Checkpoint C: user confirms implementation
@@ -255,7 +265,7 @@ Before each HEAVY phase spawn — Phase 2 (architect), Phase 3 (thorough_plan),
 Phase 4 (implement), Phase 5 (review) — run the on-demand context-budget guard in
 the FOREGROUND top-level `/run` session (this is the PRIMARY / authoritative
 measurement point; it measures the context that is about to spawn the phase). Do
-NOT run it before the lighter Phase 1 / 1.4 / 1.5 / 1.6 / 6 (Phase 1.6 is inline, `D-12`, and never spawned; heavy-phase-only scope).
+NOT run it before the lighter Phase 1 / 1.4 / 1.5 / 1.6 / 6 (Phase 1.6 is inline, `D-12`, and never spawned; heavy-phase-only scope). This exclusion is unconditionally correct for Phase 1.6's silent no-op mode (Medium/Large, no `fast:` tag — genuinely zero extra reasoning); evaluating mode (Small, or `fast:` from any profile) does non-trivial inline reasoning over the evidence ladder and five eligibility criteria in the orchestrator's own session, so the exclusion there is a deliberate `D-12` scope choice (bounded, small relative to the phases this guard protects), not a claim that evaluating mode is free.
 This is additive to the existing checkpoints; it never lowers or touches any hook
 threshold.
 
@@ -313,7 +323,12 @@ self-write for; this list is deliberately unchanged.
 
 At each spawn: (1) prepend `[quoin-onbehalf]` to the spawn prompt — stacks with
 `[autonomous]`/`[no-interactive]`/`[no-redispatch]` per the existing propagation rules
-(order-independent, each leaf strips its own copy) — so the child SKIPS its own session-start
+(order-independent EXCEPT that any `[no-redispatch]` form must remain the FIRST token whenever one
+is present — `implement/SKILL.md`'s §0 and §0‴ dispatch preambles condition on the prompt "starting
+with" a `[no-redispatch]` form; on the fast route's Opus `/implement` spawns this ordering is
+load-bearing, per "Phase 4 — Implement" below, so `[quoin-onbehalf]` must be prepended AFTER
+`[no-redispatch]`, never before it — each leaf still strips its own copy regardless of position) —
+so the child SKIPS its own session-start
 cost-ledger self-write (T-06 predicate); (2) bind `AID`/`TUID` per `proc:agentid-capture` (stage-3
 plan) — `AID` is the `agentId` field from the Agent tool's return for that spawn, transcribed
 literally by this orchestrator (model-in-the-loop, not a shell capture); `TUID` is this spawn's own
@@ -453,7 +468,10 @@ checkpoint, and writes no decision artifact.
 **Checkpoint A1.** Fires in evaluating mode only, and only once eligibility has passed (an
 ineligible evaluation stays silent, per above — no checkpoint, no artifact). Raised inline by the
 orchestrator via `AskUserQuestion`, never by a subagent — `AskUserQuestion` is not provisioned to
-subagents.
+subagents. This is a prose-described `AskUserQuestion` call site, deliberately outside the
+decision-gate census's call-syntax detection scope (the census counts a literal opening-paren call
+form as a genuine token and intentionally does not count prose mentions like this one) — confirmed
+out-of-scope rather than carrying a classification marker.
 
 Prompt: "Fast-path triage found this task eligible for the fast route (confidence {confidence}).
 Take the fast path, take the full path, or see why?"
@@ -476,7 +494,9 @@ reviews today, per `/review`'s own fan-out contract — so the user sees this tr
 choosing. The full-path option remains available at this same prompt.
 
 Under `[no-interactive]` (no human reachable to answer): fail closed to `route=full`. A route is
-never guessed as "fast" without a human confirming it at this checkpoint.
+never guessed as "fast" without a human confirming it at this checkpoint. The same fail-closed
+degrade applies if `AskUserQuestion` IS raised but returns empty, errors, or otherwise fails to resolve to one of the three defined options — treat that identically to the `[no-interactive]`
+case: fail closed to `route=full` rather than guessing or retrying indefinitely.
 
 Under `[autonomous]`: Checkpoint A1 is skipped entirely — no `AskUserQuestion` is raised — and the
 route already produced by eligibility evaluation is taken as-is, subject to the formulation
@@ -487,12 +507,34 @@ checkpoint table") anywhere near this checkpoint's description — never reprodu
 
 **Fast-route plan stub (evaluating mode, `route=fast` only).** When Checkpoint A1 resolves to the
 fast path — chosen by the user, or auto-taken under `[autonomous]` per the formulation quality bar
-described later in this file — the orchestrator writes `<task_dir>/current-plan.md` itself, once.
+described later in this file — the orchestrator writes `<task_dir>/current-plan.md` itself, once,
+subject to the read-before-write guard below and followed by the post-write validation below.
+
+**Read-before-write guard (existence check, MUST run before any write).** Before writing, check
+whether `<task_dir>/current-plan.md` already exists. If it exists and does NOT carry
+`provenance: fast-path-triage` in its frontmatter (equivalently: `autonomous-progress-{task}/thorough_plan.done`
+is already present) — this is a real, critic-reviewed plan a prior full pipeline run already
+produced (most plausibly a task that started on an older `/run` version and is now resuming under
+this one). NEVER overwrite it: degrade silently to `route=full` instead (no prompt, no error — the
+same silent-degrade posture as every other ineligible evaluation in this section) and let Phase 2
+and Phase 3 run normally against the real plan. If the file does not exist, or exists and DOES
+carry `provenance: fast-path-triage` (a stub left behind by an earlier interrupted fast-route
+attempt on THIS SAME task), proceed to write/overwrite it — overwriting a stub with a fresher stub
+is safe; overwriting a real plan is not.
 
 The stub is a valid Class B `current-plan.md`: `## For human`, `## State`, `## Tasks`, and
 `## Risks` are all present. Its `## Tasks` section carries one pending task per coherent change,
 each with concrete file paths and an acceptance bullet — derived from the evidence's acceptance
 criteria when a spec exists, and from the enriched prompt's concrete deliverables otherwise.
+
+**Task-section contract (pending glyph + numbering, MUST match what `/implement` selects on).**
+Every task written into `## Tasks` is pending: prefix each with the `⏳` glyph and label it
+`T-NN` (`T-01`, `T-02`, ... in emission order) — the identical glyph and numbering shape
+`implement/SKILL.md`'s task-confirmation step depends on (it populates its `AskUserQuestion`
+options, and its `_AUTONOMOUS` auto-select branch, from "pending tasks (⏳)" in `current-plan.md`).
+A stub whose tasks lack the `⏳` glyph or the `T-NN` label makes `/implement` see zero pending
+tasks and stop with "All tasks already implemented." on an autonomous fast run that has not
+actually implemented anything — this contract exists specifically to prevent that silent no-op.
 
 Four provenance markers, all four required, so a fast-route stub can never be mistaken for a
 critic-reviewed plan:
@@ -506,6 +548,13 @@ critic-reviewed plan:
 Two further lines, deliberately different values, so a fast-route stub never buys a weaker gate on
 a harder task: `Task profile: <the honestly classified profile>` (unchanged — a `fast:`-forced
 Large task still gates as Large) and `Review shape: single-pass (fast-path)`.
+
+**Post-write validation (MUST run immediately after the write, before this phase completes).** Run
+`python3 __QUOIN_HOME__/scripts/validate_artifact.py <task_dir>/current-plan.md` against the
+just-written file. Exit 0 → proceed normally. Any non-zero exit → the emitted stub failed its own
+format contract; do NOT hand a malformed stub to `/implement` — delete the just-written file and
+degrade to `route=full` (same silent-degrade posture as the read-before-write guard above), so
+Phase 2 and Phase 3 run the full pipeline instead of dispatching against a broken plan.
 
 **`triage-decision.md`.** Written at the task root, evaluating mode only: the chosen route, the
 rationale, the confidence, and the evidence tier used. This filename is deliberately not registered
@@ -521,6 +570,10 @@ this one file.
 note this is deliberately a DIFFERENT string from the roster/sentinel/heading name
 `fast_path_triage` used everywhere else in this file; do not write `fast_path_triage` into the
 ledger. Written inline by the orchestrator, since this step runs inline and never as a subagent.
+Pin the model explicitly to `opus` (this step runs inline in the `/run` orchestrator's own Opus
+session — never let a phase→model writer mapping default this row to the triage skill's own cheap
+tier) and pin `uuid` to the orchestrator's own session UUID (`get_session_uuid.py --phase run`),
+not a synthesized or borrowed one.
 
 **Session state.** Gains the chosen route, its confidence, and the evidence tier that fed the
 decision, recorded at this phase boundary like every other phase.
@@ -611,6 +664,14 @@ Spawn `/implement` as a subagent session, passing path to `<task_dir>/current-pl
 
 **On the fast route,** dispatch this spawn with model opus, and the spawn prompt's FIRST token must be bare `[no-redispatch]` — any `[autonomous]` / `[no-interactive]` / `[quoin-onbehalf]` markers follow it, in that order. This order is load-bearing: `implement/SKILL.md`'s §0 conditions on the prompt "starting with" a `[no-redispatch]` form, and §0‴ likewise — the wrong order lets `/implement` silently down-dispatch to Sonnet while every mechanical check still passes. On the full path this dispatch is unchanged (default model tier, no forced sentinel).
 
+**Small-profile cost honesty.** This Opus dispatch is unconditional on the fast route regardless of
+task profile, including Small — the profile that triggers Phase 1.6 evaluating mode with no tag at
+all. On Small, this is plausibly net MORE expensive than the full path: Small already skips
+`/architect` and already gets a single-pass review, so the fast route's only saving on Small is one
+Opus planning pass, while this dispatch moves `/implement` from Sonnet to Opus on what is typically
+the run's largest token consumer. Medium and Large are genuinely favorable — see the Cost estimate
+section below for the honest net-cost direction per profile.
+
 After the phase, verify the cost ledger has a new entry for the `implement` phase. If not, append a best-effort entry with `unknown-implement-<timestamp>`. Under `QUOIN_INLINE_COST_CAPTURE=1`, this step is instead the on-behalf write per "On-behalf cost capture" above (phase=implement, model=opus on the fast route, sonnet otherwise).
 
 Under `AUTONOMOUS`, once Checkpoint C confirms (gate passed, continuing to review), also write the phase's completion sentinel `autonomous-progress-{task}/implement.done` (atomic write — T-05/T-10 write-site map).
@@ -636,9 +697,32 @@ If the gate **failed**: present the failures and ask "Fix and retry, or stop?"
 - "fix" → spawn `/implement` again for the failing items (on the fast route, same model-opus / leading-`[no-redispatch]` dispatch as the primary Phase 4 spawn above), then re-run `/gate` inline (post-implement boundary — same inline mechanism as the primary path; audit-log persistence applies per `/gate/SKILL.md`)
 - "stop" → halt, preserve artifacts
 
-**(fast route only)** a third option, "escalate to full", is also offered here: rewrite `triage-decision.md` with the flipped route (`route=full`), DELETE `autonomous-progress-{task}/architect.done` and `autonomous-progress-{task}/thorough_plan.done`, delete the stub `current-plan.md` — or at minimum strip its `Review shape:` line, since a surviving single-pass declaration would apply the cheapest review precisely on the path taken because the task turned out harder than routed — and re-enter at the architect phase. Completed implementation work is preserved. On the full path this option does not exist; the existing "fix" / "stop" choice above is unchanged.
+**(fast route only)** a third option, "escalate to full", is also offered here. Escalation is ONE
+atomic unit — perform ALL of the following, in order, whenever escalation is chosen (interactively
+or via the `[autonomous]` NEEDS-DECISION path below):
+1. Set the orchestrator's in-session `route` variable to `full` for the remainder of this session.
+   This is what makes the re-entered architect and planning skip conditions (Phase 2's and Phase
+   3's `route=fast` clauses) evaluate false on re-entry — without this step, re-entry would
+   re-skip the very phases escalation exists to run.
+2. rewrite `triage-decision.md` with the flipped route (`route=full`).
+3. DELETE `autonomous-progress-{task}/architect.done` and `autonomous-progress-{task}/thorough_plan.done`.
+   `implement.done` does not exist yet at this site — this escalation offer sits in the gate-FAILED
+   branch of Checkpoint C, strictly before Phase 4 writes `implement.done` — so there is nothing to
+   delete here; the two review-phase escalation sites below (Phase 5) fire AFTER `implement.done`
+   exists and must delete it too, see there.
+4. When the stub carries `provenance: fast-path-triage`, delete the stub `current-plan.md`
+   outright — or at minimum strip its `Review shape:` line AND, in the same step, its `Route:`
+   line (never the review-shape line alone: a surviving `Route: fast` line would let Resume Step 0b
+   read the very route just abandoned back into effect, re-arming both phase skips on a later
+   resume) — since a surviving single-pass declaration would apply the cheapest review precisely on the path taken because the task turned out harder than routed. Never delete or strip a
+   `current-plan.md` that lacks the provenance marker — that means a real plan already superseded
+   the stub, and this escalation path does not apply to it.
+5. re-enter at the architect phase.
 
-Under `AUTONOMOUS`: auto-select "fix" and retry once (retry cap = 1 automatic retry). If the gate still fails after that one retry, this is Hard-stop #2 (Gate FAIL after the retry cap) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop. Never fall back to a silent proceed, and never ask. **On a fast-route run, this same escalation option routes through the existing NEEDS-DECISION return path** (`needs-decision-{task}.md`) instead of a silent auto-select — no seventh hard-stop, same NEEDS-DECISION mechanism used elsewhere under `[autonomous]`.
+Completed implementation work is preserved. On the full path this option does not exist; the
+existing "fix" / "stop" choice above is unchanged.
+
+Under `AUTONOMOUS`: auto-select "fix" and retry once (retry cap = 1 automatic retry). If the gate still fails after that one retry, this is Hard-stop #2 (Gate FAIL after the retry cap) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop. Never fall back to a silent proceed, and never ask. **On a fast-route run, this same escalation option routes through the existing NEEDS-DECISION return path** (`needs-decision-{task}.md`) instead of a silent auto-select — no seventh hard-stop, same NEEDS-DECISION mechanism used elsewhere under `[autonomous]`. **Writer, named:** this NEEDS-DECISION sentinel is not written by a spawned subagent here — the `/run` orchestrator itself, inline, invokes the shared guard directly: `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill run --site fast-route-escalation-checkpoint-c --reason "<gate-failure summary>" --resume-hint "re-run /run --resume <task-name>"`, echoes its `gate-result: NEEDS-DECISION` block, and stops — so an autonomous fast run hitting this branch always leaves a terminal signal on disk, never a silent stall. Once escalation's atomic unit above (route flip, sentinel/stub cleanup) has been performed, this is the durable record of WHY the run stopped and WHERE to resume it.
 
 If the user says "show changes": run `git diff --stat` and display, then re-ask.
 
@@ -658,11 +742,23 @@ Under `AUTONOMOUS`, once Checkpoint D confirms (APPROVED or accepted, gate passe
 1. **"fix"** → spawn `/implement` again with the review issues as the spec (on the fast route, same model-opus / leading-`[no-redispatch]` dispatch as the primary Phase 4 spawn above). After fix-implement completes, re-run the post-implementation gate inline (same level as before; audit-log persistence per `/gate/SKILL.md`). Then re-spawn `/review`. Cap at 3 review rounds to prevent infinite cycling.
 2. **"accept"** → treat as approved despite requested changes. Log this decision in session state. Proceed to Checkpoint D.
 
-Under `AUTONOMOUS`: auto-select "fix" at each round — never auto-select "accept". If still CHANGES_REQUESTED after the 3-round cap, this is Hard-stop #3 (Review CHANGES_REQUESTED after 3 rounds) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop. **On a fast-route run, offer "escalate to full" as a third option alongside this halt — same mechanism as the Checkpoint C escalation above** (rewrite `triage-decision.md`, delete the two `.done` sentinels, delete/strip the stub, re-enter at architect); under `[autonomous]` this routes through the same NEEDS-DECISION return path rather than a silent auto-select. On the full path this branch is unchanged — still a bare halt.
+**(fast route only)** after the 3-round CHANGES_REQUESTED cap, a third option, "escalate to full",
+is also offered here — the same atomic unit as the Checkpoint C escalation above: set the in-session `route` to `full`; rewrite `triage-decision.md` with the flipped route; DELETE
+`autonomous-progress-{task}/architect.done`, `autonomous-progress-{task}/thorough_plan.done`, AND
+`autonomous-progress-{task}/implement.done` plus any `implement.*.done` sub-sentinels —
+`implement.done` already exists by this point (Phase 4 wrote it once Checkpoint C confirmed), unlike
+at the Checkpoint C site above, so it must be deleted here too, or a resumed escalated run would
+skip re-implementation entirely and jump straight into re-reviewing the untouched fast-route code;
+delete-or-strip the stub per the same provenance-conditioned rule as Checkpoint C (delete outright
+when `provenance: fast-path-triage` is present, or strip both its `Review shape:` line and its
+`Route:` line together — never the review-shape line alone); re-enter at the architect phase.
+Completed implementation work is preserved. On the full path this option does not exist.
 
-**If BLOCKED:** present the blocking issues. **STOP.** Do not offer to continue. Tell the user: "Review found blocking issues. The workflow cannot continue until these are resolved. Artifacts are preserved at `.workflow_artifacts/<task-name>/`."
+Under `AUTONOMOUS`: auto-select "fix" at each round — never auto-select "accept". If still CHANGES_REQUESTED after the 3-round cap, this is Hard-stop #3 (Review CHANGES_REQUESTED after 3 rounds) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop. **On a fast-route run, offer "escalate to full" as a third option alongside this halt — same mechanism as the Checkpoint C escalation above**, performed per the atomic unit above; under `[autonomous]` this routes through the same NEEDS-DECISION return path rather than a silent auto-select — named writer (same shared guard as Checkpoint C): `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill run --site fast-route-escalation-changes-requested --reason "<3-round CHANGES_REQUESTED summary>" --resume-hint "re-run /run --resume <task-name>"`. On the full path this branch is unchanged — still a bare halt.
 
-Under `AUTONOMOUS`: this is Hard-stop #1 (Review BLOCKED) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop (no `AskUserQuestion`, no silent proceed). **On a fast-route run, offer escalation rather than a bare stop — same mechanism as the Checkpoint C escalation above**; under `[autonomous]` this also routes through the NEEDS-DECISION return path instead of the bare halt-sentinel. On the full path this branch is unchanged — still a bare stop, since the full path never skipped the phases escalation would recover.
+**If BLOCKED:** present the blocking issues. **STOP.** Do not offer to continue. Tell the user: "Review found blocking issues. The workflow cannot continue until these are resolved. Artifacts are preserved at `.workflow_artifacts/<task-name>/`." **(fast route only)** this bare stop is the full-path behavior; on the fast route, "escalate to full" is offered alongside it instead — the same atomic unit as the Checkpoint C escalation above (in-session `route` flip to `full`; rewrite `triage-decision.md`; DELETE `autonomous-progress-{task}/architect.done`, `autonomous-progress-{task}/thorough_plan.done`, AND `autonomous-progress-{task}/implement.done` plus any `implement.*.done` sub-sentinels, since it already exists at this site too; delete-or-strip the stub per the same provenance-conditioned rule; re-enter at the architect phase). Completed implementation work is preserved.
+
+Under `AUTONOMOUS`: this is Hard-stop #1 (Review BLOCKED) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop (no `AskUserQuestion`, no silent proceed). **On a fast-route run, offer escalation rather than a bare stop — same mechanism as the Checkpoint C escalation above**, performed per the atomic unit above; under `[autonomous]` this also routes through the NEEDS-DECISION return path instead of the bare halt-sentinel — named writer (same shared guard as Checkpoint C): `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill run --site fast-route-escalation-blocked --reason "<BLOCKED summary>" --resume-hint "re-run /run --resume <task-name>"`. On the full path this branch is unchanged — still a bare stop, since the full path never skipped the phases escalation would recover.
 
 **Checkpoint D** (after APPROVED or accepted):
 ```
@@ -690,6 +786,7 @@ Task complete: <task-name>
 
 Branch: <branch-name> → pushed to origin
 Profile: <Small|Medium|Large>
+Route: <full|fast> (fast: planning was skipped by routing, not by profile — see Phase 1.6)
 Phases: discover(<skipped|ran>), architect(<skipped|ran>), plan(<N> rounds), implement, review(APPROVED), finalized
 Archived: .workflow_artifacts/<task-name>/ → finalized/
 Cost ledger: .workflow_artifacts/<task-name>/cost-ledger.md (<N> sessions tracked)
@@ -734,7 +831,12 @@ the full path's model tier and loses escalation eligibility. Read, in order:
 1. `Route:` from `<task_dir>/current-plan.md`, if that file exists — this is the
    `D-02` provenance marker the fast-route stub (Phase 1.6) already writes; a
    plan a real `/thorough_plan` pass produced carries no `Route:` line at all,
-   which reads as `full`.
+   which reads as `full`. Match the line ANCHORED inside the state block —
+   `^Route:\s*(fast|full)\s*$` — never an unanchored whole-file substring
+   search: a plan that merely DOCUMENTS the fast route in descriptive prose
+   (as this very task's own planning artifacts do, containing the literal
+   phrase "Route: fast" outside the state block) must not be misread as
+   taking it.
 2. If `current-plan.md` does not exist or carries no `Route:` line, fall back to
    `<task_dir>/triage-decision.md`'s recorded route, if that file exists.
 3. If neither source yields a route, default to `full` — today's only behavior,
@@ -744,10 +846,13 @@ every route-conditional dispatch (the Opus `/implement` spawns and their leading
 `[no-redispatch]` sentinel, and Phase 5's escalation eligibility) behaves
 identically whether this is a first pass or a resumed session. This composes
 correctly with the mid-flight escalation mechanism: escalation deletes the stub
-(or strips its `Review shape:` line) before re-entry, so Step 0b naturally falls
-through to `triage-decision.md`, which escalation also rewrites with the flipped
-route — a run that escalated and was then interrupted resumes as `full`, not
-`fast`.
+outright, or strips BOTH its `Review shape:` line and its `Route:` line
+TOGETHER (never the review-shape line alone — a lone `Review shape:` strip
+would leave `Route: fast` matching rule 1 above and reverting the escalation;
+see the escalation sites' own atomic-unit description) before re-entry, so
+Step 0b naturally falls through to `triage-decision.md`, which escalation also
+rewrites with the flipped route — a run that escalated and was then
+interrupted resumes as `full`, not `fast`.
 
 **Step 1 (T-09) — determine the next phase from completion sentinels, never from
 session-state prose alone, when the sentinel contract is present.** Read
@@ -811,6 +916,19 @@ Rough estimates only — `/end_of_task` computes actual costs from the cost ledg
 | Small | ~$2.75–$3.50 |
 | Medium | ~$3.75–$5.50 |
 | Large | ~$6.00–$8.50+ |
+| Small, fast route | ~$3.25–$4.25 — plausibly MORE than plain Small, not less; see "Small-profile cost honesty" under Phase 4 |
+| Medium, fast route | ~$2.75–$4.00 — genuinely favorable: saves the architect + planning passes, net of moving `/implement` to Opus |
+| Large, fast route | ~$4.75–$7.00 — genuinely favorable, same saving as Medium |
+
+The fast route's saving comes from skipping `/architect` and `/thorough_plan` entirely (their Opus
+planning/critic passes), net of the cost added by forcing `/implement` to Opus instead of Sonnet on
+that same run. On Medium/Large that trade is favorable — the skipped phases cost more than the
+`/implement` tier bump. On Small, the trade reverses: Small already skips `/architect` and already
+runs a single-pass review, so there is nothing left to skip except one Opus `/plan` pass, while the
+`/implement` tier bump still applies in full — the fast route's sole justification (cost) does not
+hold on the Small profile, and choosing it there is a legitimate choice only when the human
+confirming Checkpoint A1 (or the formulation-bar-gated autonomous evaluation) has already accepted
+that tradeoff.
 
 ## Error handling
 

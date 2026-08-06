@@ -442,7 +442,7 @@ def _profile_detection_section(text: str) -> str:
     return _phase_span(
         text,
         "## Profile detection and fan-out",
-        "**Small — unchanged single-pass review.**",
+        "**Required-section ownership**",
     )
 
 
@@ -494,6 +494,23 @@ def test_escalation_removes_skipped_phase_sentinels(run_skill_text: str) -> None
     assert "DELETE" in section
     assert "re-enter at the architect phase" in section
     assert "Completed implementation work is preserved" in section
+    # Checkpoint C fires BEFORE implement.done is written (gate-FAILED branch) —
+    # the deletion set here must say so explicitly, not just enumerate two sentinels.
+    assert "implement.done` does not exist yet at this site" in section
+
+
+def test_escalation_deletes_implement_done_at_review_phase_sites(run_skill_text: str) -> None:
+    """BEHAVIOR re-point (round-1 review MAJOR 2): the two Phase 5 escalation
+    sites fire AFTER `implement.done` already exists, so their deletion set
+    must actually include it — not just reuse the Checkpoint C wording, which
+    would silently skip re-implementation on a resumed escalated run."""
+    phase5 = _phase5_section(run_skill_text)
+    # Both branches (CHANGES_REQUESTED-cap and BLOCKED) must each name the
+    # implement.done deletion explicitly — count, not just presence.
+    assert phase5.count("autonomous-progress-{task}/implement.done") >= 2
+    assert phase5.count("autonomous-progress-{task}/architect.done") >= 2
+    assert phase5.count("autonomous-progress-{task}/thorough_plan.done") >= 2
+    assert "implement.*.done" in phase5
 
 
 def test_escalation_strips_review_shape_line(run_skill_text: str) -> None:
@@ -653,6 +670,12 @@ def test_resume_defaults_to_full_when_neither_source_exists(run_skill_text: str)
 
 
 def test_resume_after_escalation_does_not_revert_to_fast(run_skill_text: str) -> None:
+    """BEHAVIOR re-point (round-1 review MAJOR 7): the claim sentence alone
+    ("resumes as full, not fast") was true for only ONE of the two sanctioned
+    escalation branches — the strip-only fallback used to leave `Route: fast`
+    readable, which Step 0b's rule 1 would then match successfully, reverting
+    the escalation. The fix requires BOTH lines stripped together; assert that
+    mechanism explicitly, not just the surviving claim sentence."""
     section = _resume_section(run_skill_text)
     normalized = " ".join(section.split())
     assert "composes correctly with the mid-flight escalation mechanism" in normalized
@@ -661,4 +684,225 @@ def test_resume_after_escalation_does_not_revert_to_fast(run_skill_text: str) ->
     )
     assert "a run that escalated and was then interrupted resumes as `full`, not" in normalized
     assert "`fast`" in normalized
+    # The actual mechanism: both lines stripped TOGETHER, never one alone —
+    # this is what makes the "falls through" claim true for BOTH sanctioned
+    # escalation branches (delete-outright, or strip-both), not just one.
+    assert "strips BOTH its `Review shape:` line and its `Route:` line" in normalized
+    assert "never the review-shape line alone" in normalized
+    assert "reverting the escalation" in normalized
+
+
+def test_escalation_offer_placed_outside_autonomous_only_paragraph(run_skill_text: str) -> None:
+    """BEHAVIOR re-point (round-1 review MINOR 11 / 'escalation placement'):
+    the review-phase escalation offer must be visible to an INTERACTIVE user,
+    not confined inside the `Under AUTONOMOUS:` paragraph — assert ordering,
+    not just substring presence, so a future edit that re-buries the offer
+    inside the autonomous-only paragraph is caught."""
+    phase5 = _phase5_section(run_skill_text)
+    # CHANGES_REQUESTED branch: the fast-route offer paragraph must appear
+    # BEFORE its own "Under `AUTONOMOUS`:" paragraph.
+    idx_changes_offer = phase5.index('**(fast route only)** after the 3-round CHANGES_REQUESTED cap')
+    idx_changes_autonomous = phase5.index("Under `AUTONOMOUS`: auto-select \"fix\" at each round")
+    assert idx_changes_offer < idx_changes_autonomous
+
+    # BLOCKED branch: same ordering requirement.
+    idx_blocked_stop = phase5.index("**If BLOCKED:** present the blocking issues.")
+    idx_blocked_offer = phase5.index("this bare stop is the full-path behavior")
+    idx_blocked_autonomous = phase5.index("Under `AUTONOMOUS`: this is Hard-stop #1")
+    assert idx_blocked_stop < idx_blocked_offer < idx_blocked_autonomous
+
+
+# ---------------------------------------------------------------------------
+# Review-fix round 1 (IVG-246 review-1.md, CRITICAL 1 + MAJOR 1/2/3/4/5/7/8/9
+# + MINOR 10/11/12/13/14/16/17/18/19/20/21/22)
+# ---------------------------------------------------------------------------
+
+
+def test_escalation_flips_in_session_route_at_all_three_definition_sites(run_skill_text: str) -> None:
+    """CRITICAL 1 fix verification: escalation must name the in-session `route`
+    flip explicitly, not just the durable decision-record rewrite — this is
+    what makes a re-entered Phase 2/3 skip condition evaluate false without a
+    resume. The full atomic-unit definition lives at Checkpoint C; the two
+    Phase 5 sites reference it as "the same atomic unit"/"performed per the
+    atomic unit above" rather than re-stating it, so assert the phrase at the
+    Checkpoint C definition site and its cross-references at both Phase 5
+    sites."""
+    checkpoint_c = _checkpoint_c_section(run_skill_text)
+    assert "Set the orchestrator's in-session `route` variable to `full`" in checkpoint_c
+    assert "re-entered architect and planning skip conditions" in checkpoint_c
+
+    phase5 = _phase5_section(run_skill_text)
+    assert phase5.count("in-session `route` flip to `full`") + phase5.count(
+        "set the in-session `route` to `full`"
+    ) >= 2
+
+
+def test_needs_decision_writer_named_at_all_escalation_sites(run_skill_text: str) -> None:
+    """MAJOR 9 fix verification: each fast-route escalation's NEEDS-DECISION
+    branch must name the actual writer (the shared decision_gate_guard.py
+    fail-closed invocation, inline — not a spawned subagent) with a distinct
+    --site id, so an autonomous fast run always leaves a terminal signal."""
+    checkpoint_c = _checkpoint_c_section(run_skill_text)
+    assert "decision_gate_guard.py fail-closed" in checkpoint_c
+    assert "--site fast-route-escalation-checkpoint-c" in checkpoint_c
+    assert "not written by a spawned subagent here" in checkpoint_c
+
+    phase5 = _phase5_section(run_skill_text)
+    assert phase5.count("decision_gate_guard.py fail-closed") >= 2
+    assert "--site fast-route-escalation-changes-requested" in phase5
+    assert "--site fast-route-escalation-blocked" in phase5
+
+
+def test_hard_stops_section_carves_out_fast_route_sites_1_2_3(run_skill_text: str) -> None:
+    """MAJOR 9 fix verification: the '## Autonomous hard stops' six-site list
+    must no longer contradict the fast-route escalation branches — add an
+    explicit carve-out stating sites 1/2/3 are not unconditional writers on
+    the fast route."""
+    text = run_skill_text
+    start = text.index("## Autonomous hard stops")
+    end = text.index("## Autonomous progress sentinels", start)
+    section = text[start:end]
+    assert "Fast-route carve-out for sites 1, 2, and 3" in section
+    assert "NOT unconditional halt-sentinel writers" in section
+    assert "applies ONLY on the fast route" in section
+
+
+def test_onbehalf_marker_ordering_carve_out_for_no_redispatch(run_skill_text: str) -> None:
+    """MAJOR 4 fix verification: the on-behalf cost-capture section's
+    order-independence claim must carve out the sentinel-first requirement,
+    reconciling it with the fast route's Opus `/implement` dispatch."""
+    text = run_skill_text
+    start = text.index("## On-behalf cost capture")
+    end = text.index("## Phase 1 — Discover", start)
+    section = text[start:end]
+    assert "order-independent EXCEPT that any" in section
+    assert "must remain the FIRST token" in section
+    assert "load-bearing" in section
+
+
+def test_stub_emitter_has_read_before_write_guard(run_skill_text: str) -> None:
+    """MAJOR 5 fix verification: the stub emitter must never clobber an
+    existing critic-reviewed plan — a read-before-write existence guard,
+    keyed on the provenance marker, degrading silently to route=full."""
+    prose = _stub_prose(run_skill_text)
+    assert "Read-before-write guard" in prose
+    assert "does NOT carry" in prose and "provenance: fast-path-triage" in prose
+    assert "NEVER overwrite it" in prose
+    assert "degrade silently to `route=full`" in prose
+
+
+def test_stub_task_contract_names_pending_glyph_and_numbering(run_skill_text: str) -> None:
+    """MAJOR 8 fix verification: the stub's task-section contract must name
+    the exact pending glyph and numbering `/implement` selects on, so an
+    autonomous fast run's `/implement` never sees zero pending tasks."""
+    prose = _stub_prose(run_skill_text)
+    assert "Task-section contract" in prose
+    assert "`⏳` glyph" in prose
+    assert "`T-NN`" in prose
+    assert "T-01" in prose and "T-02" in prose
+    assert "All tasks already implemented." in prose
+
+
+def test_stub_emitter_validates_written_stub_at_runtime(run_skill_text: str) -> None:
+    """MINOR 15 fix verification: the emitted stub must be validated with the
+    real validate_artifact.py against the FILE JUST WRITTEN (not only a
+    hand-built fixture, see test_emitted_stub_fixture_passes_validate_artifact
+    above), degrading to route=full on non-zero exit."""
+    prose = _stub_prose(run_skill_text)
+    assert "Post-write validation" in prose
+    assert "validate_artifact.py" in prose
+    assert "Any non-zero exit" in prose
+    assert "delete the just-written file and" in prose
+    assert "degrade to `route=full`" in prose
+
+
+def test_cost_estimate_has_fast_route_rows_and_small_caveat(run_skill_text: str) -> None:
+    """MAJOR 6 / MINOR 10 fix verification: the cost table must carry
+    fast-route rows and state the Small-profile net-cost direction honestly
+    rather than silently omitting it."""
+    text = run_skill_text
+    start = text.index("## Cost estimate")
+    end = text.index("## Error handling", start)
+    section = text[start:end]
+    assert "Small, fast route" in section
+    assert "Medium, fast route" in section
+    assert "Large, fast route" in section
+    assert "plausibly MORE than plain Small, not less" in section
+    assert "genuinely favorable" in section
+
+    phase4 = _phase_span(text, "## Phase 4 — Implement", "## Phase 5 — Review")
+    assert "Small-profile cost honesty" in phase4
+    assert "plausibly net MORE expensive" in phase4
+
+
+def test_resume_step0b_anchors_route_line_not_substring(run_skill_text: str) -> None:
+    """MINOR 13 fix verification: Step 0b's `Route:` read must be
+    line-anchored, not an unanchored whole-file substring search — this
+    repo's own plan for this task documents 'Route: fast' in prose, which
+    would otherwise be misread as taking the fast route."""
+    section = _resume_section(run_skill_text)
+    normalized = " ".join(section.split())
+    assert "ANCHORED inside the state block" in normalized
+    assert r"^Route:\s*(fast|full)\s*$" in normalized
+    assert "must not be misread as taking it" in normalized
+
+
+def test_phase_sequence_diagram_matches_skip_conditions(run_skill_text: str) -> None:
+    """MINOR 14 fix verification: the phase-sequence diagram must show the
+    route=fast skip condition on Phase 2 and Phase 3, and the Checkpoint A1
+    arrow, matching the phase bodies it indexes."""
+    text = run_skill_text
+    start = text.index("## Phase sequence")
+    end = text.index("## Pre-phase context budget", start)
+    diagram = text[start:end]
+    assert "Checkpoint A1" in diagram
+    assert "skip if Small, OR skip if route=fast" in diagram
+    assert "THOROUGH_PLAN (conditional — skip if route=fast)" in diagram
+
+
+def test_final_report_has_route_field(run_skill_text: str) -> None:
+    """MINOR 16 fix verification: the Phase 6 final-report template must
+    state whether planning was skipped by routing rather than by profile."""
+    text = run_skill_text
+    start = text.index("After completion, present the final report:")
+    end = text.index("## Checkpoint interaction protocol", start) if "## Checkpoint interaction protocol" in text[start:] else len(text)
+    # bounded search window around the template (small, avoids over-matching)
+    window = text[start:start + 800]
+    assert "Route: <full|fast>" in window
+    assert "planning was skipped by routing, not by profile" in window
+
+
+def test_ledger_row_pins_model_and_uuid(run_skill_text: str) -> None:
+    """MINOR 17 fix verification: the Phase 1.6 ledger row must pin the model
+    and orchestrator UUID explicitly, not rely on a phase->model writer
+    mapping that could default to the triage skill's own cheap tier."""
+    text = run_skill_text
+    start = text.index("**Ledger row.**")
+    end = text.index("**Session state.**", start)
+    section = text[start:end]
+    assert "Pin the model explicitly to `opus`" in section
+    assert "pin `uuid` to the orchestrator's own session UUID" in section
+
+
+def test_checkpoint_a1_census_out_of_scope_and_backstop(run_skill_text: str) -> None:
+    """MINOR 20 + MINOR 22 fix verification: Checkpoint A1's prose-described
+    AskUserQuestion is confirmed deliberately out of the decision-gate
+    census's scope, and its non-interactive degrade has a backstop for an
+    AskUserQuestion that returns empty or errors."""
+    section = _phase_1_6_section(run_skill_text)
+    idx = section.index("Checkpoint A1")
+    tail = section[idx:]
+    assert "deliberately outside the" in tail
+    assert "decision-gate census's call-syntax detection scope" in tail
+    assert "returns empty, errors, or otherwise fails to resolve" in tail
+
+
+def test_large_carveout_owasp_unconditional(review_skill_text: str) -> None:
+    """MAJOR 3 fix verification: a fast-route review-shape override on a
+    Large-profile task must not drop the dedicated /security_review OWASP
+    pass — it stays unconditional on Large regardless of route."""
+    section = _profile_detection_section(review_skill_text)
+    assert "Large carve-out" in section
+    assert "unconditionally dispatch the dedicated `/security_review` OWASP pass" in section
+    assert "never Large — see the carve-out below" in section
 
