@@ -546,3 +546,119 @@ def test_full_path_hard_stops_1_and_3_unchanged(run_skill_text: str) -> None:
     )
     assert "still a bare halt" in phase5
     assert "still a bare stop" in phase5
+
+
+# ---------------------------------------------------------------------------
+# T-14: D-12a carve-outs — "orchestrate, don't perform" named exception
+# ---------------------------------------------------------------------------
+
+
+def test_orchestrate_dont_perform_carveout_named(run_skill_text: str) -> None:
+    """The `## Important behaviors` -> Orchestrate, don't perform bullet must
+    name the Phase 1.6 routing stub as an explicit exception, with the
+    justification recorded inline (mechanical transcription, no design
+    judgment) so it is never mistaken for authored plan content."""
+    text = run_skill_text
+    start = text.index("**Orchestrate, don't perform.**")
+    end = text.index("**Checkpoints are mandatory.**", start)
+    bullet = text[start:end]
+    assert "Named exception:" in bullet
+    assert "Phase 1.6 fast-route routing stub" in bullet
+    assert "mechanical transcription" in bullet
+    assert "no design judgment is exercised" in bullet
+    # existing rule text preserved verbatim
+    assert "Never write plan content, code, or review findings yourself." in bullet
+    assert "Always spawn the appropriate subagent skill." in bullet
+
+
+# ---------------------------------------------------------------------------
+# T-17: full-path near-bit-identity — the single most important new test
+# ---------------------------------------------------------------------------
+
+
+def test_full_path_near_bit_identical_on_plain_and_autonomous(run_skill_text: str) -> None:
+    """On a Medium/Large run with no `fast:` tag: ZERO additional prompts,
+    ZERO additional artifacts, ZERO additional model calls on a PLAIN run.
+    Under AUTONOMOUS, the assertion narrows to EXACTLY ONE additional
+    artifact (the phase's own `.done` sentinel) — not zero, correcting
+    round 1's blanket 'bit-identical' framing (round 2 critic MAJ-1)."""
+    section = _phase_1_6_section(run_skill_text)
+    normalized = " ".join(section.split())  # collapse newlines/indentation for robust matching
+
+    # (a) silent no-op mode's only side effect
+    assert "zero user-facing output, zero prompts, zero extra model calls, and no" in normalized
+    assert "`triage-decision.md`." in normalized
+    assert (
+        "A plain (non-autonomous) run adds zero artifacts and zero behavior delta here; "
+        "an autonomous run adds exactly one thing — its own completion sentinel"
+        in normalized
+    )
+
+    # (b) sentinel write explicitly qualified `Under `AUTONOMOUS`` — plain run writes nothing
+    assert "Under `AUTONOMOUS`, once evaluated (both modes), also write the phase's" in normalized
+    assert "A plain (non-autonomous) run never writes this file, in either mode." in normalized
+
+    # (c) triage-decision.md written in EVALUATING mode only
+    assert "Written at the task root, evaluating mode only" in normalized
+
+    # (d) no AskUserQuestion documented outside the evaluating branch
+    assert "via `AskUserQuestion`" in normalized
+    assert "Fires in evaluating mode only" in normalized
+
+    # (e) plain-vs-autonomous distinction stated in-section (not just cross-referenced)
+    assert "an autonomous run adds exactly one thing" in normalized
+
+
+# ---------------------------------------------------------------------------
+# T-18: Resume Step 0b — route recovery
+# ---------------------------------------------------------------------------
+
+
+def _resume_section(text: str) -> str:
+    # "## Resume" also appears as an inline mention (e.g. "in `## Resume` below.")
+    # before the real heading — find the REAL heading (line-anchored) explicitly.
+    real_heading = text.index("\n## Resume\n")
+    end = text.index("## Session state tracking", real_heading)
+    return text[real_heading:end]
+
+
+def test_resume_reads_route_before_first_dispatch(run_skill_text: str) -> None:
+    section = _resume_section(run_skill_text)
+    normalized = " ".join(section.split())
+    assert "Step 0b" in section
+    assert "BEFORE Step 1 determines the next" in normalized
+    assert "`Route:` from `<task_dir>/current-plan.md`" in normalized
+    assert "Set the orchestrator's `route` variable from this read before Step 1 runs" in normalized
+    # Step 0b must sit between Step 0 and Step 1
+    idx_step0 = section.index("Step 0 (T-09)")
+    idx_step0b = section.index("Step 0b (T-18)")
+    idx_step1 = section.index("Step 1 (T-09)")
+    assert idx_step0 < idx_step0b < idx_step1
+
+
+def test_resume_falls_back_to_triage_decision_when_stub_absent(run_skill_text: str) -> None:
+    section = _resume_section(run_skill_text)
+    normalized = " ".join(section.split())
+    assert (
+        "does not exist or carries no `Route:` line, fall back to" in normalized
+    )
+    assert "`<task_dir>/triage-decision.md`'s recorded route" in normalized
+
+
+def test_resume_defaults_to_full_when_neither_source_exists(run_skill_text: str) -> None:
+    section = _resume_section(run_skill_text)
+    normalized = " ".join(section.split())
+    assert "neither source yields a route, default to `full`" in normalized
+    assert "today's only behavior" in normalized
+
+
+def test_resume_after_escalation_does_not_revert_to_fast(run_skill_text: str) -> None:
+    section = _resume_section(run_skill_text)
+    normalized = " ".join(section.split())
+    assert "composes correctly with the mid-flight escalation mechanism" in normalized
+    assert "Step 0b naturally falls" in section or "falls\nthrough to" in section or (
+        "falls through to" in normalized
+    )
+    assert "a run that escalated and was then interrupted resumes as `full`, not" in normalized
+    assert "`fast`" in normalized
+

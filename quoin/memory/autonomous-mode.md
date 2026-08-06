@@ -64,6 +64,10 @@ hard stop, never a silent proceed.
   **minimum** of the two. The underlying number is an Opus
   self-assessment, a soft signal by nature; the smoke-gate PASS
   requirement is the harder half of the bar.
+- **Fast route:** the bar requires `min(triage_confidence,
+  enrich_confidence_if_present) >= QUOIN_FASTPATH_CONFIDENCE_THRESHOLD`
+  (default `0.8`) — stricter than the Small path's `0.7` default, since
+  no plan was critiqued on this route.
 - Below the bar: hard stop via the halt-sentinel contract below. The
   run never enters Execution on a formulation that hasn't cleared the
   bar.

@@ -728,6 +728,27 @@ state, before checking completion sentinels, before anything else:
 - If the marker is absent: `AUTONOMOUS` is determined normally from the invocation
   text — plain (non-autonomous) resume, unchanged from pre-T-09 behavior.
 
+**Step 0b (T-18) — recover the fast-route state BEFORE Step 1 determines the next
+phase.** Without this step, a relaunched autonomous fast run silently reverts to
+the full path's model tier and loses escalation eligibility. Read, in order:
+1. `Route:` from `<task_dir>/current-plan.md`, if that file exists — this is the
+   `D-02` provenance marker the fast-route stub (Phase 1.6) already writes; a
+   plan a real `/thorough_plan` pass produced carries no `Route:` line at all,
+   which reads as `full`.
+2. If `current-plan.md` does not exist or carries no `Route:` line, fall back to
+   `<task_dir>/triage-decision.md`'s recorded route, if that file exists.
+3. If neither source yields a route, default to `full` — today's only behavior,
+   preserved.
+Set the orchestrator's `route` variable from this read before Step 1 runs, so
+every route-conditional dispatch (the Opus `/implement` spawns and their leading
+`[no-redispatch]` sentinel, and Phase 5's escalation eligibility) behaves
+identically whether this is a first pass or a resumed session. This composes
+correctly with the mid-flight escalation mechanism: escalation deletes the stub
+(or strips its `Review shape:` line) before re-entry, so Step 0b naturally falls
+through to `triage-decision.md`, which escalation also rewrites with the flipped
+route — a run that escalated and was then interrupted resumes as `full`, not
+`fast`.
+
 **Step 1 (T-09) — determine the next phase from completion sentinels, never from
 session-state prose alone, when the sentinel contract is present.** Read
 `.workflow_artifacts/memory/autonomous-progress-{task}/` (the T-05/T-10 write-site
@@ -874,7 +895,7 @@ the threshold values themselves live in `hooks/_lib.sh`'s
 
 ## Important behaviors
 
-- **Orchestrate, don't perform.** Never write plan content, code, or review findings yourself. Always spawn the appropriate subagent skill.
+- **Orchestrate, don't perform.** Never write plan content, code, or review findings yourself. Always spawn the appropriate subagent skill. **Named exception:** the Phase 1.6 fast-route routing stub (`<task_dir>/current-plan.md`), which the orchestrator writes itself, inline. The stub's provenance markers exist precisely so it is never mistaken for planned content — writing it is a mechanical transcription of acceptance criteria the user already approved upstream, not authored plan content; no design judgment is exercised, which is what this rule exists to prevent.
 - **Checkpoints are mandatory.** Even when the user said "run everything" at the start — every phase boundary requires a conscious confirmation.
 - **Preserve artifacts on stop.** All work produced before a stop stays in `.workflow_artifacts/<task-name>/`. The user can resume with individual skills or `/run --resume`.
 - **Gates are blocking.** Never skip a gate. If a gate fails, do not proceed.

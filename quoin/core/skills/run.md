@@ -52,10 +52,18 @@ be honored when locating per-stage artifacts.
 
 ## Behavior contract
 
-- The skill MUST chain phases in this order: discover (conditional —
-  skip if recent), spec (conditional — skip if Small or if a task spec
-  already exists), architect (conditional — skip if Small profile),
-  planning (always), implementation, review, finalization.
+- The skill MUST chain phases in this order, each conditional on the
+  routing outcome determined earlier in the pipeline rather than an
+  unconditional fixed sequence: discover (conditional — skip if
+  recent), spec (conditional — skip if Small or if a task spec already
+  exists), a routing step that decides between two paths, architect
+  (conditional — skip if Small profile, or if the routing step chose
+  the abbreviated path), planning (conditional — skip on the same
+  terms as architect), implementation, review, finalization. The
+  routing step MAY skip straight from spec to implementation, carrying
+  a mechanically-derived plan of its own, when its eligibility criteria
+  are met and the user (or, under autonomous mode, the formulation
+  quality bar) confirms it.
 - After discovery, when no task feature spec exists at
   `<task-root>/spec.md` and the task is not Small, the skill SHOULD
   offer/run the spec phase, gated at its own checkpoint; the skill
@@ -64,8 +72,10 @@ be honored when locating per-stage artifacts.
   non-blocking outcome (grandfather).
 - The skill MUST pause at every phase boundary and wait for explicit
   user confirmation before advancing to the next phase.
-- The skill MUST treat each phase as a separate session; the
-  orchestrator's own context must remain lean across the full pipeline.
+- The skill MUST treat each heavy phase as a separate session; the
+  orchestrator's own context must remain lean across the full pipeline. A
+  lightweight in-orchestrator routing step is permitted where the runtime
+  needs an interactive prompt the orchestrator itself must raise.
 - The skill MUST honor profile triage (Small / Medium / Large) when
   routing sub-skills.
 - The skill MUST NOT auto-invoke implementation or finalization without
@@ -139,8 +149,11 @@ that folder's later archival:
   an interactive default and stalling.
 - **Per-phase completion sentinels** — `autonomous-progress-{task}/{phase}.done`,
   one file per completed phase. The phase set is the full resumable
-  roster documented under "Phase sequence" above; every phase named
-  there gets a completion sentinel, none silently excluded. Finer
+  roster — discover, enrich, specify, fast_path_triage, architect,
+  thorough_plan, implement, review, end_of_task — documented in full,
+  with each phase's skip/run condition, by the adapter's own
+  phase-sequence description; every phase in that roster gets a
+  completion sentinel, none silently excluded. Finer
   progress within a single long-running phase MAY additionally write
   `autonomous-progress-{task}/{phase}.{subphase}.done`. The counting
   glob `autonomous-progress-{task}/*.done` is the union of both forms,
