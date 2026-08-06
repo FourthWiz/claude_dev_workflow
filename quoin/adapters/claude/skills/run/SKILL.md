@@ -485,6 +485,38 @@ quality bar described later in this file.
 Refer to the existing yes/no checkpoint table only in plain English (e.g. "the existing yes/no
 checkpoint table") anywhere near this checkpoint's description — never reproduce its heading text.
 
+**Fast-route plan stub (evaluating mode, `route=fast` only).** When Checkpoint A1 resolves to the
+fast path — chosen by the user, or auto-taken under `[autonomous]` per the formulation quality bar
+described later in this file — the orchestrator writes `<task_dir>/current-plan.md` itself, once.
+
+The stub is a valid Class B `current-plan.md`: `## For human`, `## State`, `## Tasks`, and
+`## Risks` are all present. Its `## Tasks` section carries one pending task per coherent change,
+each with concrete file paths and an acceptance bullet — derived from the evidence's acceptance
+criteria when a spec exists, and from the enriched prompt's concrete deliverables otherwise.
+
+Four provenance markers, all four required, so a fast-route stub can never be mistaken for a
+critic-reviewed plan:
+- the frontmatter carries `provenance: fast-path-triage`.
+- `## For human` opens with a sentence stating plainly that no planning phase ran for this task.
+- the convergence summary line reads `Rounds: 0`.
+- a `Route: fast` line, placed inside `## State` (not between `## For human` and `## State`, so it
+  never counts toward the `## For human` block's own length cap) — this same line is what a later
+  resume reads back to recover the route, described later in this file.
+
+Two further lines, deliberately different values, so a fast-route stub never buys a weaker gate on
+a harder task: `Task profile: <the honestly classified profile>` (unchanged — a `fast:`-forced
+Large task still gates as Large) and `Review shape: single-pass (fast-path)`.
+
+**`triage-decision.md`.** Written at the task root, evaluating mode only: the chosen route, the
+rationale, the confidence, and the evidence tier used. This filename is deliberately not registered
+as a distinct artifact type — an unrecognized filename already validates under the default type, so
+no format-kit change is needed for it. It is also the fallback a later resume reads when the stub
+carries no `Route:` line, described later in this file.
+
+Every bullet and line described above renders as prose or a bullet list, never a pipe-leading table
+line, and this task adds no second `.workflow_artifacts/` root and no new artifact family beyond
+this one file.
+
 **Ledger row.** Write phase `triage` (the cost-ledger's fixed phase vocabulary is not extended) —
 note this is deliberately a DIFFERENT string from the roster/sentinel/heading name
 `fast_path_triage` used everywhere else in this file; do not write `fast_path_triage` into the

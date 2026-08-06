@@ -166,3 +166,104 @@ def test_no_table_in_guarded_slice_line_66_to_resume_heading(run_skill_text: str
         f"'## Checkpoint interaction protocol' mention and its real heading — "
         f"P-03b forbids adding a table anywhere in this span: {pipe_lines}"
     )
+
+
+# ---------------------------------------------------------------------------
+# T-08: fast-route plan stub emitter + triage-decision.md
+# ---------------------------------------------------------------------------
+
+
+def _stub_prose(text: str) -> str:
+    section = _phase_1_6_section(text)
+    start = section.index("Fast-route plan stub")
+    end = section.index("**Ledger row.**", start)
+    return section[start:end]
+
+
+def test_stub_carries_all_four_provenance_markers(run_skill_text: str) -> None:
+    prose = _stub_prose(run_skill_text)
+    assert "provenance: fast-path-triage" in prose
+    assert "no planning phase ran" in prose
+    assert "Rounds: 0" in prose
+    assert "Route: fast" in prose
+    # placement: inside `## State`, not between `## For human` and `## State`
+    assert "inside `## State`" in prose or "inside \"## State\"" in prose
+
+
+def test_stub_declares_both_profile_and_review_shape_lines(run_skill_text: str) -> None:
+    prose = _stub_prose(run_skill_text)
+    assert "Task profile:" in prose
+    assert "Review shape: single-pass (fast-path)" in prose
+    assert "honestly classified" in prose
+
+
+def test_triage_decision_not_registered_in_validator(run_skill_text: str) -> None:
+    prose = _stub_prose(run_skill_text)
+    assert "triage-decision.md" in prose
+    assert "route" in prose.lower()
+    assert "rationale" in prose.lower()
+    assert "confidence" in prose.lower()
+    assert "evidence tier" in prose.lower()
+    assert "not registered" in prose.lower() or "default type" in prose.lower()
+
+
+def test_stub_provenance_and_consumer_lines_rendered_as_bullets_not_table(run_skill_text: str) -> None:
+    prose = _stub_prose(run_skill_text)
+    pipe_lines = [line for line in prose.splitlines() if line.strip().startswith("|")]
+    assert pipe_lines == [], (
+        f"T-08's stub-contract prose must render as bullet lists, never a table: {pipe_lines}"
+    )
+    assert prose.count("- ") >= 4  # the four provenance-marker bullets at minimum
+
+
+def test_emitted_stub_fixture_passes_validate_artifact(tmp_path) -> None:
+    """A stub emitted per the contract documented above must pass the real
+    validate_artifact.py invocation with exit 0 — the ack requires this, not
+    just prose review."""
+    import subprocess
+    import sys
+
+    validator = _SOURCE_ROOT / "core" / "scripts" / "validate_artifact.py"
+    assert validator.exists(), f"validate_artifact.py not found at {validator}"
+
+    stub = tmp_path / "current-plan.md"
+    stub.write_text(
+        "---\n"
+        "task: example-fast-task\n"
+        "source: IVG-000\n"
+        "date: 2026-08-06\n"
+        "status: draft\n"
+        "profile: Small\n"
+        "provenance: fast-path-triage\n"
+        "---\n"
+        "## For human\n\n"
+        "No planning phase ran for this task — it was routed through fast-path triage\n"
+        "and this stub was mechanically derived from the evidence's acceptance criteria.\n"
+        "Status: ready for implementation. Risk: low, single-module change. Next: /implement.\n\n"
+        "## State\n\n"
+        "```yaml\n"
+        "task: example-fast-task\n"
+        "profile: Small\n"
+        "Task profile: Small\n"
+        "Review shape: single-pass (fast-path)\n"
+        "Route: fast\n"
+        "```\n\n"
+        "Convergence summary: Rounds: 0.\n\n"
+        "## Tasks\n\n"
+        "1. ⏳ **T-01 — Example change.** `src/example.py` — acceptance: the function returns\n"
+        "   the documented value.\n\n"
+        "## Risks\n\n"
+        "None identified — bounded, single-module change.\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(validator), str(stub)],
+        capture_output=True,
+        cwd=str(_REPO_ROOT),
+    )
+    assert result.returncode == 0, (
+        f"emitted stub fixture failed validate_artifact.py: "
+        f"stdout={result.stdout.decode('utf-8', 'replace')} "
+        f"stderr={result.stderr.decode('utf-8', 'replace')}"
+    )
