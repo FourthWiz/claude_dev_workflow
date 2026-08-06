@@ -69,6 +69,17 @@ security pass. The dimension subagents never synthesize the artifact's For
 human, Summary, Plan Compliance, Spec Compliance, or Test Coverage sections —
 those remain owned by the parent review session in every profile.
 
+A plan may carry a review-shape override recorded by an upstream fast route
+(a `Review shape: single-pass (fast-path)` marker). When present, the
+override takes precedence over both profile inference and the
+undetermined-profile default above: a Small, Medium, or undetermined profile
+carrying the override runs the single-pass path instead of fanning out. A
+Large profile carrying the override is the one exception — it still runs the
+single-pass path for the performance and architecture/integration
+dimensions, but the security dimension stays on the standalone security-review
+skill's fan-out contract unconditionally, exactly as on a plain Large task; a
+route override never suppresses the Large security guarantee.
+
 ## Behavior contract
 
 - The diff MUST be read in full; full files are read selectively when

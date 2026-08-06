@@ -130,13 +130,20 @@ def test_checkpoint_a1_uses_askuserquestion_not_protocol_table(run_skill_text: s
 
 
 def test_a1_warns_on_large_security_dimension(run_skill_text: str) -> None:
+    """MAJOR 1 fix verification (round 2): the Large warning must describe
+    the ACTUAL tradeoff — performance/architecture-integration dimensions
+    drop, OWASP is retained — not the pre-fix-round claim that OWASP itself
+    drops (that claim is what the fix round made false when it made the
+    OWASP pass unconditional on Large in review/SKILL.md)."""
     section = _phase_1_6_section(run_skill_text)
     idx = section.index("Checkpoint A1")
     tail = section[idx:]
     assert "Large" in tail
     assert "security_review" in tail
     assert "OWASP" in tail
-    assert "drop" in tail.lower()
+    assert "retained unconditionally on Large" in tail
+    assert "drops the performance and architecture/integration" in tail
+    assert "drops the dedicated `/security_review` OWASP pass" not in tail
 
 
 def test_a1_options_rendered_as_bullet_list_not_table(run_skill_text: str) -> None:
@@ -754,17 +761,21 @@ def test_needs_decision_writer_named_at_all_escalation_sites(run_skill_text: str
 
 
 def test_hard_stops_section_carves_out_fast_route_sites_1_2_3(run_skill_text: str) -> None:
-    """MAJOR 9 fix verification: the '## Autonomous hard stops' six-site list
-    must no longer contradict the fast-route escalation branches — add an
-    explicit carve-out stating sites 1/2/3 are not unconditional writers on
-    the fast route."""
+    """MAJOR 9 fix verification (round 1): the '## Autonomous hard stops'
+    six-site list must no longer contradict the fast-route escalation
+    branches. SUPERSEDED WORDING (round 2, MAJOR 5): the round-1 fix's
+    'NOT unconditional halt-sentinel writers' framing was itself the
+    contradiction round 2 flagged against the site paragraphs — see
+    test_hard_stops_section_no_longer_claims_sites_not_unconditional for the
+    corrected contract (halt-sentinel always written; NEEDS-DECISION
+    additive). This test now asserts only the surviving structural claim: a
+    named escalation supplement exists for sites 1/2/3."""
     text = run_skill_text
     start = text.index("## Autonomous hard stops")
     end = text.index("## Autonomous progress sentinels", start)
     section = text[start:end]
-    assert "Fast-route carve-out for sites 1, 2, and 3" in section
-    assert "NOT unconditional halt-sentinel writers" in section
-    assert "applies ONLY on the fast route" in section
+    assert "Fast-route escalation supplement for sites 1, 2, and 3" in section
+    assert "sites 1 (Review" in section
 
 
 def test_onbehalf_marker_ordering_carve_out_for_no_redispatch(run_skill_text: str) -> None:
@@ -809,10 +820,11 @@ def test_stub_emitter_validates_written_stub_at_runtime(run_skill_text: str) -> 
     hand-built fixture, see test_emitted_stub_fixture_passes_validate_artifact
     above), degrading to route=full on non-zero exit."""
     prose = _stub_prose(run_skill_text)
+    normalized = " ".join(prose.split())
     assert "Post-write validation" in prose
     assert "validate_artifact.py" in prose
-    assert "Any non-zero exit" in prose
-    assert "delete the just-written file and" in prose
+    assert "Any non-zero exit" in normalized
+    assert "delete the just-written file and" in normalized
     assert "degrade to `route=full`" in prose
 
 
@@ -905,4 +917,149 @@ def test_large_carveout_owasp_unconditional(review_skill_text: str) -> None:
     assert "Large carve-out" in section
     assert "unconditionally dispatch the dedicated `/security_review` OWASP pass" in section
     assert "never Large — see the carve-out below" in section
+
+
+# ---------------------------------------------------------------------------
+# Review-fix round 2 (IVG-246 review-2.md MAJOR 1-7 + supervisor coverage gap)
+# ---------------------------------------------------------------------------
+
+
+def test_a1_and_review_agree_on_owasp_retention_on_large(
+    run_skill_text: str, review_skill_text: str
+) -> None:
+    """MAJOR 1 fix verification (round 2): a dedicated cross-file guard so
+    Checkpoint A1's Large warning and review/SKILL.md's Large carve-out can
+    never silently diverge again — round 2 found two passing tests each
+    reading a different file and pinning opposite OWASP contracts."""
+    a1_section = _phase_1_6_section(run_skill_text)
+    a1_tail = a1_section[a1_section.index("Checkpoint A1"):]
+    review_section = _profile_detection_section(review_skill_text)
+    assert "retained unconditionally on Large" in a1_tail
+    assert "drops the dedicated `/security_review` OWASP pass" not in a1_tail
+    assert "unconditionally dispatch the dedicated `/security_review` OWASP pass" in review_section
+
+
+def test_read_before_write_guard_rejects_thorough_plan_done_proxy(run_skill_text: str) -> None:
+    """MAJOR 2 fix verification (round 2): the guard's frontmatter marker
+    must be the ONLY sanctioned test. The round-1 fix's 'equivalently:
+    thorough_plan.done is already present' parenthetical was false in both
+    directions — that sentinel is written on the fast route too (Phase 3's
+    own skip-write is unconditional) and never written on a plain
+    non-autonomous run — so an implementer following it could still
+    overwrite a converged plan. The parenthetical must not reappear."""
+    prose = _stub_prose(run_skill_text)
+    assert "equivalently:" not in prose
+    assert "The frontmatter marker is the ONLY sanctioned test" in prose
+    assert "false in both directions" in prose
+
+
+def test_both_silent_degrades_rewrite_triage_decision_route_full(run_skill_text: str) -> None:
+    """MAJOR 3 fix verification (round 2): both fast-route silent-degrade
+    paths (the read-before-write guard, and post-write validation) must
+    rewrite `triage-decision.md` to `route: full` — otherwise Resume Step
+    0b's fallback source still reads `fast` and a resumed session can
+    resurrect a dead fast route with no plan behind it."""
+    prose = _stub_prose(run_skill_text)
+    assert prose.count("record `route: full` in `triage-decision.md`") >= 2
+
+
+def test_triage_decision_records_effective_route_not_raw_answer(run_skill_text: str) -> None:
+    """MAJOR 3 fix verification (round 2): the `triage-decision.md` prose
+    must say it records the EFFECTIVE route (post-degrade), not just 'the
+    chosen route' — ambiguous language that left it unstated whether a
+    silent degrade after Checkpoint A1 gets reflected in the file a resume
+    falls back to."""
+    prose = _stub_prose(run_skill_text)
+    normalized = " ".join(prose.split())
+    assert "EFFECTIVE route" in normalized
+    assert "never the raw A1 answer alone" in normalized
+
+
+def test_escalation_order_is_stub_before_sentinels_at_all_three_sites(run_skill_text: str) -> None:
+    """MAJOR 4 fix verification (round 2): the escalation atomic unit's
+    durable writes must fix the stub's `Route:`/`Review shape:` lines BEFORE
+    deleting the completion sentinels, at all three escalation sites — the
+    round-2-found interruption window (sentinels gone, `Route: fast` still
+    readable in the stub) is closed by re-ordering, not just documented."""
+    checkpoint_c = _checkpoint_c_section(run_skill_text)
+    idx_triage = checkpoint_c.index("rewrite `triage-decision.md` with the flipped route")
+    idx_stub = checkpoint_c.index("delete the stub `current-plan.md`")
+    idx_sentinels = checkpoint_c.index(
+        "DELETE `autonomous-progress-{task}/architect.done` and `autonomous-progress-{task}/thorough_plan.done`"
+    )
+    assert idx_triage < idx_stub < idx_sentinels
+    assert "crash-safe by construction" in checkpoint_c
+
+    phase5 = _phase5_section(run_skill_text)
+    # CHANGES_REQUESTED branch: stub fix precedes the "THEN, once both
+    # route-recovery sources agree, DELETE" sentinel clause.
+    idx_cr_stub = phase5.index("delete-or-strip the stub per the same provenance-conditioned rule as Checkpoint")
+    idx_cr_sentinels = phase5.index(
+        "THEN, once both\nroute-recovery sources agree, DELETE"
+    ) if "THEN, once both\nroute-recovery sources agree, DELETE" in phase5 else phase5.index(
+        "THEN, once both"
+    )
+    assert idx_cr_stub < idx_cr_sentinels
+
+    # BLOCKED branch: same ordering requirement.
+    idx_blocked_stub = phase5.rindex(
+        "delete-or-strip the stub per the same provenance-conditioned rule"
+    )
+    idx_blocked_sentinels = phase5.index("THEN DELETE `autonomous-progress-{task}/architect.done`")
+    assert idx_blocked_stub < idx_blocked_sentinels
+
+
+def test_hard_stops_section_no_longer_claims_sites_not_unconditional(run_skill_text: str) -> None:
+    """MAJOR 5 fix verification (round 2), per the resolved user decision:
+    on a supervised autonomous fast run, Review BLOCKED must always write
+    the supervisor-visible halt-sentinel and terminate — no unattended
+    relaunch into the full path. The carve-out bullet is rewritten to match
+    the site paragraphs (`:725`/`:757`/`:761` in review-2.md's numbering):
+    all three sites remain unconditional halt-sentinel writers, and
+    NEEDS-DECISION is written IN ADDITION, never instead."""
+    text = run_skill_text
+    start = text.index("## Autonomous hard stops")
+    end = text.index("## Autonomous progress sentinels", start)
+    section = text[start:end]
+    assert "Fast-route escalation supplement for sites 1, 2, and 3" in section
+    assert "all three sites remain unconditional halt-sentinel writers" in section
+    assert "IN ADDITION" in section
+    assert "never instead of it" in section
+    assert "NOT unconditional halt-sentinel writers" not in section
+
+    # The BLOCKED site itself must say the same: halt-sentinel always
+    # written, NEEDS-DECISION additive, never a substitute.
+    phase5 = _phase5_section(text)
+    assert "in addition to the halt-sentinel already written above — never instead of it" in phase5
+    assert "always terminates for a human rather than relaunching unattended into the full path" in phase5
+
+
+def test_review_branch_set_partitions_undetermined_plus_override(review_skill_text: str) -> None:
+    """MAJOR 6 fix verification (round 2): an undetermined `Task profile:`
+    carrying a `Review shape:` override must match exactly one branch — the
+    single-pass branch, per the resolved decision that the override is the
+    explicit signal — not fall through the gap between the Small/Medium
+    branch (round-2 read as Small/Medium only) and the fan-out branch
+    (round-2 required NO override present)."""
+    section = _profile_detection_section(review_skill_text)
+    assert "Small, Medium, or undetermined" in section
+    assert "undetermined-plus-override case is routed here deliberately" in section
+    # the Medium/Large fan-out branch's own undetermined default remains
+    # scoped to the no-override case (unaffected by this fix).
+    assert "AND no" in section  # "... AND no `Review shape: ...` override is present"
+
+
+def test_core_review_doc_documents_shape_override_and_large_carveout(run_skill_text: str) -> None:
+    """MAJOR 7 fix verification (round 2): the portable-core review doc must
+    describe the review-shape override and the Large OWASP carve-out so a
+    non-Claude runtime implementing from the core doc doesn't silently fan
+    out where the Claude adapter now does not. Bare skill names only — no
+    model tokens (forbidden-token test covers the static substring check;
+    this test targets the specific content gap review-2.md MAJOR 7 flagged)."""
+    core_doc = (_SOURCE_ROOT / "core" / "skills" / "review.md").read_text(encoding="utf-8")
+    normalized = " ".join(core_doc.split())
+    assert "review-shape override" in normalized
+    assert "security-review skill's fan-out contract unconditionally" in normalized
+    for token in ("opus", "sonnet", "haiku"):
+        assert token not in core_doc.lower()
 
