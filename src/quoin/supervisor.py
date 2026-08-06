@@ -209,12 +209,17 @@ def supervise(
     3. ``relaunches >= max_relaunch`` -> ``ABORTED("relaunch cap")``.
 
     Otherwise: count completion sentinels, call ``launch_fn(task)``,
-    re-count. Two consecutive relaunches producing zero new completion
-    sentinels (by :func:`count_completion_sentinels`'s union glob) ->
-    ``ABORTED("no forward progress")``. Any relaunch that produces at
-    least one new sentinel of either granularity resets that streak.
-    Otherwise increment ``relaunches`` and sleep ``backoff_fn(relaunches)``
-    (via the injected ``clock``) before the next iteration.
+    re-count. Two consecutive relaunches producing NO NET INCREASE in
+    completion sentinels (``count_after <= count_before``, by
+    :func:`count_completion_sentinels`'s union glob) -> ``ABORTED("no
+    forward progress")``. A net DECREASE counts as non-progress too — a
+    mid-flight fast-route escalation deletes `.done` sentinels as part of
+    its atomic unit (see `run/SKILL.md`), and a strict `==` comparison
+    would have misread that net-negative relaunch as forward progress and
+    reset the streak, delaying stall detection. Any relaunch that produces
+    a net INCREASE resets that streak. Otherwise increment ``relaunches``
+    and sleep ``backoff_fn(relaunches)`` (via the injected ``clock``)
+    before the next iteration.
 
     ``launch_fn`` and ``clock`` are the only side-effecting
     dependencies and are both injectable, so this loop is fully unit
@@ -246,7 +251,7 @@ def supervise(
         launch_fn(task)
         count_after = count_completion_sentinels(task, project_root)
 
-        if count_after == count_before:
+        if count_after <= count_before:
             zero_progress_streak += 1
         else:
             zero_progress_streak = 0
