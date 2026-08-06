@@ -113,6 +113,38 @@ def test_ledger_phase_is_triage_not_roster_name(run_skill_text: str) -> None:
     )
 
 
+def test_checkpoint_a1_uses_askuserquestion_not_protocol_table(run_skill_text: str) -> None:
+    section = _phase_1_6_section(run_skill_text)
+    assert "Checkpoint A1" in section
+    assert "AskUserQuestion" in section
+    # Never reproduce the guarded checkpoint-protocol heading literal in this section.
+    assert "## Checkpoint interaction protocol" not in section
+    assert "## Resume" not in section
+
+
+def test_a1_warns_on_large_security_dimension(run_skill_text: str) -> None:
+    section = _phase_1_6_section(run_skill_text)
+    idx = section.index("Checkpoint A1")
+    tail = section[idx:]
+    assert "Large" in tail
+    assert "security_review" in tail
+    assert "OWASP" in tail
+    assert "drop" in tail.lower()
+
+
+def test_a1_options_rendered_as_bullet_list_not_table(run_skill_text: str) -> None:
+    section = _phase_1_6_section(run_skill_text)
+    idx = section.index("Checkpoint A1")
+    tail = section[idx:]
+    pipe_lines = [line for line in tail.splitlines() if line.strip().startswith("|")]
+    assert pipe_lines == [], (
+        f"Checkpoint A1's options must be a bullet list, never a table: {pipe_lines}"
+    )
+    assert "Take fast path" in tail
+    assert "Take full path" in tail
+    assert "Show rationale" in tail
+
+
 def test_no_table_in_guarded_slice_line_66_to_resume_heading(run_skill_text: str) -> None:
     """P-03b span rule, targeted: from the FIRST occurrence of the checkpoint
     heading literal (the inline mention near line 66, in "Parse input and

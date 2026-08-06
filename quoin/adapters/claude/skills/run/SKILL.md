@@ -450,6 +450,41 @@ five of these, fast-path eligibility does.
 A Small task that evaluates to ineligible is ALSO silent: it emits `route=full`, raises no
 checkpoint, and writes no decision artifact.
 
+**Checkpoint A1.** Fires in evaluating mode only, and only once eligibility has passed (an
+ineligible evaluation stays silent, per above — no checkpoint, no artifact). Raised inline by the
+orchestrator via `AskUserQuestion`, never by a subagent — `AskUserQuestion` is not provisioned to
+subagents.
+
+Prompt: "Fast-path triage found this task eligible for the fast route (confidence {confidence}).
+Take the fast path, take the full path, or see why?"
+
+- Header: "Fast-path triage"; multiSelect: false
+- Take the fast path — label "Take fast path" — description: "Skip the architecture and planning
+  phases; dispatch `/implement` directly against a mechanically-derived plan stub."
+- Take the full path — label "Take full path" — description: "Ignore the fast-route recommendation
+  and run the full pipeline exactly as today."
+- Show rationale — label "Show rationale" — description: "Print the eligibility reasoning and
+  evidence tier used, then re-ask this same question."
+
+When a `fast:` tag was supplied, the checkpoint still fires — evaluating mode is entered by
+either trigger — but with "Take fast path" pre-selected as the default option (`D-07`); the user
+may still override to the full path.
+
+**If the classified profile is Large:** the prompt text must also warn BY NAME that taking the
+fast path drops the dedicated `/security_review` OWASP pass — that pass only runs on Large-profile
+reviews today, per `/review`'s own fan-out contract — so the user sees this tradeoff before
+choosing. The full-path option remains available at this same prompt.
+
+Under `[no-interactive]` (no human reachable to answer): fail closed to `route=full`. A route is
+never guessed as "fast" without a human confirming it at this checkpoint.
+
+Under `[autonomous]`: Checkpoint A1 is skipped entirely — no `AskUserQuestion` is raised — and the
+route already produced by eligibility evaluation is taken as-is, subject to the formulation
+quality bar described later in this file.
+
+Refer to the existing yes/no checkpoint table only in plain English (e.g. "the existing yes/no
+checkpoint table") anywhere near this checkpoint's description — never reproduce its heading text.
+
 **Ledger row.** Write phase `triage` (the cost-ledger's fixed phase vocabulary is not extended) —
 note this is deliberately a DIFFERENT string from the roster/sentinel/heading name
 `fast_path_triage` used everywhere else in this file; do not write `fast_path_triage` into the
