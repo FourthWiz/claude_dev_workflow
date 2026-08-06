@@ -15,12 +15,19 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parents[3]  # quoin/
 _SOURCE_ROOT = _REPO_ROOT / "quoin"
 _RUN_SKILL = _SOURCE_ROOT / "adapters" / "claude" / "skills" / "run" / "SKILL.md"
+_REVIEW_SKILL = _SOURCE_ROOT / "adapters" / "claude" / "skills" / "review" / "SKILL.md"
 
 
 @pytest.fixture(scope="module")
 def run_skill_text() -> str:
     assert _RUN_SKILL.exists(), f"run/SKILL.md not found at {_RUN_SKILL}"
     return _RUN_SKILL.read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def review_skill_text() -> str:
+    assert _REVIEW_SKILL.exists(), f"review/SKILL.md not found at {_REVIEW_SKILL}"
+    return _REVIEW_SKILL.read_text(encoding="utf-8")
 
 
 def _parse_block(text: str) -> str:
@@ -267,3 +274,275 @@ def test_emitted_stub_fixture_passes_validate_artifact(tmp_path) -> None:
         f"stdout={result.stdout.decode('utf-8', 'replace')} "
         f"stderr={result.stderr.decode('utf-8', 'replace')}"
     )
+
+
+# ---------------------------------------------------------------------------
+# T-09: fast-route skip conditions and .done writes for architect/thorough_plan
+# ---------------------------------------------------------------------------
+
+
+def _phase_span(text: str, start_heading: str, end_heading: str) -> str:
+    start = text.index(start_heading)
+    end = text.index(end_heading, start)
+    return text[start:end]
+
+
+def test_architect_and_thorough_plan_skipped_on_fast_route(run_skill_text: str) -> None:
+    """Phase 2 and Phase 3 must both gain a fast-route skip condition,
+    conjunctive with route == fast (Small-task skip behavior is untouched)."""
+    text = run_skill_text
+    phase2 = _phase_span(text, "## Phase 2 — Architect (conditional)", "## Phase 3 — Thorough Plan")
+    assert "Skip condition:" in phase2
+    assert "route" in phase2.lower() and "fast" in phase2.lower()
+    assert "Task profile is Small" in phase2  # existing Small skip preserved
+
+    phase3 = _phase_span(text, "## Phase 3 — Thorough Plan", "## Formulation quality bar (autonomous)")
+    assert "Skip condition:" in phase3
+    assert "route" in phase3.lower() and "fast" in phase3.lower()
+
+
+def test_skipped_phases_still_write_done_sentinels(run_skill_text: str) -> None:
+    """Both Phase 2's and Phase 3's `.done` writes must be extended to cover
+    the fast-route skip, not just the pre-existing Small-task skip."""
+    text = run_skill_text
+    phase2 = _phase_span(text, "## Phase 2 — Architect (conditional)", "## Phase 3 — Thorough Plan")
+    assert "architect.done" in phase2
+    assert "fast route" in phase2 or "fast-route" in phase2
+
+    phase3 = _phase_span(text, "## Phase 3 — Thorough Plan", "## Formulation quality bar (autonomous)")
+    assert "thorough_plan.done" in phase3
+    assert "fast route" in phase3 or "fast-route" in phase3
+
+
+def test_gate_boundaries_reference_documents_fast_route_skips(run_skill_text: str) -> None:
+    """The `## Gate boundaries reference` section must say the post-architect
+    and post-plan gate boundaries do not exist on the fast route, since their
+    phases never run — post-implement/post-review stay unchanged."""
+    text = run_skill_text
+    start = text.index("## Gate boundaries reference")
+    end = text.index("## Important behaviors", start)
+    section = text[start:end]
+    assert "fast route" in section
+    assert "post-architect" in section.lower() and "post-plan" in section.lower()
+    assert "do not exist" in section
+    assert "post-implement and post-review" in section.lower() or (
+        "post-implement" in section.lower() and "unchanged" in section.lower()
+    )
+
+
+# ---------------------------------------------------------------------------
+# T-10: third branch on the formulation quality bar
+# ---------------------------------------------------------------------------
+
+
+def _formulation_bar_section(text: str) -> str:
+    return _phase_span(
+        text,
+        "## Formulation quality bar (autonomous)",
+        "## Phase 4 — Implement",
+    )
+
+
+def test_fastpath_bar_threshold_default_0_8(run_skill_text: str) -> None:
+    """The fast-route bullet must require min(triage_confidence,
+    enrich_confidence_if_present) >= QUOIN_FASTPATH_CONFIDENCE_THRESHOLD,
+    default 0.8 — stricter than Small's 0.7 default, since the fast route
+    skipped critique entirely."""
+    section = _formulation_bar_section(run_skill_text)
+    assert "QUOIN_FASTPATH_CONFIDENCE_THRESHOLD" in section
+    assert "0.8" in section
+    assert "min(" in section
+    # both idioms present and distinct
+    assert "QUOIN_AUTONOMOUS_CONFIDENCE_THRESHOLD" in section
+    assert "default `0.7`" in section
+    assert "Fast route" in section or "fast route" in section.lower()
+
+
+def test_below_bar_writes_hard_stop_6_sentinel(run_skill_text: str) -> None:
+    """The fast-route below-bar case must reuse Hard-stop #6 and the SAME
+    phase: formulation halt sentinel — no new hard-stop site, no new schema
+    field, no supervisor reader change."""
+    section = _formulation_bar_section(run_skill_text)
+    assert "Hard-stop #6" in section
+    assert "phase: formulation" in section
+    assert "reason string naming the fast-path route" in section
+    assert "no seventh hard-stop" in section.lower()
+    # pinned strings from T-10's ack list must survive verbatim
+    assert "default `0.7`" in section
+    assert "Hard-stop #6" in section
+    assert "write the halt-sentinel" in section
+    assert "Do **NOT** enter Phase 4" in section
+    assert "Only evaluated under `AUTONOMOUS`" in section
+    assert "plain `/run` never evaluates this bar" in section
+
+
+# ---------------------------------------------------------------------------
+# T-11: Opus /implement at all three spawn sites + route-conditional ledger
+# ---------------------------------------------------------------------------
+
+
+def test_all_three_implement_spawn_sites_carry_leading_sentinel(run_skill_text: str) -> None:
+    """All three fast-route `/implement` spawn sites (primary Phase 4 spawn,
+    Checkpoint C retry, Phase 5 review-fix) must dispatch with model opus and
+    a spawn prompt whose FIRST token is bare `[no-redispatch]`. Acceptance is
+    a COUNT, not a presence check — no fast-route spawn site may lack it."""
+    text = run_skill_text
+
+    # Site 1 — primary Phase 4 spawn: full definition of the dispatch rule.
+    phase4 = _phase_span(text, "## Phase 4 — Implement", "## Phase 5 — Review")
+    assert "dispatch this spawn with model opus" in phase4
+    assert "FIRST token must be bare `[no-redispatch]`" in phase4
+    assert "`[autonomous]` / `[no-interactive]` / `[quoin-onbehalf]`" in phase4
+
+    # Site 2 — Checkpoint C "fix" retry, inside Phase 4.
+    assert "same model-opus / leading-`[no-redispatch]` dispatch as the primary Phase 4 spawn above" in phase4
+
+    # Site 3 — Phase 5 review-fix.
+    phase5 = _phase_span(text, "## Phase 5 — Review", "**Checkpoint D**")
+    assert "same model-opus / leading-`[no-redispatch]` dispatch as the primary Phase 4 spawn above" in phase5
+
+    # Count: site 1 (full definition) + sites 2 and 3 (reference the same rule) == 3 total.
+    total_sites = text.count("model opus") + text.count(
+        "model-opus / leading-`[no-redispatch]` dispatch as the primary Phase 4 spawn above"
+    )
+    assert total_sites >= 3, f"expected >=3 fast-route /implement dispatch sites, found {total_sites}"
+
+    # Order is load-bearing: [no-redispatch] must precede other markers, never follow.
+    assert "leading-`[no-redispatch]` marker" not in phase4  # no accidental duplicate phrasing drift
+    assert phase4.index("FIRST token must be bare `[no-redispatch]`") < phase4.index(
+        "`[autonomous]` / `[no-interactive]` / `[quoin-onbehalf]`"
+    )
+
+
+def test_onbehalf_implement_model_is_route_conditional(run_skill_text: str) -> None:
+    """Site 4 — the on-behalf ledger row for the `implement` phase must be
+    route-conditional (`opus` on the fast route, `sonnet` otherwise), not a
+    hardcoded `sonnet` that misrepresents an Opus run."""
+    phase4 = _phase_span(run_skill_text, "## Phase 4 — Implement", "## Phase 5 — Review")
+    assert "phase=implement, model=opus on the fast route, sonnet otherwise" in phase4
+
+
+def test_phase4_rationale_names_a1_on_fast_route(run_skill_text: str) -> None:
+    """Site 5 — the Phase 4 spawn rationale must name Checkpoint A1 as the
+    fast-route confirming checkpoint, since Checkpoint B never fires on that
+    route (the exception in implement/SKILL.md keys on 'spawned by /run', not
+    on which specific checkpoint fired)."""
+    phase4 = _phase_span(run_skill_text, "## Phase 4 — Implement", "## Phase 5 — Review")
+    assert "Checkpoint A1" in phase4
+    assert "Checkpoint B never fires on that route" in phase4
+    assert "Checkpoint B" in phase4  # existing full-path wording preserved
+
+
+# ---------------------------------------------------------------------------
+# T-12: `Review shape:` precedence channel in /review/SKILL.md
+# ---------------------------------------------------------------------------
+
+
+def _profile_detection_section(text: str) -> str:
+    return _phase_span(
+        text,
+        "## Profile detection and fan-out",
+        "**Small — unchanged single-pass review.**",
+    )
+
+
+def test_review_shape_takes_precedence_over_profile_default(review_skill_text: str) -> None:
+    """A `Review shape: single-pass (fast-path)` line must take precedence
+    over BOTH profile inference and the undetermined-profile default."""
+    section = _profile_detection_section(review_skill_text)
+    assert "Review shape: single-pass (fast-path)" in section
+    assert "takes precedence over profile inference" in section
+    assert "undetermined-profile default" in section
+    # existing default sentence stays VERBATIM
+    assert (
+        "If the task profile cannot be determined, default to **Medium fan-out** (D-02)"
+        in section
+    )
+
+
+def test_medium_fanout_still_fires_without_review_shape_line(review_skill_text: str) -> None:
+    """The three-way Medium fan-out must still fire on a Medium plan carrying
+    no `Review shape:` line — the new channel is additive, not a replacement
+    for profile-based detection."""
+    text = review_skill_text
+    section = _profile_detection_section(text)
+    assert "regardless of the `Task profile:` value" in section
+    # the Medium fan-out branch itself is untouched further down in the file
+    assert "Medium" in text
+    assert "fan-out" in text.lower()
+
+
+# ---------------------------------------------------------------------------
+# T-13: mid-flight escalation — Checkpoint C + the two Phase 5 terminal branches
+# ---------------------------------------------------------------------------
+
+
+def _checkpoint_c_section(text: str) -> str:
+    return _phase_span(text, "**Checkpoint C:**", "## Phase 5 — Review")
+
+
+def _phase5_section(text: str) -> str:
+    return _phase_span(text, "## Phase 5 — Review", "**Checkpoint D**")
+
+
+def test_escalation_removes_skipped_phase_sentinels(run_skill_text: str) -> None:
+    section = _checkpoint_c_section(run_skill_text)
+    assert "escalate to full" in section
+    assert "rewrite `triage-decision.md` with the flipped route" in section
+    assert "autonomous-progress-{task}/architect.done" in section
+    assert "autonomous-progress-{task}/thorough_plan.done" in section
+    assert "DELETE" in section
+    assert "re-enter at the architect phase" in section
+    assert "Completed implementation work is preserved" in section
+
+
+def test_escalation_strips_review_shape_line(run_skill_text: str) -> None:
+    section = _checkpoint_c_section(run_skill_text)
+    assert "delete the stub `current-plan.md`" in section
+    assert "strip its `Review shape:` line" in section
+    assert "cheapest review precisely on the path taken" in section
+
+
+def test_escalation_uses_needs_decision_path_under_autonomous(run_skill_text: str) -> None:
+    text = run_skill_text
+    checkpoint_c = _checkpoint_c_section(text)
+    assert "NEEDS-DECISION return path" in checkpoint_c
+    assert "needs-decision-{task}.md" in checkpoint_c
+    assert "no seventh hard-stop" in checkpoint_c.lower()
+
+    phase5 = _phase5_section(text)
+    assert phase5.count("NEEDS-DECISION return path") >= 2  # both new Phase 5 branches
+
+
+def test_changes_requested_cap_offers_escalation_on_fast_route(run_skill_text: str) -> None:
+    phase5 = _phase5_section(run_skill_text)
+    assert "Hard-stop #3" in phase5
+    idx_hardstop3 = phase5.index("Hard-stop #3")
+    idx_escalate = phase5.index('offer "escalate to full" as a third option alongside this halt')
+    assert idx_escalate > idx_hardstop3
+    assert "same mechanism as the Checkpoint C escalation above" in phase5
+
+
+def test_blocked_offers_escalation_on_fast_route(run_skill_text: str) -> None:
+    phase5 = _phase5_section(run_skill_text)
+    assert "Hard-stop #1" in phase5
+    assert "offer escalation rather than a bare stop" in phase5
+    assert "same mechanism as the Checkpoint C escalation above" in phase5
+
+
+def test_full_path_hard_stops_1_and_3_unchanged(run_skill_text: str) -> None:
+    """Regression guard: the full path's CHANGES_REQUESTED-cap and BLOCKED
+    branches must keep their pre-T-13 verbatim wording — the escalation
+    option is additive and conditional on the fast route only."""
+    phase5 = _phase5_section(run_skill_text)
+    assert (
+        "If still CHANGES_REQUESTED after the 3-round cap, this is Hard-stop #3 "
+        "(Review CHANGES_REQUESTED after 3 rounds) — write the halt-sentinel per "
+        '"## Autonomous hard stops" before exit, then stop.' in phase5
+    )
+    assert (
+        '**If BLOCKED:** present the blocking issues. **STOP.** Do not offer to continue.'
+        in phase5
+    )
+    assert "still a bare halt" in phase5
+    assert "still a bare stop" in phase5

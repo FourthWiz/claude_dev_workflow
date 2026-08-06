@@ -531,15 +531,16 @@ plain (non-autonomous) run never writes this file, in either mode.
 
 ## Phase 2 — Architect (conditional)
 
-**Skip condition:** Task profile is Small.
+**Skip condition:** Task profile is Small, OR the fast route was taken at Phase 1.6 (`route=fast`).
 
 - **If Small:** tell the user "Small task — skipping /architect, proceeding directly to planning."
+- **If fast route:** tell the user "Fast route — skipping /architect, dispatching /implement directly against the routing stub."
 - **If running:** spawn `/architect` as a subagent session, passing the task description, paths to discovery output files (`repos-inventory.md`, `architecture-overview.md`, `dependencies-map.md`), and the path to `<task-root>/spec.md` if it exists (read-if-exists).
   - **Note:** `/architect` now includes a Phase 4 critic loop (max 2 rounds default, 4 in strict mode); expect 1-2 additional `critic` phase rows in the cost ledger per round. If Phase 4 triggers the cost-guard confirmation (pre-round-2), the architect subagent will pause for user input — watch for the prompt `[critic round 2 starting — ~$10-30 estimated based on body size]` in the subagent output.
 
 After the phase, verify the cost ledger has a new entry for the `architect` phase. If not, append a best-effort entry with `unknown-architect-<timestamp>`. Also check for `critic` phase rows from Phase 4 (1-2 expected; accept their absence if Phase 4 was skipped via `max_rounds: 0`). Under `QUOIN_INLINE_COST_CAPTURE=1`, this step is instead the on-behalf write per "On-behalf cost capture" above (phase=architect, model=opus) — the Phase 4 critic-round rows are architect's OWN on-behalf writes, per its own on-behalf mechanism, independent of this one.
 
-Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/architect.done` (atomic write — T-05/T-10 write-site map), including when architect was skipped for a Small task.
+Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/architect.done` (atomic write — T-05/T-10 write-site map), including when architect was skipped for a Small task or for the fast route.
 
 After architect completes, spawn `/gate` as a subagent session (architecture gate — subagent dispatch required for audit-log persistence). Under `QUOIN_INLINE_COST_CAPTURE=1`, this gate spawn also follows "On-behalf cost capture" above (phase=gate, model=sonnet).
 
@@ -561,18 +562,24 @@ Continue to planning? (yes / no / show architecture)
 
 ## Phase 3 — Thorough Plan
 
-Spawn `/thorough_plan` as a subagent session, passing:
-- Task profile and max_rounds
-- Task description (with tokens stripped)
-- Path to `architecture.md` (if it exists)
-- Path to `spec.md` (if it exists)
-- Repo paths
+**Skip condition:** the fast route was taken at Phase 1.6 (`route=fast`). The fast route already
+wrote its own `current-plan.md` stub in Phase 1.6 — `/thorough_plan` never runs, and the stub is
+dispatched to `/implement` directly.
+
+- **If fast route:** tell the user "Fast route — skipping /thorough_plan, the routing stub at
+  `<task_dir>/current-plan.md` is the plan for this run."
+- **If running:** spawn `/thorough_plan` as a subagent session, passing:
+  - Task profile and max_rounds
+  - Task description (with tokens stripped)
+  - Path to `architecture.md` (if it exists)
+  - Path to `spec.md` (if it exists)
+  - Repo paths
 
 `/thorough_plan` handles its own internal plan→critic→revise loop and runs its own post-plan smoke gate.
 
 After the phase, verify the cost ledger has new entries for `thorough-plan`, `plan`, `critic`, and (if applicable) `revise` phases. If not, append best-effort entries with `unknown-<phase>-<timestamp>`. Under `QUOIN_INLINE_COST_CAPTURE=1`, the `thorough-plan` row is instead the on-behalf write per "On-behalf cost capture" above (phase=thorough-plan, model=opus) — the plan/critic/revise/enrich rows are thorough_plan's OWN on-behalf writes, per its own on-behalf mechanism, independent of this one.
 
-Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/thorough_plan.done` (atomic write — T-05/T-10 write-site map).
+Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/thorough_plan.done` (atomic write — T-05/T-10 write-site map), including when thorough_plan was skipped for the fast route.
 
 **Checkpoint B:**
 ```
@@ -594,14 +601,17 @@ Only evaluated under `AUTONOMOUS` — plain `/run` never evaluates this bar and 
 
 - **Medium/Large:** require the `thorough_plan` critic loop to have converged with a **PASS** verdict. Read the verdict `thorough_plan` returns (or its session-state `## Current stage` trail) — exhausting `max_rounds` while the last critic verdict is still REVISE does **NOT** pass the bar, even though `thorough_plan` itself terminates normally at the round cap.
 - **Small:** require BOTH (a) the post-plan smoke gate to PASS, AND (b) the confidence signal to be `>= QUOIN_AUTONOMOUS_CONFIDENCE_THRESHOLD` (default `0.7`). Small skips `/specify` and `/architect`, so the confidence signal comes from the single-pass `/plan` skill's own `confidence: <float 0..1>` line (see `plan/SKILL.md`) — optionally combined with an `enrich`-emitted confidence value (if enrich ran and emitted one), in which case take the **minimum** of the two.
-- **Below the bar → HARD STOP.** This is Hard-stop #6 (below-bar formulation) in "## Autonomous hard stops" above — write the halt-sentinel (`phase: formulation`) before exit, then stop. Do **NOT** enter Phase 4 / Execution on a formulation that hasn't cleared the bar.
+- **Fast route:** require `min(triage_confidence, enrich_confidence_if_present) >= QUOIN_FASTPATH_CONFIDENCE_THRESHOLD` (default `0.8`) — stricter than the Small path's `0.7` default, since no plan was critiqued. `triage_confidence` is the confidence value Phase 1.6 recorded at the fast-route decision; the minimum-of-two shape deliberately mirrors the Small bullet's idiom above. This is a deliberate tightening beyond the spec's FR-9 text, recorded here as a spec deviation.
+- **Below the bar → HARD STOP.** This is Hard-stop #6 (below-bar formulation) in "## Autonomous hard stops" above — write the halt-sentinel (`phase: formulation`) before exit, then stop. Do **NOT** enter Phase 4 / Execution on a formulation that hasn't cleared the bar. On the fast route this is the SAME hard-stop and the SAME halt-sentinel, with a reason string naming the fast-path route — no seventh hard-stop site, no new schema field, no supervisor reader change.
 - The runtime-neutral shape of this bar is mirrored in `quoin/core/skills/run.md`'s "Autonomous mode (opt-in)" section.
 
 ## Phase 4 — Implement
 
-Spawn `/implement` as a subagent session, passing path to `<task_dir>/current-plan.md` (where `<task_dir>` is resolved via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` in Setup §) and all repo paths. Because the user invoked `/run` and confirmed at Checkpoint B, the `/run` exception in `implement/SKILL.md` applies.
+Spawn `/implement` as a subagent session, passing path to `<task_dir>/current-plan.md` (where `<task_dir>` is resolved via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` in Setup §) and all repo paths. Because the user invoked `/run` and confirmed at Checkpoint B (or, on the fast route, at Checkpoint A1 — Checkpoint B never fires on that route), the `/run` exception in `implement/SKILL.md` applies.
 
-After the phase, verify the cost ledger has a new entry for the `implement` phase. If not, append a best-effort entry with `unknown-implement-<timestamp>`. Under `QUOIN_INLINE_COST_CAPTURE=1`, this step is instead the on-behalf write per "On-behalf cost capture" above (phase=implement, model=sonnet).
+**On the fast route,** dispatch this spawn with model opus, and the spawn prompt's FIRST token must be bare `[no-redispatch]` — any `[autonomous]` / `[no-interactive]` / `[quoin-onbehalf]` markers follow it, in that order. This order is load-bearing: `implement/SKILL.md`'s §0 conditions on the prompt "starting with" a `[no-redispatch]` form, and §0‴ likewise — the wrong order lets `/implement` silently down-dispatch to Sonnet while every mechanical check still passes. On the full path this dispatch is unchanged (default model tier, no forced sentinel).
+
+After the phase, verify the cost ledger has a new entry for the `implement` phase. If not, append a best-effort entry with `unknown-implement-<timestamp>`. Under `QUOIN_INLINE_COST_CAPTURE=1`, this step is instead the on-behalf write per "On-behalf cost capture" above (phase=implement, model=opus on the fast route, sonnet otherwise).
 
 Under `AUTONOMOUS`, once Checkpoint C confirms (gate passed, continuing to review), also write the phase's completion sentinel `autonomous-progress-{task}/implement.done` (atomic write — T-05/T-10 write-site map).
 
@@ -623,10 +633,12 @@ Continue to review? (yes / no / show changes)
 ```
 
 If the gate **failed**: present the failures and ask "Fix and retry, or stop?"
-- "fix" → spawn `/implement` again for the failing items, then re-run `/gate` inline (post-implement boundary — same inline mechanism as the primary path; audit-log persistence applies per `/gate/SKILL.md`)
+- "fix" → spawn `/implement` again for the failing items (on the fast route, same model-opus / leading-`[no-redispatch]` dispatch as the primary Phase 4 spawn above), then re-run `/gate` inline (post-implement boundary — same inline mechanism as the primary path; audit-log persistence applies per `/gate/SKILL.md`)
 - "stop" → halt, preserve artifacts
 
-Under `AUTONOMOUS`: auto-select "fix" and retry once (retry cap = 1 automatic retry). If the gate still fails after that one retry, this is Hard-stop #2 (Gate FAIL after the retry cap) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop. Never fall back to a silent proceed, and never ask.
+**(fast route only)** a third option, "escalate to full", is also offered here: rewrite `triage-decision.md` with the flipped route (`route=full`), DELETE `autonomous-progress-{task}/architect.done` and `autonomous-progress-{task}/thorough_plan.done`, delete the stub `current-plan.md` — or at minimum strip its `Review shape:` line, since a surviving single-pass declaration would apply the cheapest review precisely on the path taken because the task turned out harder than routed — and re-enter at the architect phase. Completed implementation work is preserved. On the full path this option does not exist; the existing "fix" / "stop" choice above is unchanged.
+
+Under `AUTONOMOUS`: auto-select "fix" and retry once (retry cap = 1 automatic retry). If the gate still fails after that one retry, this is Hard-stop #2 (Gate FAIL after the retry cap) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop. Never fall back to a silent proceed, and never ask. **On a fast-route run, this same escalation option routes through the existing NEEDS-DECISION return path** (`needs-decision-{task}.md`) instead of a silent auto-select — no seventh hard-stop, same NEEDS-DECISION mechanism used elsewhere under `[autonomous]`.
 
 If the user says "show changes": run `git diff --stat` and display, then re-ask.
 
@@ -643,14 +655,14 @@ Under `AUTONOMOUS`, once Checkpoint D confirms (APPROVED or accepted, gate passe
 **If APPROVED:** run `/gate` inline (Full level, post-review — read `/gate/SKILL.md` from the same session and execute the gate process directly). Step 5 audit-log persistence applies in inline mode per the gate skill's existing rule. Proceed to Checkpoint D.
 
 **If CHANGES_REQUESTED:** present the issues to the user. Offer:
-1. **"fix"** → spawn `/implement` again with the review issues as the spec. After fix-implement completes, re-run the post-implementation gate inline (same level as before; audit-log persistence per `/gate/SKILL.md`). Then re-spawn `/review`. Cap at 3 review rounds to prevent infinite cycling.
+1. **"fix"** → spawn `/implement` again with the review issues as the spec (on the fast route, same model-opus / leading-`[no-redispatch]` dispatch as the primary Phase 4 spawn above). After fix-implement completes, re-run the post-implementation gate inline (same level as before; audit-log persistence per `/gate/SKILL.md`). Then re-spawn `/review`. Cap at 3 review rounds to prevent infinite cycling.
 2. **"accept"** → treat as approved despite requested changes. Log this decision in session state. Proceed to Checkpoint D.
 
-Under `AUTONOMOUS`: auto-select "fix" at each round — never auto-select "accept". If still CHANGES_REQUESTED after the 3-round cap, this is Hard-stop #3 (Review CHANGES_REQUESTED after 3 rounds) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop.
+Under `AUTONOMOUS`: auto-select "fix" at each round — never auto-select "accept". If still CHANGES_REQUESTED after the 3-round cap, this is Hard-stop #3 (Review CHANGES_REQUESTED after 3 rounds) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop. **On a fast-route run, offer "escalate to full" as a third option alongside this halt — same mechanism as the Checkpoint C escalation above** (rewrite `triage-decision.md`, delete the two `.done` sentinels, delete/strip the stub, re-enter at architect); under `[autonomous]` this routes through the same NEEDS-DECISION return path rather than a silent auto-select. On the full path this branch is unchanged — still a bare halt.
 
 **If BLOCKED:** present the blocking issues. **STOP.** Do not offer to continue. Tell the user: "Review found blocking issues. The workflow cannot continue until these are resolved. Artifacts are preserved at `.workflow_artifacts/<task-name>/`."
 
-Under `AUTONOMOUS`: this is Hard-stop #1 (Review BLOCKED) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop (no `AskUserQuestion`, no silent proceed).
+Under `AUTONOMOUS`: this is Hard-stop #1 (Review BLOCKED) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop (no `AskUserQuestion`, no silent proceed). **On a fast-route run, offer escalation rather than a bare stop — same mechanism as the Checkpoint C escalation above**; under `[autonomous]` this also routes through the NEEDS-DECISION return path instead of the bare halt-sentinel. On the full path this branch is unchanged — still a bare stop, since the full path never skipped the phases escalation would recover.
 
 **Checkpoint D** (after APPROVED or accepted):
 ```
@@ -858,7 +870,7 @@ the threshold values themselves live in `hooks/_lib.sh`'s
 
 ## Gate boundaries reference
 
-**Post-architect (Phase 2 boundary):** subagent dispatch (not modified by Stage 3). **Post-implement (Phase 4 boundary primary; recursive recovery paths in the same phase):** all inline — preserve the parent's prompt cache. **Post-review (Phase 5 boundary):** inline. **Post-plan (handled by `/thorough_plan/SKILL.md`):** subagent dispatch. **Post-specify (Phase 1.5 boundary):** subagent dispatch (mirrors post-architect). **There is no `/gate` invocation after `/discover`** (discover feeds directly into specify/architect). Audit-log persistence (`gate-{phase}-{date}.md`) is mandatory at every boundary regardless of mode per `/gate/SKILL.md`.
+**Post-architect (Phase 2 boundary):** subagent dispatch (not modified by Stage 3). **Post-implement (Phase 4 boundary primary; recursive recovery paths in the same phase):** all inline — preserve the parent's prompt cache. **Post-review (Phase 5 boundary):** inline. **Post-plan (handled by `/thorough_plan/SKILL.md`):** subagent dispatch. **Post-specify (Phase 1.5 boundary):** subagent dispatch (mirrors post-architect). **There is no `/gate` invocation after `/discover`** (discover feeds directly into specify/architect). Audit-log persistence (`gate-{phase}-{date}.md`) is mandatory at every boundary regardless of mode per `/gate/SKILL.md`. **On the fast route, the post-architect and post-plan gate boundaries do not exist**, because the architect and thorough_plan phases they would follow never run; the post-implement and post-review boundaries are unchanged.
 
 ## Important behaviors
 

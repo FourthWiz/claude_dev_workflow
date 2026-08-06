@@ -196,6 +196,8 @@ This skill requires the strongest available model (currently Claude Opus). Revie
 
 Read the task profile from the convergence summary at the top of `current-plan.md` (look for "Task profile: Small/Medium/Large"), or from the session-state file if the plan is unavailable. If the task profile cannot be determined, default to **Medium fan-out** (D-02) — an undetermined profile means MORE review, not less, mirroring `/gate`'s own default-to-Full fallback. A genuine Small task must be positively detected (`Task profile: Small` present) to skip fan-out.
 
+A `Review shape: single-pass (fast-path)` line in `current-plan.md` takes precedence over profile inference AND over the undetermined-profile default above — when present, run the single-pass branch below regardless of the `Task profile:` value. This is how a fast-route stub (`Task profile:` honestly classified, possibly Medium or Large) still buys the cheap review its route was chosen for, without weakening the gate intensity that `Task profile:` alone controls.
+
 **Small — unchanged single-pass review.** Run the entire Review process below exactly as today: zero extra subagents, one `review-N.md` write. This branch is byte-path-identical to the pre-fan-out single-pass flow.
 
 **Pre-fan-out context budget (IVG-141) — Medium/Large only; Small path unchanged.** At the START of this Medium/Large branch, BEFORE dispatching the three parallel dimension subagents, run the on-demand budget guard (best-effort leaf measurement per the T-02 spike, which PASSED — `/review` subagents resolve their own transcript):
