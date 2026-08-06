@@ -62,9 +62,10 @@ in `## Resume` below.
 Scan the task description (with `--autonomous` already stripped, if present) for profile tags and runtime overrides, in this order:
 
 1. **`strict:`** prefix → Large profile (all-Opus, max 5 rounds). Strip token.
-2. **`small:` / `medium:` / `large:`** prefix → set profile accordingly. Strip token.
-3. **No tag** → auto-classify using triage criteria, present classification with rationale, ask for user confirmation. **Under `AUTONOMOUS`:** skip the wait — auto-accept the classification and proceed (see `## Checkpoint interaction protocol`).
-4. **`max_rounds: N`** → override the round cap. Strip token. Ignored for Small. **Under `AUTONOMOUS`:** if not explicitly given, `max_rounds` defaults per profile — see "Perfectionist depth-within-profile (autonomous)" below.
+2. **`fast:`** prefix (anywhere in the input) → set an internal `ROUTE_FORCED=fast` flag. Strip the token before profile classification (step 3 below) and before the derived task name (Determine task name, next section) — same non-pollution treatment as `--autonomous`, `strict:`, and `max_rounds:` above. ORTHOGONAL to the profile tags below: a combination like `fast: large: …` keeps Large as the profile AND forces the fast-path route to be evaluated in Phase 1.6.
+3. **`small:` / `medium:` / `large:`** prefix → set profile accordingly. Strip token.
+4. **No tag** → auto-classify using triage criteria, present classification with rationale, ask for user confirmation. **Under `AUTONOMOUS`:** skip the wait — auto-accept the classification and proceed (see `## Checkpoint interaction protocol`).
+5. **`max_rounds: N`** → override the round cap. Strip token. Ignored for Small. **Under `AUTONOMOUS`:** if not explicitly given, `max_rounds` defaults per profile — see "Perfectionist depth-within-profile (autonomous)" below.
 
 See `/thorough_plan` SKILL.md section 3 for full parsing rules and triage criteria.
 
