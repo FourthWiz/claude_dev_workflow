@@ -1012,6 +1012,49 @@ def regenerate_verification_step(source_dir: pathlib.Path, *, allow_writes: bool
     print(f"Regenerated §V verification blocks in {source_dir}/adapters/claude/skills/*/SKILL.md")
 
 
+def check_slim_outputs_fresh(source_dir: pathlib.Path) -> list[str]:
+    """Byte-compare committed CLAUDE.slim.md / memory/workflow-catalog.md against a
+    fresh regen (IVG-164 review round-1 MAJOR 1).
+
+    Project-scope installs always run with allow_writes=False (T-07 MAJ-6), so
+    regenerate_pollution_dispatch's self-heal pattern above can never fire for the
+    one scope where --claude-md-variant slim is legal — an edit to quoin/CLAUDE.md
+    that skips re-running build_claude_slim.py would otherwise deploy stale
+    generated content silently. This is a read-only CHECK, never a write: it
+    borrows build_claude_slim.py's `build_outputs()` function and CLASSIFICATION
+    table via runpy with a non-`"__main__"` run_name, so the script's own
+    argparse/main()/file-write side effects never execute.
+
+    Returns a list of stale output path strings (empty when both generated files
+    match a fresh regen of the live source_dir/CLAUDE.md). A ClassificationError
+    from the borrowed build_outputs() (heading/table drift) is treated the same as
+    staleness — the generator itself would abort, so the install must too.
+    """
+    import runpy
+
+    script = source_dir / "scripts" / "build_claude_slim.py"
+    claude_md = source_dir / "CLAUDE.md"
+    slim_output = source_dir / "CLAUDE.slim.md"
+    catalog_output = source_dir / "memory" / "workflow-catalog.md"
+
+    mod_globals = runpy.run_path(str(script), run_name="quoin_slim_staleness_check")
+    build_outputs = mod_globals["build_outputs"]
+    classification_error = mod_globals["ClassificationError"]
+
+    source_text = claude_md.read_text(encoding="utf-8")
+    try:
+        slim_text, catalog_text = build_outputs(source_text)
+    except classification_error as exc:
+        return [f"{claude_md} (regen aborted, CLASSIFICATION/heading mismatch: {exc})"]
+
+    stale: list[str] = []
+    if not slim_output.exists() or slim_output.read_text(encoding="utf-8") != slim_text:
+        stale.append(str(slim_output))
+    if not catalog_output.exists() or catalog_output.read_text(encoding="utf-8") != catalog_text:
+        stale.append(str(catalog_output))
+    return stale
+
+
 def assert_no_placeholders(dest_root: pathlib.Path) -> list[str]:
     """Return list of 'path:line_no' strings where __QUOIN_HOME__ was found after deploy.
 

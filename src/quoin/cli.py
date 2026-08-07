@@ -218,6 +218,24 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
         )
         return 1
 
+    # review-1.md MAJOR 1: project installs never regenerate (allow_writes is forced
+    # False below for is_project_mode), so a slim install must fail closed rather than
+    # silently deploy a CLAUDE.slim.md / workflow-catalog.md that's stale vs the live
+    # quoin/CLAUDE.md. Placed here (before any deploy_* call) so, like the guard
+    # above, nothing has been probed or written yet when it fires.
+    if claude_md_variant == "slim":
+        stale = installer.check_slim_outputs_fresh(source_dir)
+        if stale:
+            print(
+                "quoin: --claude-md-variant slim aborted — generated output(s) are "
+                "stale vs a fresh regen of " + str(source_dir / "CLAUDE.md") + ": "
+                + ", ".join(stale) + ". Run "
+                "'python3 quoin/scripts/build_claude_slim.py' in the quoin repo "
+                "checkout and commit the result before installing the slim variant.",
+                file=sys.stderr,
+            )
+            return 1
+
     # Mutex: --scope project is only valid with --runtime claude
     if is_project_mode and getattr(args, "runtime", "claude") == "codex":
         _abort("quoin: --scope project is only valid with --runtime claude")
