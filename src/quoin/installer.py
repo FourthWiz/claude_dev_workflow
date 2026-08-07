@@ -763,6 +763,7 @@ def merge_workflow_rules(
     *,
     force_merge: bool = False,
     claude_md_path: pathlib.Path | None = None,
+    source_claude_name: str = "CLAUDE.md",
 ) -> None:
     """Merge quoin workflow rules into the target CLAUDE.md file.
 
@@ -773,10 +774,14 @@ def merge_workflow_rules(
     T-05 / CRIT-4: in project mode, __QUOIN_HOME__ placeholders in the source
     CLAUDE.md are substituted with the actual dest_root before writing, so that
     the deployed rules refer to the correct project-scoped paths.
+
+    IVG-164 stage 1 (T-07): source_claude_name selects which source file to
+    merge from (source_dir / source_claude_name) — "CLAUDE.md" (default, full
+    variant) or "CLAUDE.slim.md" (project-scope slim pilot).
     """
-    source_claude = source_dir / "CLAUDE.md"
+    source_claude = source_dir / source_claude_name
     if not source_claude.exists():
-        print(f"quoin: Expected CLAUDE.md at {source_claude} but not found", file=sys.stderr)
+        print(f"quoin: Expected {source_claude_name} at {source_claude} but not found", file=sys.stderr)
         sys.exit(1)
 
     raw_rules = source_claude.read_text(encoding="utf-8")

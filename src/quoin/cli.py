@@ -206,6 +206,18 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
     scope: str = getattr(args, "scope", None) or "user"
     is_project_mode = scope.startswith("project")
 
+    # IVG-164 T-07: --claude-md-variant slim is a project-scope pilot only this wave.
+    # Placed here (before check_prerequisites) so the guard is a literal no-op: nothing
+    # has been probed or written yet when it fires.
+    claude_md_variant: str = getattr(args, "claude_md_variant", "full") or "full"
+    if claude_md_variant == "slim" and not is_project_mode:
+        print(
+            "quoin: --claude-md-variant slim is a project-scope pilot only this wave "
+            "(see IVG-164); re-run with --scope project",
+            file=sys.stderr,
+        )
+        return 1
+
     # Mutex: --scope project is only valid with --runtime claude
     if is_project_mode and getattr(args, "runtime", "claude") == "codex":
         _abort("quoin: --scope project is only valid with --runtime claude")
@@ -298,11 +310,17 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
             return 1
     else:
         claude_md_path = dest_root / "CLAUDE.md"
+    source_claude_name = "CLAUDE.slim.md" if claude_md_variant == "slim" else "CLAUDE.md"
+    print(
+        f"Using CLAUDE.md variant: {claude_md_variant} (source {source_claude_name}) "
+        f"→ {claude_md_path}"
+    )
     installer.merge_workflow_rules(
         source_dir,
         dest_root,
         force_merge=args.force_merge,
         claude_md_path=claude_md_path,
+        source_claude_name=source_claude_name,
     )
 
     # proc:R-02: post-install placeholder validator
@@ -778,6 +796,15 @@ def main(argv: list[str] | None = None) -> int:
         "--scope", default=None, metavar="SCOPE",
         help="Install scope: user (~/.claude, default) or project (<CWD>/.claude). "
              "Omitted → interactive prompt. See 'Scope' below for values.",
+    )
+    install_p.add_argument(
+        "--claude-md-variant",
+        choices=("full", "slim"),
+        default="full",
+        help=(
+            "CLAUDE.md variant to merge: 'full' (default) or 'slim' "
+            "(IVG-164 project-scope pilot; requires --scope project)."
+        ),
     )
     install_p.add_argument(
         "--allow-hook-merge",
