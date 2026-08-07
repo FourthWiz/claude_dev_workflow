@@ -47,6 +47,7 @@ packages = ["src/quoin"]
 "quoin/adapters/codex" = "src/quoin/data/adapters/codex"
 "quoin/QUICKSTART.md" = "src/quoin/data/QUICKSTART.md"
 "quoin/CLAUDE.md" = "src/quoin/data/CLAUDE.md"
+"quoin/CLAUDE.slim.md" = "src/quoin/data/CLAUDE.slim.md"
 "quoin/memory" = "src/quoin/data/memory"
 "quoin/tools/agentdesk" = "src/quoin/data/tools/agentdesk"
 

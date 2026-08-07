@@ -168,6 +168,46 @@ def test_wheel_contents_include_codex_cli_assets(built_wheel):
         assert any(name.endswith(path) for name in names), f"Missing wheel asset: {path}"
 
 
+def test_pyproject_force_include_line_for_claude_slim_md():
+    """pyproject.toml must wire quoin/CLAUDE.slim.md into the wheel (T-06).
+
+    Cheap non-build guard, checked even when `build` is unavailable —
+    mirrors test_pyproject_force_include_line in test_branch_recovery_recipe.py.
+    Top-level data files are enumerated individually in force-include (only
+    directories are globbed), so this literal line is the actual invariant.
+    """
+    pyproject = REPO / "pyproject.toml"
+    assert pyproject.exists(), f"pyproject.toml not found at {pyproject}"
+    text = pyproject.read_text(encoding="utf-8")
+    expected = '"quoin/CLAUDE.slim.md" = "src/quoin/data/CLAUDE.slim.md"'
+    assert expected in text, (
+        f"pyproject.toml must contain the force-include line:\n  {expected}\n"
+        "Without it, CLAUDE.slim.md is silently absent from wheel installs."
+    )
+    slim_source = QUOIN_SRC / "CLAUDE.slim.md"
+    assert slim_source.exists(), (
+        f"quoin/CLAUDE.slim.md source missing at {slim_source}; the "
+        "force-include line can only ship a file that exists."
+    )
+
+
+@_requires_build
+def test_wheel_contents_include_claude_md_slim_variant(built_wheel):
+    """Wheel installs must include CLAUDE.slim.md (IVG-164 stage 1 T-06).
+
+    pyproject.toml enumerates top-level data files individually (only
+    directories are globbed), so without an explicit force-include entry the
+    slim variant is silently absent from wheel installs and
+    --claude-md-variant slim exits 1 on a pip-installed quoin — invisible to
+    repo-checkout pilots because install.sh always passes --source-dir.
+    """
+    with zipfile.ZipFile(built_wheel) as whl:
+        names = whl.namelist()
+    assert any(name.endswith("quoin/data/CLAUDE.slim.md") for name in names), (
+        "Missing wheel asset: quoin/data/CLAUDE.slim.md"
+    )
+
+
 @_requires_build
 def test_wheel_contents_include_claude_adapter_skill_assets(built_wheel):
     """Wheel installs must include active Claude adapter skills, not only stubs."""
