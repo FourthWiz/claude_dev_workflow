@@ -7,8 +7,9 @@ file controls which files are protected from automated cleanup.
 ## Memory layers
 
 The quoin memory system uses several distinct layers. See the **Workflow memory layers**
-table in `__QUOIN_HOME__/CLAUDE.md` (§ "Workflow memory layers") for the full table and
-lifecycle descriptions. This document focuses on the fact-file layer (auto-memory) and
+table in `__QUOIN_HOME__/memory/workflow-catalog.md` (§ "Workflow memory layers") for the
+full table and lifecycle descriptions. This document focuses on the fact-file layer
+(auto-memory) and
 the insights/lessons layer managed by `/sleep`.
 
 ## When to archive vs. soft-forget vs. delete

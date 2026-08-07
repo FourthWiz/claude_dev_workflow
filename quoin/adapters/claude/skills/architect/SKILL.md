@@ -501,7 +501,8 @@ while round <= max_rounds:
             )
         if confirm != "Yes, proceed": break
 
-    # Spawn /critic as a FRESH subagent (model: opus — non-negotiable per CLAUDE.md model assignments).
+    # Spawn /critic as a FRESH subagent (model: opus — non-negotiable; critic is always
+    # Opus per the skill-model roster, __QUOIN_HOME__/memory/workflow-catalog.md "## Model assignments").
     # Convey target via spawn-prompt (D-01 spawn-prompt convention, not CLI flag):
     #
     # On-behalf cost capture (flag-gated, D-1/D-2/D-3, IVG-111 stage 3): when

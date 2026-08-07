@@ -66,13 +66,22 @@ def test_no_lowercase_dev_workflow_in_quoin_dir():
 
 
 def test_no_quoin_foundation_stage_prose_in_skills():
-    """No 'Quoin foundation Stage' prose-drift wording in skills or CLAUDE.md."""
+    """No 'Quoin foundation Stage' prose-drift wording in skills or CLAUDE.md.
+
+    Includes the two IVG-164 stage-1 generated files (CLAUDE.slim.md,
+    memory/workflow-catalog.md) alongside the source CLAUDE.md — both are
+    byte-copies of CLAUDE.md content, so the residual risk is low today, but
+    a generated file must never become a silent blind spot for this sweep
+    (plan MIN-7 r1).
+    """
     result = subprocess.run(
         [
             "grep", "-rn",
             "Quoin foundation Stage",
             str(QUOIN_DIR / "skills"),
             str(QUOIN_DIR / "CLAUDE.md"),
+            str(QUOIN_DIR / "CLAUDE.slim.md"),
+            str(QUOIN_DIR / "memory" / "workflow-catalog.md"),
         ],
         capture_output=True,
         text=True,

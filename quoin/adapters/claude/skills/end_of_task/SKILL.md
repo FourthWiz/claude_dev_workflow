@@ -348,7 +348,7 @@ project root):
    and flag any file matching these patterns:
    - `*.tmp`, `*.bak`, `*.orig`, `*.swp`, `*.swo`
    - `* 2.*`, `* 3.*` (macOS/iCloud duplicates, e.g., "README 2.md")
-   - `.planner-trace.md` (Tier-3 ephemeral — CLAUDE.md says "deleted by /end_of_task before archive"; run `rm -f .planner-trace.md` to clean up)
+   - `.planner-trace.md` (Tier-3 ephemeral — deleted by `/end_of_task` before archive, per `__QUOIN_HOME__/memory/tier1-files.md`'s closing paragraph; run `rm -f .planner-trace.md` to clean up)
    - `.expanded-*.md` (expand --save scratch output)
    - `.DS_Store` (if not gitignored)
    - `__pycache__/` directories or `*.pyc` files (if not gitignored)

@@ -534,7 +534,7 @@ Compose the format-aware body per format-kit.md §2 `gate-{phase}-{date}.md` enu
 
 Write the body to `{path}.body.tmp`; compose final file as `{frontmatter (YAML — task, phase, date, gate-level)}\n\n{body content}`; write to `{path}.tmp`. Validate via `python3 __QUOIN_HOME__/scripts/validate_artifact.py {path}.tmp` (auto-detection → gate type via `^gate-` prefix). On V-failure: retry-once with section-discipline reminder; on persistent failure, Before falling back to v2-style write, increment the session-state `fallback_fires` field by 1 (atomic-rename pattern; same rules as the Step 5 increment described above), then fall back to v2-style terse-rubric-only write. Atomic rename: `mv {path}.tmp {path} && (rm -f {path}.body.tmp 2>/dev/null || true)`.
 
-The user-facing checkpoint summary rendered in Step 3 is Tier 1 English (per CLAUDE.md "User-facing rendered output" carve-out); the audit log written here is the disk-side Class A artifact. Both must convey the same verdict and failure set.
+The user-facing checkpoint summary rendered in Step 3 is Tier 1 English (per `__QUOIN_HOME__/memory/tier1-files.md`'s "User-facing rendered output" carve-out); the audit log written here is the disk-side Class A artifact. Both must convey the same verdict and failure set.
 
 ## Handling failures
 
@@ -555,4 +555,4 @@ The user-facing checkpoint summary rendered in Step 3 is Tier 1 English (per CLA
 - **You are a checkpoint, not a bottleneck.** Run checks fast, present clearly, get out of the way once approved.
 - **Never auto-approve.** Even if all checks pass, wait for the human.
 - **Be honest about what you can't check.** If there's no test suite configured, say so — don't pretend everything passed.
-- **Remember the gate result.** The user-rendered checkpoint summary shown to the user at each gate is Tier 1 English — never compressed (per CLAUDE.md "User-facing rendered output" carve-out). The audit-log file at `.workflow_artifacts/{task}/gate-{phase}-{date}.md` is **Class A** per artifact-format-architecture v3 §4.1 — written via the §5.4 Class A mechanism in Step 5 above (AFTER user approval in Step 4); format-aware structured body per format-kit.md §2 gate enumeration; terse-rubric applies inside prose sections only.
+- **Remember the gate result.** The user-rendered checkpoint summary shown to the user at each gate is Tier 1 English — never compressed (per `__QUOIN_HOME__/memory/tier1-files.md`'s "User-facing rendered output" carve-out). The audit-log file at `.workflow_artifacts/{task}/gate-{phase}-{date}.md` is **Class A** per artifact-format-architecture v3 §4.1 — written via the §5.4 Class A mechanism in Step 5 above (AFTER user approval in Step 4); format-aware structured body per format-kit.md §2 gate enumeration; terse-rubric applies inside prose sections only.
