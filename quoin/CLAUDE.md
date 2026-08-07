@@ -110,6 +110,14 @@ Variations: (a) Small tasks skip `/architect` and the critic loop — `/thorough
 
 **Note on the fast route:** the canonical flow string above is unchanged by variation (f) — the fast route is a conditional variation, not a change to the canonical string, exactly like the `/architect` critic-loop note above. The same canonical-flow string also lives at `quoin/core/workflow/rules.md:18` and `gate/SKILL.md:243`; both stay unchanged for the same reason.
 
+### Explicit-command rule
+
+**CRITICAL RULE: `/implement` and `/end_of_task` require explicit user commands.** No skill may auto-invoke either. After `/thorough_plan` converges, the workflow STOPS and waits for `/implement`. After `/review` approves and the gate passes, the workflow STOPS and waits for `/end_of_task`. The user must consciously decide to start writing code AND to ship it.
+
+**Exception: `/run` (incl. `--autonomous`).** May invoke `/implement`/`/end_of_task` for the user — see `autonomous-mode.md`. Stage 2 adds a `quoin run --autonomous <task>` supervisor that relaunches fresh sessions across context windows.
+
+**Gate invocation modes:** Post-implement and post-review gates run **inline** by default (same session, no subagent spawn — preserves the parent session's prompt cache). Post-architect and post-plan gates spawn **subagent** by default (different context shape after those phases). There is no `/gate` after `/discover`. Audit-log persistence (`gate-{phase}-{date}.md`) is mandatory regardless of mode — see `/gate/SKILL.md`.
+
 ### Task profiles
 
 | Profile | Triggered by | Planning | Critic loop | Gate intensity | Typical cost |
@@ -154,12 +162,6 @@ After `/end_of_task`: the user explicitly invokes `/pr` to create a pull request
 
 Not every task needs every stage. Small tasks typically skip `/architect` entirely. Bug fixes might only need `/implement` + `/review` (bypassing `/thorough_plan` entirely). But gates ALWAYS run between phases.
 
-**CRITICAL RULE: `/implement` and `/end_of_task` require explicit user commands.** No skill may auto-invoke either. After `/thorough_plan` converges, the workflow STOPS and waits for `/implement`. After `/review` approves and the gate passes, the workflow STOPS and waits for `/end_of_task`. The user must consciously decide to start writing code AND to ship it.
-
-**Exception: `/run` (incl. `--autonomous`).** May invoke `/implement`/`/end_of_task` for the user — see `autonomous-mode.md`. Stage 2 adds a `quoin run --autonomous <task>` supervisor that relaunches fresh sessions across context windows.
-
-**Gate invocation modes:** Post-implement and post-review gates run **inline** by default (same session, no subagent spawn — preserves the parent session's prompt cache). Post-architect and post-plan gates spawn **subagent** by default (different context shape after those phases). There is no `/gate` after `/discover`. Audit-log persistence (`gate-{phase}-{date}.md`) is mandatory regardless of mode — see `/gate/SKILL.md`.
-
 Session lifecycle:
 - `/start_of_day` — restores context from daily cache and checks git state. Run at the beginning of a work session.
 - `/end_of_day` — saves session state and consolidates unfinished work into a daily cache. Run when wrapping up.
@@ -179,6 +181,11 @@ Multiple sessions can run in a day (parallel tasks). Each session writes its own
 
 ## Common rules for all skills
 
+### Branch hygiene (essential)
+
+This rule is enforced at three layers: (1) `/implement` §0b branch-hygiene precheck (prompts to create a feature branch if on a protected branch pre-first-commit); (2) `/gate` FAILS if task commits (`has_task_commits: true` — commits ahead of upstream on main/master) land on a protected branch; (3) `/review` flags it as a backstop. Keys on the commits-ahead signal, NOT bare on-main status — a clean repo on main with no ahead commits is NOT a violation. Env knobs: `QUOIN_PROTECTED_BRANCHES` (csv, default `main,master`), `QUOIN_DISABLE_BRANCH_HYGIENE=1` (opt-out). Recovery recipe (mis-placed commits): `__QUOIN_HOME__/memory/branch-recovery.md`.
+- **Reinstall (`bash quoin/install.sh`) after a `quoin/**`/`src/quoin/**` diff** — `/gate` `deploy_drift_check.py` flags drift (`QUOIN_DISABLE_DEPLOY_DRIFT=1`; IVG-136).
+
 ### Git workflow
 
 #### Branch hygiene before new tasks
@@ -192,9 +199,6 @@ Before starting any new task on a repo, always:
 5. Create a new branch for the task
 
 Clean working state before each task avoids mixing unrelated changes and working on stale code. At the start of every implementation task, run `git status` + `git branch` on each affected repo. Handle any dirty state before proceeding. This applies to ALL repos involved, not just the primary one.
-
-This rule is enforced at three layers: (1) `/implement` §0b branch-hygiene precheck (prompts to create a feature branch if on a protected branch pre-first-commit); (2) `/gate` FAILS if task commits (`has_task_commits: true` — commits ahead of upstream on main/master) land on a protected branch; (3) `/review` flags it as a backstop. Keys on the commits-ahead signal, NOT bare on-main status — a clean repo on main with no ahead commits is NOT a violation. Env knobs: `QUOIN_PROTECTED_BRANCHES` (csv, default `main,master`), `QUOIN_DISABLE_BRANCH_HYGIENE=1` (opt-out). Recovery recipe (mis-placed commits): `__QUOIN_HOME__/memory/branch-recovery.md`.
-- **Reinstall (`bash quoin/install.sh`) after a `quoin/**`/`src/quoin/**` diff** — `/gate` `deploy_drift_check.py` flags drift (`QUOIN_DISABLE_DEPLOY_DRIFT=1`; IVG-136).
 
 #### Commit messages
 
