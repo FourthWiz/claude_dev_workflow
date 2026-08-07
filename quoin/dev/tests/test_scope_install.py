@@ -938,6 +938,112 @@ def test_install_sh_forwards_claude_md_variant(tmp_path):
     assert "--claude-md-variant requires a value" in result3.stderr
 
 
+# ── review-1.md MAJOR 1: install-time staleness check for slim outputs ────────
+# Project-scope installs never regenerate (allow_writes forced False, T-07
+# MAJ-6), so a slim install must fail closed rather than silently deploy a
+# stale CLAUDE.slim.md / workflow-catalog.md. Fixture helper copies the real
+# committed generator + outputs into a scratch dir so staleness tests never
+# mutate the committed repo files (mirrors the copy-to-tmp discipline used in
+# test_build_claude_slim.py's --check smoke tests).
+
+def _copy_slim_source_tree(tmp_path: Path) -> Path:
+    """Scratch copy of the pieces installer.check_slim_outputs_fresh() reads:
+    scripts/build_claude_slim.py, CLAUDE.md, CLAUDE.slim.md, memory/workflow-
+    catalog.md, plus an empty skills/ dir so _resolve_source_dir accepts it."""
+    import shutil
+
+    scratch = tmp_path / "src_copy"
+    (scratch / "scripts").mkdir(parents=True)
+    (scratch / "skills").mkdir()
+    (scratch / "memory").mkdir()
+    shutil.copy(
+        QUOIN_SRC / "scripts" / "build_claude_slim.py",
+        scratch / "scripts" / "build_claude_slim.py",
+    )
+    shutil.copy(QUOIN_SRC / "CLAUDE.md", scratch / "CLAUDE.md")
+    shutil.copy(QUOIN_SRC / "CLAUDE.slim.md", scratch / "CLAUDE.slim.md")
+    shutil.copy(
+        QUOIN_SRC / "memory" / "workflow-catalog.md",
+        scratch / "memory" / "workflow-catalog.md",
+    )
+    return scratch
+
+
+def test_check_slim_outputs_fresh_on_committed_tree(tmp_path):
+    """A fresh copy of the real committed outputs reports zero staleness."""
+    from quoin.installer import check_slim_outputs_fresh
+
+    scratch = _copy_slim_source_tree(tmp_path)
+    assert check_slim_outputs_fresh(scratch) == []
+
+
+def test_check_slim_outputs_fresh_detects_stale_slim_output(tmp_path):
+    """A one-byte edit to the copied CLAUDE.slim.md is caught, naming that file
+    (and only that file)."""
+    from quoin.installer import check_slim_outputs_fresh
+
+    scratch = _copy_slim_source_tree(tmp_path)
+    slim_path = scratch / "CLAUDE.slim.md"
+    slim_path.write_text(slim_path.read_text(encoding="utf-8") + "x", encoding="utf-8")
+
+    stale = check_slim_outputs_fresh(scratch)
+    assert any("CLAUDE.slim.md" in s for s in stale), stale
+    assert not any("workflow-catalog.md" in s for s in stale), stale
+
+
+def test_check_slim_outputs_fresh_detects_stale_catalog_output(tmp_path):
+    """A one-byte edit to the copied workflow-catalog.md is caught, naming that
+    file (and only that file)."""
+    from quoin.installer import check_slim_outputs_fresh
+
+    scratch = _copy_slim_source_tree(tmp_path)
+    catalog_path = scratch / "memory" / "workflow-catalog.md"
+    catalog_path.write_text(catalog_path.read_text(encoding="utf-8") + "x", encoding="utf-8")
+
+    stale = check_slim_outputs_fresh(scratch)
+    assert any("workflow-catalog.md" in s for s in stale), stale
+    assert not any(s.endswith("CLAUDE.slim.md") for s in stale), stale
+
+
+def test_variant_slim_stale_outputs_returns_1_no_deploy(monkeypatch, capsys, tmp_path):
+    """Integration cell: --claude-md-variant slim with a stale committed
+    CLAUDE.slim.md aborts _cmd_claude_install with exit 1 BEFORE any file is
+    written (deploy_memory tripwire, mirrors the slim+user guard cell above),
+    naming the stale file in stderr."""
+    import argparse
+
+    import quoin.installer as inst
+    from quoin.cli import _cmd_claude_install
+
+    scratch = _copy_slim_source_tree(tmp_path)
+    slim_path = scratch / "CLAUDE.slim.md"
+    slim_path.write_text(slim_path.read_text(encoding="utf-8") + "x", encoding="utf-8")
+
+    def _raise(*_a, **_kw):
+        raise AssertionError("deploy_memory must not be reached past the slim staleness guard")
+
+    monkeypatch.setattr(inst, "deploy_memory", _raise)
+
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    args = argparse.Namespace(
+        scope=f"project:{project_dir}",
+        claude_md_variant="slim",
+        allow_hook_merge=False,
+        runtime="claude",
+        check=False,
+        source_dir=str(scratch),
+        force_merge=False,
+        dev=False,
+        use_pip=False,
+    )
+    result = _cmd_claude_install(args)
+    assert result == 1
+    err = capsys.readouterr().err
+    assert "CLAUDE.slim.md" in err
+    assert "stale" in err
+
+
 # ── T-10: doctor reports memory files in project scope too ────────────────────
 
 def test_doctor_reports_memory_files_in_project_scope(tmp_path, capsys):

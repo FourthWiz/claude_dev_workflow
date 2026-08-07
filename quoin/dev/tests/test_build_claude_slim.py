@@ -251,17 +251,36 @@ def test_index_targets_are_deployed_memory_files():
     assert len(guide_targets) == 9, guide_targets
 
 
-def test_index_targets_mutation_proof(monkeypatch):
+def test_index_targets_mutation_proof():
     """Pointing one row at a nonexistent guide must break the reachability property.
 
-    Mutation proof for test_index_targets_are_deployed_memory_files: this
-    test does not call that test directly, but re-runs its own logic against
-    a mutated CLASSIFICATION and asserts the mutation is detectable.
+    Mutation proof for test_index_targets_are_deployed_memory_files (review-1.md
+    MINOR 1): re-runs that test's own reachability loop — not just an on-disk
+    existence check — against a locally mutated `patched` CLASSIFICATION dict,
+    and asserts the loop actually goes red (AssertionError) on the mutated row.
+    A vacuous version of this test would build `patched` and never feed it back
+    into any assertion logic; this version does.
     """
     patched = dict(bcs.CLASSIFICATION)
     patched["### Serena (conditional)"] = ("drop", "nonexistent-guide.md")
     memory_dir = _SOURCE_ROOT / "memory"
-    assert not (memory_dir / "nonexistent-guide.md").exists()
+
+    def _run_reachability_loop(classification: dict[str, tuple[str, str | None]]) -> None:
+        """Same assertion shape as test_index_targets_are_deployed_memory_files'
+        guide-existence check, run against whichever CLASSIFICATION is passed in."""
+        for heading in EXPECTED_DROP_HEADINGS:
+            _cls, tgt = classification[heading]
+            assert tgt is not None
+            if tgt == "workflow-catalog.md":
+                continue
+            assert (memory_dir / tgt).exists(), f"index target not a real file: {tgt}"
+
+    # Control: the real (unpatched) table passes.
+    _run_reachability_loop(bcs.CLASSIFICATION)
+
+    # Mutation proof: the patched table must go red on the mutated row.
+    with pytest.raises(AssertionError, match="nonexistent-guide.md"):
+        _run_reachability_loop(patched)
 
 
 def test_slim_headings_subset_of_source_headings():
@@ -298,21 +317,45 @@ def test_check_mode_exits_clean_on_committed_outputs():
         cwd=str(_REPO_ROOT),
         capture_output=True,
         text=True,
+        timeout=60,
     )
     assert result.returncode == 0, result.stderr
 
 
-def test_check_mode_exits_7_on_one_character_edit(tmp_path, monkeypatch):
-    """`--check` exits 7 after a one-character edit to either committed output."""
-    original = SLIM.read_text(encoding="utf-8")
-    try:
-        SLIM.write_text(original + "x", encoding="utf-8")
-        result = subprocess.run(
-            [sys.executable, str(_SCRIPTS / "build_claude_slim.py"), "--check"],
-            cwd=str(_REPO_ROOT),
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 7, result.stdout + result.stderr
-    finally:
-        SLIM.write_text(original, encoding="utf-8")
+def _copy_repo_for_check_mutation(tmp_path: Path) -> Path:
+    """Copy the pieces build_claude_slim.py --check needs into a scratch repo
+    root, so the exit-7 mutation test below never writes to (or has a crash
+    window that could leave dirty) the committed CLAUDE.slim.md in the real
+    tree (review-1.md MINOR 11)."""
+    import shutil
+
+    scratch_repo = tmp_path / "repo_copy"
+    scratch_source_root = scratch_repo / "quoin"
+    (scratch_source_root / "scripts").mkdir(parents=True)
+    (scratch_source_root / "memory").mkdir()
+    shutil.copy(_SCRIPTS / "build_claude_slim.py", scratch_source_root / "scripts" / "build_claude_slim.py")
+    shutil.copy(SOURCE, scratch_source_root / "CLAUDE.md")
+    shutil.copy(SLIM, scratch_source_root / "CLAUDE.slim.md")
+    shutil.copy(CATALOG, scratch_source_root / "memory" / "workflow-catalog.md")
+    return scratch_repo
+
+
+def test_check_mode_exits_7_on_one_character_edit(tmp_path):
+    """`--check` exits 7 after a one-character edit to either generated output.
+
+    Runs against a scratch copy of the repo (not the committed tree) so a
+    subprocess crash between write and restore can never leave the real
+    CLAUDE.slim.md dirty.
+    """
+    scratch_repo = _copy_repo_for_check_mutation(tmp_path)
+    scratch_slim = scratch_repo / "quoin" / "CLAUDE.slim.md"
+    scratch_slim.write_text(scratch_slim.read_text(encoding="utf-8") + "x", encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, str(scratch_repo / "quoin" / "scripts" / "build_claude_slim.py"), "--check"],
+        cwd=str(scratch_repo),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 7, result.stdout + result.stderr

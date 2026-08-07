@@ -153,7 +153,39 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/memory/workflow-catalog.md",
         "quoin/dev/tests/test_build_claude_slim.py",
     ),
+    # Added review-1.md MAJOR 2 (IVG-164 stage 1 fix round): the fail-closed
+    # CLAUDE.md-citation disposition sweep (T-09) polices exactly the corpora an
+    # adapter SKILL.md / quoin/memory/*.md edit can stale, but without these rows
+    # test_claude_md_citations.py was unreachable from any affected-area selector —
+    # verbatim the lesson-2026-07-04 blind spot the rows above were written to
+    # close, now reopened for the sweep's own two doc sources plus its fixture.
+    # Duplicate-key-safe (same iterate-all-rows-into-a-set consumer as above): both
+    # doc rows ADD to their existing selectors rather than displacing them.
+    (
+        "quoin/CLAUDE.md",
+        "quoin/dev/tests/test_claude_md_citations.py",
+    ),
+    (
+        "quoin/memory/workflow-catalog.md",
+        "quoin/dev/tests/test_claude_md_citations.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/claude_md_citation_dispositions.json",
+        "quoin/dev/tests/test_claude_md_citations.py",
+    ),
 )
+
+# SKILL.md coverage residual gap (review-1.md MAJOR 2, documented-acceptance branch):
+# _DOCS_TO_TESTS is a flat, per-file allowlist — there is no directory-prefix rule,
+# so an edit to any of the 32 quoin/adapters/claude/skills/*/SKILL.md files (the
+# third in-scope citation-sweep corpus, alongside the two rows above) is NOT
+# selectable and still falls through to the generic non-.py "ignored" bucket
+# (test_unrelated_skill_md_still_ignored pins this as expected, not a bug). A
+# directory-prefix rule would widen _DOCS_TO_TESTS's matching semantics for every
+# existing row, a larger behavior change than this seam-local fix round's scope;
+# the residual gap is accepted here rather than silently left undocumented. The
+# full-suite gate (not affected-area) remains the backstop that catches a SKILL.md
+# edit that stales the citation fixture.
 
 
 # ---------------------------------------------------------------------------

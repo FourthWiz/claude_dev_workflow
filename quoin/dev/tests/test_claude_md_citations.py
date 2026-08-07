@@ -213,3 +213,41 @@ def test_injecting_unclassified_mention_would_fail(tmp_path):
     fixture_keys = {(r["file"], r["line_hash"]) for r in _load_fixture()}
     key = ("scratch_skill/SKILL.md", hashlib.sha256(_norm(live_line).encode("utf-8")).hexdigest())
     assert key not in fixture_keys
+
+
+def test_claude_md_has_zero_yaml_fences():
+    """review-1.md MINOR 8: guards the sleep_score.py section-parser leg staying inert.
+
+    sleep_score.py's load_config searches for a fenced ```yaml``` block under
+    `### /sleep importance signals`; CLAUDE.md has never carried one (round-3
+    critic finding), which is why that parsing leg is already dead under the
+    FULL variant too, not just the slim variant that drops the section. If a
+    yaml fence is ever added here, the leg revives and needs re-examination
+    under the slim variant (where the section is gone).
+    """
+    claude_md_text = (_SOURCE_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "```yaml" not in claude_md_text
+
+
+def test_stub_skills_tree_excluded_from_sweep_corpora():
+    """review-1.md MINOR 8: quoin/skills/ (the non-deployed compatibility stub
+    tree) is deliberately out of scope for the sweep, not an omission bug.
+
+    The sweep's live in-scope corpora are quoin/adapters/claude/skills/*/SKILL.md
+    (deployed), quoin/memory/*.md, and quoin/scripts/*.py — never quoin/skills/.
+    That stub tree still carries a live CLAUDE.md mention (init_workflow/SKILL.md);
+    this asserts _enumerate_live_mentions() never picks it up.
+    """
+    stub_tree = _SOURCE_ROOT / "skills"
+    stub_mentions = [
+        fp for fp in sorted(stub_tree.glob("*/SKILL.md"))
+        if _MENTION_RE.search(fp.read_text(encoding="utf-8"))
+    ]
+    assert stub_mentions, "expected the stub tree to still carry a live CLAUDE.md mention"
+
+    live_files = {file for file, _hash in _enumerate_live_mentions().keys()}
+    stub_relpaths = {_relpath(fp) for fp in stub_mentions}
+    assert not (stub_relpaths & live_files), (
+        "quoin/skills/ stub tree must stay out of _enumerate_live_mentions() corpora: "
+        f"{stub_relpaths & live_files}"
+    )
