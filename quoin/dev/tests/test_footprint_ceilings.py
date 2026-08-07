@@ -35,6 +35,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 QUOIN_DIR = HERE.parent.parent  # quoin/dev/tests -> quoin/dev -> quoin
 SKILLS_DIR = QUOIN_DIR / "adapters" / "claude" / "skills"
 CLAUDE_MD = QUOIN_DIR / "CLAUDE.md"
+SLIM_CLAUDE_MD = QUOIN_DIR / "CLAUDE.slim.md"
 
 # The 20 §0-carrying skills (single source of truth: quoin/CLAUDE.md "### §0
 # Model dispatch preamble" skill list, byte-mirrored against
@@ -107,12 +108,22 @@ CEILINGS = {
     "skill:weekly_review": 18803,  # R: post-slim 17093 * 1.10
     "skill:workspace": 19239,  # R: post-slim 17490 * 1.10
     "claude_md": 40726,  # T-12 ratchet: post-slim 37023 * 1.10
+
+    # IVG-164 stage 1 T-12: _target_path returns the repo SOURCE file for the
+    # "claude_md" key (QUOIN_DIR / "CLAUDE.md" — T-02 DOES change it, +59 B;
+    # this is not the deployed-file ceiling round 1's plan text once assumed).
+    # claude_md_slim ratchets the new generated CLAUDE.slim.md the same way:
+    # measured post-generation size 9,161 B (T-04, well-formed blank-line
+    # model) * 1.10 rounded up.
+    "claude_md_slim": 10078,  # R: post-generation 9161 * 1.10 rounded up
 }
 
 
 def _target_path(key: str) -> pathlib.Path:
     if key == "claude_md":
         return CLAUDE_MD
+    if key == "claude_md_slim":
+        return SLIM_CLAUDE_MD
     assert key.startswith("skill:"), f"unrecognized ceiling key: {key}"
     skill = key.split(":", 1)[1]
     return SKILLS_DIR / skill / "SKILL.md"
