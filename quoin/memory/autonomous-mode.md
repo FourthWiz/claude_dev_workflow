@@ -26,7 +26,9 @@ it stays greppable and deterministic. Leading sentinels stack (e.g.
 - `run` prefixes `[autonomous]` directly onto every sub-phase spawn it
   issues: discover, enrich, specify, architect, thorough_plan,
   implement, review, **`end_of_task`** (the terminal Phase-6 spawn),
-  and every subagent-mode `gate` boundary.
+  and every subagent-mode `gate` boundary. This is the SPAWNED-phase
+  roster, not the resumable-phase roster — `fast_path_triage` (Phase
+  1.6) runs inline, never as a spawn, so it is deliberately absent here.
 - Propagation is **transitive**: every spawning skill re-prefixes
   `[autonomous]` onto the deeper spawns it issues, so the sentinel
   reaches the full transitive spawn set. Concretely, `thorough_plan`
@@ -62,6 +64,10 @@ hard stop, never a silent proceed.
   **minimum** of the two. The underlying number is an Opus
   self-assessment, a soft signal by nature; the smoke-gate PASS
   requirement is the harder half of the bar.
+- **Fast route:** the bar requires `min(triage_confidence,
+  enrich_confidence_if_present) >= QUOIN_FASTPATH_CONFIDENCE_THRESHOLD`
+  (default `0.8`) — stricter than the Small path's `0.7` default, since
+  no plan was critiqued on this route.
 - Below the bar: hard stop via the halt-sentinel contract below. The
   run never enters Execution on a formulation that hasn't cleared the
   bar.
@@ -224,10 +230,11 @@ each survives `/end_of_task`'s later move of that folder into
 - **Per-phase completion sentinels** —
   `autonomous-progress-{task}/{phase}.done`, one file per completed
   phase, for the FULL resumable `/run` phase roster (`run/SKILL.md`
-  `## Phase sequence`): `discover, enrich, specify, architect,
-  thorough_plan, implement, review, end_of_task` — 8 phases. `enrich`
-  (Phase 1.4) and `specify` (Phase 1.5) are IN-SET; the roster is never
-  abbreviated as "Phases 1..6", which would silently drop them. Finer
+  `## Phase sequence`): `discover, enrich, specify, fast_path_triage,
+  architect, thorough_plan, implement, review, end_of_task` — 9 phases.
+  `enrich` (Phase 1.4), `specify` (Phase 1.5), and `fast_path_triage`
+  (Phase 1.6) are IN-SET; the roster is never abbreviated as "Phases
+  1..6", which would silently drop them. Finer
   progress within one long phase MAY also write
   `autonomous-progress-{task}/{phase}.{subphase}.done`. **Counting
   glob** (consumed by the supervisor's no-forward-progress guard):

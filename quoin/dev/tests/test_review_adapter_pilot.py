@@ -190,7 +190,11 @@ def test_review_adapter_names_all_three_dimensions():
 
 
 def test_review_adapter_preserves_small_single_pass():
-    """T-08 AC: Small task path must be documented as unchanged/single-pass."""
+    """T-08 AC: Small task path must be documented as unchanged/single-pass.
+
+    Retitled by the round-2 review-fix (MINOR 16 / MAJOR 6): the branch now
+    also names the fast-path override case on Small/Medium/undetermined, not
+    just Small — assert the retitled heading, not the retired one."""
     text = ADAPTER_SKILL_MD.read_text(encoding="utf-8")
-    assert "Small — unchanged single-pass review" in text
+    assert "Single-pass review — Small profile, or a fast-path override on Small/Medium/undetermined" in text
     assert "byte-path-identical" in text

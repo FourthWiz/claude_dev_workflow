@@ -61,14 +61,15 @@ HALT_TEMPLATE = "autonomous-halt-{task}.md"
 COMPLETION_GLOB_TEMPLATE = "autonomous-progress-{task}/*.done"
 
 #: Full resumable `/run` phase roster (run/SKILL.md `## Phase sequence`,
-#: 8 phases). `enrich` (1.4) and `specify` (1.5) are IN-SET — never
-#: abbreviated as "Phases 1..6", which would silently drop them. This
-#: tuple is the single source of truth other tests/docs are checked
-#: against (see the coverage guard in test_autonomous_sentinel_contract.py).
+#: 9 phases). `enrich` (1.4), `specify` (1.5), and `fast_path_triage` (1.6)
+#: are IN-SET — never abbreviated as "Phases 1..6", which would silently
+#: drop them. This tuple is the single source of truth other tests/docs are
+#: checked against (see the coverage guard in test_autonomous_sentinel_contract.py).
 RESUMABLE_PHASES = (
     "discover",
     "enrich",
     "specify",
+    "fast_path_triage",
     "architect",
     "thorough_plan",
     "implement",
@@ -208,12 +209,17 @@ def supervise(
     3. ``relaunches >= max_relaunch`` -> ``ABORTED("relaunch cap")``.
 
     Otherwise: count completion sentinels, call ``launch_fn(task)``,
-    re-count. Two consecutive relaunches producing zero new completion
-    sentinels (by :func:`count_completion_sentinels`'s union glob) ->
-    ``ABORTED("no forward progress")``. Any relaunch that produces at
-    least one new sentinel of either granularity resets that streak.
-    Otherwise increment ``relaunches`` and sleep ``backoff_fn(relaunches)``
-    (via the injected ``clock``) before the next iteration.
+    re-count. Two consecutive relaunches producing NO NET INCREASE in
+    completion sentinels (``count_after <= count_before``, by
+    :func:`count_completion_sentinels`'s union glob) -> ``ABORTED("no
+    forward progress")``. A net DECREASE counts as non-progress too — a
+    mid-flight fast-route escalation deletes `.done` sentinels as part of
+    its atomic unit (see `run/SKILL.md`), and a strict `==` comparison
+    would have misread that net-negative relaunch as forward progress and
+    reset the streak, delaying stall detection. Any relaunch that produces
+    a net INCREASE resets that streak. Otherwise increment ``relaunches``
+    and sleep ``backoff_fn(relaunches)`` (via the injected ``clock``)
+    before the next iteration.
 
     ``launch_fn`` and ``clock`` are the only side-effecting
     dependencies and are both injectable, so this loop is fully unit
@@ -245,7 +251,7 @@ def supervise(
         launch_fn(task)
         count_after = count_completion_sentinels(task, project_root)
 
-        if count_after == count_before:
+        if count_after <= count_before:
             zero_progress_streak += 1
         else:
             zero_progress_streak = 0
@@ -275,7 +281,10 @@ DEFAULT_PERMISSION_MODE = "allowedTools"
 
 #: Tool allow-list covering everything the `/run --resume --autonomous`
 #: pipeline's phases use (discover/enrich/specify/architect/thorough_plan/
-#: implement/review/end_of_task), per the T-01 POC decision note.
+#: implement/review/end_of_task), per the T-01 POC decision note. This is the
+#: TOOL-PERMISSION roster, not RESUMABLE_PHASES above — `fast_path_triage`
+#: (Phase 1.6) runs inline in the orchestrator's own session (never spawned
+#: as a subagent), so it needs no entry here; left unchanged deliberately.
 DEFAULT_ALLOWED_TOOLS = (
     "Read",
     "Write",

@@ -196,6 +196,41 @@ def test_supervise_two_consecutive_zero_progress_launches_aborts(
     assert result.relaunches == 1  # incremented after the 1st, aborted before 2nd's increment
 
 
+def test_supervise_net_decrease_sentinel_count_is_non_progress(tmp_path: Path) -> None:
+    """0d2a39c regression coverage: the no-forward-progress guard compares
+    with `<=`, not `==`, so a net DECREASE in completion-sentinel count
+    (e.g. mid-flight escalation deleting `architect.done`/`thorough_plan.done`)
+    must also count as non-progress, not silently reset the zero-progress
+    streak. Shipped with zero test coverage (IVG-246 review-2.md MINOR 14);
+    this closes that gap."""
+    d = sup.progress_dir("t", tmp_path)
+    _write(d / "architect.done")
+    _write(d / "thorough_plan.done")
+    launches: list = []
+
+    def launch_fn(task: str) -> None:
+        launches.append(task)
+        if len(launches) == 1:
+            # count_after (1) < count_before (2) — the DECREASE case a
+            # strict `==` comparison would have missed.
+            (d / "architect.done").unlink()
+        # second launch: no-op, count stays flat at 1 — also non-progress,
+        # triggering the abort after two consecutive non-progress launches.
+
+    clock = _FakeClock()
+    result = sup.supervise(
+        "t",
+        tmp_path,
+        launch_fn=launch_fn,
+        max_relaunch=10,
+        clock=clock,
+    )
+    assert result.status == "ABORTED"
+    assert result.reason == "no forward progress"
+    assert len(launches) == 2
+    assert result.relaunches == 1
+
+
 def test_supervise_new_phase_done_resets_streak(tmp_path: Path) -> None:
     d = sup.progress_dir("t", tmp_path)
     state = {"n": 0}

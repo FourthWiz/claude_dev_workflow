@@ -102,11 +102,13 @@ The intended flow depends on the task profile (Small / Medium / Large). `/thorou
 /discover → /specify → GATE → /architect → GATE → /thorough_plan → GATE → /implement → GATE → /review → GATE → /end_of_task
 ```
 
-Variations: (a) Small tasks skip `/architect` and the critic loop — `/thorough_plan` auto-routes to a single `/plan` pass. (b) `/run` chains every phase automatically, each phase in its own subagent session, pausing at each GATE for confirmation; accepts the same profile tags as `/thorough_plan`. (c) Discover is skipped if a recent (<7 days) discovery file exists. (d) Small tasks may skip `/specify`, mirroring the `/architect` skip; `/specify` is advisory when no task spec exists. (e) `/enrich` sits upstream of `/specify`, sharpening the raw task prompt before intent elicitation begins; it is default-on/prompted (not a hard gate) and never invokes `/specify` itself.
+Variations: (a) Small tasks skip `/architect` and the critic loop — `/thorough_plan` auto-routes to a single `/plan` pass. (b) `/run` chains every phase automatically, each phase in its own subagent session, pausing at each GATE for confirmation; accepts the same profile tags as `/thorough_plan`. (c) Discover is skipped if a recent (<7 days) discovery file exists. (d) Small tasks may skip `/specify`, mirroring the `/architect` skip; `/specify` is advisory when no task spec exists. (e) `/enrich` sits upstream of `/specify`, sharpening the raw task prompt before intent elicitation begins; it is default-on/prompted (not a hard gate) and never invokes `/specify` itself. (f) `/run` also supports a `fast:` tag: on an eligible task it skips `/architect` and `/thorough_plan` entirely and dispatches `/implement` directly against a mechanically-derived plan stub, confirmed at a checkpoint before it takes effect.
 
 **Discovery/Serena refresh policy:** The `<7 days` skip threshold mirrors the `QUOIN_DISCOVERY_STALE_DAYS` default (7). Session-start staleness is surfaced via the `S-5` hook banner in `sessionstart.sh` and `/start_of_day` Step 1c. Automated weekly refresh: `discovery-refresh-routine.md` documents the `/schedule` cron recipe. Environment knobs: `QUOIN_DISCOVERY_STALE_DAYS` (default 7), `QUOIN_SERENA_STALE_DAYS` (default 30), `QUOIN_DISCOVERY_AUTOREFRESH` (auto-run /discover on SOD, off by default), `QUOIN_DISCOVERY_REFRESH_DISABLE` (master off switch), `QUOIN_DISCOVERY_REFRESH_CRON` (cron schedule, default `0 6 * * 1`).
 
 **Note on `/architect`:** Phase 4 critic loop is INTERNAL to `/architect` — the canonical flow string above is unchanged. `/architect` internally runs a critic loop (max 2 rounds default, max 4 in strict mode) before returning `architecture.md` as final. This does not add a visible step to the flow.
+
+**Note on the fast route:** the canonical flow string above is unchanged by variation (f) — the fast route is a conditional variation, not a change to the canonical string, exactly like the `/architect` critic-loop note above. The same canonical-flow string also lives at `quoin/core/workflow/rules.md:18` and `gate/SKILL.md:243`; both stay unchanged for the same reason.
 
 ### Task profiles
 
@@ -122,6 +124,8 @@ Variations: (a) Small tasks skip `/architect` and the critic loop — `/thorough
 - **Large** — cross-service/cross-repo, high risk, data migrations, auth changes, significant unknowns
 
 When in doubt, default to Medium. The user can always override with an explicit tag.
+
+The fast route (`fast:` tag) and task profile are orthogonal: the fast route only changes which phases run, never the profile classification, so a `fast:`-forced Large task still gates at Large intensity — the fast route never downgrades gate intensity or profile classification.
 
 Each stage feeds into the next, with `/gate` checkpoints requiring explicit human approval:
 - `/init_workflow` bootstraps the workflow in a new project. Creates `.workflow_artifacts/` structure, configures permissions, runs `/discover`, generates quickstart guide. Run once per project. (Skills and rules are installed separately via `bash install.sh`.)

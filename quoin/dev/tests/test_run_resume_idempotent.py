@@ -10,7 +10,7 @@ directory exists.
 
 T-10 is the writer half: `/run` writes the marker at autonomous entry
 (Setup, right after `AUTONOMOUS=true`), and writes each `{phase}.done`
-completion sentinel at all 8 resumable phase-completion sites.
+completion sentinel at all 9 resumable phase-completion sites.
 
 Covers plan acceptance:
 - (a) Resume reads the marker and sets AUTONOMOUS before the first decision
@@ -18,7 +18,7 @@ Covers plan acceptance:
 - (b) Resume documents next-phase selection from `{phase}.done` sentinels
   with the never-re-run/never-skip invariant.
 - (c) A `{phase}.done` write is documented at each phase in the T-05
-  8-phase roster (derived from `quoin.supervisor.RESUMABLE_PHASES`, never a
+  9-phase roster (derived from `quoin.supervisor.RESUMABLE_PHASES`, never a
   frozen count or a "1..6" range) — ties to the T-05 coverage guard.
 - (d) A headless `/run --resume --autonomous {task}` path with the marker
   present is asserted to raise ZERO `AskUserQuestion`.
@@ -45,6 +45,7 @@ _PHASE_HEADINGS = {
     "discover": "## Phase 1 —",
     "enrich": "## Phase 1.4 —",
     "specify": "## Phase 1.5 —",
+    "fast_path_triage": "## Phase 1.6 —",
     "architect": "## Phase 2 —",
     "thorough_plan": "## Phase 3 —",
     "implement": "## Phase 4 —",
@@ -123,7 +124,7 @@ def test_resume_falls_back_to_session_state_when_no_sentinel_dir(run_skill_text:
 
 
 # ---------------------------------------------------------------------------
-# (c) `{phase}.done` write documented at each of the 8 roster phases
+# (c) `{phase}.done` write documented at each of the 9 roster phases
 # ---------------------------------------------------------------------------
 
 
