@@ -233,6 +233,61 @@ class TestIvg92SpecialCaseMapping:
         assert "CLAUDE.md" in ignored, f"bare CLAUDE.md should be in ignored, got {ignored}"
         assert not unmatched
 
+    def test_claude_md_triggers_build_claude_slim(self):
+        """quoin/CLAUDE.md -> test_build_claude_slim.py is ALSO in selectors (IVG-164 T-05).
+
+        Duplicate-key-safe: this ADDS to the existing size-ceiling selector
+        for quoin/CLAUDE.md rather than displacing it.
+        """
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["quoin/CLAUDE.md"], _REPO_ROOT
+        )
+        assert any("test_build_claude_slim.py" in s for s in selectors), (
+            f"expected test_build_claude_slim.py in selectors, got {selectors}"
+        )
+        assert any("test_claude_md_size_ceiling.py" in s for s in selectors), (
+            f"quoin/CLAUDE.md row should still also select test_claude_md_size_ceiling.py, got {selectors}"
+        )
+        assert not ignored
+        assert not unmatched
+
+    def test_claude_slim_md_triggers_build_claude_slim(self):
+        """quoin/CLAUDE.slim.md -> test_build_claude_slim.py is in selectors (IVG-164 T-05)."""
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["quoin/CLAUDE.slim.md"], _REPO_ROOT
+        )
+        assert any("test_build_claude_slim.py" in s for s in selectors), (
+            f"expected test_build_claude_slim.py in selectors, got {selectors}"
+        )
+        assert not ignored
+        assert not unmatched
+
+    def test_workflow_catalog_triggers_build_claude_slim(self):
+        """quoin/memory/workflow-catalog.md -> test_build_claude_slim.py is in selectors (IVG-164 T-05)."""
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["quoin/memory/workflow-catalog.md"], _REPO_ROOT
+        )
+        assert any("test_build_claude_slim.py" in s for s in selectors), (
+            f"expected test_build_claude_slim.py in selectors, got {selectors}"
+        )
+        assert not ignored
+        assert not unmatched
+
+    def test_bare_claude_slim_md_does_not_match(self):
+        """Bare 'CLAUDE.slim.md' (no quoin/ parent) must NOT trigger any selector.
+
+        Exercises the posix == entry OR posix.endswith("/" + entry) guard for
+        the new row, mirroring test_bare_claude_md_does_not_match above.
+        """
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["CLAUDE.slim.md"], _REPO_ROOT
+        )
+        assert not selectors, (
+            f"bare CLAUDE.slim.md should not map to any selector, got {selectors}"
+        )
+        assert "CLAUDE.slim.md" in ignored, f"bare CLAUDE.slim.md should be in ignored, got {ignored}"
+        assert not unmatched
+
 
 # ---------------------------------------------------------------------------
 # resolve_repo

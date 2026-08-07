@@ -136,6 +136,7 @@ DEPLOYED_SCRIPTS = (
     "workspace.py",  # IVG-158: parallel-feature-isolation workspace create core+wrapper
     "plan_path_lint.py",  # IVG-143: cited-path resolver/linter wrapper (wrapped portable-core — also in CORE_SCRIPTS)
     "footprint_report.py",  # IVG-162 T-01: corpus byte-footprint report (standalone, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS twin, mirrors sleep_score.py)
+    "build_claude_slim.py",  # IVG-164 stage 1 T-04: slim CLAUDE.md variant generator (standalone, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS twin, mirrors build_preambles.py)
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)

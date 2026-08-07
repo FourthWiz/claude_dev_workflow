@@ -133,6 +133,26 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/memory/glossary.md",
         "quoin/dev/tests/test_preamble_freshness.py",
     ),
+    # Added IVG-164 stage 1 (T-05): the slim-CLAUDE.md generator's regen
+    # byte-identity drift guards (architecture D-01) live in
+    # test_build_claude_slim.py, not the size-ceiling test above — without
+    # these rows an affected-area /gate run selects only the size-ceiling
+    # test on a CLAUDE.md edit and the drift guards never execute (lesson
+    # 2026-07-04). Duplicate-key-safe: this consumer iterates all rows into
+    # a set, so this row ADDS to the existing quoin/CLAUDE.md selector above
+    # rather than displacing it.
+    (
+        "quoin/CLAUDE.md",
+        "quoin/dev/tests/test_build_claude_slim.py",
+    ),
+    (
+        "quoin/CLAUDE.slim.md",
+        "quoin/dev/tests/test_build_claude_slim.py",
+    ),
+    (
+        "quoin/memory/workflow-catalog.md",
+        "quoin/dev/tests/test_build_claude_slim.py",
+    ),
 )
 
 
