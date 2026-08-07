@@ -49,6 +49,8 @@ TIER1_MEMORY_FILES = (
     "autonomous-mode.md",
     # Added IVG-150: shared fail-closed decision-gate guard reference (Tier-1 memory file)
     "decision-gate-guard.md",
+    # Added IVG-164 stage 1: generated slim-variant catalog of dropped CLAUDE.md sections
+    "workflow-catalog.md",
 )
 
 # T-05: canonical skill list — must match quoin/skills/ on disk exactly
