@@ -522,8 +522,11 @@ def test_escalation_deletes_implement_done_at_review_phase_sites(run_skill_text:
 
 def test_escalation_strips_review_shape_line(run_skill_text: str) -> None:
     section = _checkpoint_c_section(run_skill_text)
-    assert "delete the stub `current-plan.md`" in section
+    # Review-3 MINOR 1: strip-both-lines is the PRIMARY step 3; the outright
+    # delete is deferred until after the sentinels are gone (step 5).
     assert "strip its `Review shape:` line" in section
+    assert "Do NOT delete the stub outright" in section
+    assert "delete the stripped stub `current-plan.md` outright" in section
     assert "cheapest review precisely on the path taken" in section
 
 
@@ -692,9 +695,9 @@ def test_resume_after_escalation_does_not_revert_to_fast(run_skill_text: str) ->
     assert "a run that escalated and was then interrupted resumes as `full`, not" in normalized
     assert "`fast`" in normalized
     # The actual mechanism: both lines stripped TOGETHER, never one alone —
-    # this is what makes the "falls through" claim true for BOTH sanctioned
-    # escalation branches (delete-outright, or strip-both), not just one.
-    assert "strips BOTH its `Review shape:` line and its `Route:` line" in normalized
+    # this is what makes the "falls through" claim true regardless of whether
+    # the optional post-sentinel outright delete also ran.
+    assert "strips BOTH the stub's `Review shape:` line and its `Route:` line" in normalized
     assert "never the review-shape line alone" in normalized
     assert "reverting the escalation" in normalized
 
@@ -826,6 +829,12 @@ def test_stub_emitter_validates_written_stub_at_runtime(run_skill_text: str) -> 
     assert "Any non-zero exit" in normalized
     assert "delete the just-written file and" in normalized
     assert "degrade to `route=full`" in prose
+    # Review-4 MINOR 2: the `Task profile:` assertion is the one post-write
+    # check with a real behavioral consequence (a stub missing it lands in
+    # the undetermined-plus-override review cell and drops the Large OWASP
+    # retention) — pin it mechanically.
+    assert "a `Task profile:` line" in normalized
+    assert "OR a missing `Task profile:` line" in normalized
 
 
 def test_cost_estimate_has_fast_route_rows_and_small_caveat(run_skill_text: str) -> None:
@@ -845,6 +854,52 @@ def test_cost_estimate_has_fast_route_rows_and_small_caveat(run_skill_text: str)
     phase4 = _phase_span(text, "## Phase 4 — Implement", "## Phase 5 — Review")
     assert "Small-profile cost honesty" in phase4
     assert "plausibly net MORE expensive" in phase4
+
+
+def test_cost_estimate_rows_pin_ranges_and_ordering(run_skill_text: str) -> None:
+    """Review-3 MINOR 9 fix verification: the cost-row test must pin actual
+    dollar figures, not only labels/gloss — a rewritten Small-fast range that
+    contradicts its own gloss must fail here, not survive to a human review."""
+    import re
+
+    text = run_skill_text
+    start = text.index("## Cost estimate")
+    end = text.index("## Error handling", start)
+    section = text[start:end]
+
+    def row_range(label: str) -> tuple[float, float]:
+        m = re.search(
+            rf"^\| {re.escape(label)} \| ~\$(\d+\.\d{{2}})–\$(\d+\.\d{{2}})",
+            section,
+            re.MULTILINE,
+        )
+        assert m, f"cost row not found or range malformed: {label}"
+        return float(m.group(1)), float(m.group(2))
+
+    small = row_range("Small")
+    medium = row_range("Medium")
+    large = row_range("Large")
+    small_fast = row_range("Small, fast route")
+    medium_fast = row_range("Medium, fast route")
+    large_fast = row_range("Large, fast route")
+
+    assert small == (2.75, 3.50)
+    assert medium == (3.75, 5.50)
+    assert large == (6.00, 8.50)
+    assert small_fast == (3.00, 3.75)
+    assert medium_fast == (2.75, 4.00)
+    assert large_fast == (5.25, 7.50)
+
+    # Ordering invariants backing the row glosses:
+    # plain profiles strictly ordered
+    assert small[0] < medium[0] < large[0] and small[1] < medium[1] < large[1]
+    # Small-fast >= plain Small at both ends ("plausibly MORE than plain Small")
+    assert small_fast[0] >= small[0] and small_fast[1] > small[1]
+    # Small-fast at or below Medium-fast at the ceiling (review-2 MINOR 12)
+    assert small_fast[1] <= medium_fast[1]
+    # Medium/Large fast routes genuinely favorable vs their plain profiles
+    assert medium_fast[0] <= medium[0] and medium_fast[1] < medium[1]
+    assert large_fast[0] < large[0] and large_fast[1] < large[1]
 
 
 def test_resume_step0b_anchors_route_line_not_substring(run_skill_text: str) -> None:
@@ -983,27 +1038,26 @@ def test_escalation_order_is_stub_before_sentinels_at_all_three_sites(run_skill_
     readable in the stub) is closed by re-ordering, not just documented."""
     checkpoint_c = _checkpoint_c_section(run_skill_text)
     idx_triage = checkpoint_c.index("rewrite `triage-decision.md` with the flipped route")
-    idx_stub = checkpoint_c.index("delete the stub `current-plan.md`")
+    idx_strip = checkpoint_c.index("strip its `Review shape:` line")
     idx_sentinels = checkpoint_c.index(
         "DELETE `autonomous-progress-{task}/architect.done` and `autonomous-progress-{task}/thorough_plan.done`"
     )
-    assert idx_triage < idx_stub < idx_sentinels
-    assert "crash-safe by construction" in checkpoint_c
+    # Review-3 MINOR 1: the outright stub delete moves AFTER the sentinel
+    # deletion, closing the plan-absent-while-sentinels-claim-done window.
+    idx_outright = checkpoint_c.index("delete the stripped stub `current-plan.md` outright")
+    assert idx_triage < idx_strip < idx_sentinels < idx_outright
+    assert "crash-safe for route recovery by construction" in checkpoint_c
 
     phase5 = _phase5_section(run_skill_text)
-    # CHANGES_REQUESTED branch: stub fix precedes the "THEN, once both
+    # CHANGES_REQUESTED branch: line strip precedes the "THEN, once both
     # route-recovery sources agree, DELETE" sentinel clause.
-    idx_cr_stub = phase5.index("delete-or-strip the stub per the same provenance-conditioned rule as Checkpoint")
-    idx_cr_sentinels = phase5.index(
-        "THEN, once both\nroute-recovery sources agree, DELETE"
-    ) if "THEN, once both\nroute-recovery sources agree, DELETE" in phase5 else phase5.index(
-        "THEN, once both"
-    )
+    idx_cr_stub = phase5.index("strip the stub's lines per the same provenance-conditioned rule as Checkpoint")
+    idx_cr_sentinels = phase5.index("THEN, once both")
     assert idx_cr_stub < idx_cr_sentinels
 
     # BLOCKED branch: same ordering requirement.
-    idx_blocked_stub = phase5.rindex(
-        "delete-or-strip the stub per the same provenance-conditioned rule"
+    idx_blocked_stub = phase5.index(
+        "strip the stub's `Review shape:` and `Route:` lines per the same provenance-conditioned rule"
     )
     idx_blocked_sentinels = phase5.index("THEN DELETE `autonomous-progress-{task}/architect.done`")
     assert idx_blocked_stub < idx_blocked_sentinels

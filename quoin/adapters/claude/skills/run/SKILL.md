@@ -499,8 +499,14 @@ may still override to the full path.
 fast path drops the performance and architecture/integration review dimensions — the dedicated
 `/security_review` OWASP pass is retained unconditionally on Large regardless of route (per
 `/review`'s Large carve-out, see its Profile detection and fan-out section), so the fast path's
-saving on Large is narrower than on Medium or Small. The full-path option remains available at
+saving on Large is narrower than on Medium. The full-path option remains available at
 this same prompt.
+
+**If the classified profile is Small:** the prompt text must also name the cost tradeoff: the fast
+route moves `/implement` from Sonnet to Opus (typically the run's largest token consumer), and
+Small's only remaining saving is one Opus `/plan` pass — so on Small the fast route is plausibly
+MORE expensive than the full path, not less (see "Small-profile cost honesty" under Phase 4 and
+the Cost estimate table). The full-path option remains available at this same prompt.
 
 Under `[no-interactive]` (no human reachable to answer): fail closed to `route=full`. A route is
 never guessed as "fast" without a human confirming it at this checkpoint. The same fail-closed
@@ -562,7 +568,8 @@ critic-reviewed plan:
   resume reads back to recover the route, described later in this file. Render it bare, alone on
   its own line, at line start — `Route: fast` with nothing else on the line — never inside a bullet
   (`- Route: fast`) and never with leading or trailing content on the same line; being inside a
-  fenced `## State` block (as the reference fixture below does) is fine, since the line itself is
+  fenced `## State` block (as the reference stub fixture in
+  `quoin/dev/tests/test_run_fast_path.py` does) is fine, since the line itself is
   still bare at its own line start there. Resume Step 0b's read is line-anchored
   (`^Route:\s*(fast|full)\s*$`); any other rendering (a bullet prefix, inline prose) never matches
   and the stub's route silently reads as absent.
@@ -577,10 +584,14 @@ just-written file. `validate_artifact.py` checks frontmatter/headings/sections o
 check task content, so it cannot by itself catch the specific hazard the pending-glyph contract
 above exists to prevent (a `## Tasks` block with zero `⏳` lines, which validates cleanly but makes
 `/implement` see zero pending tasks and silently no-op). Add an explicit second check alongside the
-validator call: the just-written file MUST contain at least one `⏳` glyph and at least one `T-01`
-label; if either is missing, treat it identically to a non-zero validator exit. Exit 0 from the
-validator AND both glyph/label checks passing → proceed normally. Any non-zero exit from the
-validator, OR a missing `⏳` glyph, OR a missing `T-01` label → the emitted stub failed its own
+validator call: the just-written file MUST contain at least one `⏳` glyph, at least one `T-01`
+label, and a `Task profile:` line (a stub missing it would land in the
+undetermined-plus-override review cell and drop the Large OWASP retention); if any is missing,
+treat it identically to a non-zero validator exit. Exit 0 from the
+validator AND all three glyph/label/profile checks passing → proceed normally. Any non-zero exit
+from the
+validator, OR a missing `⏳` glyph, OR a missing `T-01` label, OR a missing `Task profile:` line →
+the emitted stub failed its own
 format contract; do NOT hand a malformed or silently-empty stub to `/implement` — delete the
 just-written file and
 degrade to `route=full` (same silent-degrade posture as the read-before-write guard above), and
@@ -590,7 +601,8 @@ stub it was written for no longer exists), so Phase 2 and Phase 3 run the full p
 dispatching against a broken plan.
 
 **`triage-decision.md`.** Written at the task root, evaluating mode only: the EFFECTIVE route (the
-Checkpoint A1 answer, or `full` if either silent-degrade path above overrode it — never the raw A1
+Checkpoint A1 answer; or `full` if either silent-degrade path above overrode it, or if Checkpoint
+A1's `[no-interactive]` fail-closed degrade produced it — never the raw A1
 answer alone), the rationale, the confidence, and the evidence tier used. This filename is
 deliberately not registered
 as a distinct artifact type — an unrecognized filename already validates under the default type, so
@@ -598,7 +610,9 @@ no format-kit change is needed for it. It is also the fallback a later resume re
 carries no `Route:` line, described later in this file.
 
 Every bullet and line described above renders as prose or a bullet list, never a pipe-leading table
-line, and this task adds no second `.workflow_artifacts/` root and no new artifact family beyond
+line — with ONE exception: the stub's `Route:` line, which must render bare on its own line, never
+as a bullet, per the provenance-marker contract above (specific beats general here) — and this
+task adds no second `.workflow_artifacts/` root and no new artifact family beyond
 this one file.
 
 **Ledger row.** Write phase `triage` (the cost-ledger's fixed phase vocabulary is not extended) —
@@ -610,7 +624,7 @@ session — never let a phase→model writer mapping default this row to the tri
 tier) and pin `uuid` to the orchestrator's own session UUID (`get_session_uuid.py --phase run`),
 not a synthesized or borrowed one.
 
-**Session state.** Gains the chosen route, its confidence, and the evidence tier that fed the
+**Session state.** Gains the effective route, its confidence, and the evidence tier that fed the
 decision, recorded at this phase boundary like every other phase.
 
 Under `AUTONOMOUS`, once evaluated (both modes), also write the phase's completion sentinel
@@ -738,23 +752,29 @@ or via the `[autonomous]` NEEDS-DECISION path below). Steps 1–4 (the durable r
 apply on BOTH paths; step 5 (re-enter at the architect phase) applies on the interactive path
 only — the `[autonomous]` NEEDS-DECISION path writes the halt-sentinel and stops per "## Autonomous
 hard stops" instead of re-entering, so a human resuming the task later is what actually re-enters
-Phase 2, not this step. **Ordering is crash-safe by construction:**
+Phase 2, not this step. **Ordering is crash-safe for route recovery by construction** — the
+invariant established is the one stated here, no broader: an interruption after any step can no
+longer leave `Route: fast` readable anywhere while the recovery sentinels are already gone.
 `triage-decision.md` is rewritten first — it is the durable fallback Resume Step 0b's rule 2
-reads, so it must never be left stale; the stub's own `Route:`/`Review shape:` lines are fixed
+reads, so it must never be left stale; the stub's own `Route:`/`Review shape:` lines are stripped
 next, since those are Step 0b's rule-1 source — checked BEFORE the fallback — and therefore the
 single most dangerous thing to leave stale; only once both route-recovery sources agree are the
-completion sentinels deleted, last, so an interruption after any step can no longer leave `Route:
-fast` readable anywhere while the recovery sentinels are already gone:
+completion sentinels deleted; the stripped stub itself is deleted only after the sentinels are
+gone, so no window exists in which `current-plan.md` is absent while `architect.done` /
+`thorough_plan.done` still claim planning finished (a resume in that window would select
+implement with no plan to dispatch against):
 1. Set the orchestrator's in-session `route` variable to `full` for the remainder of this session.
    This is what makes the re-entered architect and planning skip conditions (Phase 2's and Phase
    3's `route=fast` clauses) evaluate false on re-entry — without this step, re-entry would
    re-skip the very phases escalation exists to run.
 2. rewrite `triage-decision.md` with the flipped route (`route=full`).
-3. When the stub carries `provenance: fast-path-triage`, delete the stub `current-plan.md`
-   outright — or at minimum strip its `Review shape:` line AND, in the same step, its `Route:`
-   line (never the review-shape line alone: a surviving `Route: fast` line would let Resume Step 0b
+3. When the stub carries `provenance: fast-path-triage`, strip its `Review shape:` line AND, in
+   the same step, its `Route:` line (never the review-shape line alone: a surviving `Route: fast`
+   line would let Resume Step 0b
    read the very route just abandoned back into effect, re-arming both phase skips on a later
-   resume) — since a surviving single-pass declaration would apply the cheapest review precisely on the path taken because the task turned out harder than routed. Never delete or strip a
+   resume) — since a surviving single-pass declaration would apply the cheapest review precisely on the path taken because the task turned out harder than routed. Do NOT delete the stub outright
+   at this step — the outright delete is step 5, after the sentinels are gone. Never strip or
+   delete a
    `current-plan.md` that lacks the provenance marker — that means a real plan already superseded
    the stub, and this escalation path does not apply to it.
 4. DELETE `autonomous-progress-{task}/architect.done` and `autonomous-progress-{task}/thorough_plan.done`.
@@ -762,7 +782,11 @@ fast` readable anywhere while the recovery sentinels are already gone:
    branch of Checkpoint C, strictly before Phase 4 writes `implement.done` — so there is nothing to
    delete here; the two review-phase escalation sites below (Phase 5) fire AFTER `implement.done`
    exists and must delete it too, see there.
-5. re-enter at the architect phase.
+5. (optional cleanup) delete the stripped stub `current-plan.md` outright — safe now that the
+   completion sentinels are gone. Same provenance condition as step 3: this delete applies ONLY
+   when the file carries `provenance: fast-path-triage`; if step 3 no-opped because the marker was
+   absent (a real critic-reviewed plan), this step no-ops too — never delete it.
+6. re-enter at the architect phase.
 
 Completed implementation work is preserved. On the full path this option does not exist; the
 existing "fix" / "stop" choice above is unchanged.
@@ -789,22 +813,26 @@ Under `AUTONOMOUS`, once Checkpoint D confirms (APPROVED or accepted, gate passe
 
 **(fast route only)** after the 3-round CHANGES_REQUESTED cap, a third option, "escalate to full",
 is also offered here — the same atomic unit as the Checkpoint C escalation above, same crash-safe
-order (triage-decision.md rewritten first, then the stub, then the sentinels — see Checkpoint C's
+order (triage-decision.md rewritten first, then the stub's route lines stripped, then the
+sentinels, then the optional outright stub delete — see Checkpoint C's
 own ordering rationale): set the in-session `route` to `full`; rewrite `triage-decision.md` with
-the flipped route; delete-or-strip the stub per the same provenance-conditioned rule as Checkpoint
-C (delete outright when `provenance: fast-path-triage` is present, or strip both its `Review
-shape:` line and its `Route:` line together — never the review-shape line alone); THEN, once both
+the flipped route; strip the stub's lines per the same provenance-conditioned rule as Checkpoint
+C (strip both its `Review
+shape:` line and its `Route:` line together — never the review-shape line alone, and never an
+outright delete at this step); THEN, once both
 route-recovery sources agree, DELETE `autonomous-progress-{task}/architect.done`,
 `autonomous-progress-{task}/thorough_plan.done`, AND `autonomous-progress-{task}/implement.done`
 plus any `implement.*.done` sub-sentinels — `implement.done` already exists by this point (Phase 4
 wrote it once Checkpoint C confirmed), unlike at the Checkpoint C site above, so it must be deleted
 here too, or a resumed escalated run would skip re-implementation entirely and jump straight into
-re-reviewing the untouched fast-route code; re-enter at the architect phase. Completed
+re-reviewing the untouched fast-route code; optionally delete the stripped stub outright now that
+the sentinels are gone (provenance-marked stubs only — same condition as Checkpoint C step 5);
+re-enter at the architect phase. Completed
 implementation work is preserved. On the full path this option does not exist.
 
 Under `AUTONOMOUS`: auto-select "fix" at each round — never auto-select "accept". If still CHANGES_REQUESTED after the 3-round cap, this is Hard-stop #3 (Review CHANGES_REQUESTED after 3 rounds) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop. **On a fast-route run, offer "escalate to full" as a third option alongside this halt — same mechanism as the Checkpoint C escalation above**, performed per the atomic unit above; under `[autonomous]` this ALSO routes through the same NEEDS-DECISION return path, writing it in addition to the halt-sentinel already written above — never instead of it — rather than a silent auto-select — named writer (same shared guard as Checkpoint C): `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill run --site fast-route-escalation-changes-requested --reason "<3-round CHANGES_REQUESTED summary>" --resume-hint "re-run /run --resume <task-name>"`. On the full path this branch is unchanged — still a bare halt.
 
-**If BLOCKED:** present the blocking issues. **STOP.** Do not offer to continue. Tell the user: "Review found blocking issues. The workflow cannot continue until these are resolved. Artifacts are preserved at `.workflow_artifacts/<task-name>/`." **(fast route only)** this bare stop is the full-path behavior; on the fast route, "escalate to full" is offered alongside it instead — the same atomic unit as the Checkpoint C escalation above, same crash-safe order (in-session `route` flip to `full`; rewrite `triage-decision.md`; delete-or-strip the stub per the same provenance-conditioned rule; THEN DELETE `autonomous-progress-{task}/architect.done`, `autonomous-progress-{task}/thorough_plan.done`, AND `autonomous-progress-{task}/implement.done` plus any `implement.*.done` sub-sentinels, since it already exists at this site too; re-enter at the architect phase). Completed implementation work is preserved.
+**If BLOCKED:** present the blocking issues. **STOP.** Do not offer to continue. Tell the user: "Review found blocking issues. The workflow cannot continue until these are resolved. Artifacts are preserved at `.workflow_artifacts/<task-name>/`." **(fast route only)** this bare stop is the full-path behavior; on the fast route, "escalate to full" is offered alongside it instead — the same atomic unit as the Checkpoint C escalation above, same crash-safe order (in-session `route` flip to `full`; rewrite `triage-decision.md`; strip the stub's `Review shape:` and `Route:` lines per the same provenance-conditioned rule — no outright delete yet; THEN DELETE `autonomous-progress-{task}/architect.done`, `autonomous-progress-{task}/thorough_plan.done`, AND `autonomous-progress-{task}/implement.done` plus any `implement.*.done` sub-sentinels, since it already exists at this site too; optionally delete the stripped stub outright once the sentinels are gone (provenance-marked stubs only — same condition as Checkpoint C step 5); re-enter at the architect phase). Completed implementation work is preserved.
 
 Under `AUTONOMOUS`: this is Hard-stop #1 (Review BLOCKED) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop (no `AskUserQuestion`, no silent proceed). **On a fast-route run, offer escalation rather than a bare stop — same mechanism as the Checkpoint C escalation above**, performed per the atomic unit above; under `[autonomous]` this ALSO routes through the NEEDS-DECISION return path, writing it in addition to the halt-sentinel already written above — never instead of it: the halt-sentinel is what the Stage-2 supervisor reads, and a supervised autonomous fast run hitting review BLOCKED always terminates for a human rather than relaunching unattended into the full path — named writer (same shared guard as Checkpoint C): `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill run --site fast-route-escalation-blocked --reason "<BLOCKED summary>" --resume-hint "re-run /run --resume <task-name>"`. On the full path this branch is unchanged — still a bare stop, since the full path never skipped the phases escalation would recover.
 
@@ -893,8 +921,8 @@ Set the orchestrator's `route` variable from this read before Step 1 runs, so
 every route-conditional dispatch (the Opus `/implement` spawns and their leading
 `[no-redispatch]` sentinel, and Phase 5's escalation eligibility) behaves
 identically whether this is a first pass or a resumed session. This composes
-correctly with the mid-flight escalation mechanism: escalation deletes the stub
-outright, or strips BOTH its `Review shape:` line and its `Route:` line
+correctly with the mid-flight escalation mechanism: escalation strips BOTH the
+stub's `Review shape:` line and its `Route:` line
 TOGETHER (never the review-shape line alone — a lone `Review shape:` strip
 would leave `Route: fast` matching rule 1 above and reverting the escalation;
 see the escalation sites' own atomic-unit description) before re-entry, so
@@ -964,9 +992,9 @@ Rough estimates only — `/end_of_task` computes actual costs from the cost ledg
 | Small | ~$2.75–$3.50 |
 | Medium | ~$3.75–$5.50 |
 | Large | ~$6.00–$8.50+ |
-| Small, fast route | ~$2.75–$4.00 — plausibly MORE than plain Small, not less; see "Small-profile cost honesty" under Phase 4 |
+| Small, fast route | ~$3.00–$3.75 — plausibly MORE than plain Small, not less; see "Small-profile cost honesty" under Phase 4 |
 | Medium, fast route | ~$2.75–$4.00 — genuinely favorable: saves the architect + planning passes, net of moving `/implement` to Opus |
-| Large, fast route | ~$5.25–$7.50 — genuinely favorable, same architect/planning saving as Medium, offset upward by the retained `/security_review` OWASP subagent this route keeps unconditionally on Large (see the Large carve-out) — a saving Medium's fast route does not carry |
+| Large, fast route | ~$5.25–$7.50 — genuinely favorable, same architect/planning saving as Medium, offset upward by the retained `/security_review` OWASP subagent this route keeps unconditionally on Large (see the Large carve-out) — an offset Medium's fast route does not carry |
 
 The fast route's saving comes from skipping `/architect` and `/thorough_plan` entirely (their Opus
 planning/critic passes), net of the cost added by forcing `/implement` to Opus instead of Sonnet on

@@ -125,7 +125,7 @@ Variations: (a) Small tasks skip `/architect` and the critic loop — `/thorough
 
 When in doubt, default to Medium. The user can always override with an explicit tag.
 
-The fast route (`fast:` tag) and task profile are orthogonal: the fast route only changes which phases run, never the profile classification, so a `fast:`-forced Large task still gates at Large intensity — Medium/Large are never made cheaper by taking the fast route.
+The fast route (`fast:` tag) and task profile are orthogonal: the fast route only changes which phases run, never the profile classification, so a `fast:`-forced Large task still gates at Large intensity — the fast route never downgrades gate intensity or profile classification.
 
 Each stage feeds into the next, with `/gate` checkpoints requiring explicit human approval:
 - `/init_workflow` bootstraps the workflow in a new project. Creates `.workflow_artifacts/` structure, configures permissions, runs `/discover`, generates quickstart guide. Run once per project. (Skills and rules are installed separately via `bash install.sh`.)

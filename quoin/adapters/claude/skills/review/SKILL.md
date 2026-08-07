@@ -412,7 +412,7 @@ Compose the format-aware body per the `review` artifact-type sections in format-
 - `## Test Coverage` — caveman prose: test adequacy assessment. Records any Step 6b known-baseline affected-area failures (IVG-144: name/reason/date, verbatim from the `known_red.py --format text` block) plus a citation of the `/gate` FULL-step known-baseline record for the full suite. Any downgrade is keyed on the `known_red.py` `downgrade` field, never on a bare exit code (CRIT-1).
 - `## Risk Assessment` — markdown table (columns: id / risk / status / notes).
 - `## Recommendations` — terse list: what to do next.
-- `## Dimension Verdicts` (Medium/Large fan-out only, OPTIONAL) — markdown table (columns: dimension / verdict / top issue), one row per dimension.
+- `## Dimension Verdicts` (Medium/Large fan-out and the Large carve-out, OPTIONAL) — markdown table (columns: dimension / verdict / top issue), one row per dimension.
 
 Apply `format-kit.md` §1 pick rules per section. DO NOT include the `## For human` block yet — that's Step 2 + Step 3. **Step 1 pre-write sweep:** `(rm -f <path>.body.tmp <path>.tmp 2>/dev/null || true)` — clear stale leftovers before writing. Write the body to `<path>.body.tmp`.
 
