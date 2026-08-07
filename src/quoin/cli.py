@@ -501,17 +501,20 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
                 errors.append(f"Required tool missing: {tool}")
         print()
 
-    # Tier-1 memory files (user-scope only — not deployed in project mode)
-    if not is_project_mode:
-        print(f"Memory files ({dest_label}/memory/):")
-        for fname in installer.TIER1_MEMORY_FILES:
-            p = dest_root / "memory" / fname
-            found = p.exists()
-            status = "✓" if found else "✗"
-            print(f"  {status} {fname}")
-            if not found:
-                errors.append(f"Missing memory file: {fname}")
-        print()
+    # Tier-1 memory files — deploy_memory() copies all TIER1_MEMORY_FILES
+    # unconditionally in BOTH scopes (installer.py:304-315), so this check
+    # runs in project scope too (IVG-164 stage 1 T-10; was previously
+    # user-scope-only behind a stale comment/guard that silently skipped a
+    # check `quoin doctor --scope project` could perform).
+    print(f"Memory files ({dest_label}/memory/):")
+    for fname in installer.TIER1_MEMORY_FILES:
+        p = dest_root / "memory" / fname
+        found = p.exists()
+        status = "✓" if found else "✗"
+        print(f"  {status} {fname}")
+        if not found:
+            errors.append(f"Missing memory file: {fname}")
+    print()
 
     # Scripts
     print(f"Scripts ({dest_label}/scripts/):")

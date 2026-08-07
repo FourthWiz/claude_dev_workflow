@@ -936,3 +936,32 @@ def test_install_sh_forwards_claude_md_variant(tmp_path):
     )
     assert result3.returncode == 2
     assert "--claude-md-variant requires a value" in result3.stderr
+
+
+# ── T-10: doctor reports memory files in project scope too ────────────────────
+
+def test_doctor_reports_memory_files_in_project_scope(tmp_path, capsys):
+    """`quoin doctor --scope project` lists all TIER1 memory files (IVG-164 T-10).
+
+    Regression guard for a stale comment/guard at cli.py's doctor command:
+    `deploy_memory()` copies TIER1_MEMORY_FILES unconditionally in BOTH
+    scopes (installer.py:304-315), so the doctor check must run in project
+    scope too, not just user scope.
+    """
+    from quoin import installer
+    from quoin.cli import _cmd_doctor
+
+    project_dir = tmp_path / "pilot-proj"
+    project_dir.mkdir()
+    dest_root = project_dir / ".claude"
+    installer.deploy_memory(QUOIN_SRC, dest_root)
+
+    args = _make_args(scope=f"project:{project_dir}", runtime="claude")
+    _cmd_doctor(args)
+
+    out = capsys.readouterr().out
+    assert "Memory files" in out
+    for fname in installer.TIER1_MEMORY_FILES:
+        assert fname in out, f"{fname} missing from doctor project-scope output"
+    # Every entry reported present (deploy_memory ran successfully above).
+    assert "✗" not in out.split("Memory files")[1].split("Scripts")[0]
