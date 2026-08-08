@@ -87,25 +87,25 @@ SECTION0_SKILLS = [
 # authorized marker/residual/slim exceptions above are one-time, 2026-08-02
 # only — do not hand-raise a ceiling to "fix" a future failure).
 CEILINGS = {
-    "skill:capture_insight": 13396,  # R: post-slim 12178 * 1.10
+    "skill:capture_insight": 13196,  # S-4: post-description-trim 11996 * 1.10, monotonic vs prior 13396
     "skill:checkpoint": 77492,  # S-4: post-description-trim 70447 * 1.10, monotonic vs prior 77901
     "skill:cleanup": 19157,  # S-4: post-description-trim 17415 * 1.10, monotonic vs prior 19388
     "skill:continue_work": 16077,  # R: post-slim 14615 * 1.10
     "skill:cost_snapshot": 22204,  # R: post-slim 20185 * 1.10
-    "skill:end_of_day": 50058,  # R: post-slim 45507 * 1.10
+    "skill:end_of_day": 49834,  # S-4: post-description-trim 45303 * 1.10, monotonic vs prior 50058
     "skill:end_of_task": 55541,  # S-4: post-description-trim 50491 * 1.10, monotonic vs prior 55771
     "skill:expand": 20921,  # S-4: post-description-trim 19019 * 1.10, monotonic vs prior 21229
     "skill:gate": 61580,  # S-4: post-description-trim 55981 * 1.10, monotonic vs prior 62430
-    "skill:implement": 54715,  # R: post-slim 49740 * 1.10
+    "skill:implement": 54414,  # S-4: post-description-trim 49467 * 1.10, monotonic vs prior 54715
     "skill:next_steps": 13106,  # R: post-slim 11914 * 1.10
     "skill:pr": 20534,  # R: post-slim 18667 * 1.10
     "skill:revise-fast": 29521,  # R: post-slim 26837 * 1.10
-    "skill:rollback": 24247,  # R: post-slim 22042 * 1.10
+    "skill:rollback": 23984,  # S-4: post-description-trim 21803 * 1.10, monotonic vs prior 24247
     "skill:sleep": 27739,  # R: post-slim 25217 * 1.10
     "skill:start_of_day": 29155,  # R: post-slim 26504 * 1.10
     "skill:status": 9841,  # R: post-slim 8946 * 1.10
     "skill:triage": 34356,  # S-4: post-description-trim 31232 * 1.10, monotonic vs prior 34422
-    "skill:weekly_review": 18803,  # R: post-slim 17093 * 1.10
+    "skill:weekly_review": 18633,  # S-4: post-description-trim 16939 * 1.10, monotonic vs prior 18803
     "skill:workspace": 18958,  # S-4: post-description-trim 17234 * 1.10, monotonic vs prior 19239
     "claude_md": 40726,  # T-12 ratchet: post-slim 37023 * 1.10
 

@@ -1,6 +1,6 @@
 ---
 name: revise
-description: "Revises an implementation plan based on critic feedback, addressing all critical and major issues using the strongest model (Opus). Use this skill for: /revise, 'fix the plan', 'address the critic's comments', 'update the plan based on feedback'. Reads the critic response, updates current-plan.md, and documents what changed. Can be used standalone or as part of /thorough_plan orchestration."
+description: "Revises an implementation plan based on critic feedback, addressing all critical and major issues (Opus). Use for: /revise, 'fix the plan', 'address the critic's comments', 'update the plan based on feedback'."
 model: opus
 ---
 

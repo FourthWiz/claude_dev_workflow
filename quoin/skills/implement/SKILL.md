@@ -1,6 +1,6 @@
 ---
 name: implement
-description: "Implementation agent that executes tasks from a plan. Uses Sonnet for efficient, high-quality code generation. Use this skill for: /implement, implementing a plan, writing code from a plan, executing implementation tasks, 'implement task N from the plan', 'start coding', 'build this based on the plan'. Triggers whenever the user wants to turn a plan into actual code changes."
+description: "Implementation agent (Sonnet) that turns a converged plan into code and tests. Use for: /implement, 'implement task N from the plan', 'start coding', 'build this based on the plan'."
 model: sonnet
 ---
 
