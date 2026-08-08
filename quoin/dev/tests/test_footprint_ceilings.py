@@ -88,12 +88,12 @@ SECTION0_SKILLS = [
 # only — do not hand-raise a ceiling to "fix" a future failure).
 CEILINGS = {
     "skill:capture_insight": 13396,  # R: post-slim 12178 * 1.10
-    "skill:checkpoint": 77901,  # R: post-slim 70819 * 1.10 (re-derived, not skipped)
-    "skill:cleanup": 19388,  # R: post-slim 17625 * 1.10
+    "skill:checkpoint": 77492,  # S-4: post-description-trim 70447 * 1.10, monotonic vs prior 77901
+    "skill:cleanup": 19157,  # S-4: post-description-trim 17415 * 1.10, monotonic vs prior 19388
     "skill:continue_work": 16077,  # R: post-slim 14615 * 1.10
     "skill:cost_snapshot": 22204,  # R: post-slim 20185 * 1.10
     "skill:end_of_day": 50058,  # R: post-slim 45507 * 1.10
-    "skill:end_of_task": 55771,  # R: post-slim 50700 * 1.10
+    "skill:end_of_task": 55541,  # S-4: post-description-trim 50491 * 1.10, monotonic vs prior 55771
     "skill:expand": 21229,  # R: post-slim 19299 * 1.10
     "skill:gate": 62430,  # R: post-slim 56754 * 1.10
     "skill:implement": 54715,  # R: post-slim 49740 * 1.10

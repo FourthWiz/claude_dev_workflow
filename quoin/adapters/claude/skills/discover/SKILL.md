@@ -1,6 +1,6 @@
 ---
 name: discover
-description: "Scans all repositories in the project folder and saves a comprehensive inventory, architecture overview, and dependency map to memory. Use this skill for: /discover, 'scan my repos', 'map the codebase', 'what repos do I have', 'index the project', 'save the architecture', 'learn my codebase'. Run this when you first set up the workflow in a new project folder, or when repos have changed significantly. The output feeds into /architect, /plan, /critic, and /review so they have baseline context."
+description: "Scans all repos in the project folder and saves inventory, architecture overview, and dependency map to memory. Use for: /discover, 'scan my repos', 'map the codebase', 'what repos do I have', 'index the project', 'learn my codebase'."
 model: opus
 ---
 

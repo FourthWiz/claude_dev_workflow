@@ -1,6 +1,6 @@
 ---
 name: enrich
-description: "Sharpens a raw task prompt into a clearer, better-grounded one before /specify — fills genuine gaps via a small set of targeted questions, writes enriched-prompt.md, and echoes it in chat. Use this skill for: /enrich, 'sharpen this prompt', 'tighten this task description', 'fill in the gaps before we spec this'. Distinct from /specify (which elicits a full structured spec) and /triage (which only routes); /enrich never writes a spec/plan and never invokes a downstream phase."
+description: "Sharpens a raw task prompt upstream of /specify — fills genuine gaps via targeted questions and writes enriched-prompt.md. Use for: /enrich, 'sharpen this prompt', 'tighten this task description', 'fill in the gaps before we spec this'. Never writes a spec/plan or invokes a downstream phase."
 model: opus
 ---
 
