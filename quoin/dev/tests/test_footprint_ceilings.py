@@ -94,8 +94,8 @@ CEILINGS = {
     "skill:cost_snapshot": 22204,  # R: post-slim 20185 * 1.10
     "skill:end_of_day": 50058,  # R: post-slim 45507 * 1.10
     "skill:end_of_task": 55541,  # S-4: post-description-trim 50491 * 1.10, monotonic vs prior 55771
-    "skill:expand": 21229,  # R: post-slim 19299 * 1.10
-    "skill:gate": 62430,  # R: post-slim 56754 * 1.10
+    "skill:expand": 20921,  # S-4: post-description-trim 19019 * 1.10, monotonic vs prior 21229
+    "skill:gate": 61580,  # S-4: post-description-trim 55981 * 1.10, monotonic vs prior 62430
     "skill:implement": 54715,  # R: post-slim 49740 * 1.10
     "skill:next_steps": 13106,  # R: post-slim 11914 * 1.10
     "skill:pr": 20534,  # R: post-slim 18667 * 1.10
@@ -104,9 +104,9 @@ CEILINGS = {
     "skill:sleep": 27739,  # R: post-slim 25217 * 1.10
     "skill:start_of_day": 29155,  # R: post-slim 26504 * 1.10
     "skill:status": 9841,  # R: post-slim 8946 * 1.10
-    "skill:triage": 34422,  # R: post-slim 31292 * 1.10
+    "skill:triage": 34356,  # S-4: post-description-trim 31232 * 1.10, monotonic vs prior 34422
     "skill:weekly_review": 18803,  # R: post-slim 17093 * 1.10
-    "skill:workspace": 19239,  # R: post-slim 17490 * 1.10
+    "skill:workspace": 18958,  # S-4: post-description-trim 17234 * 1.10, monotonic vs prior 19239
     "claude_md": 40726,  # T-12 ratchet: post-slim 37023 * 1.10
 
     # IVG-164 stage 1 T-12: _target_path returns the repo SOURCE file for the

@@ -1,6 +1,6 @@
 ---
 name: workspace
-description: "Manage per-repo git-worktree workspaces for concurrent sessions: create isolated worktrees, check status, take over ownership non-destructively, and tear down safely (refusing on uncommitted/unpushed work unless forced). Use this skill for: /workspace, 'create a workspace', 'new worktree', 'check workspace status', 'take over this workspace', 'tear down this workspace'. Triggers when the user wants isolated per-repo git worktrees for parallel session work."
+description: "Manages per-repo git-worktree workspaces for concurrent sessions: create, status, takeover, teardown. Use for: /workspace, 'create a workspace', 'new worktree', 'check workspace status', 'take over this workspace', 'tear down this workspace'."
 model: sonnet
 ---
 

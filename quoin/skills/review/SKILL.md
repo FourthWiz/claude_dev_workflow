@@ -1,6 +1,6 @@
 ---
 name: review
-description: "Deep code review using the strongest model (Opus) to verify implementation matches the plan and is production-ready. Use this skill for: /review, code review, review implementation, check if code matches plan, verify implementation, 'does this look right', 'review my changes', 'check the implementation', post-implementation review. Triggers whenever the user wants to validate that implemented code is correct, complete, and safe."
+description: "Deep code review (Opus) verifying the implementation matches the plan and is production-ready. Use for: /review, 'code review', 'review my changes', 'does this look right', 'check the implementation', 'post-implementation review'."
 model: opus
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: run
-description: "End-to-end workflow orchestrator that chains all development phases together: discover, architect, plan, implement, review, and end_of_task. Pauses at major phase boundaries for user confirmation. Use this skill for: /run, 'run the full workflow', 'end to end', 'do everything', 'full pipeline'. Accepts task profile tags (small:, medium:, large:, strict:) and max_rounds: N. Skips discover if recent scan exists, skips architect for Small tasks."
+description: "End-to-end workflow orchestrator chaining every phase, pausing at each gate for confirmation. Use for: /run, 'run the full workflow', 'end to end', 'do everything', 'full pipeline'. Accepts profile tags (small:/medium:/large:/strict:) and max_rounds: N."
 model: opus
 ---
 
