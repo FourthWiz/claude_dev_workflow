@@ -1,6 +1,6 @@
 ---
 name: pr
-description: "Create a pull request: optional version bump, push branch if not already pushed, create PR via gh, wait for merge, switch to merge target. Use this skill for: /pr, 'create a PR', 'open a pull request', 'submit for review'. Triggers when the user wants to create a PR from a feature branch."
+description: "Creates a pull request: optional version bump, push, gh pr create, wait for merge, switch to merge target. Use for: /pr, 'create a PR', 'open a pull request', 'submit for review'."
 model: sonnet
 ---
 

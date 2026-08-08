@@ -90,19 +90,19 @@ CEILINGS = {
     "skill:capture_insight": 13196,  # S-4: post-description-trim 11996 * 1.10, monotonic vs prior 13396
     "skill:checkpoint": 77492,  # S-4: post-description-trim 70447 * 1.10, monotonic vs prior 77901
     "skill:cleanup": 19157,  # S-4: post-description-trim 17415 * 1.10, monotonic vs prior 19388
-    "skill:continue_work": 16077,  # R: post-slim 14615 * 1.10
-    "skill:cost_snapshot": 22204,  # R: post-slim 20185 * 1.10
+    "skill:continue_work": 16019,  # S-4: post-description-trim 14562 * 1.10, monotonic vs prior 16077
+    "skill:cost_snapshot": 22204,  # S-4: HELD (D-12 monotonic) — candidate 20209*1.10=22230 > prior; file grew since 2026-08-02 derivation
     "skill:end_of_day": 49834,  # S-4: post-description-trim 45303 * 1.10, monotonic vs prior 50058
     "skill:end_of_task": 55541,  # S-4: post-description-trim 50491 * 1.10, monotonic vs prior 55771
     "skill:expand": 20921,  # S-4: post-description-trim 19019 * 1.10, monotonic vs prior 21229
     "skill:gate": 61580,  # S-4: post-description-trim 55981 * 1.10, monotonic vs prior 62430
     "skill:implement": 54414,  # S-4: post-description-trim 49467 * 1.10, monotonic vs prior 54715
     "skill:next_steps": 13106,  # R: post-slim 11914 * 1.10
-    "skill:pr": 20534,  # R: post-slim 18667 * 1.10
-    "skill:revise-fast": 29521,  # R: post-slim 26837 * 1.10
+    "skill:pr": 20371,  # S-4: post-description-trim 18519 * 1.10, monotonic vs prior 20534
+    "skill:revise-fast": 29330,  # S-4: post-description-trim 26663 * 1.10, monotonic vs prior 29521
     "skill:rollback": 23984,  # S-4: post-description-trim 21803 * 1.10, monotonic vs prior 24247
-    "skill:sleep": 27739,  # R: post-slim 25217 * 1.10
-    "skill:start_of_day": 29155,  # R: post-slim 26504 * 1.10
+    "skill:sleep": 27739,  # S-4: HELD (D-12 monotonic) — candidate 25252*1.10=27778 > prior; file grew since 2026-08-02 derivation
+    "skill:start_of_day": 28944,  # S-4: post-description-trim 26312 * 1.10, monotonic vs prior 29155
     "skill:status": 9841,  # R: post-slim 8946 * 1.10
     "skill:triage": 34356,  # S-4: post-description-trim 31232 * 1.10, monotonic vs prior 34422
     "skill:weekly_review": 18633,  # S-4: post-description-trim 16939 * 1.10, monotonic vs prior 18803

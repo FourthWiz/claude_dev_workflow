@@ -1,6 +1,6 @@
 ---
 name: cost_snapshot
-description: "Returns a live cost summary showing today's cost, project lifetime cost, and per-open-task breakdown. Use for: /cost_snapshot, 'how much have I spent', 'cost report', 'show costs', 'what's the project cost', 'how much has this task cost'. Read-only — no file artifacts produced."
+description: "Returns a live cost summary: today's cost, project lifetime, per-open-task breakdown. Use for: /cost_snapshot, 'how much have I spent', 'cost report', 'show costs', 'what's the project cost'. Read-only — no file artifacts produced."
 model: haiku
 ---
 # Cost Snapshot (deprecated stub)

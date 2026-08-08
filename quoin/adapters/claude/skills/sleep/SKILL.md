@@ -1,6 +1,6 @@
 ---
 name: sleep
-description: "Memory consolidation skill — scans daily insights and session files, promotes patterns to lessons-learned.md, soft-forgets stale entries to forgotten/. Auto-invoked by /end_of_day as its final step. Standalone: /sleep [--dry-run] [--quiet-forget] [--escalate] [--skip-sleep] [--restore <pattern>] [--purge --older-than 90d]."
+description: "Memory consolidation: scans daily insights and session files, promotes patterns to lessons-learned.md, soft-forgets stale entries to forgotten/. Use for: /sleep [--dry-run] [--restore <pattern>] [--purge]; auto-invoked by /end_of_day as its final step."
 model: haiku
 ---
 
