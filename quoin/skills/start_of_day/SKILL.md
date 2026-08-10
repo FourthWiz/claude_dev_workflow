@@ -1,6 +1,6 @@
 ---
 name: start_of_day
-description: "Restores context from the daily cache and unfinished sessions so you can resume where you left off. Use this skill for: /start_of_day, 'what was I working on', 'resume', 'pick up where I left off', 'morning standup', 'SOD', 'start of day'. Reads the latest daily cache, checks git state, and presents a clear picture of what to do next."
+description: "Restores context from the daily cache and unfinished sessions so you can resume where you left off. Use for: /start_of_day, 'what was I working on', 'pick up where I left off', 'morning standup', 'SOD', 'start of day'."
 model: haiku
 ---
 

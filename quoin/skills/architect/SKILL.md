@@ -1,6 +1,6 @@
 ---
 name: architect
-description: "Deep architectural analysis and planning using the strongest available model (Opus), with a scan/synthesize split for efficiency. Spawns Sonnet subagents in parallel to read repos, then synthesizes findings on Opus. Use this skill whenever the user needs to explore a complex system, understand how multiple repositories interact, design a new architecture, decompose a large problem into implementable stages, or answer hard cross-cutting questions about a codebase. Triggers on: /architect, architecture design, system design, technical exploration, cross-repo analysis, complex technical questions, 'how should we build this', 'what's the best approach for', deep code exploration, multi-service design. Even if the user just says 'I need to think through X' where X is technical — use this skill."
+description: "Deep architectural analysis, system design, and stage decomposition for complex or cross-repo problems. Use for: /architect, 'architecture design', 'system design', 'cross-repo analysis', 'how should we build this', 'what's the best approach for'."
 model: opus
 ---
 

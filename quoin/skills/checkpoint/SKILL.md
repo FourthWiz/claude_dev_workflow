@@ -1,6 +1,6 @@
 ---
 name: checkpoint
-description: "General-purpose state-saving — save session-restore state mid-session before context exhaustion, between tasks, between sessions, or before starting new heavy work. Writes a pending-restore sentinel so a fresh session can resume exactly where you left off. Also surfaces pending-restore state on --restore. Auto-runs /cleanup on save (trash-moves stale sentinels/old checkpoints) unless --no-cleanup. Use for: /checkpoint, 'save my place', 'checkpoint', 'save session', '/checkpoint --restore', 'restore checkpoint', 'resume from checkpoint'. Does NOT roll up dailies, does NOT touch lessons-learned.md or forgotten/."
+description: "Saves session-restore state (a pending-restore sentinel) so a fresh session can resume where you left off. Use for: /checkpoint, 'save my place', 'save session', '/checkpoint --restore', 'restore checkpoint', 'resume from checkpoint'. Does NOT roll up dailies or touch lessons-learned.md."
 model: sonnet
 ---
 

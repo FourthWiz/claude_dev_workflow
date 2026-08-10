@@ -1,6 +1,6 @@
 ---
 name: specify
-description: "Interactive intent elicitation that produces a structured, always-English feature specification (spec.md) covering context, user stories, functional requirements, and acceptance criteria — the upstream input for /architect and /thorough_plan. Use this skill for: /specify, 'write a spec for X', 'capture the intent for this feature', 'what are the user stories', 'define acceptance criteria', 'turn this idea into a spec'. Triggers whenever the user has a feature idea or problem statement and wants it turned into a structured task specification before architecture or planning begins."
+description: "Interactive intent elicitation that produces a structured feature spec (spec.md) upstream of /architect and planning. Use for: /specify, 'write a spec for X', 'capture the intent for this feature', 'what are the user stories', 'define acceptance criteria', 'turn this idea into a spec'."
 model: opus
 ---
 

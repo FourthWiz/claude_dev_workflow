@@ -1,6 +1,6 @@
 ---
 name: critic
-description: "Senior technical critic that reviews implementation plans for gaps, risks, and integration issues using the strongest model (Opus). Use this skill for: /critic, 'critique this plan', 'review the plan', 'find issues with this plan', 'what's wrong with this approach'. The critic reads both the plan AND the actual codebase to catch mismatches. Can be used standalone or as part of /thorough_plan orchestration."
+description: "Senior technical critic (Opus) reviewing implementation plans for gaps, risks, and integration issues against the actual codebase. Use for: /critic, 'critique this plan', 'review the plan', 'find issues with this plan', 'what's wrong with this approach'."
 model: opus
 ---
 

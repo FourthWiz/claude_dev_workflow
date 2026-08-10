@@ -1,6 +1,6 @@
 ---
 name: thorough_plan
-description: "Triages tasks by size (Small/Medium/Large) and orchestrates the appropriate planning path. Small tasks get a single-pass /plan (no critic loop). Medium tasks run the plan→critic→revise cycle with Sonnet revision. Large tasks (or 'strict:' prefix) run all-Opus with up to 5 rounds. Use this skill for: /thorough_plan, 'plan this', 'plan this thoroughly', 'detailed plan with review', 'plan and critique', 'full planning cycle'. Supports size tags (small:/medium:/large:), strict: prefix, and max_rounds: N override. Always the entry point for planned work — routes automatically based on task size."
+description: "Triages tasks by size (Small/Medium/Large) and orchestrates the matching planning path. Use for: /thorough_plan, 'plan this', 'plan this thoroughly', 'detailed plan with review', 'plan and critique', 'full planning cycle'. Always the entry point for planned work."
 model: opus
 ---
 

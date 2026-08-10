@@ -127,10 +127,10 @@
     },
     {
       "file": "quoin/adapters/claude/skills/init_workflow/SKILL.md",
-      "line_hash": "b01840209bf194744841811361455b09b3247a96c784ab4aa5c557dd3edf79c3",
+      "line_hash": "2d717a8140954877c80e895a8ff67ff6f5c1baf9e1c9fd121bc3eba269aaa02c",
       "heading_disposition": "known-exception",
       "path_form": "quoin_home_claude_md",
-      "note": "YAML frontmatter description: field; always-loaded text owned by stage 4 (spec FR-6/AC-7 description-trim work); accurate under user scope, unreachable under the project-scope pilot; NOT edited in this stage (D-15).",
+      "note": "YAML frontmatter description: field; always-loaded text owned by stage 4 (spec FR-6/AC-7 description-trim work); trimmed to the D-09 template in S-4 batch 2 with the __QUOIN_HOME__/CLAUDE.md citation RETAINED as the single permitted constraint clause (plan D-03); accurate under user scope, unreachable under the project-scope pilot.",
       "owner": "stage 4"
     },
     {

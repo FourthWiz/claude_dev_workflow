@@ -187,8 +187,10 @@ def test_dangler_families_gone():
     assert "__QUOIN_HOME__/CLAUDE.md" not in mm_text
 
 
-def test_init_workflow_frontmatter_description_unchanged():
-    """D-15: init_workflow/SKILL.md:3 (frontmatter description) is NOT edited in this stage."""
+def test_init_workflow_frontmatter_citation_retained():
+    """IVG-164 S-4 (plan D-03): stage 4 owns and has now trimmed init_workflow/SKILL.md:3;
+    the __QUOIN_HOME__/CLAUDE.md citation is RETAINED as the template's single permitted
+    constraint clause, and the fixture record tracks the trimmed line's hash."""
     iw_text = (_ADAPTER_SKILLS / "init_workflow" / "SKILL.md").read_text(encoding="utf-8")
     line3 = iw_text.split("\n")[2]
     assert "__QUOIN_HOME__/CLAUDE.md" in line3

@@ -1,6 +1,6 @@
 ---
 name: plan
-description: "Create a detailed, implementation-ready plan for a development task using the strongest model (Opus). Use this skill for: /plan, 'plan this', 'create a plan', 'break this down into tasks', 'how should we implement', implementation planning. Produces a concrete plan with task decomposition, integration analysis, risk assessment, and testing strategy. Can be used standalone or as part of /thorough_plan orchestration."
+description: "Creates a detailed, implementation-ready plan for a development task (Opus). Use for: /plan, 'plan this', 'create a plan', 'break this down into tasks', 'how should we implement'. Standalone or as part of /thorough_plan orchestration."
 model: opus
 ---
 

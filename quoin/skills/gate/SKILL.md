@@ -1,6 +1,6 @@
 ---
 name: gate
-description: "Automated quality gate that runs checks and requires explicit human approval before the workflow can proceed to the next phase. Use this skill for: /gate, 'check before proceeding', 'run the gate', 'verify before next step'. Runs lint, typecheck, tests, and presents a summary with go/no-go decision to the user. No phase transition happens without the user's explicit approval. This is a blocking checkpoint — the workflow STOPS here until the user says go."
+description: "Automated quality gate that runs checks and requires explicit human approval before the next phase. Use for: /gate, 'check before proceeding', 'run the gate', 'verify before next step'. The workflow STOPS here until the user says go."
 model: sonnet
 ---
 

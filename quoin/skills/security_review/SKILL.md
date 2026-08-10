@@ -1,6 +1,6 @@
 ---
 name: security_review
-description: "Standalone OWASP-style security pass using the strongest model (Opus) — injection, secrets exposure, authorization gaps, dependency risk. Use this skill for: /security_review, security review, OWASP, injection, secrets, authz, dependency risk. Also invoked as the dedicated security dimension when /review fans out for a Large-profile task."
+description: "Standalone OWASP-style security pass (Opus): injection, secrets exposure, authorization gaps, dependency risk. Use for: /security_review, 'security review', 'OWASP'. Auto-included in Large /review fan-out."
 model: opus
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: weekly_review
-description: "Aggregates the week's meaningful work into a structured review. Use this skill for: /weekly_review, 'weekly summary', 'what did I do this week', 'week recap', 'friday review', 'weekly standup', 'weekly report'. Reads daily caches, session files, git history, and lessons learned to produce a comprehensive but concise picture of the week's progress, decisions, and outcomes."
+description: "Aggregates the week's work into a structured review from daily caches, session files, and git history. Use for: /weekly_review, 'weekly summary', 'what did I do this week', 'week recap', 'friday review', 'weekly report'."
 model: haiku
 ---
 

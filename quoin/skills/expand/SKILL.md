@@ -1,7 +1,7 @@
 ---
 name: expand
 model: sonnet
-description: "Expands compressed (terse) workflow artifacts back to English for human reading. Use for: /expand <path>, 'show me the English version of', 'expand this file', 'what does this terse file say'. Dispatches: Class B summary detection (reads ## For human block at top of v3 artifacts), no-op display (Tier 1 English files), LLM re-expansion (Tier 3 ephemeral files — lossy, banner-flagged). Never used as a contract approval path."
+description: "Expands compressed (terse) workflow artifacts back to English for human reading. Use for: /expand <path>, 'show me the English version of', 'expand this file', 'what does this terse file say'. Never used as a contract approval path."
 ---
 # Expand (deprecated stub)
 
