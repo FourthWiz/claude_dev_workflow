@@ -424,7 +424,16 @@ rm -f "$_MEM/pending-restore-$_TPCKPT_SID.txt" || true
 If cleanup fails, log a one-line warning and continue — fail-OPEN. (`$_TPCKPT_SID` is the SID
 cached at startup; see `## Phase-boundary checkpoints` §Startup acquisition.)
 
-Then spawn `/gate` as a subagent session (post-plan boundary — subagent dispatch required because the parent has just exited the plan→critic loop and the post-plan checks operate against a different context shape than the loop. Audit-log persistence applies regardless of mode — see `/gate/SKILL.md`.) to present automated checks and a summary to the user.
+Then spawn `/gate` as a subagent session (post-plan boundary — subagent dispatch required because the parent has just exited the plan→critic loop and the post-plan checks operate against a different context shape than the loop. Audit-log persistence applies regardless of mode — see `/gate/SKILL.md`.). Construct a ``[quoin-bundle]`` block carrying current-plan.md's path + summary:
+
+```bash
+BUNDLE=$(python3 __QUOIN_HOME__/scripts/context_bundle.py --task <task-name> --stage <N> 2>/dev/null || true)
+if [ -n "$BUNDLE" ]; then
+  PROMPT="$PROMPT\n[quoin-bundle]\n$BUNDLE\n[/quoin-bundle]"
+fi
+```
+
+Present automated checks and a summary to the user.
 
 After the gate, print an **inline summary** in the chat as your final user-facing message (REQUIRED — do NOT rely on the user reading `current-plan.md`; the plan body is Tier-3 terse). Cover the canonical field set:
 1. **What this step produced** — e.g., "Produced a converged Medium-profile plan in N round(s)."

@@ -173,6 +173,13 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/dev/tests/fixtures/claude_md_citation_dispositions.json",
         "quoin/dev/tests/test_claude_md_citations.py",
     ),
+    # IVG-164 stage 2 T-08: context_bundle exclusion drift test is reachable
+    # when the SKILL.md corpus changes (bundle emission sites + review/gate
+    # adapters + implement parity fix all land in the same stage).
+    (
+        "quoin/scripts/context_bundle.py",
+        "quoin/dev/tests/test_context_bundle_exclusions.py",
+    ),
 )
 
 # SKILL.md coverage residual gap (review-1.md MAJOR 2, documented-acceptance branch):

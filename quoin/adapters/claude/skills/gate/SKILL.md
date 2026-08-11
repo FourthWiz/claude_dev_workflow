@@ -181,6 +181,12 @@ description wording for every branch below: memory/dispatch-guide.md §0‴ verb
 
 Read `__QUOIN_HOME__/skills/gate/preamble.md` if it exists; if missing or empty, proceed normally. Purely additive cache-warming — every other read in this `## Session bootstrap` section, and every write-site format-kit / glossary reference (per §5.3 / §5.4 write-site instructions), stays in force unchanged. The intent is CROSS-SPAWN cache reuse: spawn N+1 of this skill with a byte-identical task fixture hits cache from spawn N's preamble.md tool_result, within the 5-minute prompt-cache TTL. Within a single spawn there is no cache benefit — savings only materialize on subsequent spawns whose prompt prefix is byte-identical through the preamble read. (Stage 2-alt of pipeline-efficiency-improvements.)
 
+Parse ``[quoin-bundle]`` block from the incoming prompt (after sentinel strip). When the block is present:
+  - Extract the target artifact's ``## For human`` summary from the corresponding member line (``<path> | <summary>``, pipe-separated) instead of re-reading the file for the summary.
+  - If the summary equals the literal ``summary: absent (path-only)``, read the file for its summary (degradation-safe fallback).
+  - All other gate checks (existence, section presence, test runs) still operate against the artifact files on disk — only the ``## For human`` summary read is substituted from the bundle.
+  - If the ``[quoin-bundle]`` block is absent → read the file for the summary as today (unchanged behavior).
+
 If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
 
 Cost tracking (conditional): `/gate` runs between workflow phases; append to the cost ledger only if a task folder path is determinable from context — if the task context is unclear, skip cost recording. If the condition holds: append your session to `.workflow_artifacts/<task-name>/cost-ledger.md` — phase: `gate` — format/rules: `__QUOIN_HOME__/memory/cost-ledger-format.md`.
