@@ -20,12 +20,19 @@ stage-name lookup); a mechanical stage-N fallback applies only if that call fail
 The resolved task directory must be contained in <project-root>/.workflow_artifacts/
 or the bundle is suppressed (path-traversal guard).
 
-Sanitization (review round 1, security): a summary containing any sentinel or
-marker token ([quoin-bundle], [/quoin-bundle], [autonomous], [no-redispatch],
-[no-interactive], [quoin-onbehalf], [no-phase-budget]) is rejected — the member
-falls back to the path-only entry. Control characters are stripped. Embedded
+Sanitization (review round 1, security; hardened per round 2 minor 1): the
+summary is whitespace-collapsed and control-char-stripped FIRST, then a
+bracket-normalized probe (whitespace removed inside [...] groups) is tested
+against the sentinel list — so whitespace-inserted variants ("[autonomous ]",
+"[ no-redispatch]") cannot evade the check and later re-form a near-canonical
+token. The list covers [quoin-bundle], [/quoin-bundle], [autonomous],
+[no-redispatch] (bare AND [no-redispatch:N] counter forms), [no-interactive],
+[quoin-onbehalf], [no-phase-budget], and [no-session-age-guard]. A match
+rejects the summary — the member falls back to the path-only entry. Embedded
 " | " in summary text is replaced with " ¦ " so consumers can split each member
-line on the FIRST " | " only.
+line on the FIRST " | " only. Summaries are clamped to _SUMMARY_MAX_BYTES
+(UTF-8 bytes) with an explicit truncation marker (round 2 minor 4 — an
+unbounded block would silently invert the census cost model).
 
 Extraction is bounded and fence-aware: the ## For human heading is recognized
 only within the first 50 lines after the closing frontmatter '---' (or the first
@@ -33,7 +40,7 @@ only within the first 50 lines after the closing frontmatter '---' (or the first
 code blocks are ignored.
 
 CLI:
-  context_bundle.py --task <name> [--stage <N>] [--project-root <path>] [--wrap]
+  context_bundle.py --task <name> [--stage <N-or-name>] [--project-root <path>] [--wrap]
 
 Output format: one member per line: <absolute-path> | <summary>
   where summary is the full ## For human block (newlines collapsed), or the
@@ -57,14 +64,26 @@ SENTINEL_TOKENS = (
     "[/quoin-bundle]",
     "[autonomous]",
     "[no-redispatch]",
+    "[no-redispatch:",  # counter form [no-redispatch:N] (round 2 minor 1)
     "[no-interactive]",
     "[quoin-onbehalf]",
     "[no-phase-budget]",
+    "[no-session-age-guard]",
 )
 
 _HEADING_SCAN_LIMIT = 50
 
+# Summary byte clamp (review round 2 minor 4): the pre-fix first-line emission
+# had an implicit bound that full-block emission removed; without a clamp an
+# oversized ## For human block silently inverts the census's net-positive row
+# and bloats the spawn prompt. 4096 B comfortably fits every measured real
+# block (largest observed: 2,716 B) while capping the worst case.
+_SUMMARY_MAX_BYTES = 4096
+_TRUNCATION_MARKER = " …[truncated]"
+
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+_BRACKET_GROUP = re.compile(r"\[([^\[\]]*)\]")
 
 
 def resolve_project_root() -> Path:
@@ -161,14 +180,25 @@ def sanitize_summary(text: str) -> str | None:
 
     Returns None (→ path-only fallback) when the text carries any sentinel or
     marker token — data must never become prompt directives.
+
+    Order matters (review round 2 minor 1): collapse whitespace and strip
+    control characters FIRST, then test tokens on a bracket-normalized probe
+    (whitespace removed inside [...] groups). Testing the RAW text let
+    whitespace-inserted variants like "[autonomous ]" pass while the collapse
+    re-formed a near-canonical token in the emitted line.
     """
-    lowered = text.lower()
+    flat = _CONTROL_CHARS.sub("", " ".join(text.split()))
+    probe = _BRACKET_GROUP.sub(
+        lambda m: "[" + re.sub(r"\s+", "", m.group(1)) + "]", flat.lower()
+    )
     for token in SENTINEL_TOKENS:
-        if token in lowered:
+        if token in probe:
             return None
-    flat = " ".join(text.split())
-    flat = _CONTROL_CHARS.sub("", flat)
     flat = flat.replace(" | ", " ¦ ")
+    encoded = flat.encode("utf-8")
+    if len(encoded) > _SUMMARY_MAX_BYTES:
+        clipped = encoded[:_SUMMARY_MAX_BYTES].decode("utf-8", errors="ignore").rstrip()
+        flat = clipped + _TRUNCATION_MARKER
     return flat if flat else None
 
 
@@ -220,7 +250,12 @@ def main() -> None:
         description="Emit context bundle lines for orchestrator spawn-prompt construction"
     )
     parser.add_argument("--task", required=True, help="Task name (kebab-case)")
-    parser.add_argument("--stage", type=int, default=None, help="Stage number (optional)")
+    parser.add_argument(
+        "--stage",
+        default=None,
+        help="Stage number or stage name (optional; names resolve via "
+        "path_resolve.py's ## Stage decomposition lookup)",
+    )
     parser.add_argument(
         "--project-root",
         default=None,
