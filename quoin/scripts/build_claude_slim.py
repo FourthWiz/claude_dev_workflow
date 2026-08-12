@@ -254,6 +254,20 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument("--census", action="store_true", help="print the mechanical heading/byte table")
     args = parser.parse_args(argv)
 
+    # Deployed-copy guard (review round-1 minor): the installed copy at
+    # ~/.claude/scripts/ resolves _REPO_ROOT to $HOME, where quoin/CLAUDE.md
+    # normally does not exist. Abort cleanly instead of raising — and never
+    # touch files under a repo root this script only inferred from its own
+    # location. This is a repo-authoring tool; run it from the quoin checkout.
+    if not SOURCE.exists():
+        print(
+            f"build_claude_slim: source not found at {SOURCE} — this script must "
+            "run from the quoin repo checkout (repo-authoring tool, not a "
+            "runtime helper). Nothing was read or written.",
+            file=sys.stderr,
+        )
+        return 2
+
     source_text = SOURCE.read_text(encoding="utf-8")
 
     if args.census:

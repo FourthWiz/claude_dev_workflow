@@ -1038,11 +1038,16 @@ def check_slim_outputs_fresh(source_dir: pathlib.Path) -> list[str]:
     slim_output = source_dir / "CLAUDE.slim.md"
     catalog_output = source_dir / "memory" / "workflow-catalog.md"
 
-    mod_globals = runpy.run_path(str(script), run_name="quoin_slim_staleness_check")
-    build_outputs = mod_globals["build_outputs"]
-    classification_error = mod_globals["ClassificationError"]
-
-    source_text = claude_md.read_text(encoding="utf-8")
+    # review-1 minor: a missing/unparsable script, a renamed symbol, or an absent
+    # CLAUDE.md must surface as a clean stale entry (the caller aborts with the
+    # regenerate-and-commit message), never as an uncaught traceback.
+    try:
+        mod_globals = runpy.run_path(str(script), run_name="quoin_slim_staleness_check")
+        build_outputs = mod_globals["build_outputs"]
+        classification_error = mod_globals["ClassificationError"]
+        source_text = claude_md.read_text(encoding="utf-8")
+    except (OSError, KeyError, SyntaxError) as exc:
+        return [f"{script} (staleness check unavailable: {type(exc).__name__}: {exc})"]
     try:
         slim_text, catalog_text = build_outputs(source_text)
     except classification_error as exc:

@@ -53,7 +53,14 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
         exit 2
       fi
       ;;
-    --claude-md-variant=*) CLAUDE_MD_VARIANT_FLAG="--claude-md-variant ${arg#--claude-md-variant=}" ;;
+    --claude-md-variant=*)
+      if [[ -n "${arg#--claude-md-variant=}" ]]; then
+        CLAUDE_MD_VARIANT_FLAG="--claude-md-variant ${arg#--claude-md-variant=}"
+      else
+        echo "quoin: --claude-md-variant requires a value (full or slim)" >&2
+        exit 2
+      fi
+      ;;
     --claude-md-variant)
       i=$(( i + 1 ))
       if [[ $i -lt ${#ARGS[@]} ]]; then
