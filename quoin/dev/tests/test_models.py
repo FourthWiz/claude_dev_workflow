@@ -328,6 +328,28 @@ class TestValidateSlug:
         with pytest.raises(SlugRejected):
             validate_slug("a/b/c")
 
+    def test_glm_alias_resolves_to_current_default_warning_free(self) -> None:
+        """IVG-243 T-02: 'glm' must resolve to the (post-bump) blessed slug
+        with no advisory warning — i.e. the alias target is always a member
+        of KNOWN_SLUGS, not just structurally plausible."""
+        resolved, warnings = validate_slug("glm")
+        assert resolved == "z-ai/glm-5.2"
+        assert warnings == []
+
+
+# ── Slug table consistency (IVG-243 T-02) ───────────────────────────────────────
+
+class TestSlugTableConsistency:
+    """Every default/alias target must be a member of the advisory allowlist —
+    otherwise a freshly-installed user immediately gets an 'unknown slug'
+    warning from their own blessed defaults."""
+
+    def test_default_models_are_known_slugs(self) -> None:
+        assert set(DEFAULT_MODELS.values()) <= KNOWN_SLUGS
+
+    def test_friendly_aliases_are_known_slugs(self) -> None:
+        assert set(FRIENDLY_ALIASES.values()) <= KNOWN_SLUGS
+
 
 # ── quoin models show ─────────────────────────────────────────────────────────
 
