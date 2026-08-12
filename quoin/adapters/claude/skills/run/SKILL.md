@@ -644,14 +644,7 @@ After the phase, verify the cost ledger has a new entry for the `architect` phas
 
 Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/architect.done` (atomic write — T-05/T-10 write-site map), including when architect was skipped for a Small task or for the fast route.
 
-After architect completes, spawn `/gate` as a subagent session (architecture gate — subagent dispatch required for audit-log persistence). Construct a ``[quoin-bundle]`` block carrying architecture.md's path + summary:
-
-```bash
-BUNDLE=$(python3 __QUOIN_HOME__/scripts/context_bundle.py --task <task-name> --stage <N> 2>/dev/null || true)
-if [ -n "$BUNDLE" ]; then
-  PROMPT="$PROMPT\n[quoin-bundle]\n$BUNDLE\n[/quoin-bundle]"
-fi
-```
+After architect completes, spawn `/gate` as a subagent session (architecture gate — subagent dispatch required for audit-log persistence). No ``[quoin-bundle]`` block is emitted at this gate: the gate reads only the artifact's `## For human` block (729 B-scale), so the corrected expected-delta census (review round 1) shows a bundle here is net-negative — the consumer was descoped.
 
 Under `QUOIN_INLINE_COST_CAPTURE=1`, this gate spawn also follows "On-behalf cost capture" above (phase=gate, model=sonnet).
 
@@ -806,16 +799,13 @@ If the user says "show changes": run `git diff --stat` and display, then re-ask.
 
 ## Phase 5 — Review
 
-Spawn `/review` as a **fresh subagent session** (unbiased assessment requires clean context). Pass plan path, architecture path, spec path (if it exists), and repo paths. Construct a ``[quoin-bundle]`` block after the phase-context paths:
+Spawn `/review` as a **fresh subagent session** (unbiased assessment requires clean context). Pass plan path, architecture path, spec path (if it exists), and repo paths. Then append a ``[quoin-bundle]`` block to the spawn prompt in two steps:
 
-```bash
-BUNDLE=$(python3 __QUOIN_HOME__/scripts/context_bundle.py --task <task-name> --stage <N> 2>/dev/null || true)
-if [ -n "$BUNDLE" ]; then
-  PROMPT="$PROMPT\n[quoin-bundle]\n$BUNDLE\n[/quoin-bundle]"
-fi
-```
-
-The block is placed AFTER any sentinel prefix zone (``[autonomous]`` / ``[no-redispatch]`` / ``[no-interactive]`` / ``[quoin-onbehalf]`` stacking unchanged). If ``context_bundle.py`` is absent or fails, no bundle block is emitted — safe degradation to current wholesale-read behavior.
+1. Run via the Bash tool (resolve `<task-name>` to the actual task and `<N>` to the resolved stage number; OMIT `--stage` entirely for single-stage/grandfathered tasks):
+   ```bash
+   python3 "__QUOIN_HOME__/scripts/context_bundle.py" --task "<task-name>" --stage <N> --wrap 2>/dev/null || true
+   ```
+2. If the command printed anything, append its stdout VERBATIM — as its own lines, markers included (`--wrap` emits `[quoin-bundle]` / `[/quoin-bundle]` on their own lines) — at the END of the spawn prompt, AFTER the sentinel prefix zone (``[autonomous]`` / ``[no-redispatch]`` / ``[no-interactive]`` / ``[quoin-onbehalf]`` stacking unchanged). If it printed nothing (script absent, task unresolvable, or all members missing), append no block — safe degradation to current wholesale-read behavior.
 
 Read the review output (`review-*.md`) and check the verdict.
 

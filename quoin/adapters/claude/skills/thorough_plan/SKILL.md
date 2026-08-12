@@ -424,14 +424,7 @@ rm -f "$_MEM/pending-restore-$_TPCKPT_SID.txt" || true
 If cleanup fails, log a one-line warning and continue — fail-OPEN. (`$_TPCKPT_SID` is the SID
 cached at startup; see `## Phase-boundary checkpoints` §Startup acquisition.)
 
-Then spawn `/gate` as a subagent session (post-plan boundary — subagent dispatch required because the parent has just exited the plan→critic loop and the post-plan checks operate against a different context shape than the loop. Audit-log persistence applies regardless of mode — see `/gate/SKILL.md`.). Construct a ``[quoin-bundle]`` block carrying current-plan.md's path + summary:
-
-```bash
-BUNDLE=$(python3 __QUOIN_HOME__/scripts/context_bundle.py --task <task-name> --stage <N> 2>/dev/null || true)
-if [ -n "$BUNDLE" ]; then
-  PROMPT="$PROMPT\n[quoin-bundle]\n$BUNDLE\n[/quoin-bundle]"
-fi
-```
+Then spawn `/gate` as a subagent session (post-plan boundary — subagent dispatch required because the parent has just exited the plan→critic loop and the post-plan checks operate against a different context shape than the loop. Audit-log persistence applies regardless of mode — see `/gate/SKILL.md`.). No ``[quoin-bundle]`` block is emitted at this gate: the gate reads only the artifact's `## For human` block, so the corrected expected-delta census (review round 1) shows a bundle here is net-negative — the consumer was descoped.
 
 Present automated checks and a summary to the user.
 
