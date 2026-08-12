@@ -1,6 +1,6 @@
 ---
 name: continue_work
-description: "Resume context from a prior session. Reads recent-sessions.md to identify session IDs, lets you pick a session to revive, then extracts the last checkpoint summary and recent messages from the session JSONL. Use for: /continue_work, 'resume prior session', 'revive old session', 'where was I', 'switch to last session'."
+description: "Resumes context from a prior session: reads recent-sessions.md, presents a session picker, extracts checkpoint summary and recent messages from the JSONL. Use for: /continue_work, 'resume prior session', 'revive old session', 'where was I', 'switch to last session'."
 model: sonnet
 ---
 

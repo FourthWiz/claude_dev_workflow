@@ -1,6 +1,6 @@
 ---
 name: architect
-description: "Deep architectural analysis and planning using the strongest available model (Opus), with a scan/synthesize split for efficiency. Spawns Sonnet subagents in parallel to read repos, then synthesizes findings on Opus. Use this skill whenever the user needs to explore a complex system, understand how multiple repositories interact, design a new architecture, decompose a large problem into implementable stages, or answer hard cross-cutting questions about a codebase. Triggers on: /architect, architecture design, system design, technical exploration, cross-repo analysis, complex technical questions, 'how should we build this', 'what's the best approach for', deep code exploration, multi-service design. Even if the user just says 'I need to think through X' where X is technical — use this skill."
+description: "Deep architectural analysis, system design, and stage decomposition for complex or cross-repo problems. Use for: /architect, 'architecture design', 'system design', 'cross-repo analysis', 'how should we build this', 'what's the best approach for'."
 model: opus
 ---
 
@@ -501,7 +501,8 @@ while round <= max_rounds:
             )
         if confirm != "Yes, proceed": break
 
-    # Spawn /critic as a FRESH subagent (model: opus — non-negotiable per CLAUDE.md model assignments).
+    # Spawn /critic as a FRESH subagent (model: opus — non-negotiable; critic is always
+    # Opus per the skill-model roster, __QUOIN_HOME__/memory/workflow-catalog.md "## Model assignments").
     # Convey target via spawn-prompt (D-01 spawn-prompt convention, not CLI flag):
     #
     # On-behalf cost capture (flag-gated, D-1/D-2/D-3, IVG-111 stage 3): when

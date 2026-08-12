@@ -247,9 +247,10 @@ def test_deploy_hooks_project_mode_settings_in_project(tmp_path, monkeypatch):
 # ── T-05: merge_workflow_rules project mode placement ────────────────────────
 
 def _make_minimal_src_for_merge(tmp: Path) -> Path:
-    """Create minimal source dir with CLAUDE.md for merge tests."""
+    """Create minimal source dir with CLAUDE.md (+ CLAUDE.slim.md, T-07) for merge tests."""
     tmp.mkdir(parents=True, exist_ok=True)
     (tmp / "CLAUDE.md").write_text("# Test Rules\nSome workflow rules.\n", encoding="utf-8")
+    (tmp / "CLAUDE.slim.md").write_text("# Test Rules (slim)\nSlim workflow rules.\n", encoding="utf-8")
     return tmp
 
 
@@ -721,3 +722,352 @@ def test_deployed_scripts_core_parity():
             for fname in violations
         )
     )
+
+
+# ── T-07: --claude-md-variant {full,slim} installer flag (IVG-164 stage 1) ────
+# Seam-by-seam matrix per D-09 — nothing exercises the real _cmd_claude_install
+# without monkeypatching it away except the guard cell below (which returns
+# before anything writes).
+
+def test_variant_full_user_merges_from_claude_md(tmp_path):
+    """Source-selection cell: full + user → merge reads CLAUDE.md (default)."""
+    from quoin.installer import merge_workflow_rules
+    src = _make_minimal_src_for_merge(tmp_path / "src")
+    dest_root = tmp_path / ".claude"
+    dest_root.mkdir()
+
+    merge_workflow_rules(src, dest_root, source_claude_name="CLAUDE.md")
+
+    content = (dest_root / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "Test Rules\n" in content
+    assert "Slim workflow rules." not in content
+
+
+def test_variant_full_project_merges_from_claude_md(tmp_path):
+    """Source-selection cell: full + project → merge reads CLAUDE.md (default)."""
+    from quoin.installer import merge_workflow_rules
+    src = _make_minimal_src_for_merge(tmp_path / "src")
+    dest_root = tmp_path / "project" / ".claude"
+    dest_root.mkdir(parents=True)
+    claude_md_path = tmp_path / "project" / "CLAUDE.md"
+
+    merge_workflow_rules(src, dest_root, claude_md_path=claude_md_path, source_claude_name="CLAUDE.md")
+
+    content = claude_md_path.read_text(encoding="utf-8")
+    assert "Test Rules\n" in content
+    assert "Slim workflow rules." not in content
+
+
+def test_variant_slim_project_merges_from_claude_slim_md(tmp_path):
+    """Source-selection cell: slim + project → merge reads CLAUDE.slim.md."""
+    from quoin.installer import merge_workflow_rules
+    src = _make_minimal_src_for_merge(tmp_path / "src")
+    dest_root = tmp_path / "project" / ".claude"
+    dest_root.mkdir(parents=True)
+    claude_md_path = tmp_path / "project" / "CLAUDE.md"
+
+    merge_workflow_rules(src, dest_root, claude_md_path=claude_md_path, source_claude_name="CLAUDE.slim.md")
+
+    content = claude_md_path.read_text(encoding="utf-8")
+    assert "Slim workflow rules." in content
+    assert "Some workflow rules." not in content
+
+
+def test_variant_missing_source_exits_with_variant_name(tmp_path, capsys):
+    """Missing-source cell: source_claude_name naming a nonexistent file exits 1
+    with that filename in the error message (not the hardcoded 'CLAUDE.md')."""
+    from quoin.installer import merge_workflow_rules
+    src = tmp_path / "src"
+    src.mkdir()
+    # deliberately do NOT create CLAUDE.slim.md
+    (src / "CLAUDE.md").write_text("# Rules\n", encoding="utf-8")
+    dest_root = tmp_path / ".claude"
+    dest_root.mkdir()
+
+    with pytest.raises(SystemExit) as exc_info:
+        merge_workflow_rules(src, dest_root, source_claude_name="CLAUDE.slim.md")
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    assert "CLAUDE.slim.md" in err
+
+
+def test_variant_slim_user_guard_returns_1_no_deploy(monkeypatch, capsys, tmp_path):
+    """Guard cell: --claude-md-variant slim + user scope returns 1 BEFORE any
+    file is written. Three required assertions (MIN-2 r2): return==1, deploy_memory
+    never reached, and the exact stderr string is present — distinguishing this
+    from an unrelated check_prerequisites miss on the runner."""
+    import quoin.installer as inst
+
+    def _raise(*_a, **_kw):
+        raise AssertionError("deploy_memory must not be reached past the slim+user guard")
+
+    monkeypatch.setattr(inst, "deploy_memory", _raise)
+
+    from quoin.cli import _cmd_claude_install
+    import argparse
+    args = argparse.Namespace(
+        scope="user",
+        claude_md_variant="slim",
+        allow_hook_merge=False,
+        runtime="claude",
+        check=False,
+        source_dir=str(QUOIN_SRC),
+        force_merge=False,
+        dev=False,
+        use_pip=False,
+    )
+    result = _cmd_claude_install(args)
+    assert result == 1
+    err = capsys.readouterr().err
+    assert "--claude-md-variant slim is a project-scope pilot only this wave" in err
+
+
+def test_claude_md_variant_flag_present_in_install_help():
+    """Flag-plumbing cell (argparse level): 'quoin install --help' lists the flag."""
+    import subprocess
+    result = subprocess.run(
+        [sys.executable, "-m", "quoin", "install", "--help"],
+        env={**os.environ, "PYTHONPATH": str(SRC)},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--claude-md-variant" in result.stdout
+
+
+def test_claude_md_variant_flag_forwarded(monkeypatch):
+    """Flag-plumbing cell (argparse level): the flag reaches _cmd_claude_install
+    via the fake_cmd capture pattern (mirrors test_scope_user_explicit)."""
+    from quoin.cli import main
+
+    captured_args = {}
+
+    def fake_cmd(args):
+        captured_args.update(vars(args))
+        return 0
+
+    import quoin.cli as cli_mod
+    monkeypatch.setattr(cli_mod, "_cmd_claude_install", fake_cmd)
+    main(["install", "--source-dir", str(QUOIN_SRC), "--scope", "project", "--claude-md-variant", "slim"])
+    assert captured_args.get("claude_md_variant") == "slim"
+
+    # default (flag omitted) is "full"
+    captured_args.clear()
+    main(["install", "--source-dir", str(QUOIN_SRC)])
+    assert captured_args.get("claude_md_variant") == "full"
+
+
+def _write_python_stub(tmp_path: Path) -> dict:
+    """Fake `python3`-family interpreter that intercepts install.sh's version
+    probes and its final `-m quoin` exec, echoing ARGV instead of doing real
+    work. Keeps the shell-level flag-plumbing cell under a second of wall-clock
+    (T-07 acceptance: no real time.sleep(3), no real deploy in any cell)."""
+    stub = tmp_path / "_pystub"
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        'if [[ "$1" == "-c" ]]; then\n'
+        '  case "$2" in\n'
+        '    *sys.version_info*) echo 3013 ;;\n'
+        '    *__about__*) : ;;\n'
+        '    *"import quoin"*)\n'
+        '      if [[ -n "${PYTHONPATH:-}" ]]; then exit 0; else exit 1; fi ;;\n'
+        '    *) exit 0 ;;\n'
+        '  esac\n'
+        '  exit 0\n'
+        "fi\n"
+        'if [[ "$1" == "-m" && "$2" == "quoin" && "$3" == "--version" ]]; then\n'
+        "  exit 1\n"
+        "fi\n"
+        'echo "ARGV:$*"\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    names = ["python3.13", "python3.12", "python3.11", "python3.10", "python3", "python"]
+    for name in names:
+        link = tmp_path / name
+        if not link.exists():
+            link.symlink_to(stub)
+    return {"PATH": f"{tmp_path}:{os.environ.get('PATH', '')}"}
+
+
+def test_install_sh_forwards_claude_md_variant(tmp_path):
+    """Flag-plumbing cell (shell level): both '--claude-md-variant slim' and
+    '--claude-md-variant=slim' forms reach INSTALL_ARGS and are forwarded to the
+    final `-m quoin` invocation, and the missing-value form exits 2 — mirroring
+    the --scope shell-level contract exactly."""
+    import subprocess
+
+    install_sh = QUOIN_SRC / "install.sh"
+    stub_env_overrides = _write_python_stub(tmp_path)
+    env = {**os.environ, **stub_env_overrides}
+
+    # Separate-token form
+    result = subprocess.run(
+        ["bash", str(install_sh), "--scope", "project", "--claude-md-variant", "slim"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+    assert "--claude-md-variant slim" in result.stdout, result.stdout + result.stderr
+
+    # =-joined form
+    result2 = subprocess.run(
+        ["bash", str(install_sh), "--scope", "project", "--claude-md-variant=slim"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+    assert "--claude-md-variant slim" in result2.stdout, result2.stdout + result2.stderr
+
+    # Missing-value form exits 2 (fails during arg parsing, before any Python probe)
+    result3 = subprocess.run(
+        ["bash", str(install_sh), "--claude-md-variant"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+    assert result3.returncode == 2
+    assert "--claude-md-variant requires a value" in result3.stderr
+
+
+# ── review-1.md MAJOR 1: install-time staleness check for slim outputs ────────
+# Project-scope installs never regenerate (allow_writes forced False, T-07
+# MAJ-6), so a slim install must fail closed rather than silently deploy a
+# stale CLAUDE.slim.md / workflow-catalog.md. Fixture helper copies the real
+# committed generator + outputs into a scratch dir so staleness tests never
+# mutate the committed repo files (mirrors the copy-to-tmp discipline used in
+# test_build_claude_slim.py's --check smoke tests).
+
+def _copy_slim_source_tree(tmp_path: Path) -> Path:
+    """Scratch copy of the pieces installer.check_slim_outputs_fresh() reads:
+    scripts/build_claude_slim.py, CLAUDE.md, CLAUDE.slim.md, memory/workflow-
+    catalog.md, plus an empty skills/ dir so _resolve_source_dir accepts it."""
+    import shutil
+
+    scratch = tmp_path / "src_copy"
+    (scratch / "scripts").mkdir(parents=True)
+    (scratch / "skills").mkdir()
+    (scratch / "memory").mkdir()
+    shutil.copy(
+        QUOIN_SRC / "scripts" / "build_claude_slim.py",
+        scratch / "scripts" / "build_claude_slim.py",
+    )
+    shutil.copy(QUOIN_SRC / "CLAUDE.md", scratch / "CLAUDE.md")
+    shutil.copy(QUOIN_SRC / "CLAUDE.slim.md", scratch / "CLAUDE.slim.md")
+    shutil.copy(
+        QUOIN_SRC / "memory" / "workflow-catalog.md",
+        scratch / "memory" / "workflow-catalog.md",
+    )
+    return scratch
+
+
+def test_check_slim_outputs_fresh_on_committed_tree(tmp_path):
+    """A fresh copy of the real committed outputs reports zero staleness."""
+    from quoin.installer import check_slim_outputs_fresh
+
+    scratch = _copy_slim_source_tree(tmp_path)
+    assert check_slim_outputs_fresh(scratch) == []
+
+
+def test_check_slim_outputs_fresh_detects_stale_slim_output(tmp_path):
+    """A one-byte edit to the copied CLAUDE.slim.md is caught, naming that file
+    (and only that file)."""
+    from quoin.installer import check_slim_outputs_fresh
+
+    scratch = _copy_slim_source_tree(tmp_path)
+    slim_path = scratch / "CLAUDE.slim.md"
+    slim_path.write_text(slim_path.read_text(encoding="utf-8") + "x", encoding="utf-8")
+
+    stale = check_slim_outputs_fresh(scratch)
+    assert any("CLAUDE.slim.md" in s for s in stale), stale
+    assert not any("workflow-catalog.md" in s for s in stale), stale
+
+
+def test_check_slim_outputs_fresh_detects_stale_catalog_output(tmp_path):
+    """A one-byte edit to the copied workflow-catalog.md is caught, naming that
+    file (and only that file)."""
+    from quoin.installer import check_slim_outputs_fresh
+
+    scratch = _copy_slim_source_tree(tmp_path)
+    catalog_path = scratch / "memory" / "workflow-catalog.md"
+    catalog_path.write_text(catalog_path.read_text(encoding="utf-8") + "x", encoding="utf-8")
+
+    stale = check_slim_outputs_fresh(scratch)
+    assert any("workflow-catalog.md" in s for s in stale), stale
+    assert not any(s.endswith("CLAUDE.slim.md") for s in stale), stale
+
+
+def test_variant_slim_stale_outputs_returns_1_no_deploy(monkeypatch, capsys, tmp_path):
+    """Integration cell: --claude-md-variant slim with a stale committed
+    CLAUDE.slim.md aborts _cmd_claude_install with exit 1 BEFORE any file is
+    written (deploy_memory tripwire, mirrors the slim+user guard cell above),
+    naming the stale file in stderr."""
+    import argparse
+
+    import quoin.installer as inst
+    from quoin.cli import _cmd_claude_install
+
+    scratch = _copy_slim_source_tree(tmp_path)
+    slim_path = scratch / "CLAUDE.slim.md"
+    slim_path.write_text(slim_path.read_text(encoding="utf-8") + "x", encoding="utf-8")
+
+    def _raise(*_a, **_kw):
+        raise AssertionError("deploy_memory must not be reached past the slim staleness guard")
+
+    monkeypatch.setattr(inst, "deploy_memory", _raise)
+
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    args = argparse.Namespace(
+        scope=f"project:{project_dir}",
+        claude_md_variant="slim",
+        allow_hook_merge=False,
+        runtime="claude",
+        check=False,
+        source_dir=str(scratch),
+        force_merge=False,
+        dev=False,
+        use_pip=False,
+    )
+    result = _cmd_claude_install(args)
+    assert result == 1
+    err = capsys.readouterr().err
+    assert "CLAUDE.slim.md" in err
+    assert "stale" in err
+
+
+# ── T-10: doctor reports memory files in project scope too ────────────────────
+
+def test_doctor_reports_memory_files_in_project_scope(tmp_path, capsys):
+    """`quoin doctor --scope project` lists all TIER1 memory files (IVG-164 T-10).
+
+    Regression guard for a stale comment/guard at cli.py's doctor command:
+    `deploy_memory()` copies TIER1_MEMORY_FILES unconditionally in BOTH
+    scopes (installer.py:304-315), so the doctor check must run in project
+    scope too, not just user scope.
+    """
+    from quoin import installer
+    from quoin.cli import _cmd_doctor
+
+    project_dir = tmp_path / "pilot-proj"
+    project_dir.mkdir()
+    dest_root = project_dir / ".claude"
+    installer.deploy_memory(QUOIN_SRC, dest_root)
+
+    args = _make_args(scope=f"project:{project_dir}", runtime="claude")
+    _cmd_doctor(args)
+
+    out = capsys.readouterr().out
+    assert "Memory files" in out
+    for fname in installer.TIER1_MEMORY_FILES:
+        assert fname in out, f"{fname} missing from doctor project-scope output"
+    # Every entry reported present (deploy_memory ran successfully above).
+    assert "✗" not in out.split("Memory files")[1].split("Scripts")[0]

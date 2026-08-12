@@ -1,6 +1,6 @@
 ---
 name: end_of_task
-description: "Finalizes a completed task: ensures all changes are committed, pushes branch to remote, prompts for lessons learned, aggregates task cost across all sessions, and marks the task as complete. Requires /review to have been run first. Does NOT create a PR — that's a separate explicit action. Use this skill for: /end_of_task, 'finalize this', 'we're done', 'ship it', 'task complete', 'wrap up this task'. This is the explicit user acceptance of completed, reviewed work — the last step before moving on."
+description: "Finalizes a completed, reviewed task: commits, pushes the branch, captures lessons, marks complete. Use for: /end_of_task, 'finalize this', 'we're done', 'ship it', 'task complete', 'wrap up this task'. Requires /review first; does NOT create a PR."
 model: sonnet
 ---
 

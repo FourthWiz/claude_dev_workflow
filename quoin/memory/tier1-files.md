@@ -32,6 +32,9 @@ The following files are explicitly **excluded** from terse-style writing — the
 - `quoin/memory/checkpoint-spec.md` (+ `__QUOIN_HOME__/memory/checkpoint-spec.md` deployed copy — behavioral specification of the `/checkpoint` subsystem, source-cited characterization used as the test-harness contract; added checkpoint-spec-harness 2026-07-14)
 - `quoin/memory/decision-gate-guard.md` (+ `__QUOIN_HOME__/memory/decision-gate-guard.md` deployed copy — shared fail-closed decision-gate guard reference: the "cannot ask ≠ approved" invariant, the `[no-interactive]` sentinel, the decision-gate contract, the `needs-decision-{task}.md` sentinel schema, the classification-marker/census convention; added IVG-150 2026-07-23)
 
+**Generated Tier-1 files (never hand-edit; regenerate with `quoin/scripts/build_claude_slim.py`):**
+- `quoin/memory/workflow-catalog.md` (+ `__QUOIN_HOME__/memory/workflow-catalog.md` deployed copy — full verbatim text of every section dropped from `CLAUDE.slim.md`, generated from `quoin/CLAUDE.md` by `quoin/scripts/build_claude_slim.py`; regenerate with `python3 quoin/scripts/build_claude_slim.py`; added IVG-164 stage 1 2026-08-07). This is the first GENERATED member of `TIER1_MEMORY_FILES` — the precedent for "generated but Tier-1-listed" already exists above in this file's **Source files:** block for `skills/<skill>/preamble.md`, which is listed "only for disambiguation — NOT a Tier 1 hand-edited source file"; the same disambiguation applies here. Tier-1 membership here means always-English + never terse-rewritten — it does NOT mean hand-editable, and `/sleep` must never treat it as a hand-maintained memory file.
+
 NOTE: QUICKSTART.md sits at `quoin/` root and deploys to `__QUOIN_HOME__/QUICKSTART.md` (NOT under `memory/`) — this is intentional. Do NOT normalize paths.
 - `quoin/QUICKSTART.md` (+ `__QUOIN_HOME__/QUICKSTART.md` deployed copy).
 

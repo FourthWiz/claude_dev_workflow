@@ -1,6 +1,6 @@
 ---
 name: init_workflow
-description: "Initializes the development workflow in a project folder. Creates the .workflow_artifacts/ structure, runs /discover to scan the codebase, and generates a quickstart guide. Requires install.sh to have been run first (installs skills to __QUOIN_HOME__/skills/ and workflow rules to __QUOIN_HOME__/CLAUDE.md). Use this skill for: /init_workflow, 'initialize workflow', 'set up dev workflow', 'install workflow', 'bootstrap workflow'. Run this once per project."
+description: "Initializes the workflow in a project folder: creates .workflow_artifacts/, runs /discover, generates a quickstart. Use for: /init_workflow, 'initialize workflow', 'set up dev workflow', 'install workflow', 'bootstrap workflow'. Requires install.sh first (rules land in __QUOIN_HOME__/CLAUDE.md)."
 model: opus
 ---
 
@@ -133,7 +133,7 @@ description wording for every branch below: memory/dispatch-guide.md §0″ verb
 
 ## Prerequisites
 
-`install.sh` must have been run first. It installs skills to `__QUOIN_HOME__/skills/` and writes workflow rules to `__QUOIN_HOME__/CLAUDE.md`. This skill handles per-project initialization only — not the one-time machine setup.
+`install.sh` must have been run first. In user scope it installs skills to `__QUOIN_HOME__/skills/` and writes workflow rules to `__QUOIN_HOME__/CLAUDE.md`; in project scope it installs to `<project>/.claude/skills/` and writes workflow rules to `<project>/CLAUDE.md`. This skill handles per-project initialization only — not the one-time machine setup.
 
 ## Session bootstrap
 
@@ -339,7 +339,7 @@ For files that should start empty but exist as placeholders:
   # Workflow Rules
 
   Reference summary of the quoin system for Claude.
-  See __QUOIN_HOME__/CLAUDE.md for the full rules.
+  See __QUOIN_HOME__/memory/workflow-catalog.md for the full rules (plus this project's own workflow-rules file, deployed as `<project>/CLAUDE.md` in project scope or `__QUOIN_HOME__/CLAUDE.md` in user scope).
   ```
 - `.workflow_artifacts/memory/workflow-suggestions.md` — create with the template header:
   ```markdown

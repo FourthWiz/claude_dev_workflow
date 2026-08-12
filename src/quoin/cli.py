@@ -206,6 +206,36 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
     scope: str = getattr(args, "scope", None) or "user"
     is_project_mode = scope.startswith("project")
 
+    # IVG-164 T-07: --claude-md-variant slim is a project-scope pilot only this wave.
+    # Placed here (before check_prerequisites) so the guard is a literal no-op: nothing
+    # has been probed or written yet when it fires.
+    claude_md_variant: str = getattr(args, "claude_md_variant", "full") or "full"
+    if claude_md_variant == "slim" and not is_project_mode:
+        print(
+            "quoin: --claude-md-variant slim is a project-scope pilot only this wave "
+            "(see IVG-164); re-run with --scope project",
+            file=sys.stderr,
+        )
+        return 1
+
+    # review-1.md MAJOR 1: project installs never regenerate (allow_writes is forced
+    # False below for is_project_mode), so a slim install must fail closed rather than
+    # silently deploy a CLAUDE.slim.md / workflow-catalog.md that's stale vs the live
+    # quoin/CLAUDE.md. Placed here (before any deploy_* call) so, like the guard
+    # above, nothing has been probed or written yet when it fires.
+    if claude_md_variant == "slim":
+        stale = installer.check_slim_outputs_fresh(source_dir)
+        if stale:
+            print(
+                "quoin: --claude-md-variant slim aborted — generated output(s) are "
+                "stale vs a fresh regen of " + str(source_dir / "CLAUDE.md") + ": "
+                + ", ".join(stale) + ". Run "
+                "'python3 quoin/scripts/build_claude_slim.py' in the quoin repo "
+                "checkout and commit the result before installing the slim variant.",
+                file=sys.stderr,
+            )
+            return 1
+
     # Mutex: --scope project is only valid with --runtime claude
     if is_project_mode and getattr(args, "runtime", "claude") == "codex":
         _abort("quoin: --scope project is only valid with --runtime claude")
@@ -298,11 +328,17 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
             return 1
     else:
         claude_md_path = dest_root / "CLAUDE.md"
+    source_claude_name = "CLAUDE.slim.md" if claude_md_variant == "slim" else "CLAUDE.md"
+    print(
+        f"Using CLAUDE.md variant: {claude_md_variant} (source {source_claude_name}) "
+        f"→ {claude_md_path}"
+    )
     installer.merge_workflow_rules(
         source_dir,
         dest_root,
         force_merge=args.force_merge,
         claude_md_path=claude_md_path,
+        source_claude_name=source_claude_name,
     )
 
     # proc:R-02: post-install placeholder validator
@@ -483,17 +519,20 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
                 errors.append(f"Required tool missing: {tool}")
         print()
 
-    # Tier-1 memory files (user-scope only — not deployed in project mode)
-    if not is_project_mode:
-        print(f"Memory files ({dest_label}/memory/):")
-        for fname in installer.TIER1_MEMORY_FILES:
-            p = dest_root / "memory" / fname
-            found = p.exists()
-            status = "✓" if found else "✗"
-            print(f"  {status} {fname}")
-            if not found:
-                errors.append(f"Missing memory file: {fname}")
-        print()
+    # Tier-1 memory files — deploy_memory() copies all TIER1_MEMORY_FILES
+    # unconditionally in BOTH scopes (installer.py:304-315), so this check
+    # runs in project scope too (IVG-164 stage 1 T-10; was previously
+    # user-scope-only behind a stale comment/guard that silently skipped a
+    # check `quoin doctor --scope project` could perform).
+    print(f"Memory files ({dest_label}/memory/):")
+    for fname in installer.TIER1_MEMORY_FILES:
+        p = dest_root / "memory" / fname
+        found = p.exists()
+        status = "✓" if found else "✗"
+        print(f"  {status} {fname}")
+        if not found:
+            errors.append(f"Missing memory file: {fname}")
+    print()
 
     # Scripts
     print(f"Scripts ({dest_label}/scripts/):")
@@ -778,6 +817,15 @@ def main(argv: list[str] | None = None) -> int:
         "--scope", default=None, metavar="SCOPE",
         help="Install scope: user (~/.claude, default) or project (<CWD>/.claude). "
              "Omitted → interactive prompt. See 'Scope' below for values.",
+    )
+    install_p.add_argument(
+        "--claude-md-variant",
+        choices=("full", "slim"),
+        default="full",
+        help=(
+            "CLAUDE.md variant to merge: 'full' (default) or 'slim' "
+            "(IVG-164 project-scope pilot; requires --scope project)."
+        ),
     )
     install_p.add_argument(
         "--allow-hook-merge",

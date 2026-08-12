@@ -1,6 +1,6 @@
 ---
 name: thorough_plan
-description: "Triages tasks by size (Small/Medium/Large) and orchestrates the appropriate planning path. Small tasks get a single-pass /plan (no critic loop). Medium tasks run the plan→critic→revise cycle with Sonnet revision. Large tasks (or 'strict:' prefix) run all-Opus with up to 5 rounds. Use this skill for: /thorough_plan, 'plan this', 'plan this thoroughly', 'detailed plan with review', 'plan and critique', 'full planning cycle'. Supports size tags (small:/medium:/large:), strict: prefix, and max_rounds: N override. Always the entry point for planned work — routes automatically based on task size."
+description: "Triages tasks by size (Small/Medium/Large) and orchestrates the matching planning path. Use for: /thorough_plan, 'plan this', 'plan this thoroughly', 'detailed plan with review', 'plan and critique', 'full planning cycle'. Always the entry point for planned work."
 model: opus
 ---
 
@@ -424,7 +424,9 @@ rm -f "$_MEM/pending-restore-$_TPCKPT_SID.txt" || true
 If cleanup fails, log a one-line warning and continue — fail-OPEN. (`$_TPCKPT_SID` is the SID
 cached at startup; see `## Phase-boundary checkpoints` §Startup acquisition.)
 
-Then spawn `/gate` as a subagent session (post-plan boundary — subagent dispatch required because the parent has just exited the plan→critic loop and the post-plan checks operate against a different context shape than the loop. Audit-log persistence applies regardless of mode — see `/gate/SKILL.md`.) to present automated checks and a summary to the user.
+Then spawn `/gate` as a subagent session (post-plan boundary — subagent dispatch required because the parent has just exited the plan→critic loop and the post-plan checks operate against a different context shape than the loop. Audit-log persistence applies regardless of mode — see `/gate/SKILL.md`.). No ``[quoin-bundle]`` block is emitted at this gate: the gate reads only the artifact's `## For human` block, so the corrected expected-delta census (review round 1) shows a bundle here is net-negative — the consumer was descoped.
+
+Present automated checks and a summary to the user.
 
 After the gate, print an **inline summary** in the chat as your final user-facing message (REQUIRED — do NOT rely on the user reading `current-plan.md`; the plan body is Tier-3 terse). Cover the canonical field set:
 1. **What this step produced** — e.g., "Produced a converged Medium-profile plan in N round(s)."

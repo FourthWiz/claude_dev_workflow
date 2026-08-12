@@ -1,6 +1,6 @@
 ---
 name: rollback
-description: "Safely undo an implementation phase or revert specific tasks, using the plan to map commits to tasks. Use this skill for: /rollback, 'undo the implementation', 'revert the last changes', 'go back to before implement', 'undo task 3', 'reset to pre-implementation'. Reads the plan to understand which commits belong to which tasks, shows what would be reverted, and requires explicit confirmation before acting."
+description: "Safely undoes an implementation phase or reverts specific tasks, mapping commits to plan tasks; requires explicit confirmation. Use for: /rollback, 'undo the implementation', 'revert the last changes', 'undo task 3', 'reset to pre-implementation'."
 model: sonnet
 ---
 

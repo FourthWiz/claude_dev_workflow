@@ -2,7 +2,8 @@
 # Quoin installer — offline-first thin wrapper that delegates to `quoin install`.
 #
 # Usage: bash install.sh [--dev] [--upgrade] [--use-pip] [--force-merge]
-#                        [--scope user|project[:DIR]] [--allow-hook-merge] [-h]
+#                        [--scope user|project[:DIR]] [--claude-md-variant full|slim]
+#                        [--allow-hook-merge] [-h]
 #
 # Tier 1 (fast, no network): installed version matches local → exec quoin install
 # Tier 2 (offline stdlib):   quoin not installed → PYTHONPATH=src/ exec python -m quoin
@@ -23,6 +24,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DEV_FLAG=""
 FORCE_MERGE_FLAG=""
 SCOPE_FLAG=""
+CLAUDE_MD_VARIANT_FLAG=""
 ALLOW_HOOK_MERGE_FLAG=""
 USE_PIP=0
 PIP_UPGRADE_FLAG=""
@@ -41,7 +43,14 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
     --use-pip)      USE_PIP=1 ;;
     --force-merge)  FORCE_MERGE_FLAG="--force-merge" ;;
     --allow-hook-merge) ALLOW_HOOK_MERGE_FLAG="--allow-hook-merge" ;;
-    --scope=*)      SCOPE_FLAG="--scope ${arg#--scope=}" ;;
+    --scope=*)
+      if [[ -n "${arg#--scope=}" ]]; then
+        SCOPE_FLAG="--scope ${arg#--scope=}"
+      else
+        echo "quoin: --scope requires a value (user or project[:DIR])" >&2
+        exit 2
+      fi
+      ;;
     --scope)
       i=$(( i + 1 ))
       if [[ $i -lt ${#ARGS[@]} ]]; then
@@ -51,9 +60,27 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
         exit 2
       fi
       ;;
+    --claude-md-variant=*)
+      if [[ -n "${arg#--claude-md-variant=}" ]]; then
+        CLAUDE_MD_VARIANT_FLAG="--claude-md-variant ${arg#--claude-md-variant=}"
+      else
+        echo "quoin: --claude-md-variant requires a value (full or slim)" >&2
+        exit 2
+      fi
+      ;;
+    --claude-md-variant)
+      i=$(( i + 1 ))
+      if [[ $i -lt ${#ARGS[@]} ]]; then
+        CLAUDE_MD_VARIANT_FLAG="--claude-md-variant ${ARGS[$i]}"
+      else
+        echo "quoin: --claude-md-variant requires a value (full or slim)" >&2
+        exit 2
+      fi
+      ;;
     -h|--help)
       echo "Usage: bash install.sh [--dev] [--upgrade] [--use-pip] [--force-merge]"
-      echo "                       [--scope user|project[:DIR]] [--allow-hook-merge]"
+      echo "                       [--scope user|project[:DIR]] [--claude-md-variant full|slim]"
+      echo "                       [--allow-hook-merge]"
       echo "  --dev                Install dev dependencies (pyyaml, pytest)"
       echo "  --upgrade            Re-install via pip before deploying (alias: --use-pip)"
       echo "  --use-pip            Same as --upgrade"
@@ -66,6 +93,9 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
       echo "                       project scope — a prior home install shadows project skills."
       echo "                       Run 'quoin doctor --scope project' to detect conflicts."
       echo "  --scope project:/path Install under /path/.claude/ (explicit project root)"
+      echo "  --claude-md-variant full|slim  CLAUDE.md variant to merge (default: full)."
+      echo "                       'slim' is a project-scope pilot only this wave (IVG-164);"
+      echo "                       requires --scope project."
       echo "  --allow-hook-merge   Proceed even if home ~/.claude/settings.json has quoin"
       echo "                       hook stanzas (default: fail-fast to avoid double-fire)"
       exit 0
@@ -132,6 +162,10 @@ if [[ -n "$SCOPE_FLAG" ]]; then
   # Split "--scope value" into separate array elements (handles project:/path with colon)
   read -r _scope_key _scope_val <<< "$SCOPE_FLAG"
   INSTALL_ARGS+=("$_scope_key" "$_scope_val")
+fi
+if [[ -n "$CLAUDE_MD_VARIANT_FLAG" ]]; then
+  read -r _variant_key _variant_val <<< "$CLAUDE_MD_VARIANT_FLAG"
+  INSTALL_ARGS+=("$_variant_key" "$_variant_val")
 fi
 [[ -n "$ALLOW_HOOK_MERGE_FLAG" ]] && INSTALL_ARGS+=("$ALLOW_HOOK_MERGE_FLAG")
 

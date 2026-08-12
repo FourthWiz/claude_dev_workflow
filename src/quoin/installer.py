@@ -49,6 +49,8 @@ TIER1_MEMORY_FILES = (
     "autonomous-mode.md",
     # Added IVG-150: shared fail-closed decision-gate guard reference (Tier-1 memory file)
     "decision-gate-guard.md",
+    # Added IVG-164 stage 1: generated slim-variant catalog of dropped CLAUDE.md sections
+    "workflow-catalog.md",
 )
 
 # T-05: canonical skill list — must match quoin/skills/ on disk exactly
@@ -134,6 +136,8 @@ DEPLOYED_SCRIPTS = (
     "workspace.py",  # IVG-158: parallel-feature-isolation workspace create core+wrapper
     "plan_path_lint.py",  # IVG-143: cited-path resolver/linter wrapper (wrapped portable-core — also in CORE_SCRIPTS)
     "footprint_report.py",  # IVG-162 T-01: corpus byte-footprint report (standalone, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS twin, mirrors sleep_score.py)
+    "build_claude_slim.py",  # IVG-164 stage 1 T-04: slim CLAUDE.md variant generator (standalone, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS twin, mirrors build_preambles.py)
+    "context_bundle.py",  # IVG-164 stage 2 T-02: context bundle helper for orchestrator spawn-prompt construction (standalone, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS twin, mirrors build_claude_slim.py)
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -760,6 +764,7 @@ def merge_workflow_rules(
     *,
     force_merge: bool = False,
     claude_md_path: pathlib.Path | None = None,
+    source_claude_name: str = "CLAUDE.md",
 ) -> None:
     """Merge quoin workflow rules into the target CLAUDE.md file.
 
@@ -770,10 +775,14 @@ def merge_workflow_rules(
     T-05 / CRIT-4: in project mode, __QUOIN_HOME__ placeholders in the source
     CLAUDE.md are substituted with the actual dest_root before writing, so that
     the deployed rules refer to the correct project-scoped paths.
+
+    IVG-164 stage 1 (T-07): source_claude_name selects which source file to
+    merge from (source_dir / source_claude_name) — "CLAUDE.md" (default, full
+    variant) or "CLAUDE.slim.md" (project-scope slim pilot).
     """
-    source_claude = source_dir / "CLAUDE.md"
+    source_claude = source_dir / source_claude_name
     if not source_claude.exists():
-        print(f"quoin: Expected CLAUDE.md at {source_claude} but not found", file=sys.stderr)
+        print(f"quoin: Expected {source_claude_name} at {source_claude} but not found", file=sys.stderr)
         sys.exit(1)
 
     raw_rules = source_claude.read_text(encoding="utf-8")
@@ -1002,6 +1011,57 @@ def regenerate_verification_step(source_dir: pathlib.Path, *, allow_writes: bool
     finally:
         sys.argv = old_argv
     print(f"Regenerated §V verification blocks in {source_dir}/adapters/claude/skills/*/SKILL.md")
+
+
+def check_slim_outputs_fresh(source_dir: pathlib.Path) -> list[str]:
+    """Byte-compare committed CLAUDE.slim.md / memory/workflow-catalog.md against a
+    fresh regen (IVG-164 review round-1 MAJOR 1).
+
+    Project-scope installs always run with allow_writes=False (T-07 MAJ-6), so
+    regenerate_pollution_dispatch's self-heal pattern above can never fire for the
+    one scope where --claude-md-variant slim is legal — an edit to quoin/CLAUDE.md
+    that skips re-running build_claude_slim.py would otherwise deploy stale
+    generated content silently. This is a read-only CHECK, never a write: it
+    borrows build_claude_slim.py's `build_outputs()` function and CLASSIFICATION
+    table via runpy with a non-`"__main__"` run_name, so the script's own
+    argparse/main()/file-write side effects never execute.
+
+    Returns a list of stale output path strings (empty when both generated files
+    match a fresh regen of the live source_dir/CLAUDE.md). A ClassificationError
+    from the borrowed build_outputs() (heading/table drift) is treated the same as
+    staleness — the generator itself would abort, so the install must too.
+    """
+    import runpy
+
+    script = source_dir / "scripts" / "build_claude_slim.py"
+    claude_md = source_dir / "CLAUDE.md"
+    slim_output = source_dir / "CLAUDE.slim.md"
+    catalog_output = source_dir / "memory" / "workflow-catalog.md"
+
+    # review-1 minor (widened per round-2 minor 3): a missing/unparsable script,
+    # a renamed symbol, or an absent CLAUDE.md must surface as a clean stale
+    # entry (the caller aborts with the regenerate-and-commit message), never as
+    # an uncaught traceback. runpy.run_path EXECUTES the target module, so the
+    # exception surface is arbitrary user code — module-level ImportError,
+    # NameError, ValueError, even SystemExit — not a known API. Catch everything.
+    try:
+        mod_globals = runpy.run_path(str(script), run_name="quoin_slim_staleness_check")
+        build_outputs = mod_globals["build_outputs"]
+        classification_error = mod_globals["ClassificationError"]
+        source_text = claude_md.read_text(encoding="utf-8")
+    except (Exception, SystemExit) as exc:
+        return [f"{script} (staleness check unavailable: {type(exc).__name__}: {exc})"]
+    try:
+        slim_text, catalog_text = build_outputs(source_text)
+    except classification_error as exc:
+        return [f"{claude_md} (regen aborted, CLASSIFICATION/heading mismatch: {exc})"]
+
+    stale: list[str] = []
+    if not slim_output.exists() or slim_output.read_text(encoding="utf-8") != slim_text:
+        stale.append(str(slim_output))
+    if not catalog_output.exists() or catalog_output.read_text(encoding="utf-8") != catalog_text:
+        stale.append(str(catalog_output))
+    return stale
 
 
 def assert_no_placeholders(dest_root: pathlib.Path) -> list[str]:

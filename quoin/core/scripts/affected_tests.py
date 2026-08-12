@@ -133,7 +133,66 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/memory/glossary.md",
         "quoin/dev/tests/test_preamble_freshness.py",
     ),
+    # Added IVG-164 stage 1 (T-05): the slim-CLAUDE.md generator's regen
+    # byte-identity drift guards (architecture D-01) live in
+    # test_build_claude_slim.py, not the size-ceiling test above — without
+    # these rows an affected-area /gate run selects only the size-ceiling
+    # test on a CLAUDE.md edit and the drift guards never execute (lesson
+    # 2026-07-04). Duplicate-key-safe: this consumer iterates all rows into
+    # a set, so this row ADDS to the existing quoin/CLAUDE.md selector above
+    # rather than displacing it.
+    (
+        "quoin/CLAUDE.md",
+        "quoin/dev/tests/test_build_claude_slim.py",
+    ),
+    (
+        "quoin/CLAUDE.slim.md",
+        "quoin/dev/tests/test_build_claude_slim.py",
+    ),
+    (
+        "quoin/memory/workflow-catalog.md",
+        "quoin/dev/tests/test_build_claude_slim.py",
+    ),
+    # Added review-1.md MAJOR 2 (IVG-164 stage 1 fix round): the fail-closed
+    # CLAUDE.md-citation disposition sweep (T-09) polices exactly the corpora an
+    # adapter SKILL.md / quoin/memory/*.md edit can stale, but without these rows
+    # test_claude_md_citations.py was unreachable from any affected-area selector —
+    # verbatim the lesson-2026-07-04 blind spot the rows above were written to
+    # close, now reopened for the sweep's own two doc sources plus its fixture.
+    # Duplicate-key-safe (same iterate-all-rows-into-a-set consumer as above): both
+    # doc rows ADD to their existing selectors rather than displacing them.
+    (
+        "quoin/CLAUDE.md",
+        "quoin/dev/tests/test_claude_md_citations.py",
+    ),
+    (
+        "quoin/memory/workflow-catalog.md",
+        "quoin/dev/tests/test_claude_md_citations.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/claude_md_citation_dispositions.json",
+        "quoin/dev/tests/test_claude_md_citations.py",
+    ),
+    # IVG-164 stage 2 T-08: context_bundle exclusion drift test is reachable
+    # when the SKILL.md corpus changes (bundle emission sites + review/gate
+    # adapters + implement parity fix all land in the same stage).
+    (
+        "quoin/scripts/context_bundle.py",
+        "quoin/dev/tests/test_context_bundle_exclusions.py",
+    ),
 )
+
+# SKILL.md coverage residual gap (review-1.md MAJOR 2, documented-acceptance branch):
+# _DOCS_TO_TESTS is a flat, per-file allowlist — there is no directory-prefix rule,
+# so an edit to any of the 32 quoin/adapters/claude/skills/*/SKILL.md files (the
+# third in-scope citation-sweep corpus, alongside the two rows above) is NOT
+# selectable and still falls through to the generic non-.py "ignored" bucket
+# (test_unrelated_skill_md_still_ignored pins this as expected, not a bug). A
+# directory-prefix rule would widen _DOCS_TO_TESTS's matching semantics for every
+# existing row, a larger behavior change than this seam-local fix round's scope;
+# the residual gap is accepted here rather than silently left undocumented. The
+# full-suite gate (not affected-area) remains the backstop that catches a SKILL.md
+# edit that stales the citation fixture.
 
 
 # ---------------------------------------------------------------------------
@@ -1013,6 +1072,32 @@ def main(argv: list[str] | None = None) -> int:
     # ------------------------------------------------------------------
     # HARD GUARD: this line is only reachable when selectors is non-empty.
     assert selectors, "BUG: pytest invocation reached with empty selectors"
+
+    # review round-2 minor 17: `sys.executable -m pytest` with pytest not
+    # importable exits rc=1 ("No module named pytest"), which the classifier
+    # below would misreport as affected-red — an environment fault presented as
+    # a red affected area. pytest runs in THIS interpreter (sys.executable), so
+    # find_spec here is authoritative; surface the same environment-fault shape
+    # as a missing pytest binary (exit 3, exit_reason="pytest-missing").
+    import importlib.util
+
+    if importlib.util.find_spec("pytest") is None:
+        sel = Selection(
+            changed=changed,
+            selectors=selectors,
+            unmatched_sources=unmatched_sources,
+            ignored=ignored,
+            ran_pytest=False,
+            pytest_returncode=None,
+            exit_reason="pytest-missing",
+            unmatched_warning=bool(unmatched_sources and args.allow_unmatched),
+            noncollectable=noncollectable,
+        )
+        if fmt == "text":
+            print(_format_text(sel))
+        else:
+            print(json.dumps(sel.to_dict(), indent=2))
+        return 3
 
     try:
         proc = subprocess.run(

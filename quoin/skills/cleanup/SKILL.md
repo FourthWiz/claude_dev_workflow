@@ -1,6 +1,6 @@
 ---
 name: cleanup
-description: "Trash-move stale workflow sentinels and old checkpoints into recoverable archive. Keeps the freshest/current session's sentinels; trashes others older than QUOIN_CLEANUP_SENTINEL_WINDOW (default 1d). Trashes checkpoints older than QUOIN_CLEANUP_CKPT_WINDOW (default 30d). Auto-fires as the first sub-block of Step 1.5 in /checkpoint (default-on, --no-cleanup opt-out). Standalone: /cleanup [--dry-run]. Recovery via manual mv from .workflow_artifacts/memory/trash/<date>/ — NOT /sleep --restore."
+description: "Trash-moves stale sentinels and old checkpoints into a recoverable archive (.workflow_artifacts/memory/trash/). Use for: /cleanup [--dry-run]; auto-fires from /checkpoint unless --no-cleanup. Recovery is manual mv — NOT /sleep --restore."
 model: haiku
 ---
 

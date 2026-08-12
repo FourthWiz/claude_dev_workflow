@@ -1,6 +1,6 @@
 ---
 name: sleep
-description: "Memory consolidation skill — scans daily insights and session files, promotes patterns to lessons-learned.md, soft-forgets stale entries to forgotten/. Auto-invoked by /end_of_day as its final step. Standalone: /sleep [--dry-run] [--quiet-forget] [--escalate] [--skip-sleep] [--restore <pattern>] [--purge --older-than 90d]."
+description: "Memory consolidation: scans daily insights and session files, promotes patterns to lessons-learned.md, soft-forgets stale entries to forgotten/. Use for: /sleep [--dry-run] [--restore <pattern>] [--purge]; auto-invoked by /end_of_day as its final step."
 model: haiku
 ---
 
@@ -197,7 +197,7 @@ The `--patterns` flag is always passed (see Step 2). The loader no-ops on a miss
 
 ## Importance scoring
 
-At session start, read sleep config: try `__QUOIN_HOME__/memory/sleep-signals.yaml` first; if absent, read the `sleep_importance_signals` YAML block from `__QUOIN_HOME__/CLAUDE.md`; if missing, use hardcoded defaults. Emit `[sleep: config not found; using hardcoded defaults]` only when falling back to hardcoded.
+At session start, read sleep config: try `__QUOIN_HOME__/memory/sleep-signals.yaml` first; if missing, use hardcoded defaults (the historical CLAUDE.md-embedded fallback leg was dropped under the slim CLAUDE.md variant, IVG-164 stage 1 — sleep-signals.yaml is always deployed alongside it). Emit `[sleep: config not found; using hardcoded defaults]` only when falling back to hardcoded.
 
 For each candidate entry, compute:
 - `promote_score` — sum of matched promote signal weights
@@ -227,7 +227,7 @@ Also check whether dry-run mode should be forced: read `__QUOIN_HOME__/memory/sl
 
 ### Step 1: Read config
 
-At session start, read sleep config: try `__QUOIN_HOME__/memory/sleep-signals.yaml` first; if absent, read the `sleep_importance_signals` YAML block from `__QUOIN_HOME__/CLAUDE.md`; if missing, use hardcoded defaults. Emit `[sleep: config not found; using hardcoded defaults]` only when falling back to hardcoded.
+At session start, read sleep config: try `__QUOIN_HOME__/memory/sleep-signals.yaml` first; if missing, use hardcoded defaults (the historical CLAUDE.md-embedded fallback leg was dropped under the slim CLAUDE.md variant, IVG-164 stage 1 — sleep-signals.yaml is always deployed alongside it). Emit `[sleep: config not found; using hardcoded defaults]` only when falling back to hardcoded.
 
 ### Step 2: Run sleep_score.py
 

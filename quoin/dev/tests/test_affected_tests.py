@@ -233,6 +233,126 @@ class TestIvg92SpecialCaseMapping:
         assert "CLAUDE.md" in ignored, f"bare CLAUDE.md should be in ignored, got {ignored}"
         assert not unmatched
 
+    def test_claude_md_triggers_build_claude_slim(self):
+        """quoin/CLAUDE.md -> test_build_claude_slim.py is ALSO in selectors (IVG-164 T-05).
+
+        Duplicate-key-safe: this ADDS to the existing size-ceiling selector
+        for quoin/CLAUDE.md rather than displacing it.
+        """
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["quoin/CLAUDE.md"], _REPO_ROOT
+        )
+        assert any("test_build_claude_slim.py" in s for s in selectors), (
+            f"expected test_build_claude_slim.py in selectors, got {selectors}"
+        )
+        assert any("test_claude_md_size_ceiling.py" in s for s in selectors), (
+            f"quoin/CLAUDE.md row should still also select test_claude_md_size_ceiling.py, got {selectors}"
+        )
+        assert not ignored
+        assert not unmatched
+
+    def test_claude_slim_md_triggers_build_claude_slim(self):
+        """quoin/CLAUDE.slim.md -> test_build_claude_slim.py is in selectors (IVG-164 T-05)."""
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["quoin/CLAUDE.slim.md"], _REPO_ROOT
+        )
+        assert any("test_build_claude_slim.py" in s for s in selectors), (
+            f"expected test_build_claude_slim.py in selectors, got {selectors}"
+        )
+        assert not ignored
+        assert not unmatched
+
+    def test_workflow_catalog_triggers_build_claude_slim(self):
+        """quoin/memory/workflow-catalog.md -> test_build_claude_slim.py is in selectors (IVG-164 T-05)."""
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["quoin/memory/workflow-catalog.md"], _REPO_ROOT
+        )
+        assert any("test_build_claude_slim.py" in s for s in selectors), (
+            f"expected test_build_claude_slim.py in selectors, got {selectors}"
+        )
+        assert not ignored
+        assert not unmatched
+
+    def test_bare_claude_slim_md_does_not_match(self):
+        """Bare 'CLAUDE.slim.md' (no quoin/ parent) must NOT trigger any selector.
+
+        Exercises the posix == entry OR posix.endswith("/" + entry) guard for
+        the new row, mirroring test_bare_claude_md_does_not_match above.
+        """
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["CLAUDE.slim.md"], _REPO_ROOT
+        )
+        assert not selectors, (
+            f"bare CLAUDE.slim.md should not map to any selector, got {selectors}"
+        )
+        assert "CLAUDE.slim.md" in ignored, f"bare CLAUDE.slim.md should be in ignored, got {ignored}"
+        assert not unmatched
+
+    # -- review-1.md MAJOR 2: citation sweep selectable under affected-area gating --
+
+    def test_claude_md_triggers_citation_sweep(self):
+        """quoin/CLAUDE.md -> test_claude_md_citations.py is ALSO in selectors.
+
+        Duplicate-key-safe: ADDS to the existing size-ceiling + build-slim
+        selectors for quoin/CLAUDE.md rather than displacing them.
+        """
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["quoin/CLAUDE.md"], _REPO_ROOT
+        )
+        assert any("test_claude_md_citations.py" in s for s in selectors), (
+            f"expected test_claude_md_citations.py in selectors, got {selectors}"
+        )
+        assert any("test_build_claude_slim.py" in s for s in selectors), (
+            f"quoin/CLAUDE.md row should still also select test_build_claude_slim.py, got {selectors}"
+        )
+        assert any("test_claude_md_size_ceiling.py" in s for s in selectors), (
+            f"quoin/CLAUDE.md row should still also select test_claude_md_size_ceiling.py, got {selectors}"
+        )
+        assert not ignored
+        assert not unmatched
+
+    def test_workflow_catalog_triggers_citation_sweep(self):
+        """quoin/memory/workflow-catalog.md -> test_claude_md_citations.py is ALSO
+        in selectors, in addition to test_build_claude_slim.py."""
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["quoin/memory/workflow-catalog.md"], _REPO_ROOT
+        )
+        assert any("test_claude_md_citations.py" in s for s in selectors), (
+            f"expected test_claude_md_citations.py in selectors, got {selectors}"
+        )
+        assert any("test_build_claude_slim.py" in s for s in selectors), (
+            f"workflow-catalog.md row should still also select test_build_claude_slim.py, got {selectors}"
+        )
+        assert not ignored
+        assert not unmatched
+
+    def test_citation_fixture_triggers_citation_sweep(self):
+        """The citation-disposition fixture .json -> test_claude_md_citations.py
+        is in selectors (a fixture edit alone must re-run the sweep)."""
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["quoin/dev/tests/fixtures/claude_md_citation_dispositions.json"], _REPO_ROOT
+        )
+        assert any("test_claude_md_citations.py" in s for s in selectors), (
+            f"expected test_claude_md_citations.py in selectors, got {selectors}"
+        )
+        assert not ignored
+        assert not unmatched
+
+    def test_skill_md_still_not_selectable_documented_residual_gap(self):
+        """Regression guard for the documented residual gap (review-1.md MAJOR 2):
+        an adapter SKILL.md edit — one of the citation sweep's three in-scope
+        corpora — still has no _DOCS_TO_TESTS row and falls through to ignored.
+        Mirrors test_unrelated_skill_md_still_ignored; kept as a separate,
+        explicitly-named test so the residual gap has its own regression anchor."""
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["quoin/adapters/claude/skills/gate/SKILL.md"], _REPO_ROOT
+        )
+        assert not any("test_claude_md_citations.py" in s for s in selectors), (
+            f"SKILL.md is a documented residual gap, not (yet) selectable; got {selectors}"
+        )
+        assert "quoin/adapters/claude/skills/gate/SKILL.md" in ignored
+        assert not unmatched
+
 
 # ---------------------------------------------------------------------------
 # resolve_repo
