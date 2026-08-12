@@ -1038,15 +1038,18 @@ def check_slim_outputs_fresh(source_dir: pathlib.Path) -> list[str]:
     slim_output = source_dir / "CLAUDE.slim.md"
     catalog_output = source_dir / "memory" / "workflow-catalog.md"
 
-    # review-1 minor: a missing/unparsable script, a renamed symbol, or an absent
-    # CLAUDE.md must surface as a clean stale entry (the caller aborts with the
-    # regenerate-and-commit message), never as an uncaught traceback.
+    # review-1 minor (widened per round-2 minor 3): a missing/unparsable script,
+    # a renamed symbol, or an absent CLAUDE.md must surface as a clean stale
+    # entry (the caller aborts with the regenerate-and-commit message), never as
+    # an uncaught traceback. runpy.run_path EXECUTES the target module, so the
+    # exception surface is arbitrary user code — module-level ImportError,
+    # NameError, ValueError, even SystemExit — not a known API. Catch everything.
     try:
         mod_globals = runpy.run_path(str(script), run_name="quoin_slim_staleness_check")
         build_outputs = mod_globals["build_outputs"]
         classification_error = mod_globals["ClassificationError"]
         source_text = claude_md.read_text(encoding="utf-8")
-    except (OSError, KeyError, SyntaxError) as exc:
+    except (Exception, SystemExit) as exc:
         return [f"{script} (staleness check unavailable: {type(exc).__name__}: {exc})"]
     try:
         slim_text, catalog_text = build_outputs(source_text)

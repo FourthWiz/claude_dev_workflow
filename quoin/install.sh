@@ -43,7 +43,14 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
     --use-pip)      USE_PIP=1 ;;
     --force-merge)  FORCE_MERGE_FLAG="--force-merge" ;;
     --allow-hook-merge) ALLOW_HOOK_MERGE_FLAG="--allow-hook-merge" ;;
-    --scope=*)      SCOPE_FLAG="--scope ${arg#--scope=}" ;;
+    --scope=*)
+      if [[ -n "${arg#--scope=}" ]]; then
+        SCOPE_FLAG="--scope ${arg#--scope=}"
+      else
+        echo "quoin: --scope requires a value (user or project[:DIR])" >&2
+        exit 2
+      fi
+      ;;
     --scope)
       i=$(( i + 1 ))
       if [[ $i -lt ${#ARGS[@]} ]]; then

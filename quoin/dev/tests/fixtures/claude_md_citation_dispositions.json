@@ -18,7 +18,7 @@
       "line_hash": "f79d29586a7f1ba47610a98677757f3f26249e10118f40b2b7dbd3abdd97a3f1",
       "heading_disposition": "non-citation",
       "path_form": "none",
-      "note": "generic 'cache entry format defined in CLAUDE.md' — no heading quoted."
+      "note": "generic 'cache entry format defined in CLAUDE.md' \u2014 no heading quoted."
     },
     {
       "file": "quoin/adapters/claude/skills/architect/SKILL.md",
@@ -57,7 +57,7 @@
       "line_hash": "d82fb97c21368d2cc5d04c6183e0007f0168b5add0efb440106b887be33046e0",
       "heading_disposition": "non-citation",
       "path_form": "none",
-      "note": "generic 'cache entry format defined in CLAUDE.md' — no heading quoted."
+      "note": "generic 'cache entry format defined in CLAUDE.md' \u2014 no heading quoted."
     },
     {
       "file": "quoin/adapters/claude/skills/discover/SKILL.md",
@@ -80,7 +80,7 @@
       "line_hash": "acbaf4b94c64769fbed053e100ade087505a18d96853c182c5ccbbb11a451d5f",
       "heading_disposition": "non-citation",
       "path_form": "none",
-      "note": "template placeholder '<relevant SKILL.md or CLAUDE.md section>' — not a specific heading."
+      "note": "template placeholder '<relevant SKILL.md or CLAUDE.md section>' \u2014 not a specific heading."
     },
     {
       "file": "quoin/adapters/claude/skills/expand/SKILL.md",
@@ -109,7 +109,7 @@
       "line_hash": "8e40933d215b38e61156c945570108726844ad2e350735eba947d0cc1fed2e50",
       "heading_disposition": "non-citation",
       "path_form": "none",
-      "note": "verbatim quote of deploy_drift_check.py's own 'not covered' tool-output string, which lists CLAUDE.md as a literal category name — not a content pointer."
+      "note": "verbatim quote of deploy_drift_check.py's own 'not covered' tool-output string, which lists CLAUDE.md as a literal category name \u2014 not a content pointer."
     },
     {
       "file": "quoin/adapters/claude/skills/gate/SKILL.md",
@@ -152,21 +152,21 @@
       "line_hash": "dd421c4e3e9ab708e1e0506d048cd823c6450bc0bf2a4af7563feb45ae6324f1",
       "heading_disposition": "non-citation",
       "path_form": "project_relative",
-      "note": "describes the target project's own CLAUDE.md — same as init_workflow:150."
+      "note": "describes the target project's own CLAUDE.md \u2014 same as init_workflow:150."
     },
     {
       "file": "quoin/adapters/claude/skills/init_workflow/SKILL.md",
       "line_hash": "1e6dbfdf653ba1afba534433b55ac44f999eb1c386ac74230cec5eaad6f2c2b1",
       "heading_disposition": "non-citation",
       "path_form": "project_relative",
-      "note": "describes the target project's own CLAUDE.md — same as init_workflow:150."
+      "note": "describes the target project's own CLAUDE.md \u2014 same as init_workflow:150."
     },
     {
       "file": "quoin/adapters/claude/skills/init_workflow/SKILL.md",
       "line_hash": "f68f51b91d5e6ee056a37f66e071721584b402ac74131b883dca90ce39b22bc5",
       "heading_disposition": "non-citation",
       "path_form": "project_relative",
-      "note": "describes the target project's own CLAUDE.md — same as init_workflow:150."
+      "note": "describes the target project's own CLAUDE.md \u2014 same as init_workflow:150."
     },
     {
       "file": "quoin/adapters/claude/skills/init_workflow/SKILL.md",
@@ -180,7 +180,7 @@
       "line_hash": "e4702f2836016974bcf16976a68eae59d355d47250055aa3c4be86cdbe9b7a2e",
       "heading_disposition": "non-citation",
       "path_form": "none",
-      "note": "template placeholder '<which SKILL.md file or CLAUDE.md section>' — not a specific heading."
+      "note": "template placeholder '<which SKILL.md file or CLAUDE.md section>' \u2014 not a specific heading."
     },
     {
       "file": "quoin/adapters/claude/skills/plan/SKILL.md",
@@ -195,7 +195,7 @@
       "line_hash": "b770526b4d0aec1b489bff17acbfc4a24ba19941aa87fbdf79712dc8325ab64a",
       "heading_disposition": "known-exception",
       "path_form": "repo_source",
-      "note": "names 'Session state tracking' (drop row) — shared fallback boilerplate.",
+      "note": "names 'Session state tracking' (drop row) \u2014 shared fallback boilerplate.",
       "owner": "follow-up"
     },
     {
@@ -203,7 +203,7 @@
       "line_hash": "493028749c4404ab1a99a37af25dd2aa69c3d4f3ba1e1a21dc95355906579441",
       "heading_disposition": "known-exception",
       "path_form": "repo_source",
-      "note": "generic 'cost tracking rules in CLAUDE.md' — 'Cost tracking' is a drop row.",
+      "note": "generic 'cost tracking rules in CLAUDE.md' \u2014 'Cost tracking' is a drop row.",
       "owner": "follow-up"
     },
     {
@@ -211,7 +211,7 @@
       "line_hash": "b0191dd521c53f6b5781c50cf2f4caf06d5994146941f60f90a813122c3bad5b",
       "heading_disposition": "known-exception",
       "path_form": "repo_source",
-      "note": "names 'Session state tracking' (drop row) — shared fallback boilerplate.",
+      "note": "names 'Session state tracking' (drop row) \u2014 shared fallback boilerplate.",
       "owner": "follow-up"
     },
     {
@@ -219,7 +219,7 @@
       "line_hash": "44642f82874848eeed3584b22968620806709f83eb8e5f51eb907a445fb2be28",
       "heading_disposition": "resolves",
       "path_form": "repo_source",
-      "note": "quotes '## Working Rules' — a keep row, survives in CLAUDE.slim.md verbatim.",
+      "note": "quotes '## Working Rules' \u2014 a keep row, survives in CLAUDE.slim.md verbatim.",
       "cited_heading": "## Working Rules"
     },
     {
@@ -227,7 +227,7 @@
       "line_hash": "5650a631c986c582df603a0a2ca2a6b0de3b0a6c6c87e21c6a22de465202964a",
       "heading_disposition": "known-exception",
       "path_form": "repo_source",
-      "note": "names 'Session state tracking' (drop row) — shared fallback boilerplate.",
+      "note": "names 'Session state tracking' (drop row) \u2014 shared fallback boilerplate.",
       "owner": "follow-up"
     },
     {
@@ -235,7 +235,7 @@
       "line_hash": "5650a631c986c582df603a0a2ca2a6b0de3b0a6c6c87e21c6a22de465202964a",
       "heading_disposition": "known-exception",
       "path_form": "repo_source",
-      "note": "names 'Session state tracking' (drop row) — shared fallback boilerplate.",
+      "note": "names 'Session state tracking' (drop row) \u2014 shared fallback boilerplate.",
       "owner": "follow-up"
     },
     {
@@ -243,7 +243,7 @@
       "line_hash": "5a8b3581310b50c3d914101b7df70b48e9e9735992d194229cd171e3df7db4c0",
       "heading_disposition": "resolves",
       "path_form": "repo_source",
-      "note": "'the critical rule in CLAUDE.md' refers to the never-auto-invoke rule, now in '### Explicit-command rule' — a keep row.",
+      "note": "'the critical rule in CLAUDE.md' refers to the never-auto-invoke rule, now in '### Explicit-command rule' \u2014 a keep row.",
       "cited_heading": "### Explicit-command rule"
     },
     {
@@ -251,14 +251,14 @@
       "line_hash": "b7c92d88864fb5acbc12e1e1d8b6a43ed58b9635ee6c9ca4bee0e23c3752dd7c",
       "heading_disposition": "non-citation",
       "path_form": "repo_source",
-      "note": "generic 'Read CLAUDE.md for shared workflow rules' — whole-file instruction, valid under either variant."
+      "note": "generic 'Read CLAUDE.md for shared workflow rules' \u2014 whole-file instruction, valid under either variant."
     },
     {
       "file": "quoin/adapters/claude/skills/run/SKILL.md",
       "line_hash": "362647eec2531e255b0305bf945fd71d060c92317fba33c8bec528fd0dc95cd9",
       "heading_disposition": "known-exception",
       "path_form": "repo_source",
-      "note": "generic 'cost tracking rules in CLAUDE.md' — 'Cost tracking' is a drop row.",
+      "note": "generic 'cost tracking rules in CLAUDE.md' \u2014 'Cost tracking' is a drop row.",
       "owner": "follow-up"
     },
     {
@@ -266,7 +266,7 @@
       "line_hash": "142923d22bc567d29f15320ab53389cf773c7ee2e4b15cab806b0a8beae9e0df",
       "heading_disposition": "resolves",
       "path_form": "repo_source",
-      "note": "'CLAUDE.md's workflow sequence' refers to '## Workflow sequence' — a keep row.",
+      "note": "'CLAUDE.md's workflow sequence' refers to '## Workflow sequence' \u2014 a keep row.",
       "cited_heading": "## Workflow sequence"
     },
     {
@@ -274,7 +274,7 @@
       "line_hash": "b0191dd521c53f6b5781c50cf2f4caf06d5994146941f60f90a813122c3bad5b",
       "heading_disposition": "known-exception",
       "path_form": "repo_source",
-      "note": "names 'Session state tracking' (drop row) — shared fallback boilerplate.",
+      "note": "names 'Session state tracking' (drop row) \u2014 shared fallback boilerplate.",
       "owner": "follow-up"
     },
     {
@@ -311,7 +311,7 @@
       "line_hash": "6d8bb0fbc707c81c0701e49cb0ee9bfc73ba652a6b51d0d22394635964358c22",
       "heading_disposition": "resolves",
       "path_form": "repo_source",
-      "note": "'Hard rule in CLAUDE.md — explicit invocation only' refers to '### Explicit-command rule' — a keep row.",
+      "note": "'Hard rule in CLAUDE.md \u2014 explicit invocation only' refers to '### Explicit-command rule' \u2014 a keep row.",
       "cited_heading": "### Explicit-command rule"
     },
     {
@@ -327,7 +327,7 @@
       "line_hash": "cbde285255fcb3feaf0debb4d2ff6ad472fbc3ac442aaba87a456d5b8f56903f",
       "heading_disposition": "known-exception",
       "path_form": "repo_source",
-      "note": "generic 'cost tracking rules in CLAUDE.md' — 'Cost tracking' is a drop row.",
+      "note": "generic 'cost tracking rules in CLAUDE.md' \u2014 'Cost tracking' is a drop row.",
       "owner": "follow-up"
     },
     {
@@ -335,7 +335,7 @@
       "line_hash": "90ca324b8e09c13bfda492181f7838362f45e46c47897aa0045a8cec183bb7f8",
       "heading_disposition": "resolves",
       "path_form": "repo_source",
-      "note": "'Workflow sequence' section named — a keep row.",
+      "note": "'Workflow sequence' section named \u2014 a keep row.",
       "cited_heading": "## Workflow sequence"
     },
     {
@@ -343,7 +343,7 @@
       "line_hash": "38e9813bb2ff0081e1d40b20b5320e9b8aad54dc52f08fb303d5a57d015f5b98",
       "heading_disposition": "non-citation",
       "path_form": "repo_source",
-      "note": "generic 'CLAUDE.md now carries only a short pointer back to' — no specific heading named."
+      "note": "generic 'CLAUDE.md now carries only a short pointer back to' \u2014 no specific heading named."
     },
     {
       "file": "quoin/memory/checkpoint-spec.md",
@@ -436,7 +436,7 @@
       "line_hash": "1ab39969a27129be5cf9b5cf84a8911801f0a4bb66a752b1f02d408b536a1c36",
       "heading_disposition": "non-citation",
       "path_form": "repo_source",
-      "note": "inherited verbatim copy of CLAUDE.md's own 'Session independence' drop-row prose ('reads CLAUDE.md, lessons-learned.md, ...') — generic, no specific heading pointer."
+      "note": "inherited verbatim copy of CLAUDE.md's own 'Session independence' drop-row prose ('reads CLAUDE.md, lessons-learned.md, ...') \u2014 generic, no specific heading pointer."
     },
     {
       "file": "quoin/scripts/analyze_cost_ledger.py",
@@ -590,7 +590,7 @@
       "line_hash": "aa3ee9c4eb98a0674f1960b370426e3fcc61674f82a0ac27f20bacf14e9c1f52",
       "heading_disposition": "known-exception",
       "path_form": "quoin_home_claude_md",
-      "note": "load_config()'s CLAUDE.md fallback leg (docstring) — genuine section parser for the now-drop '### /sleep importance signals' heading; ALREADY INERT (CLAUDE.md contains zero ```yaml``` fences, verified live), superseded at the SKILL.md layer by sleep:200/230's fix; not changed in this stage per the plan's explicit scope.",
+      "note": "load_config()'s CLAUDE.md fallback leg (docstring) \u2014 genuine section parser for the now-drop '### /sleep importance signals' heading; ALREADY INERT (CLAUDE.md contains zero ```yaml``` fences, verified live), superseded at the SKILL.md layer by sleep:200/230's fix; not changed in this stage per the plan's explicit scope.",
       "owner": "none (already inert)"
     },
     {
@@ -646,6 +646,13 @@
       "heading_disposition": "non-citation",
       "path_form": "repo_source",
       "note": "deployed-copy guard comment explaining why the script aborts when quoin/CLAUDE.md is absent at the inferred repo root (review round-1 minor fix)."
+    },
+    {
+      "file": "quoin/scripts/build_claude_slim.py",
+      "line_hash": "f7c7766a72e099cfbf6ae343f8daeb1fdb04cfb6e4de14a79f1e532910477cda",
+      "heading_disposition": "non-citation",
+      "path_form": "repo_source",
+      "note": "write-mode guard comment describing the round-1 source-absence hazard (review round-2 minor 2 fix)."
     }
   ]
 }

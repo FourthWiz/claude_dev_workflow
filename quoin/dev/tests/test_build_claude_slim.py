@@ -359,3 +359,61 @@ def test_check_mode_exits_7_on_one_character_edit(tmp_path):
         timeout=60,
     )
     assert result.returncode == 7, result.stdout + result.stderr
+
+
+def test_deployed_copy_refuses_to_write_even_when_source_exists(tmp_path):
+    """Round-2 minor 2 regression: a DEPLOYED copy (fake ~/.claude/scripts/)
+    whose inferred repo root happens to contain quoin/CLAUDE.md must refuse the
+    default write mode instead of silently overwriting the checkout's generated
+    files. The old guard tested only source ABSENCE, so this scenario wrote."""
+    fake_home = tmp_path / "home"
+    deployed_scripts = fake_home / ".claude" / "scripts"
+    deployed_scripts.mkdir(parents=True)
+    deployed_script = deployed_scripts / "build_claude_slim.py"
+    deployed_script.write_text(
+        (_SCRIPTS / "build_claude_slim.py").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    # Fake checkout under the inferred repo root ($HOME): quoin/CLAUDE.md exists.
+    fake_source_root = fake_home / "quoin"
+    (fake_source_root / "memory").mkdir(parents=True)
+    (fake_source_root / "CLAUDE.md").write_text(
+        SOURCE.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    sentinel = "PRE-EXISTING CONTENT MUST SURVIVE\n"
+    (fake_source_root / "CLAUDE.slim.md").write_text(sentinel, encoding="utf-8")
+    (fake_source_root / "memory" / "workflow-catalog.md").write_text(
+        sentinel, encoding="utf-8"
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(deployed_script)],
+        cwd=str(fake_home),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "refusing to write" in result.stderr, result.stderr
+    assert (fake_source_root / "CLAUDE.slim.md").read_text(encoding="utf-8") == sentinel
+    assert (
+        fake_source_root / "memory" / "workflow-catalog.md"
+    ).read_text(encoding="utf-8") == sentinel
+
+
+def test_placeholder_constant_survives_install_substitution():
+    """Round-2 minor 2 (second half): the script's own placeholder constant must
+    not literally contain the __QUOIN_HOME__ token as one contiguous source
+    literal in its assignment, or the installer's deploy-time substitution
+    rewrites the deployed copy's constant into an absolute home path (which then
+    leaks into any output the deployed copy produces)."""
+    text = (_SCRIPTS / "build_claude_slim.py").read_text(encoding="utf-8")
+    assign_lines = [
+        l for l in text.splitlines() if l.startswith("_QUOIN_HOME_PLACEHOLDER =")
+    ]
+    assert len(assign_lines) == 1, assign_lines
+    assert "__QUOIN_HOME__" not in assign_lines[0], (
+        "the placeholder-constant assignment carries the contiguous token; "
+        "deploy substitution would rewrite it — keep it split across adjacent "
+        "string literals"
+    )

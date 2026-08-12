@@ -1073,6 +1073,32 @@ def main(argv: list[str] | None = None) -> int:
     # HARD GUARD: this line is only reachable when selectors is non-empty.
     assert selectors, "BUG: pytest invocation reached with empty selectors"
 
+    # review round-2 minor 17: `sys.executable -m pytest` with pytest not
+    # importable exits rc=1 ("No module named pytest"), which the classifier
+    # below would misreport as affected-red — an environment fault presented as
+    # a red affected area. pytest runs in THIS interpreter (sys.executable), so
+    # find_spec here is authoritative; surface the same environment-fault shape
+    # as a missing pytest binary (exit 3, exit_reason="pytest-missing").
+    import importlib.util
+
+    if importlib.util.find_spec("pytest") is None:
+        sel = Selection(
+            changed=changed,
+            selectors=selectors,
+            unmatched_sources=unmatched_sources,
+            ignored=ignored,
+            ran_pytest=False,
+            pytest_returncode=None,
+            exit_reason="pytest-missing",
+            unmatched_warning=bool(unmatched_sources and args.allow_unmatched),
+            noncollectable=noncollectable,
+        )
+        if fmt == "text":
+            print(_format_text(sel))
+        else:
+            print(json.dumps(sel.to_dict(), indent=2))
+        return 3
+
     try:
         proc = subprocess.run(
             [sys.executable, "-m", "pytest", *selectors, *args.pytest_args],

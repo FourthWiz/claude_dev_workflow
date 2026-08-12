@@ -50,7 +50,11 @@ SOURCE = _SOURCE_ROOT / "CLAUDE.md"
 SLIM_OUTPUT = _SOURCE_ROOT / "CLAUDE.slim.md"
 CATALOG_OUTPUT = _SOURCE_ROOT / "memory" / "workflow-catalog.md"
 
-_QUOIN_HOME_PLACEHOLDER = "__QUOIN_HOME__"
+# Assembled from two adjacent literals so the installer's deploy-time
+# placeholder substitution can never rewrite this constant in a deployed copy
+# (review round-2 minor 2): the generated outputs must carry the literal
+# placeholder token, never an absolute home path baked in at install time.
+_QUOIN_HOME_PLACEHOLDER = "__QUOIN" "_HOME__"
 
 # --- Pinned generated headers (T-04, plan MAJ-2 r3 / round 4) ---------------
 # HTML-comment form (never parseable as a markdown heading), zero
@@ -254,11 +258,12 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument("--census", action="store_true", help="print the mechanical heading/byte table")
     args = parser.parse_args(argv)
 
-    # Deployed-copy guard (review round-1 minor): the installed copy at
+    # Deployed-copy read guard (review round-1 minor): the installed copy at
     # ~/.claude/scripts/ resolves _REPO_ROOT to $HOME, where quoin/CLAUDE.md
-    # normally does not exist. Abort cleanly instead of raising — and never
-    # touch files under a repo root this script only inferred from its own
-    # location. This is a repo-authoring tool; run it from the quoin checkout.
+    # normally does not exist. Abort cleanly instead of raising. NOTE: this
+    # absence test alone does NOT protect a real checkout at $HOME/quoin from
+    # being overwritten — that protection is the positive write-mode guard
+    # further below (round-2 minor 2).
     if not SOURCE.exists():
         print(
             f"build_claude_slim: source not found at {SOURCE} — this script must "
@@ -309,6 +314,26 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 7
         return 0
+
+    # POSITIVE write-mode guard (review round-2 minor 2): the round-1
+    # source-absence test passed whenever <inferred-root>/quoin/CLAUDE.md
+    # happened to exist — e.g. the deployed copy at ~/.claude/scripts/ with a
+    # real checkout at ~/quoin — and then silently overwrote that checkout's
+    # generated files. Before WRITING (read-only modes above are unaffected),
+    # require positive evidence that this file IS the checkout's own copy:
+    # samefile with <repo>/quoin/scripts/build_claude_slim.py. A deployed copy
+    # can never satisfy this, regardless of what exists under the inferred root.
+    expected_self = _SOURCE_ROOT / "scripts" / "build_claude_slim.py"
+    self_path = Path(__file__).resolve()
+    if not (expected_self.exists() and self_path.samefile(expected_self)):
+        print(
+            f"build_claude_slim: refusing to write — this copy at {self_path} "
+            f"is not the checkout copy at {expected_self} (deployed copies "
+            "must never overwrite a checkout's generated files). Nothing was "
+            "written.",
+            file=sys.stderr,
+        )
+        return 2
 
     SLIM_OUTPUT.write_text(slim_text, encoding="utf-8")
     CATALOG_OUTPUT.write_text(catalog_text, encoding="utf-8")
