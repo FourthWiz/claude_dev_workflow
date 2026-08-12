@@ -639,6 +639,13 @@
       "heading_disposition": "non-citation",
       "path_form": "repo_source",
       "note": "--claude-md CLI argument help text, describing search order generically (mentions sleep-signals.yaml path explicitly, not a CLAUDE.md heading pointer)."
+    },
+    {
+      "file": "quoin/scripts/build_claude_slim.py",
+      "line_hash": "9c48a5baf0be3d703e50e4c446217d9809b0a455076683ce518f93b5238d4d7a",
+      "heading_disposition": "non-citation",
+      "path_form": "repo_source",
+      "note": "deployed-copy guard comment explaining why the script aborts when quoin/CLAUDE.md is absent at the inferred repo root (review round-1 minor fix)."
     }
   ]
 }
