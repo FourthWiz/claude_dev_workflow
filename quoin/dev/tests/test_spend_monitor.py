@@ -303,6 +303,56 @@ def test_ledger_all_unknown_model_sets_by_task_partial(sm, tmp_path):
     assert snap.by_task_partial is True
 
 
+def test_ledger_mixed_model_keeps_priced_portion_sets_partial(sm, tmp_path):
+    """IVG-249 fix-round F-02: a today-dated ledger row whose JSONL mixes a
+    priced (known-model) row with an unknown-model row must KEEP the priced
+    portion in by_task/by_phase (never silently drop it) AND set
+    by_task_partial True — aligning scan_ledgers_today's legacy branch with
+    aggregate_today's today-pane policy, which already keeps the priced
+    portion of a mixed session. This is the round-3 critic's pre-declared
+    untested mixed-model case (review-1.md F-02)."""
+    home = tmp_path / "home"
+    project_root = tmp_path / "project"
+    proj_hash_str = sm.project_hash(str(project_root))
+
+    proj_dir = home / ".claude" / "projects" / proj_hash_str
+    proj_dir.mkdir(parents=True)
+    test_uuid = "44444444-5555-6666-7777-888888888888"
+    jsonl_path = proj_dir / f"{test_uuid}.jsonl"
+    lines = [
+        _make_row("claude-opus-4-7", 100, 50, _ts_today()),
+        _make_row("claude-imaginary-9", 200, 100, _ts_today()),
+    ]
+    jsonl_path.write_text("\n".join(lines) + "\n")
+
+    artifacts_dir = project_root / ".workflow_artifacts" / "mixed-model-task"
+    artifacts_dir.mkdir(parents=True)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    ledger = artifacts_dir / "cost-ledger.md"
+    ledger.write_text(
+        f"# Cost Ledger\nUUID | DATE | PHASE | MODEL | task | NOTE\n"
+        f"{test_uuid} | {today_str} | implement | opus | task | \"mixed model\"\n"
+    )
+
+    prices = sm.PRICES
+    expected_opus_usd = (
+        100 * prices["claude-opus-4-7"]["input"]
+        + 50 * prices["claude-opus-4-7"]["output"]
+    ) / 1_000_000
+
+    snap = sm.aggregate_today(home=home, project_root=project_root)
+    assert "mixed-model-task" in snap.by_task, (
+        f"mixed-model session's priced portion must NOT be dropped: {snap.by_task}"
+    )
+    assert abs(snap.by_task["mixed-model-task"] - expected_opus_usd) < 1e-9, (
+        f"by_task should hold ONLY the priced (opus) portion, "
+        f"got {snap.by_task['mixed-model-task']}, expected {expected_opus_usd}"
+    )
+    assert snap.by_task_partial is True, (
+        "mixed-model session must still set by_task_partial (unknown model present)"
+    )
+
+
 # ---------------------------------------------------------------------------
 # T-08: aggregate_today tests
 # ---------------------------------------------------------------------------

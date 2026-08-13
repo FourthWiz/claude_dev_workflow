@@ -315,9 +315,13 @@ def scan_ledgers_today(
     (IVG-249 T-05), but by_task_partial's meaning now additionally covers an
     unpriceable-but-present session (parse_session_today's priceable=False,
     i.e. at least one unknown model was seen in-window) — previously such a
-    session silently contributed nothing without setting the flag. A
-    priceable-but-zero result (including the routine empty-window case)
-    still contributes nothing and does NOT set the flag.
+    session silently contributed nothing without setting the flag. As of the
+    IVG-249 fix round (F-02), a mixed (priced + unknown-model) session KEEPS
+    its priced portion in by_task/by_phase while still setting the flag —
+    aligned with aggregate_today's today-pane policy of labeling loudly
+    rather than silently dropping. A priceable-but-zero result (including
+    the routine empty-window case) still contributes nothing and does NOT
+    set the flag.
     by_task: dict[str, float] — task_name -> usd
     by_phase: dict[str, float] — phase -> usd (flat, D-04)
     by_task_partial: bool — True if any rows had na-UUID or unresolvable JSONL.
@@ -390,12 +394,16 @@ def scan_ledgers_today(
                 result = parse_session_today(jsonl_path, day_start_utc, day_end_utc)
                 task_usd = sum(result["per_model_cost"].values())
                 if not result["priceable"]:
-                    # Unpriceable (unknown_models non-empty): never fold into a
-                    # silent $0 — label it instead (R2-MAJ-3). A priceable-but-
-                    # zero result (including the routine empty-window case)
-                    # keeps today's ordinary skip below, unflagged.
+                    # Unpriceable (unknown_models non-empty): label it (R2-MAJ-3)
+                    # AND keep any priced portion of a mixed (priced + unknown)
+                    # session rather than dropping it — mirrors aggregate_today's
+                    # today-pane policy, which already keeps the priced portion
+                    # here (IVG-249 fix-round F-02: label loudly, never silently
+                    # drop). A priceable-but-zero result (including the routine
+                    # empty-window case) keeps today's ordinary skip below,
+                    # unflagged.
                     by_task_partial = True
-                elif task_usd > 0:
+                if task_usd > 0:
                     by_task[task_name] = by_task.get(task_name, 0.0) + task_usd
                     phase = row.get("phase", "")
                     if phase:
