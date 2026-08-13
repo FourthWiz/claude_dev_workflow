@@ -209,6 +209,101 @@ def test_parse_session_today_empty_file(sm, tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# IVG-249 T-09: parse_session_today's additive unknown_models/priceable keys
+# ---------------------------------------------------------------------------
+
+def test_parse_session_today_returns_new_keys_priced_day(sm, fixture_home):
+    """A priced (all-known-model) fixture → unknown_models==[], priceable True."""
+    day_start, day_end = sm._local_day_bounds()
+    result = sm.parse_session_today(fixture_home["jsonl_path"], day_start, day_end)
+    assert "unknown_models" in result and "priceable" in result
+    assert result["unknown_models"] == [], f"got {result['unknown_models']}"
+    assert result["priceable"] is True
+
+
+def test_parse_session_today_unknown_model_not_priceable(sm, tmp_path):
+    """An unknown-model row seen in-window → unknown_models non-empty, priceable False."""
+    p = tmp_path / "unknown.jsonl"
+    p.write_text(_make_row("claude-imaginary-9", 100, 50, _ts_today()) + "\n")
+    day_start, day_end = sm._local_day_bounds()
+    result = sm.parse_session_today(p, day_start, day_end)
+    assert result["unknown_models"] == ["claude-imaginary-9"], f"got {result['unknown_models']}"
+    assert result["priceable"] is False
+
+
+def test_empty_in_window_stays_priceable_no_partial_flag(sm, tmp_path):
+    """R2-MAJ-3 regression: a today-dated ledger row whose JSONL exists but has
+    zero rows inside the local-day window (only a yesterday row) must NOT set
+    by_task_partial — priceable is True for this case (the routine empty-window
+    skip), distinct from the all-unknown-model case which DOES set the flag."""
+    home = tmp_path / "home"
+    project_root = tmp_path / "project"
+    proj_hash_str = sm.project_hash(str(project_root))
+
+    proj_dir = home / ".claude" / "projects" / proj_hash_str
+    proj_dir.mkdir(parents=True)
+    test_uuid = "22222222-3333-4444-5555-666666666666"
+    jsonl_path = proj_dir / f"{test_uuid}.jsonl"
+    # Only a YESTERDAY row — parse_session_today's per_model_cost is empty for
+    # today's window, but the row itself is a known, priceable model.
+    jsonl_path.write_text(_make_row("claude-opus-4-7", 500, 200, _ts_yesterday()) + "\n")
+
+    day_start, day_end = sm._local_day_bounds()
+    direct = sm.parse_session_today(jsonl_path, day_start, day_end)
+    assert direct["per_model_cost"] == {}, "expected empty in-window result"
+    assert direct["priceable"] is True, (
+        "empty-in-window result must stay priceable — no unknown model was seen"
+    )
+
+    artifacts_dir = project_root / ".workflow_artifacts" / "empty-window-task"
+    artifacts_dir.mkdir(parents=True)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    ledger = artifacts_dir / "cost-ledger.md"
+    ledger.write_text(
+        f"# Cost Ledger\nUUID | DATE | PHASE | MODEL | task | NOTE\n"
+        f"{test_uuid} | {today_str} | implement | opus | task | \"empty window\"\n"
+    )
+
+    snap = sm.aggregate_today(home=home, project_root=project_root)
+    assert "empty-window-task" not in snap.by_task, (
+        "priceable-but-zero session must not contribute a $0 by_task entry"
+    )
+    assert snap.by_task_partial is False, (
+        "the routine empty-window skip must NOT set by_task_partial"
+    )
+
+
+def test_ledger_all_unknown_model_sets_by_task_partial(sm, tmp_path):
+    """A today-dated ledger row whose JSONL is entirely unknown-model rows
+    must set by_task_partial True and contribute NOTHING to by_task (never a
+    silent $0) — distinct from the ordinary empty-window skip above."""
+    home = tmp_path / "home"
+    project_root = tmp_path / "project"
+    proj_hash_str = sm.project_hash(str(project_root))
+
+    proj_dir = home / ".claude" / "projects" / proj_hash_str
+    proj_dir.mkdir(parents=True)
+    test_uuid = "33333333-4444-5555-6666-777777777777"
+    jsonl_path = proj_dir / f"{test_uuid}.jsonl"
+    jsonl_path.write_text(_make_row("claude-imaginary-9", 100, 50, _ts_today()) + "\n")
+
+    artifacts_dir = project_root / ".workflow_artifacts" / "unknown-model-task"
+    artifacts_dir.mkdir(parents=True)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    ledger = artifacts_dir / "cost-ledger.md"
+    ledger.write_text(
+        f"# Cost Ledger\nUUID | DATE | PHASE | MODEL | task | NOTE\n"
+        f"{test_uuid} | {today_str} | implement | opus | task | \"unknown model\"\n"
+    )
+
+    snap = sm.aggregate_today(home=home, project_root=project_root)
+    assert "unknown-model-task" not in snap.by_task, (
+        f"all-unknown-model session must not contribute to by_task: {snap.by_task}"
+    )
+    assert snap.by_task_partial is True
+
+
+# ---------------------------------------------------------------------------
 # T-08: aggregate_today tests
 # ---------------------------------------------------------------------------
 
@@ -263,6 +358,35 @@ def test_aggregate_today_scope_project_label(sm, fixture_home):
 
 
 # ---------------------------------------------------------------------------
+# IVG-249 T-09 (CRIT-1): SpendSnapshot.today_partial + aggregate_today wiring
+# ---------------------------------------------------------------------------
+
+def test_spend_snapshot_today_partial_defaults_false(sm):
+    """SpendSnapshot() constructed with no args defaults today_partial=False."""
+    snap = sm.SpendSnapshot()
+    assert snap.today_partial is False
+
+
+def test_aggregate_today_priced_day_today_partial_false(sm, fixture_home):
+    """An all-known-model fixture day → today_partial stays False (unchanged)."""
+    snap = sm.aggregate_today(home=fixture_home["home"])
+    assert snap.today_partial is False
+
+
+def test_aggregate_today_sets_today_partial_true_on_unpriced_contribution(sm, tmp_path):
+    """A today-file containing an unknown-model row → today_partial True."""
+    home = tmp_path / "home"
+    proj_hash_str = sm.project_hash(str(tmp_path))
+    proj_dir = home / ".claude" / "projects" / proj_hash_str
+    proj_dir.mkdir(parents=True)
+    jsonl_path = proj_dir / "unknown-today.jsonl"
+    jsonl_path.write_text(_make_row("claude-imaginary-9", 100, 50, _ts_today()) + "\n")
+
+    snap = sm.aggregate_today(home=home)
+    assert snap.today_partial is True
+
+
+# ---------------------------------------------------------------------------
 # T-08: render_compact tests
 # ---------------------------------------------------------------------------
 
@@ -300,6 +424,31 @@ def test_render_compact_per_model_pct(sm, fixture_home):
     snap = sm.aggregate_today(home=fixture_home["home"])
     rendered = sm.render_compact(snap)
     assert "%" in rendered, f"No % in render:\n{rendered}"
+
+
+# ---------------------------------------------------------------------------
+# IVG-249 T-09 (CRIT-1 / R2-MAJ-2): render_compact today-line partial suffix
+# ---------------------------------------------------------------------------
+
+def test_render_compact_today_partial_suffix_present(sm):
+    """today_partial=True → today line carries the '(partial)' suffix, and
+    every rendered line still fits the width=38 truncation contract."""
+    snap = sm.SpendSnapshot(today_usd=4.21, today_partial=True)
+    rendered = sm.render_compact(snap, width=38)
+    lines = rendered.splitlines()
+    today_line = next(ln for ln in lines if ln.strip().startswith("today"))
+    assert "today (partial)" in today_line, f"got: {today_line!r}"
+    for line in lines:
+        assert len(line) <= 38, f"Line exceeds width=38: {line!r}"
+
+
+def test_render_compact_today_partial_suffix_absent_when_false(sm):
+    """today_partial=False → today line has the plain 'today' label, no suffix."""
+    snap = sm.SpendSnapshot(today_usd=4.21, today_partial=False)
+    rendered = sm.render_compact(snap, width=38)
+    lines = rendered.splitlines()
+    today_line = next(ln for ln in lines if ln.strip().startswith("today"))
+    assert "(partial)" not in today_line, f"got: {today_line!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -628,6 +777,24 @@ def test_main_once_json_output(sm, fixture_home):
     assert "by_model" in data
     assert "by_model_pct" in data
     assert "scope" in data
+
+
+def test_main_once_json_output_includes_today_partial(sm, fixture_home):
+    """IVG-249 T-09 (CRIT-1c): --json payload includes 'today_partial' matching
+    the snapshot — extends the existing 'today_usd' in data pin above."""
+    argv = ["--once", "--json", "--home", str(fixture_home["home"])]
+    import io
+    from contextlib import redirect_stdout
+
+    snap = sm.aggregate_today(home=fixture_home["home"])
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = sm.main(argv)
+    assert rc == 0
+    data = json.loads(buf.getvalue())
+    assert "today_partial" in data
+    assert data["today_partial"] == snap.today_partial
 
 
 def test_main_once_compact_output(sm, fixture_home):

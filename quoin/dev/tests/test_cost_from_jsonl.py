@@ -1,6 +1,7 @@
 """test_cost_from_jsonl.py — parity + structural tests for cost_from_jsonl.py.
 
-Five test cases:
+Five original test cases, plus IVG-249 T-09 additions (Claude 5 PRICES entries,
+parse_session's additive unknown_models/priceable keys):
   1. test_parity_against_ccusage           — real JSONL vs ccusage, ≤1% delta
   2. test_missing_uuid_exit_code           — exit 2 + "not found" on stderr
   3. test_malformed_jsonl_does_not_crash   — valid rows counted, malformed skipped
@@ -11,6 +12,7 @@ Five test cases:
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -268,4 +270,127 @@ def test_project_hash_function():
         f"project_hash golden value mismatch.\n"
         f"  got:      {project_hash(full_path)!r}\n"
         f"  expected: {expected!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# IVG-249 T-09: Claude 5 PRICES entries — pin the exact four rates each
+# ---------------------------------------------------------------------------
+def test_prices_claude5_entries_pinned():
+    from cost_from_jsonl import PRICES
+
+    expected = {
+        "claude-fable-5":   {"input": 10.00, "output": 50.00,
+                              "cache_create": 12.50, "cache_read": 1.00},
+        "claude-opus-5":    {"input": 5.00, "output": 25.00,
+                              "cache_create": 6.25, "cache_read": 0.50},
+        "claude-sonnet-5":  {"input": 3.00, "output": 15.00,
+                              "cache_create": 3.75, "cache_read": 0.30},
+        "claude-haiku-4-5": {"input": 1.00, "output": 5.00,
+                              "cache_create": 1.25, "cache_read": 0.10},
+    }
+    for slug, rates in expected.items():
+        assert slug in PRICES, f"{slug} missing from PRICES"
+        assert PRICES[slug] == rates, (
+            f"{slug} rate mismatch: got {PRICES[slug]}, expected {rates}"
+        )
+
+
+def test_last_updated_pinned():
+    from cost_from_jsonl import LAST_UPDATED
+
+    assert LAST_UPDATED == "2026-08-13", (
+        f"LAST_UPDATED mismatch: got {LAST_UPDATED!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# IVG-249 T-09: parse_session's additive unknown_models/priceable keys
+# ---------------------------------------------------------------------------
+def test_parse_session_known_model_is_priceable(tmp_path):
+    from cost_from_jsonl import parse_session
+
+    row = {
+        "message": {
+            "model": "claude-sonnet-4-6",
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+            },
+        }
+    }
+    jsonl_file = tmp_path / "00000000-0000-0000-0000-000000000003.jsonl"
+    jsonl_file.write_text(json.dumps(row) + "\n")
+
+    result = parse_session(jsonl_file)
+    assert result["priceable"] is True, (
+        f"Expected priceable=True for a known-model session; got {result['priceable']}"
+    )
+    assert result["unknown_models"] == [], (
+        f"Expected unknown_models=[] for a known-model session; got {result['unknown_models']}"
+    )
+
+
+def test_parse_session_unknown_model_is_not_priceable_and_warns(tmp_path):
+    from cost_from_jsonl import parse_session
+
+    row = {
+        "message": {
+            "model": "claude-imaginary-9",
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+            },
+        }
+    }
+    jsonl_file = tmp_path / "00000000-0000-0000-0000-000000000004.jsonl"
+    jsonl_file.write_text(json.dumps(row) + "\n")
+
+    import io as _io
+    captured_stderr = _io.StringIO()
+    old_stderr = sys.stderr
+    sys.stderr = captured_stderr
+    try:
+        result = parse_session(jsonl_file)
+    finally:
+        sys.stderr = old_stderr
+
+    assert result["priceable"] is False, (
+        f"Expected priceable=False for an unknown-model session; got {result['priceable']}"
+    )
+    assert result["unknown_models"] == ["claude-imaginary-9"], (
+        f"Expected unknown_models=['claude-imaginary-9']; got {result['unknown_models']}"
+    )
+    stderr_output = captured_stderr.getvalue()
+    assert "claude-imaginary-9" in stderr_output, (
+        f"Expected the deduped unknown-model WARN naming the slug; got: {stderr_output!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# IVG-249 T-09: no test in the suite may pin a CLOSED PRICES key set — the new
+# Claude 5 keys (and any future addition) must not break a test that enumerates
+# PRICES exhaustively (e.g. `len(PRICES) == N` or `set(PRICES.keys()) == {...}`).
+# ---------------------------------------------------------------------------
+def test_no_closed_prices_key_set_enumeration_in_suite():
+    tests_dir = pathlib.Path(__file__).parent
+    closed_set_re = re.compile(
+        r'len\(\s*(?:cfj\.|_cfj\.|sm\.)?PRICES\s*\)\s*==|'
+        r'set\(\s*(?:cfj\.|_cfj\.|sm\.)?PRICES(?:\.keys\(\))?\s*\)\s*==|'
+        r'(?:cfj\.|_cfj\.|sm\.)?PRICES\.keys\(\)\s*==\s*\{'
+    )
+    offenders = []
+    for py_file in tests_dir.glob("test_*.py"):
+        if py_file.name == "test_cost_from_jsonl.py":
+            continue  # this file's own PRICES membership checks are per-key, not closed-set
+        text = py_file.read_text(encoding="utf-8")
+        if closed_set_re.search(text):
+            offenders.append(py_file.name)
+    assert not offenders, (
+        f"Found test(s) that pin a CLOSED PRICES key set — these break every time "
+        f"a slug is added: {offenders}"
     )
