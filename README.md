@@ -311,7 +311,9 @@ changes needed — the CCR config is left intact so you can flip back by running
 ### Model defaults
 
 The tier → model mapping is seeded to `~/.config/quoin/models.json` on first setup.
-Edit it any time, or use the `quoin models` command (see below).
+Edit it any time, or use the `quoin models` command (see below). Re-running
+`quoin router setup` re-applies the current `models.json` to the CCR Router
+config — it does not reset it.
 
 ### quoin models
 
@@ -333,12 +335,12 @@ quoin models reset --native   # identical to reset (explicit-intent spelling)
 |-------|------|
 | `flash` | `deepseek/deepseek-v4-flash` |
 | `pro` | `deepseek/deepseek-v4-pro` |
-| `glm` | `z-ai/glm-5.1` |
+| `glm` | `z-ai/glm-5.2` |
 
 Examples:
 
 ```bash
-quoin models set opus glm          # set opus → z-ai/glm-5.1 (alias)
+quoin models set opus glm          # set opus → z-ai/glm-5.2 (alias)
 quoin models set sonnet pro        # set sonnet → deepseek/deepseek-v4-pro (alias)
 quoin models set haiku anthropic/claude-3-haiku  # any OpenRouter slug
 ```

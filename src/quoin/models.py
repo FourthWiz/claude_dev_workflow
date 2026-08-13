@@ -34,19 +34,21 @@ TIER_KEYS = ("haiku", "sonnet", "opus")
 FRIENDLY_ALIASES: dict[str, str] = {
     "flash": "deepseek/deepseek-v4-flash",
     "pro": "deepseek/deepseek-v4-pro",
-    "glm": "z-ai/glm-5.1",
+    "glm": "z-ai/glm-5.2",
 }
 
 # Hand-curated slug allowlist — ADVISORY ONLY.
 # Expected to drift stale as OpenRouter evolves.
 # Unknown-but-plausible slugs (containing '/') are accepted with a warning;
 # only obviously-malformed input is rejected.
-# Verified June 2026.
+# Verified August 2026.
 KNOWN_SLUGS: frozenset[str] = frozenset(
     {
         "deepseek/deepseek-v4-flash",
         "deepseek/deepseek-v4-pro",
+        "deepseek/deepseek-v4-flash-0731",
         "z-ai/glm-5.1",
+        "z-ai/glm-5.2",
         # A small extra set for user convenience.
         "anthropic/claude-3.5-sonnet",
         "anthropic/claude-3-haiku",

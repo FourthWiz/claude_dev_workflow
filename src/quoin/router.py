@@ -27,15 +27,17 @@ from quoin.ccr_config import (
 )
 
 # ── Default model table (editable via ~/.config/quoin/models.json) ─────────────
-# Values are OpenRouter model slugs verified June 2026.
+# Values are OpenRouter model slugs verified August 2026.
 DEFAULT_MODELS: dict[str, str] = {
     "haiku": "deepseek/deepseek-v4-flash",
     "sonnet": "deepseek/deepseek-v4-pro",
-    "opus": "z-ai/glm-5.1",
+    "opus": "z-ai/glm-5.2",
 }
 
 # CCR Router key mapping (request-classification keys, not Anthropic tiers — D-05).
 # Values use the "provider,model" format CCR expects.
+# Default snapshot only — _cmd_router_setup now builds its Router map from the
+# effective (models.json-merged) table via models.build_router_map (D-02).
 ROUTER_MAP: dict[str, str] = {
     "default": f"openrouter,{DEFAULT_MODELS['sonnet']}",
     "background": f"openrouter,{DEFAULT_MODELS['haiku']}",
@@ -157,9 +159,15 @@ def _cmd_router_setup(args: argparse.Namespace) -> int:
     backup = backup_config(config_path)
     cfg = load_config(config_path)
 
-    models_list = list(DEFAULT_MODELS.values())
+    # Function-local import — a module-level import here creates a circular
+    # ImportError, since models.py back-imports DEFAULT_MODELS from this
+    # module at module scope (D-01).
+    from quoin.models import build_router_map, read_effective_models
+
+    effective = read_effective_models(home=home_override)
+    models_list = list(effective.values())
     cfg, prov_changes = merge_openrouter_provider(cfg, key, models_list)
-    cfg, rk_changes, rk_warnings = merge_router_keys(cfg, ROUTER_MAP)
+    cfg, rk_changes, rk_warnings = merge_router_keys(cfg, build_router_map(effective))
 
     # ── Step 5: Build summary ─────────────────────────────────────────────────
     summary_lines = ["", "quoin router setup — changes:"]
@@ -169,6 +177,9 @@ def _cmd_router_setup(args: argparse.Namespace) -> int:
         summary_lines.append(f"  Backed up existing config to: {backup}")
     for warning in rk_warnings:
         summary_lines.append(f"  ⚠ {warning}")
+    for tier in ("haiku", "sonnet", "opus"):
+        origin = "default" if effective[tier] == DEFAULT_MODELS.get(tier) else "user"
+        summary_lines.append(f"  {tier}: {effective[tier]} ({origin})")
     summary_lines.append(f"  Config path: {config_path}")
     summary = "\n".join(summary_lines)
 

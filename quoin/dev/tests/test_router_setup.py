@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -375,6 +376,14 @@ class TestCmdRouterSetup:
         # models.json user edit preserved
         assert json.loads(mp.read_text()) == {"haiku": "user-edited-model"}
 
+        # The second setup run must APPLY the user edit, not silently revert it
+        # to the compiled-in default (IVG-243 regression guard). Fails on
+        # unfixed main because Step 4 used the frozen DEFAULT_MODELS/ROUTER_MAP
+        # instead of reading models.json.
+        assert cfg["Router"]["background"] == "openrouter,user-edited-model"
+        openrouter_models = openrouter_entries[0].get("models", [])
+        assert "user-edited-model" in openrouter_models
+
     def test_secret_not_in_stdout(self, monkeypatch, tmp_path: Path, capsys) -> None:
         """R-03: OPENROUTER_API_KEY must never appear in stdout."""
         sentinel = "sk-or-SENTINEL-KEY-DO-NOT-PRINT"
@@ -432,6 +441,119 @@ class TestCmdRouterSetup:
         cfg = json.loads(ccr_config_path(home=tmp_path).read_text())
         assert "NON_INTERACTIVE_MODE" not in cfg
         assert "NON_INTERACTIVE_MODE" not in cfg.get("Router", {})
+
+
+# ── quoin router setup honors models.json (IVG-243 regression coverage) ────────
+
+class TestSetupHonorsModelsJson:
+    """T-03: `quoin router setup` must read the effective (models.json-merged)
+    table instead of the frozen DEFAULT_MODELS/ROUTER_MAP constants (IVG-243)."""
+
+    def _run_setup(self, monkeypatch, tmp_path: Path, *, dry_run: bool = False) -> int:
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-SENTINEL")
+        monkeypatch.setattr("quoin.router._node_present", lambda: True)
+        monkeypatch.setattr("quoin.router._verify_ccr", lambda: True)
+        monkeypatch.setattr("quoin.router._install_ccr", lambda: 0)
+        args = _make_args(dry_run=dry_run, home=tmp_path)
+        return _cmd_router_setup(args)
+
+    def test_full_opus_override_applied(self, monkeypatch, tmp_path: Path) -> None:
+        """(a) Full opus override: Router.think and provider models reflect it.
+
+        Deviation from the plan's literal T-01 ack: the ack used
+        `z-ai/glm-5.2` as the override value, but T-02 (same task) bumps
+        DEFAULT_MODELS['opus'] to that same slug, which would make the
+        override indistinguishable from the default. A distinct
+        non-default slug is used here so the assertion actually proves
+        the override mechanism, not coincidental equality with default.
+        """
+        mp = quoin_models_path(home=tmp_path)
+        mp.parent.mkdir(parents=True, exist_ok=True)
+        mp.write_text(json.dumps({"opus": "custom-vendor/opus-override"}), encoding="utf-8")
+
+        rc = self._run_setup(monkeypatch, tmp_path)
+        assert rc == 0
+
+        cfg = json.loads(ccr_config_path(home=tmp_path).read_text())
+        assert cfg["Router"]["think"] == "openrouter,custom-vendor/opus-override"
+        openrouter_entry = next(p for p in cfg["Providers"] if p["name"] == "openrouter")
+        assert "custom-vendor/opus-override" in openrouter_entry["models"]
+        assert DEFAULT_MODELS["opus"] not in openrouter_entry["models"]
+
+    def test_partial_override_other_tiers_default(self, monkeypatch, tmp_path: Path) -> None:
+        """(b) Partial override: untouched tiers still resolve to their default slug."""
+        mp = quoin_models_path(home=tmp_path)
+        mp.parent.mkdir(parents=True, exist_ok=True)
+        mp.write_text(json.dumps({"haiku": "custom-vendor/haiku-override"}), encoding="utf-8")
+
+        rc = self._run_setup(monkeypatch, tmp_path)
+        assert rc == 0
+
+        cfg = json.loads(ccr_config_path(home=tmp_path).read_text())
+        assert cfg["Router"]["background"] == "openrouter,custom-vendor/haiku-override"
+        assert cfg["Router"]["think"] == f"openrouter,{DEFAULT_MODELS['opus']}"
+        assert cfg["Router"]["default"] == f"openrouter,{DEFAULT_MODELS['sonnet']}"
+        assert cfg["Router"]["longContext"] == f"openrouter,{DEFAULT_MODELS['sonnet']}"
+
+    def test_malformed_models_json_falls_back_to_defaults(
+        self, monkeypatch, tmp_path: Path, capsys
+    ) -> None:
+        """(c) Malformed models.json: setup falls back to defaults, returns 0, warns (fail-open)."""
+        mp = quoin_models_path(home=tmp_path)
+        mp.parent.mkdir(parents=True, exist_ok=True)
+        mp.write_text("{not valid json", encoding="utf-8")
+
+        rc = self._run_setup(monkeypatch, tmp_path)
+        assert rc == 0
+
+        captured = capsys.readouterr()
+        assert "models.json parse error" in captured.err
+
+        cfg = json.loads(ccr_config_path(home=tmp_path).read_text())
+        assert cfg["Router"]["think"] == f"openrouter,{DEFAULT_MODELS['opus']}"
+        assert cfg["Router"]["background"] == f"openrouter,{DEFAULT_MODELS['haiku']}"
+        assert cfg["Router"]["default"] == f"openrouter,{DEFAULT_MODELS['sonnet']}"
+
+    def test_no_models_json_matches_default_behavior(self, monkeypatch, tmp_path: Path) -> None:
+        """(d) No models.json: byte-identical to today — defaults written, file seeded."""
+        mp = quoin_models_path(home=tmp_path)
+        assert not mp.exists()
+
+        rc = self._run_setup(monkeypatch, tmp_path)
+        assert rc == 0
+
+        cfg = json.loads(ccr_config_path(home=tmp_path).read_text())
+        assert cfg["Router"]["think"] == f"openrouter,{DEFAULT_MODELS['opus']}"
+        assert cfg["Router"]["background"] == f"openrouter,{DEFAULT_MODELS['haiku']}"
+        assert cfg["Router"]["default"] == f"openrouter,{DEFAULT_MODELS['sonnet']}"
+        assert mp.exists()
+        assert json.loads(mp.read_text()) == DEFAULT_MODELS
+
+
+# ── Import-order regression (D-01 pin) ──────────────────────────────────────────
+
+class TestImportOrderRegression:
+    def test_router_module_imports_standalone(self) -> None:
+        """D-01: quoin.router and quoin.models must import cleanly in either
+        order, in a fresh subprocess with a clean sys.modules. A module-level
+        back-import in either file raises a circular ImportError; this pins
+        the function-local-import fix so a future refactor cannot silently
+        reintroduce the cycle."""
+        src_path = str(REPO_ROOT / "src")
+        for first_module in ("quoin.router", "quoin.models"):
+            script = (
+                f"import sys; sys.path.insert(0, {src_path!r}); "
+                f"import importlib; importlib.import_module({first_module!r})"
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True,
+                text=True,
+            )
+            assert result.returncode == 0, (
+                f"import_module({first_module!r}) failed in a clean subprocess:\n"
+                f"{result.stderr}"
+            )
 
 
 # ── Integration tests for _cmd_router_status ──────────────────────────────────
