@@ -180,6 +180,17 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/scripts/context_bundle.py",
         "quoin/dev/tests/test_context_bundle_exclusions.py",
     ),
+    # Added IVG-249 T-11 (D-05): cost-ledger-format.md's mktemp-based
+    # stderr-capture idiom (T-07) is pinned by test_agent_transcript_cost.py's
+    # `$ATTR` shape assertion — without this row a doc-only edit to
+    # cost-ledger-format.md is unselectable at a Standard gate and that
+    # pinning test never runs (same lesson-2026-07-04 blind spot the rows
+    # above were written to close). Duplicate-key-safe (same iterate-all-
+    # rows-into-a-set consumer as above).
+    (
+        "quoin/memory/cost-ledger-format.md",
+        "quoin/dev/tests/test_agent_transcript_cost.py",
+    ),
 )
 
 # SKILL.md coverage residual gap (review-1.md MAJOR 2, documented-acceptance branch):
