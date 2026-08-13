@@ -255,6 +255,69 @@ def test_symmetry_unresolved_case(fixtures_home):
 
 
 # ---------------------------------------------------------------------------
+# (j) CLAUDE-5 RESOLVABLE — IVG-249 T-08 regression test. Proves the sidecar
+# root cause (unpriced Claude 5 slugs, not a broken locate path) is fixed:
+# a transcript naming two newly-priced Claude 5 slugs, each with a nonzero
+# cache_read_input_tokens row, now resolves to a positive usd via
+# src=nested_jsonl instead of src=unresolved.
+#
+# Expected USD computed as NUMERIC LITERALS (mirrors the EXPECTED_USD idiom
+# above) — deliberately NOT derived from cfj.PRICES, so this assertion isn't
+# tautological against the same table it is meant to pin. Rates per the
+# claude-api skill catalog, verified 2026-08-13:
+#   claude-sonnet-5: input $3.00/1M, output $15.00/1M, cache_read $0.30/1M
+#   claude-opus-5:   input $5.00/1M, output $25.00/1M, cache_read $0.50/1M
+# ---------------------------------------------------------------------------
+EXPECTED_CLAUDE5_USD = round(
+    (1000 * 3.00 + 500 * 15.00 + 200 * 0.30) / 1_000_000.0
+    + (2000 * 5.00 + 300 * 25.00 + 400 * 0.50) / 1_000_000.0,
+    6,
+)
+EXPECTED_CLAUDE5_TOK = (1000 + 500 + 200) + (2000 + 300 + 400)
+
+
+def test_claude5_resolvable_prices_to_positive_usd_via_nested_jsonl(fixtures_home):
+    jf = atc.resolve_by_agent_id(
+        sid=FAKE_SID, agent_id="claude5resolvable001",
+        project_path=FAKE_PROJECT_PATH, home=fixtures_home,
+    )
+    assert jf is not None
+    assert jf.name == "agent-claude5resolvable001.jsonl"
+
+    r = atc.price_agent_jsonl(jf)
+    assert r["priceable"] is True
+    assert r["usd"] == pytest.approx(EXPECTED_CLAUDE5_USD, rel=1e-9)
+    assert r["usd"] > 0
+    assert r["tok"] == EXPECTED_CLAUDE5_TOK
+
+    attr = _resolve(fixtures_home, sid=FAKE_SID, agent_id="claude5resolvable001")
+    assert attr == f"usd={EXPECTED_CLAUDE5_USD};tok={EXPECTED_CLAUDE5_TOK};src=nested_jsonl"
+    parsed = parse_attribution(attr)
+    assert parsed["src"] == "nested_jsonl"
+    assert float(parsed["usd"]) > 0
+    assert int(parsed["tok"]) == EXPECTED_CLAUDE5_TOK
+
+
+def test_claude5resolvable_fixture_tooluseid_is_distinct(fixtures_home):
+    # MIN-5: every sidecar fixture under this directory must have a distinct
+    # toolUseId, or resolve_by_tooluse sees two matches and returns None
+    # (breaking test_tooluse_secondary_resolver_hit).
+    subagents_dir = (
+        fixtures_home / ".claude" / "projects" / "-fake-project" / FAKE_SID / "subagents"
+    )
+    import json as _json
+
+    seen = {}
+    for meta_path in sorted(subagents_dir.glob("*.meta.json")):
+        tool_use_id = _json.loads(meta_path.read_text())["toolUseId"]
+        assert tool_use_id not in seen, (
+            f"duplicate toolUseId {tool_use_id!r} in {meta_path.name} and {seen.get(tool_use_id)}"
+        )
+        seen[tool_use_id] = meta_path.name
+    assert "toolu_FIXTURE_CLAUDE5_RESOLVABLE_001" in seen
+
+
+# ---------------------------------------------------------------------------
 # subagents_dir path-building sanity
 # ---------------------------------------------------------------------------
 def test_subagents_dir_builds_expected_path(fixtures_home):

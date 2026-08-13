@@ -171,6 +171,11 @@ def price_agent_jsonl(path):
         # parse_session's already-successful primary pass above.
         pass
 
+    # IVG-249 root-cause note: the locate path (resolve_attribution above) was
+    # never broken. Sidecar attribution returned "src=unresolved" purely
+    # because a model seen in the transcript was absent from PRICES (e.g. the
+    # Claude 5 family before this stage added it) — this `all(m in PRICES ...)`
+    # check is where that absence flips `priceable` False and drops `usd`.
     priceable = bool(s["entries"]) and all(m in PRICES for m in models) and not modelless
     return {
         "usd": s["totalCost"] if priceable else None,
