@@ -333,12 +333,12 @@ Model-selection table, enrich=opus) and `uuid=<AID>` — this REPLACES the suppr
 self-write (D-2), net exactly one row per managed phase:
 ```
 SID="$CLAUDE_CODE_SESSION_ID"
-_ERR=$(mktemp)
+_ERR=$(mktemp) || { echo "cost-attr WARN: mktemp failed"; _ERR=/dev/null; }
 ATTR="$(python3 __QUOIN_HOME__/scripts/agent_transcript_cost.py \
           --sid "$SID" --agent-id "$AID" --tool-use-id "$TUID" 2>"$_ERR")"
 [ -z "$ATTR" ] && ATTR="src=unresolved"   # MIN-1: key on empty stdout, not exit code
-[ -s "$_ERR" ] && echo "cost-attr WARN: $(cat "$_ERR")"
-rm -f "$_ERR"
+[ -s "$_ERR" ] && echo "cost-attr WARN: $(head -c 500 "$_ERR" | tr -d '\000-\010\013\014\016-\037' | tr '\n' ' ')"
+[ "$_ERR" != "/dev/null" ] && rm -f "$_ERR"
 printf '%s | %s | %s | %s | task | %s | %s | %s\n' \
   "$AID" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" \
   "on-behalf: PHASE via /thorough_plan" "0" "$ATTR" >> "$LEDGER"
