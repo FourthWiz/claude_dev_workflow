@@ -228,7 +228,7 @@ def test_unknown_model_keeps_tok_no_usd_stderr_warning_expected(fixtures_home, c
     assert r["priceable"] is False
     assert r["usd"] is None
     assert r["tok"] == 300 + 50
-    assert r["models"] == ["claude-sonnet-5"]
+    assert r["models"] == ["claude-imaginary-9"]
 
     attr = _resolve(fixtures_home, sid=FAKE_SID, agent_id="unknownmodel001")
     assert attr == f"tok={300 + 50};src=unresolved"
@@ -236,7 +236,7 @@ def test_unknown_model_keeps_tok_no_usd_stderr_warning_expected(fixtures_home, c
     # parse_session (reused by price_agent_jsonl) emits a stderr warning for
     # unknown models — EXPECT it; do NOT assert clean stderr (MIN-3).
     captured = capsys.readouterr()
-    assert "unknown model 'claude-sonnet-5'" in captured.err
+    assert "unknown model 'claude-imaginary-9'" in captured.err
 
 
 # ---------------------------------------------------------------------------
