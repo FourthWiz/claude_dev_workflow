@@ -534,9 +534,12 @@ while round <= max_rounds:
         # above), run proc:onbehalf-write with phase=critic, model=opus,
         # uuid=<AID> — REPLACES the child's suppressed self-write (D-2):
         #   SID="$CLAUDE_CODE_SESSION_ID"
+        #   _ERR=$(mktemp)
         #   ATTR="$(python3 __QUOIN_HOME__/scripts/agent_transcript_cost.py \
-        #             --sid "$SID" --agent-id "$AID" --tool-use-id "$TUID" 2>/dev/null)"
+        #             --sid "$SID" --agent-id "$AID" --tool-use-id "$TUID" 2>"$_ERR")"
         #   [ -z "$ATTR" ] && ATTR="src=unresolved"   # MIN-1: key on empty stdout, not exit code
+        #   [ -s "$_ERR" ] && echo "cost-attr WARN: $(cat "$_ERR")"
+        #   rm -f "$_ERR"
         #   printf '%s | %s | %s | %s | task | %s | %s | %s\n' \
         #     "$AID" "$(date -u +%Y-%m-%d)" "critic" "opus" \
         #     "on-behalf: critic via /architect" "0" "$ATTR" >> "$LEDGER"
