@@ -353,6 +353,31 @@ class TestIvg92SpecialCaseMapping:
         assert "quoin/adapters/claude/skills/gate/SKILL.md" in ignored
         assert not unmatched
 
+    def test_cost_ledger_format_triggers_agent_transcript_cost(self):
+        """IVG-249 T-11 (D-05/MAJ-3): quoin/memory/cost-ledger-format.md ->
+        test_agent_transcript_cost.py is in selectors — repo-root-relative
+        convention (NOT project-root-relative like the rest of the ivg-249
+        plan; every existing _DOCS_TO_TESTS row confirms this).
+
+        MAJ-3 (promoted to REQUIRED): a wrong-convention row would pass a
+        bare "run succeeds" check while silently selecting zero tests
+        (mapped_any=True, no selectors) — the len(selectors) >= 1 assertion
+        below is what catches that failure mode, not merely absence of a
+        crash.
+        """
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["quoin/memory/cost-ledger-format.md"], _REPO_ROOT
+        )
+        assert len(selectors) >= 1, (
+            f"expected a non-empty selector set, got {selectors} "
+            f"(wrong path convention silently selects zero tests)"
+        )
+        assert any("test_agent_transcript_cost.py" in s for s in selectors), (
+            f"expected test_agent_transcript_cost.py in selectors, got {selectors}"
+        )
+        assert not ignored
+        assert not unmatched
+
 
 # ---------------------------------------------------------------------------
 # resolve_repo

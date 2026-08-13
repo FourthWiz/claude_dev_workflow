@@ -1,0 +1,1 @@
+{"agentType": "claude", "description": "fixture claude 5 resolvable (cache-read pricing)", "toolUseId": "toolu_FIXTURE_CLAUDE5_RESOLVABLE_001", "parentAgentId": "parentFixture", "spawnDepth": 1, "model": "sonnet"}

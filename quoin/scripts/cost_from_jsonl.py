@@ -30,7 +30,30 @@
 #                              cache_create $1.25/1M,  cache_read $0.10/1M
 # If these rates differ from ccusage at implementation time, halt and ask before
 # committing — do NOT silently update.
-LAST_UPDATED = "2026-06-07"
+#
+# Claude 5 rates verified 2026-08-13 against the Anthropic model catalog via
+# the claude-api skill reference (IVG-249 T-03), USD per 1M tokens:
+#   claude-fable-5:   input $10.00/1M, output $50.00/1M,
+#                      cache_create $12.50/1M, cache_read $1.00/1M
+#   claude-opus-5:    input  $5.00/1M, output $25.00/1M,
+#                      cache_create  $6.25/1M, cache_read $0.50/1M
+#   claude-sonnet-5:  input  $3.00/1M, output $15.00/1M,
+#                      cache_create  $3.75/1M, cache_read $0.30/1M
+# cache_create is the 5-minute-TTL write rate at 1.25x input; cache_read is
+# 0.1x input — both are documented general multipliers, not per-model figures.
+#
+# Known gaps in this table (pre-existing, not introduced by the Claude 5
+# additions — recorded here so a later reader does not re-discover them):
+#   - 1-hour-TTL cache writes are 2x input, not 1.25x. This single-field
+#     table has no TTL dimension, so ALL slugs understate 1-hour-TTL writes.
+#   - Claude Opus 5 fast mode bills at $10.00/$50.00 rather than $5.00/$25.00.
+#     This table has no speed dimension, so fast-mode Opus 5 sessions are
+#     under-priced by this table.
+#   - claude-sonnet-5 carries an introductory discount of $2.00 input /
+#     $10.00 output through 2026-08-31. Sticker rates above OVERSTATE
+#     sonnet-5 cost until that date; tok counts stay durable so affected
+#     rows remain re-priceable later (see R-01 in the ivg-249 stage-1 plan).
+LAST_UPDATED = "2026-08-13"
 PRICES = {  # USD per 1M tokens — verified against ccusage v18.0.11 on 2026-04-27
     "claude-opus-4-7":            {"input":  5.00, "output": 25.00,
                                    "cache_create":  6.25, "cache_read":  0.50},
@@ -43,6 +66,17 @@ PRICES = {  # USD per 1M tokens — verified against ccusage v18.0.11 on 2026-04
                                    "cache_create":  3.75, "cache_read":  0.30},
     "claude-haiku-4-5-20251001":  {"input":  1.00, "output":  5.00,
                                    "cache_create":  1.25, "cache_read":  0.10},
+    # claude-haiku-4-5: bare catalog alias of claude-haiku-4-5-20251001, added
+    # defensively (IVG-249 T-03) — a bare alias is added only when the same
+    # family already has a dated slug priced in this table, which this one does.
+    "claude-haiku-4-5":           {"input":  1.00, "output":  5.00,
+                                   "cache_create":  1.25, "cache_read":  0.10},
+    "claude-fable-5":             {"input": 10.00, "output": 50.00,
+                                   "cache_create": 12.50, "cache_read":  1.00},
+    "claude-opus-5":              {"input":  5.00, "output": 25.00,
+                                   "cache_create":  6.25, "cache_read":  0.50},
+    "claude-sonnet-5":            {"input":  3.00, "output": 15.00,
+                                   "cache_create":  3.75, "cache_read":  0.30},
 }
 
 import argparse
@@ -97,7 +131,12 @@ def cost_for_entry(model: str, usage: dict) -> tuple:
 
 
 def parse_session(path: pathlib.Path) -> dict:
-    """Return {sessionId, totalCost, totalTokens, entries:[{model, costUSD, tokens}, ...]}.
+    """Return {sessionId, totalCost, totalTokens, entries:[{model, costUSD, tokens}, ...],
+    unknown_models, priceable}.
+    unknown_models is the sorted, deduped list of model slugs seen that are not
+    in PRICES. priceable is True iff entries is non-empty AND unknown_models is
+    empty (IVG-249 T-04) — both are additive; every existing key keeps
+    byte-identical semantics and every existing caller keeps working unchanged.
     Aggregates per-MESSAGE rows: each row's 'message' object may contain
     'model' and 'usage' (input_tokens, output_tokens, cache_creation_input_tokens,
     cache_read_input_tokens). Per architecture I-04 (line 306), missing fields
@@ -156,11 +195,14 @@ def parse_session(path: pathlib.Path) -> dict:
         for m in per_model_cost
     ]
 
+    unknown_models = sorted(warned_models)
     return {
         "sessionId":   session_id,
         "totalCost":   total_cost,
         "totalTokens": total_tokens,
         "entries":     entries,
+        "unknown_models": unknown_models,
+        "priceable":   bool(entries) and not unknown_models,
     }
 
 

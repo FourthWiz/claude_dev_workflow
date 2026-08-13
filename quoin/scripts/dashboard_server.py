@@ -344,6 +344,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "by_task_partial": snap.by_task_partial,
                     "by_phase": snap.by_phase,
                     "by_phase_partial": snap.by_phase_partial,
+                    "today_partial": snap.today_partial,
                     "attributed_usd": attributed_usd,
                     "unattributed_usd": unattributed_usd,
                     "scope": snap.scope,

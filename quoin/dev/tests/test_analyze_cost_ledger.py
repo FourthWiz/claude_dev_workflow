@@ -59,6 +59,34 @@ def _make_jsonl(home: Path, uuid: str, proj_hash: str, cost_input_tokens: int = 
     jsonl_path.write_text(json.dumps(row) + "\n")
 
 
+def _make_unknown_model_jsonl(home: Path, uuid: str, proj_hash: str) -> None:
+    """IVG-249 T-09 (MAJ-2): write a fixture JSONL that exists but whose only
+    model is unpriced (never a real slug — mirrors T-02's claude-imaginary-9
+    convention). `parse_session` on this file returns priceable=False, so
+    `lookup_session_cost` must treat it the same as a missing file: (0.0, False)."""
+    proj_dir = home / ".claude" / "projects" / proj_hash
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    jsonl_path = proj_dir / f"{uuid}.jsonl"
+    row = {
+        "message": {
+            "model": "claude-imaginary-9",
+            "usage": {"input_tokens": 1_000_000, "output_tokens": 0},
+        }
+    }
+    jsonl_path.write_text(json.dumps(row) + "\n")
+
+
+def _make_empty_entries_jsonl(home: Path, uuid: str, proj_hash: str) -> None:
+    """IVG-249 T-09 (R2-MIN-4): write a fixture JSONL that exists but yields
+    zero priceable rows (a control row with no 'message' key) — the THIRD
+    cause folded into the same unresolvable counter alongside missing-JSONL
+    and unpriced-model."""
+    proj_dir = home / ".claude" / "projects" / proj_hash
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    jsonl_path = proj_dir / f"{uuid}.jsonl"
+    jsonl_path.write_text(json.dumps({"type": "summary"}) + "\n")
+
+
 # Canonical mixed-column ledger rows (raw pipe-delimited text, D-4).
 _6COL = "uuid-6col | 2026-07-27 | plan | opus | task | six col note"
 _7COL = "uuid-7col | 2026-07-27 | plan | opus | task | seven col note | 0"
@@ -67,6 +95,12 @@ _8COL_RESOLVED_BACKFILL = "uuid-8bak | 2026-07-27 | implement | opus | task | ba
 _8COL_RESOLVED_ZERO = "uuid-8zero | 2026-07-27 | implement | opus | task | resolved zero | 0 | usd=0.0;tok=9;src=nested_jsonl"
 _8COL_UNRESOLVED = "uuid-8unres | 2026-07-27 | implement | opus | task | unresolved note | 0 | tok=45;src=unresolved"
 _9COL_TOLERATED = "uuid-9col | 2026-07-27 | implement | opus | task | nine col note | 0 | usd=2.0;tok=1;src=nested_jsonl | extra-ignored-col"
+
+# IVG-249 T-09: legacy rows whose JSONL exists but is unpriceable (unknown
+# model, or empty of priceable entries) — vs. the pre-existing _7COL row
+# above, which has NO JSONL at all (missing).
+_UNKNOWN_MODEL_ROW = "uuid-unknownmodel | 2026-07-27 | implement | opus | task | unknown model note | 7"
+_EMPTY_ENTRIES_ROW = "uuid-emptyentries | 2026-07-27 | implement | opus | task | empty entries note"
 
 
 # ---------------------------------------------------------------------------
@@ -306,3 +340,79 @@ def test_format_report_renders_shared_session_bucket_line(tmp_path):
 
     assert "shared-session (multi-phase)" in text
     assert "not separately attributable" in text
+
+
+# ---------------------------------------------------------------------------
+# IVG-249 T-09 (MAJ-2 / T-06 consequence chain): all-unknown-model sessions
+# ---------------------------------------------------------------------------
+
+def test_all_unknown_model_session_is_unresolvable_not_zero(tmp_path):
+    """A legacy row whose JSONL EXISTS but every model in it is unpriceable
+    must be counted as unresolvable, never folded to a silent $0 — same
+    treatment as a genuinely-missing JSONL (T-06)."""
+    ledger_path = _write_ledger(tmp_path, [_UNKNOWN_MODEL_ROW])
+    project_root = tmp_path / "project"
+    home = tmp_path / "home"
+    ph = project_hash(str(project_root))
+    _make_unknown_model_jsonl(home, "uuid-unknownmodel", ph)
+
+    rows = parse_ledger_file(ledger_path, task_name="my-task")
+    report = build_report(rows, project_root, ph, home)
+
+    assert report["unresolvable_count"] == 1
+    assert report["resolved_total"] == 0.0
+    assert report["no_jsonl_count"] == 1
+
+
+def test_all_unknown_model_excluded_from_top_sessions_and_fallback_tally(tmp_path):
+    """(MAJ-2, new): an all-unknown-model session with fallback_fires>0 in its
+    ledger row must be EXCLUDED from total_fallback_fires/sessions_with_fires
+    AND never appear in top_sessions — the T-06 fix's consequence chain."""
+    ledger_path = _write_ledger(tmp_path, [_8COL_RESOLVED, _UNKNOWN_MODEL_ROW])
+    project_root = tmp_path / "project"
+    home = tmp_path / "home"
+    ph = project_hash(str(project_root))
+    _make_unknown_model_jsonl(home, "uuid-unknownmodel", ph)
+
+    rows = parse_ledger_file(ledger_path, task_name="my-task")
+    report = build_report(rows, project_root, ph, home)
+
+    # The unknown-model row carried fallback_fires=7 — it must not be tallied.
+    assert report["total_fallback_fires"] == 0, (
+        f"expected 0 (unpriced row's fires excluded), got {report['total_fallback_fires']}"
+    )
+    assert report["sessions_with_fires"] == 0
+
+    top_uuids = {entry[3] for entry in report["top_sessions"]}
+    assert "uuid-unknownmodel"[:8] not in top_uuids, (
+        f"all-unknown-model session must never appear in top_sessions: {report['top_sessions']}"
+    )
+
+
+def test_format_report_three_way_unresolvable_wording(tmp_path):
+    """(MAJ-2, R2-MIN-4 wording): the rendered report line reads 'Sessions
+    unresolvable (missing, empty, or unpriced JSONL), not $0: N' where N
+    includes a genuinely-missing-JSONL session, an all-unknown-model session,
+    AND an empty-entries session in the SAME run — proving the three-way
+    counter conflation is deliberate, not accidental."""
+    ledger_path = _write_ledger(
+        tmp_path, [_7COL, _UNKNOWN_MODEL_ROW, _EMPTY_ENTRIES_ROW]
+    )
+    project_root = tmp_path / "project"
+    home = tmp_path / "home"
+    ph = project_hash(str(project_root))
+    # _7COL's uuid ("uuid-7col") deliberately has NO jsonl written — missing.
+    _make_unknown_model_jsonl(home, "uuid-unknownmodel", ph)
+    _make_empty_entries_jsonl(home, "uuid-emptyentries", ph)
+
+    rows = parse_ledger_file(ledger_path, task_name="my-task")
+    report = build_report(rows, project_root, ph, home)
+
+    assert report["no_jsonl_count"] == 3, (
+        f"expected 3 unresolvable causes (missing + unknown-model + empty), "
+        f"got {report['no_jsonl_count']}"
+    )
+    text = format_report(report, project_root, ledger_count=1, top_n=10, report_date="2026-07-27")
+    assert (
+        "Sessions unresolvable (missing, empty, or unpriced JSONL), not $0: 3" in text
+    ), text

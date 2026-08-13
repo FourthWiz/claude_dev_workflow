@@ -1036,3 +1036,72 @@ class TestMemoryRoutes:
         etag_tasks = {h.lower(): v for h, v in hdrs_tasks}.get("etag")
         # ETags are scoped differently; they should not be equal
         assert etag_mem != etag_tasks
+
+
+# ---------------------------------------------------------------------------
+# IVG-249 T-09 (R2-MIN-3): GET /api/spend — today_partial passthrough
+#
+# This file had ZERO existing /api/spend tests (verified: `grep -rln
+# 'api/spend' dev/tests/` returned only this file, no matching test body).
+# The route calls `_aggregate_today(project_root=self.project_root)` with no
+# `home` argument, so a fixture-home cannot be injected directly — the seam
+# is the module-level `_DS._aggregate_today` binding (`_aggregate_today =
+# _sm.aggregate_today`), monkeypatched to return a hand-built SpendSnapshot.
+# ---------------------------------------------------------------------------
+
+class TestApiSpend:
+    def test_api_spend_today_partial_true_passthrough(self, tmp_path, monkeypatch):
+        """snap.today_partial=True must reach the served JSON body unchanged —
+        this is the ONLY change T-05 CRIT-1(d) makes to dashboard_server.py."""
+        proj = _make_project(tmp_path)
+        fake_snap = _DS._sm.SpendSnapshot(
+            today_usd=4.21,
+            by_model={"opus": 4.21},
+            by_model_pct={"opus": 100.0},
+            by_task={},
+            by_task_partial=False,
+            by_phase={},
+            by_phase_partial=False,
+            today_partial=True,
+            stale=False,
+            scope="global",
+        )
+        monkeypatch.setattr(_DS, "_aggregate_today", lambda **kwargs: fake_snap)
+
+        server, _ = _start_server(proj)
+        try:
+            status, _, body = _get(server, "/api/spend")
+        finally:
+            server.shutdown()
+
+        assert status == 200
+        data = json.loads(body)
+        assert data["today_partial"] is True
+
+    def test_api_spend_today_partial_false_passthrough(self, tmp_path, monkeypatch):
+        """snap.today_partial=False must ALSO reach the response unchanged —
+        proves the passthrough is not a hardcoded constant."""
+        proj = _make_project(tmp_path)
+        fake_snap = _DS._sm.SpendSnapshot(
+            today_usd=0.0,
+            by_model={},
+            by_model_pct={},
+            by_task={},
+            by_task_partial=False,
+            by_phase={},
+            by_phase_partial=False,
+            today_partial=False,
+            stale=False,
+            scope="global",
+        )
+        monkeypatch.setattr(_DS, "_aggregate_today", lambda **kwargs: fake_snap)
+
+        server, _ = _start_server(proj)
+        try:
+            status, _, body = _get(server, "/api/spend")
+        finally:
+            server.shutdown()
+
+        assert status == 200
+        data = json.loads(body)
+        assert data["today_partial"] is False

@@ -195,13 +195,17 @@ def lookup_session_cost(
     uuid: str, proj_hash: str, home: pathlib.Path
 ) -> tuple:
     """Return (cost_usd, has_jsonl) for a given UUID.
-    has_jsonl=False when the JSONL file is missing (cost returned as 0.0).
+    has_jsonl=False means unresolvable — either the JSONL file is missing OR
+    it exists but every model in it is unpriceable; both cases are labeled
+    unresolvable, never folded to a silent $0 (cost returned as 0.0).
     """
     jpath = jsonl_path_for(uuid, proj_hash, home=home)
     if not jpath.exists():
         return 0.0, False
     try:
         result = parse_session(jpath)
+        if not result.get("priceable", True):
+            return 0.0, False
         return result.get("totalCost", 0.0), True
     except (IOError, OSError) as exc:
         print(f"analyze_cost_ledger: error reading {jpath}: {exc}", file=sys.stderr)
@@ -253,7 +257,7 @@ def _legacy_build_report_core(
             if not has_jsonl:
                 no_jsonl_count += 1
                 unresolvable_count += 1
-                continue  # missing JSONL is unresolvable, not a silent $0
+                continue  # missing, empty, or unpriced JSONL is unresolvable, not a silent $0
 
         resolved_total += cost
 
@@ -545,7 +549,7 @@ def format_report(
 
     lines.append("")
     lines.append(
-        f"Sessions with no JSONL (unresolvable, not $0): {report['no_jsonl_count']}"
+        f"Sessions unresolvable (missing, empty, or unpriced JSONL), not $0: {report['no_jsonl_count']}"
     )
     lines.append(sep_full)
 
