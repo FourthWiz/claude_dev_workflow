@@ -116,6 +116,7 @@ class SpendSnapshot:
     by_task_partial: bool = False    # True if some ledger rows were na/unresolvable
     by_phase: Dict[str, float] = field(default_factory=dict)      # phase -> usd (D-04)
     by_phase_partial: bool = False   # True when unresolved-UUID condition applies
+    today_partial: bool = False      # True if any today-file contributed unpriced rows (IVG-249 T-05 CRIT-1)
     stale: bool = False
     scope: str = "global"            # "global" or "project"
 
@@ -160,11 +161,14 @@ def parse_session_today(
         "per_model_cost": {model: float, ...},
         "per_model_tok":  {model: int, ...},
         "skipped_no_ts":  int,
+        "unknown_models": [str, ...],  # sorted, deduped slugs not in PRICES (IVG-249 T-05)
+        "priceable":      bool,        # True iff no unknown model was seen during the walk
       }
     """
     per_model_cost: Dict[str, float] = {}
     per_model_tok: Dict[str, int] = {}
     skipped_no_ts = 0
+    unknown_models: set = set()
 
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -208,6 +212,8 @@ def parse_session_today(
                 if model:
                     per_model_cost[model] = per_model_cost.get(model, 0.0) + cost
                     per_model_tok[model] = per_model_tok.get(model, 0) + tok
+                    if model not in PRICES:
+                        unknown_models.add(model)
 
     except (IOError, OSError):
         pass
@@ -216,6 +222,8 @@ def parse_session_today(
         "per_model_cost": per_model_cost,
         "per_model_tok": per_model_tok,
         "skipped_no_ts": skipped_no_ts,
+        "unknown_models": sorted(unknown_models),
+        "priceable": not unknown_models,
     }
 
 
@@ -303,7 +311,13 @@ def scan_ledgers_today(
     — cost was already counted on the first occurrence. Phase is attributed to the first
     row for each UUID.
 
-    Returns (by_task, by_phase, by_task_partial).
+    Returns (by_task, by_phase, by_task_partial). Tuple shape is unchanged
+    (IVG-249 T-05), but by_task_partial's meaning now additionally covers an
+    unpriceable-but-present session (parse_session_today's priceable=False,
+    i.e. at least one unknown model was seen in-window) — previously such a
+    session silently contributed nothing without setting the flag. A
+    priceable-but-zero result (including the routine empty-window case)
+    still contributes nothing and does NOT set the flag.
     by_task: dict[str, float] — task_name -> usd
     by_phase: dict[str, float] — phase -> usd (flat, D-04)
     by_task_partial: bool — True if any rows had na-UUID or unresolvable JSONL.
@@ -375,7 +389,13 @@ def scan_ledgers_today(
                 seen_uuids.add(uuid)
                 result = parse_session_today(jsonl_path, day_start_utc, day_end_utc)
                 task_usd = sum(result["per_model_cost"].values())
-                if task_usd > 0:
+                if not result["priceable"]:
+                    # Unpriceable (unknown_models non-empty): never fold into a
+                    # silent $0 — label it instead (R2-MAJ-3). A priceable-but-
+                    # zero result (including the routine empty-window case)
+                    # keeps today's ordinary skip below, unflagged.
+                    by_task_partial = True
+                elif task_usd > 0:
                     by_task[task_name] = by_task.get(task_name, 0.0) + task_usd
                     phase = row.get("phase", "")
                     if phase:
@@ -445,6 +465,7 @@ def aggregate_today(
     # Accumulate per full-model-id cost/tokens
     full_model_cost: Dict[str, float] = {}
     full_model_tok: Dict[str, int] = {}
+    today_partial = False  # T-05 CRIT-1: True if any today-file contributed unpriced rows
 
     # Convert day_start_utc to float for mtime comparison
     day_start_ts = day_start_utc.timestamp()
@@ -470,6 +491,9 @@ def aggregate_today(
 
         if result is None:
             continue
+
+        if result.get("unknown_models"):
+            today_partial = True
 
         for model, usd in result["per_model_cost"].items():
             full_model_cost[model] = full_model_cost.get(model, 0.0) + usd
@@ -514,6 +538,7 @@ def aggregate_today(
         by_task_partial=by_task_partial,
         by_phase=by_phase,
         by_phase_partial=by_task_partial,
+        today_partial=today_partial,
         stale=False,
         scope=scope,
     )
@@ -549,8 +574,13 @@ def render_compact(
     header = f"TOKEN SPEND {scope_label}"
     lines.append(header[:width])
 
-    # Today total
-    today_line = _fmt_amount_line("today", snap.today_usd, None, width)
+    # Today total — label carries a "(partial)" suffix when today_partial is set
+    # (IVG-249 T-05 Site 3(b)): a trailing marker after the formatted amount was
+    # ruled out — _fmt_amount_line pads to width and render_compact's own join
+    # truncates a second time, so any post-hoc suffix is unconditionally sliced
+    # off before it can render. The label argument is the only safe landing spot.
+    today_label = "today (partial)" if snap.today_partial else "today"
+    today_line = _fmt_amount_line(today_label, snap.today_usd, None, width)
     lines.append(today_line)
 
     # Per-model rows (non-zero only, ordered: opus, sonnet, haiku, other)
@@ -685,6 +715,7 @@ def _run_once(args: argparse.Namespace, project_root: Optional[Path]) -> tuple:
             "by_task_partial": snap.by_task_partial,
             "by_phase": snap.by_phase,
             "by_phase_partial": snap.by_phase_partial,
+            "today_partial": snap.today_partial,
             "scope": snap.scope,
             "stale": snap.stale,
         }
