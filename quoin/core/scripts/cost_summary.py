@@ -124,6 +124,10 @@ def main(argv=None):
     import argparse
     parser = argparse.ArgumentParser(description="Normalize cost-summary.json total")
     parser.add_argument("file", nargs="?", help="Path to cost-summary.json")
+    parser.add_argument(
+        "--format", choices=("text", "json"), default="text",
+        help="Output format (default text — byte-identical to the pre-existing tuple print)",
+    )
     args = parser.parse_args(argv)
 
     if not args.file:
@@ -138,7 +142,10 @@ def main(argv=None):
         return 1
 
     value, is_partial = normalize_total(data)
-    print((value, is_partial))
+    if args.format == "json":
+        print(json.dumps({"total": value, "is_partial": is_partial}))
+    else:
+        print((value, is_partial))
     return 0
 
 

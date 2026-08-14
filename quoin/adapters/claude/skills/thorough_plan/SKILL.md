@@ -344,7 +344,7 @@ printf '%s | %s | %s | %s | task | %s | %s | %s\n' \
 # (this task's own ledger already carries repeated `critic`/`implement` rows).
 # If the append above silently failed, append a labeled fallback row now. This
 # closes F-01 for the plan/critic/revise spawns, which have no other fallback.
-tail -1 "$LEDGER" 2>/dev/null | grep -qF "$AID | " || \
+{ [ -n "$AID" ] && grep -qF "$AID | " "$LEDGER" 2>/dev/null; } || \
   printf '%s | %s | %s | %s | task | %s | %s\n' \
     "unknown-PHASE-$(date -u +%s)" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" \
     "/thorough_plan subagent (on-behalf write failed)" "0" >> "$LEDGER"

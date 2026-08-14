@@ -325,7 +325,7 @@ Execute these steps inline (never dispatch for interactive steps):
 Before touching git, verify everything is clean:
 
 1. **Review status** — resolve the artifact path via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` (or stage=None for legacy tasks), then look for `<task_dir>/review-*.md`. If exit code 2: display stderr verbatim, fall back to task root, ask user to disambiguate. If no review file exists at the resolved path, STOP and tell the user: "No review found — please run `/review` first." If a review exists, read the latest one and confirm verdict is APPROVED. If not approved, stop and tell the user. (architecture.md and cost-ledger.md ALWAYS at task root per D-03.) **Retain the resolved `<N-or-name>` (or empty string for a legacy/single-stage task) as `<stage-value>`** — Sub-phase B's lessons-append idempotency guard (Step 7, T-11) keys on task+stage, not task alone, so it needs this value.
-2. **Tests pass** — run the test suite one final time. If anything fails, stop.
+2. **Tests pass** — first run `python3 __QUOIN_HOME__/scripts/gate_fullsuite_sidecar.py check --project-root "$(pwd)" --format text`, using the same `--project-root` convention `gate/SKILL.md`'s reuse-contract bullet pins (the outer project root that owns `.workflow_artifacts/`, not the git repo root — see that file for the contract, not restated here). Exit 0 → the post-review gate's full-suite result is reusable (already size-aware — a red Small/Medium suite never reaches this branch); report `Tests: reused post-review gate full-suite (verdict PASS, SHA <sha12>, trees clean)`, reading `<sha12>` directly from `check`'s own exit-0 text output, and SKIP the re-run. Any non-zero exit, or the script missing, → run the test suite exactly as today, echoing the emitted `reason` so the operator sees why it re-ran. `QUOIN_DISABLE_FULLSUITE_REUSE=1` forces a re-run. A reused (skipped) verification counts as PASS for every downstream step — it never blocks Steps 6-8, so Sub-phase B's cost aggregation and `cost-summary.json` write happen regardless of whether the suite was re-run; a suite that genuinely fails still halts before commit/push.
 3. **Branch state** — check if the branch is up to date with the base branch. If behind, rebase/merge and re-run tests. If push is blocked because task commits are on a protected branch (main/master), do NOT force-push; instead follow the safe reset-to-origin recipe at `__QUOIN_HOME__/memory/branch-recovery.md` — move the mis-placed commits onto a feature branch first, then run the recipe to restore the protected branch to origin.
 4. **No secrets** — quick scan of the diff for passwords, API keys, tokens.
 
@@ -335,6 +335,7 @@ Present a pre-flight summary:
 Pre-flight: end_of_task
 ✅ Review: APPROVED (review-2.md)
 ✅ Tests: 47 passed, 0 failed
+   (or, when reused: ✅ Tests: reused post-review gate full-suite (verdict PASS, SHA a1b2c3d4e5f6, trees clean))
 ✅ Branch: feat/refund-flow, up to date with main
 ✅ No secrets detected
 Ready to finalize.
