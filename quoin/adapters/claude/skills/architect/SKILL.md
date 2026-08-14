@@ -505,12 +505,12 @@ while round <= max_rounds:
     # Opus per the skill-model roster, __QUOIN_HOME__/memory/workflow-catalog.md "## Model assignments").
     # Convey target via spawn-prompt (D-01 spawn-prompt convention, not CLI flag):
     #
-    # On-behalf cost capture (flag-gated, D-1/D-2/D-3, IVG-111 stage 3): when
-    # QUOIN_INLINE_COST_CAPTURE=1, prepend [quoin-onbehalf] to the critic spawn
+    # On-behalf cost capture (default-ON unless QUOIN_INLINE_COST_CAPTURE=0, D-1/D-2/D-3, IVG-111 stage 3): when
+    # capture is active (unset or != "0"), prepend [quoin-onbehalf] to the critic spawn
     # prompt (stack after any existing sentinel) so the child skips its own
     # session-start cost-ledger self-write (T-06 predicate) — this orchestrator
     # writes the row on its behalf instead. Marker is per-spawn / non-inherited.
-    onbehalf = (env QUOIN_INLINE_COST_CAPTURE == "1")
+    onbehalf = (env QUOIN_INLINE_COST_CAPTURE != "0")   # default-ON; unset ⇒ ON
     spawn_prompt = "Target: <ABS_PATH>/architecture.md — critique this architecture."
     if onbehalf:
         spawn_prompt = "[quoin-onbehalf] " + spawn_prompt
@@ -534,17 +534,27 @@ while round <= max_rounds:
         # above), run proc:onbehalf-write with phase=critic, model=opus,
         # uuid=<AID> — REPLACES the child's suppressed self-write (D-2):
         #   SID="$CLAUDE_CODE_SESSION_ID"
-        #   _ERR=$(mktemp) || { echo "cost-attr WARN: mktemp failed"; _ERR=/dev/null; }
+        #   _ERR=$(mktemp) || { printf 'cost-attr WARN: %s\n' "mktemp failed"; _ERR=/dev/null; }
         #   ATTR="$(python3 __QUOIN_HOME__/scripts/agent_transcript_cost.py \
         #             --sid "$SID" --agent-id "$AID" --tool-use-id "$TUID" 2>"$_ERR")"
         #   [ -z "$ATTR" ] && ATTR="src=unresolved"   # MIN-1: key on empty stdout, not exit code
-        #   [ -s "$_ERR" ] && echo "cost-attr WARN: $(head -c 500 "$_ERR" | tr -d '\000-\010\013\014\016-\037' | tr '\n' ' ')"
+        #   [ -s "$_ERR" ] && printf 'cost-attr WARN: %s\n' "$(head -c 500 "$_ERR" | tr '\011\012\015' '   ' | tr -d '\000-\037\177')"
         #   [ "$_ERR" != "/dev/null" ] && rm -f "$_ERR"
         #   printf '%s | %s | %s | %s | task | %s | %s | %s\n' \
         #     "$AID" "$(date -u +%Y-%m-%d)" "critic" "opus" \
         #     "on-behalf: critic via /architect" "0" "$ATTR" >> "$LEDGER"
-        # Flag unset (onbehalf=false): this block does nothing; the critic child
-        # self-writes as today (6/7-col, col 8 empty).
+        #   # F-02 post-check (identifier-keyed, same invocation): verify THIS
+        #   # write's own AID landed; if the append above silently failed
+        #   # (mktemp failure, disk error, sidecar crash), append a labeled
+        #   # fallback row now. This closes F-01 — the critic spawn otherwise
+        #   # has no separate verify/append fallback documented anywhere.
+        #   tail -1 "$LEDGER" 2>/dev/null | grep -qF "$AID | " || \
+        #     printf '%s | %s | %s | %s | task | %s | %s\n' \
+        #       "unknown-critic-$(date -u +%s)" "$(date -u +%Y-%m-%d)" "critic" "opus" \
+        #       "/architect subagent (on-behalf write failed)" "0" >> "$LEDGER"
+        # Opt-out (QUOIN_INLINE_COST_CAPTURE=0 ⇒ onbehalf=false): this block does nothing; the critic child
+        # self-writes as today (6/7-col, col 8 empty) — no post-check applies in this branch, since
+        # there is no on-behalf write to verify.
 
     verdict = parse_verdict(architecture-critic-{round}.md)
     if verdict == PASS: break

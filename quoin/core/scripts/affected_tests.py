@@ -191,6 +191,60 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/memory/cost-ledger-format.md",
         "quoin/dev/tests/test_agent_transcript_cost.py",
     ),
+    # Added IVG-249 T-08 (stage 2, S-02, D-7): the default-ON on-behalf
+    # cost-capture flip touches four SKILL.md files' flag prose. Without
+    # these rows a Standard gate selects ZERO of the tests that pin this
+    # stage's contract — same lesson-2026-07-04 blind spot the rows above
+    # were written to close. Duplicate-key-safe (same iterate-all-rows-
+    # into-a-set consumer as above).
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_onbehalf_default_on.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_onbehalf_writer_predicate.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_agent_transcript_cost.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/thorough_plan/SKILL.md",
+        "quoin/dev/tests/test_onbehalf_default_on.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/thorough_plan/SKILL.md",
+        "quoin/dev/tests/test_onbehalf_writer_predicate.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/thorough_plan/SKILL.md",
+        "quoin/dev/tests/test_agent_transcript_cost.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/architect/SKILL.md",
+        "quoin/dev/tests/test_onbehalf_default_on.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/architect/SKILL.md",
+        "quoin/dev/tests/test_onbehalf_writer_predicate.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/architect/SKILL.md",
+        "quoin/dev/tests/test_agent_transcript_cost.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/end_of_task/SKILL.md",
+        "quoin/dev/tests/test_onbehalf_writer_predicate.py",
+    ),
+    # Round 4 (MAJOR-1(d)): closes the Site-7 (run/SKILL.md:729) blast-radius
+    # gap — test_run_fast_path.py pins the route-conditional model literal
+    # this stage rewrites there. No collision: the two SKILL.md-is-ignored
+    # tests (test_affected_tests.py:211,348) both use gate/SKILL.md.
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_run_fast_path.py",
+    ),
 )
 
 # SKILL.md coverage residual gap (review-1.md MAJOR 2, documented-acceptance branch):
@@ -204,6 +258,12 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
 # the residual gap is accepted here rather than silently left undocumented. The
 # full-suite gate (not affected-area) remains the backstop that catches a SKILL.md
 # edit that stales the citation fixture.
+#
+# Orthogonal addition (IVG-249 S-02): four SKILL.md files (run, thorough_plan,
+# architect, end_of_task) now carry rows above selecting the on-behalf guard
+# tests; this does NOT make them selectable for the citation sweep
+# (test_claude_md_citations.py), which remains gapped for all 32 SKILL.md
+# files exactly as before.
 
 
 # ---------------------------------------------------------------------------

@@ -234,12 +234,7 @@ Before the spec pre-flight below, offer via `AskUserQuestion` to run `/enrich` o
 - Option 1: label: "Run /enrich first" — description: "Sharpen the raw task prompt before continuing (fills genuine gaps against real codebase context)."
 - Option 2: label: "Skip enrichment" — description: "Proceed directly to the spec pre-flight / planning loop. Enrichment can always be run later; its absence is a normal, non-blocking outcome."
 
-This is default-on but NON-BLOCKING — the loop proceeds regardless of the answer. If run: under
-`QUOIN_INLINE_COST_CAPTURE=1`, the cost row is the on-behalf write described in "Invoking each
-agent" → "On-behalf cost capture" below (phase=enrich, model=opus) — NOT a guess. With the flag
-unset (today's default), append a best-effort cost-ledger row for the `enrich` phase if the
-subagent didn't record one: `unknown-enrich-<timestamp> | <date> | enrich | opus | task |
-/thorough_plan subagent (no UUID recorded)`. No `/gate` runs after enrich.
+This is default-on but NON-BLOCKING — the loop proceeds regardless of the answer. If run: unless `QUOIN_INLINE_COST_CAPTURE=0`, the cost row is the on-behalf write described in "Invoking each agent" → "On-behalf cost capture" below (phase=enrich, model=opus) FIRST; either way, THEN append a best-effort cost-ledger row for the `enrich` phase if no row is found: `unknown-enrich-<timestamp> | <date> | enrich | opus | task | /thorough_plan subagent (on-behalf write failed, if capture was ON — else no UUID recorded)` — this fallback now runs regardless of flag state (mirrors the `run/SKILL.md` T-02 CRIT-2 fix), not only under opt-out. No `/gate` runs after enrich.
 
 **Under `[autonomous]`:** skip the `AskUserQuestion` — do not wait for a choice. When `/thorough_plan` was itself spawned with `[autonomous]` from `/run`, enrichment has typically already run at `/run` Phase 1.4 — skip re-running it here. When `/thorough_plan` is invoked standalone under `[autonomous]` (no upstream enrich), run `/enrich` best-effort without blocking; if it is unavailable, errors, or times out, proceed directly to the spec pre-flight below without waiting. Either way this stays non-blocking, exactly as the non-autonomous default already is.
 
@@ -317,8 +312,8 @@ prefix (e.g. `[no-redispatch] [autonomous] <spawn instructions>`); each leaf ski
 strips its own copy independently at its own bootstrap. This is the deeper-spawn re-prefix rule
 referenced by `/run`'s "Transitive propagation rule" (`D-07`).
 
-**On-behalf cost capture (`QUOIN_INLINE_COST_CAPTURE`, flag-gated, D-1/D-2/D-3, IVG-111 stage 3):**
-When `QUOIN_INLINE_COST_CAPTURE=1`, this applies to EVERY managed spawn below — `/plan` (round 1),
+**On-behalf cost capture (`QUOIN_INLINE_COST_CAPTURE`, default-ON, opt-out via =0, D-1/D-2/D-3, IVG-111 stage 3):**
+Unless `QUOIN_INLINE_COST_CAPTURE=0`, this applies to EVERY managed spawn below — `/plan` (round 1),
 `/critic` (every round), `/revise`|`/revise-fast` (rounds 2+), and `/enrich` (3b-1): (1) prepend
 `[quoin-onbehalf]` to the spawn prompt (stacks with `[autonomous]`/`[no-redispatch]` per the
 re-prefix rule above — order-independent, each leaf strips its own copy) so the child SKIPS its
@@ -330,23 +325,32 @@ spawn's own Agent tool_use id; fallback (agentId absent/empty, R-12): `AID = TUI
 sidecar hit); (3) AFTER the subagent returns and its artifact is verified on disk, run
 `proc:onbehalf-write` with that phase's model (plan=opus, critic=opus, revise=sonnet|opus per the
 Model-selection table, enrich=opus) and `uuid=<AID>` — this REPLACES the suppressed child
-self-write (D-2), net exactly one row per managed phase:
+self-write (D-2, unchanged); net: at least one row per managed phase always (never zero — this is
+what CRIT-2 fixes), and normally exactly one attributable row (the on-behalf write) plus, only on
+write failure, a second best-effort-labeled row (the embedded F-02 post-check below):
 ```
 SID="$CLAUDE_CODE_SESSION_ID"
-_ERR=$(mktemp) || { echo "cost-attr WARN: mktemp failed"; _ERR=/dev/null; }
+_ERR=$(mktemp) || { printf 'cost-attr WARN: %s\n' "mktemp failed"; _ERR=/dev/null; }
 ATTR="$(python3 __QUOIN_HOME__/scripts/agent_transcript_cost.py \
           --sid "$SID" --agent-id "$AID" --tool-use-id "$TUID" 2>"$_ERR")"
 [ -z "$ATTR" ] && ATTR="src=unresolved"   # MIN-1: key on empty stdout, not exit code
-[ -s "$_ERR" ] && echo "cost-attr WARN: $(head -c 500 "$_ERR" | tr -d '\000-\010\013\014\016-\037' | tr '\n' ' ')"
+[ -s "$_ERR" ] && printf 'cost-attr WARN: %s\n' "$(head -c 500 "$_ERR" | tr '\011\012\015' '   ' | tr -d '\000-\037\177')"
 [ "$_ERR" != "/dev/null" ] && rm -f "$_ERR"
 printf '%s | %s | %s | %s | task | %s | %s | %s\n' \
   "$AID" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" \
   "on-behalf: PHASE via /thorough_plan" "0" "$ATTR" >> "$LEDGER"
+# F-02 post-check (identifier-keyed, same invocation): verify THIS write's own
+# AID landed — immune to a stale same-phase row masking a lost row on re-run
+# (this task's own ledger already carries repeated `critic`/`implement` rows).
+# If the append above silently failed, append a labeled fallback row now. This
+# closes F-01 for the plan/critic/revise spawns, which have no other fallback.
+tail -1 "$LEDGER" 2>/dev/null | grep -qF "$AID | " || \
+  printf '%s | %s | %s | %s | task | %s | %s\n' \
+    "unknown-PHASE-$(date -u +%s)" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" \
+    "/thorough_plan subagent (on-behalf write failed)" "0" >> "$LEDGER"
 ```
-This FOLDS the enrich fallback row (3b-1, previously "if the subagent didn't record one") into
-this same mechanism — under the flag, enrich's cost row is always the on-behalf write, not a guess.
-**Flag unset:** none of the above applies; every spawn below behaves exactly as documented — the
-child self-writes today's 6/7-col row.
+This FOLDS the enrich fallback row (3b-1, previously "if the subagent didn't record one") into this same mechanism — under default-ON, enrich's cost row is the on-behalf write rather than a guess; the enrich-only best-effort verify/append fallback (site 1 above; plan/critic/revise have no fallback of that phase-name-keyed shape, but now share the AID-keyed F-02 post-check embedded in the on-behalf write above) still runs afterward as a post-check, in both flag states, per the CRIT-2 fix.
+**Opt-out (`QUOIN_INLINE_COST_CAPTURE=0`):** every spawn below reverts to the pre-`IVG-249` behavior — the child self-writes its own 6/7-col row; the enrich fallback (site 1 above) still applies exactly as it does under default-ON.
 
 **`/plan` (Round 1 only)**
 - Always spawn `/plan` (Opus) — the initial plan is always Opus-quality regardless of mode
