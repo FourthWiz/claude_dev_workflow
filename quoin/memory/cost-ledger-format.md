@@ -27,15 +27,23 @@ uuid=$(python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$(pwd)
 ```bash
 if [ "${QUOIN_INLINE_COST_CAPTURE:-1}" != "0" ]; then
   SID="$CLAUDE_CODE_SESSION_ID"
-  _ERR=$(mktemp) || { echo "cost-attr WARN: mktemp failed"; _ERR=/dev/null; }
+  _ERR=$(mktemp) || { printf 'cost-attr WARN: %s\n' "mktemp failed"; _ERR=/dev/null; }
   ATTR="$(python3 __QUOIN_HOME__/scripts/agent_transcript_cost.py \
             --sid "$SID" --agent-id "$AID" --tool-use-id "$TUID" 2>"$_ERR")"
   [ -z "$ATTR" ] && ATTR="src=unresolved"
-  [ -s "$_ERR" ] && echo "cost-attr WARN: $(head -c 500 "$_ERR" | tr '\011\012\015' '   ' | tr -d '\000-\037\177')"
+  [ -s "$_ERR" ] && printf 'cost-attr WARN: %s\n' "$(head -c 500 "$_ERR" | tr '\011\012\015' '   ' | tr -d '\000-\037\177')"
   [ "$_ERR" != "/dev/null" ] && rm -f "$_ERR"
   printf '%s | %s | %s | %s | task | %s | %s | %s\n' \
     "$AID" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" "on-behalf: PHASE via /ORCH" "0" "$ATTR" \
     >> "$LEDGER"
+  # Post-check (identifier-keyed, same invocation): verify THIS write's own AID
+  # landed; if the append above silently failed, append a labeled fallback row
+  # now. Every orchestrator call site embeds this — no managed spawn is left
+  # with a silent zero-row path on write failure.
+  tail -1 "$LEDGER" 2>/dev/null | grep -qF "$AID | " || \
+    printf '%s | %s | %s | %s | task | %s | %s\n' \
+      "unknown-PHASE-$(date -u +%s)" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" \
+      "/ORCH subagent (on-behalf write failed)" "0" >> "$LEDGER"
 fi
 ```
 

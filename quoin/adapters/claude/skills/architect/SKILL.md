@@ -534,17 +534,27 @@ while round <= max_rounds:
         # above), run proc:onbehalf-write with phase=critic, model=opus,
         # uuid=<AID> — REPLACES the child's suppressed self-write (D-2):
         #   SID="$CLAUDE_CODE_SESSION_ID"
-        #   _ERR=$(mktemp) || { echo "cost-attr WARN: mktemp failed"; _ERR=/dev/null; }
+        #   _ERR=$(mktemp) || { printf 'cost-attr WARN: %s\n' "mktemp failed"; _ERR=/dev/null; }
         #   ATTR="$(python3 __QUOIN_HOME__/scripts/agent_transcript_cost.py \
         #             --sid "$SID" --agent-id "$AID" --tool-use-id "$TUID" 2>"$_ERR")"
         #   [ -z "$ATTR" ] && ATTR="src=unresolved"   # MIN-1: key on empty stdout, not exit code
-        #   [ -s "$_ERR" ] && echo "cost-attr WARN: $(head -c 500 "$_ERR" | tr '\011\012\015' '   ' | tr -d '\000-\037\177')"
+        #   [ -s "$_ERR" ] && printf 'cost-attr WARN: %s\n' "$(head -c 500 "$_ERR" | tr '\011\012\015' '   ' | tr -d '\000-\037\177')"
         #   [ "$_ERR" != "/dev/null" ] && rm -f "$_ERR"
         #   printf '%s | %s | %s | %s | task | %s | %s | %s\n' \
         #     "$AID" "$(date -u +%Y-%m-%d)" "critic" "opus" \
         #     "on-behalf: critic via /architect" "0" "$ATTR" >> "$LEDGER"
+        #   # F-02 post-check (identifier-keyed, same invocation): verify THIS
+        #   # write's own AID landed; if the append above silently failed
+        #   # (mktemp failure, disk error, sidecar crash), append a labeled
+        #   # fallback row now. This closes F-01 — the critic spawn otherwise
+        #   # has no separate verify/append fallback documented anywhere.
+        #   tail -1 "$LEDGER" 2>/dev/null | grep -qF "$AID | " || \
+        #     printf '%s | %s | %s | %s | task | %s | %s\n' \
+        #       "unknown-critic-$(date -u +%s)" "$(date -u +%Y-%m-%d)" "critic" "opus" \
+        #       "/architect subagent (on-behalf write failed)" "0" >> "$LEDGER"
         # Opt-out (QUOIN_INLINE_COST_CAPTURE=0 ⇒ onbehalf=false): this block does nothing; the critic child
-        # self-writes as today (6/7-col, col 8 empty).
+        # self-writes as today (6/7-col, col 8 empty) — no post-check applies in this branch, since
+        # there is no on-behalf write to verify.
 
     verdict = parse_verdict(architecture-critic-{round}.md)
     if verdict == PASS: break

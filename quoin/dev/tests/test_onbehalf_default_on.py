@@ -50,8 +50,8 @@ format_row = _CE.format_row
 cohort_attribution = _CE.cohort_attribution
 CostEvent = _CE.CostEvent
 
-sys.path.insert(0, str(SCRIPTS_DIR))
-sys.path.insert(0, str(CORE_SCRIPTS_DIR))
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
 import agent_transcript_cost as atc  # noqa: E402
 
 FIXTURES_SRC_PROJECTS = (
