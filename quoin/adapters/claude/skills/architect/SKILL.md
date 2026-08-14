@@ -505,12 +505,12 @@ while round <= max_rounds:
     # Opus per the skill-model roster, __QUOIN_HOME__/memory/workflow-catalog.md "## Model assignments").
     # Convey target via spawn-prompt (D-01 spawn-prompt convention, not CLI flag):
     #
-    # On-behalf cost capture (flag-gated, D-1/D-2/D-3, IVG-111 stage 3): when
-    # QUOIN_INLINE_COST_CAPTURE=1, prepend [quoin-onbehalf] to the critic spawn
+    # On-behalf cost capture (default-ON unless QUOIN_INLINE_COST_CAPTURE=0, D-1/D-2/D-3, IVG-111 stage 3): when
+    # capture is active (unset or != "0"), prepend [quoin-onbehalf] to the critic spawn
     # prompt (stack after any existing sentinel) so the child skips its own
     # session-start cost-ledger self-write (T-06 predicate) — this orchestrator
     # writes the row on its behalf instead. Marker is per-spawn / non-inherited.
-    onbehalf = (env QUOIN_INLINE_COST_CAPTURE == "1")
+    onbehalf = (env QUOIN_INLINE_COST_CAPTURE != "0")   # default-ON; unset ⇒ ON
     spawn_prompt = "Target: <ABS_PATH>/architecture.md — critique this architecture."
     if onbehalf:
         spawn_prompt = "[quoin-onbehalf] " + spawn_prompt
@@ -538,12 +538,12 @@ while round <= max_rounds:
         #   ATTR="$(python3 __QUOIN_HOME__/scripts/agent_transcript_cost.py \
         #             --sid "$SID" --agent-id "$AID" --tool-use-id "$TUID" 2>"$_ERR")"
         #   [ -z "$ATTR" ] && ATTR="src=unresolved"   # MIN-1: key on empty stdout, not exit code
-        #   [ -s "$_ERR" ] && echo "cost-attr WARN: $(head -c 500 "$_ERR" | tr -d '\000-\010\013\014\016-\037' | tr '\n' ' ')"
+        #   [ -s "$_ERR" ] && echo "cost-attr WARN: $(head -c 500 "$_ERR" | tr '\011\012\015' '   ' | tr -d '\000-\037\177')"
         #   [ "$_ERR" != "/dev/null" ] && rm -f "$_ERR"
         #   printf '%s | %s | %s | %s | task | %s | %s | %s\n' \
         #     "$AID" "$(date -u +%Y-%m-%d)" "critic" "opus" \
         #     "on-behalf: critic via /architect" "0" "$ATTR" >> "$LEDGER"
-        # Flag unset (onbehalf=false): this block does nothing; the critic child
+        # Opt-out (QUOIN_INLINE_COST_CAPTURE=0 ⇒ onbehalf=false): this block does nothing; the critic child
         # self-writes as today (6/7-col, col 8 empty).
 
     verdict = parse_verdict(architecture-critic-{round}.md)

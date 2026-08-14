@@ -503,31 +503,49 @@ def test_onbehalf_row_fallback_uuid_never_malformed_on_agentid_capture_failure()
 
 
 # ---------------------------------------------------------------------------
-# D-10/R-11: QUOIN_INLINE_COST_CAPTURE must default OFF until stage-4 col-8-aware
-# readers ship — enabling it early makes managed-phase cost read $0/unresolved
-# (no current reader prices col 8 or resolves uuid=<agentId>).
+# IVG-249 S-02: QUOIN_INLINE_COST_CAPTURE is default ON as of this stage — the
+# stage-4 col-8-aware readers have shipped (cost_event.parse_row, analyze_cost_ledger,
+# dashboard_cost, core spend_monitor, end_of_task Sub-phase B all apply col-8
+# precedence), so gating the on-behalf write off by default is no longer needed.
+# Opt out with QUOIN_INLINE_COST_CAPTURE=0.
 # ---------------------------------------------------------------------------
-def test_inline_cost_capture_flag_defaults_off_in_docs():
-    """The authoritative operator doc (T-02) must carry BOTH the off-by-default
-    bash idiom and the explicit rollout-ordering warning — this is the doc a
-    human reads before flipping the flag."""
+def test_inline_cost_capture_flag_defaults_on_in_docs():
+    """The authoritative operator doc (T-01) must carry BOTH the on-by-default
+    bash idiom and the rollout note explaining col-8 readers have shipped — this
+    is the doc a human reads before touching the flag."""
     memory_doc = (
         pathlib.Path(__file__).parent.parent.parent / "memory" / "cost-ledger-format.md"
     )
     text = memory_doc.read_text(encoding="utf-8")
-    assert '${QUOIN_INLINE_COST_CAPTURE:-0}' in text
-    assert "default OFF" in text
-    assert "MUST stay OFF in production until" in text
+    assert '${QUOIN_INLINE_COST_CAPTURE:-1}' in text
+    assert '!= "0"' in text
+    assert "default ON" in text
+    assert "MUST stay OFF in production until" not in text
 
 
 def test_inline_cost_capture_flag_gated_not_unconditional_in_orchestrators():
-    """Each of the 3 scoped orchestrators (T-03/T-04/T-05) documents the on-behalf
-    write as conditional on QUOIN_INLINE_COST_CAPTURE=1 — never an unconditional
-    write. Absence/any-other-value must be the byte-unchanged today's-behavior path."""
+    """Each of the 3 scoped orchestrators (architect/thorough_plan/run) still
+    documents the on-behalf write as FLAG-CONDITIONAL (not unconditional), even
+    though the default flipped to ON — an opt-out branch (=0) must be documented,
+    and the retired opt-in-only literal (=1) must be fully gone."""
     skills_dir = pathlib.Path(__file__).parent.parent.parent / "adapters" / "claude" / "skills"
     for name in ("architect", "thorough_plan", "run"):
         text = (skills_dir / name / "SKILL.md").read_text(encoding="utf-8")
-        assert "QUOIN_INLINE_COST_CAPTURE=1" in text or "QUOIN_INLINE_COST_CAPTURE\" == \"1\"" in text, (
-            f"{name}: on-behalf write must be documented as conditional on the flag "
-            "equaling 1, not unconditional"
+        assert "QUOIN_INLINE_COST_CAPTURE" in text, f"{name}: flag must still be named"
+        assert (
+            "QUOIN_INLINE_COST_CAPTURE=0" in text or 'QUOIN_INLINE_COST_CAPTURE != "0"' in text
+        ), f"{name}: an opt-out branch must be documented"
+        assert "QUOIN_INLINE_COST_CAPTURE=1" not in text, (
+            f"{name}: retired opt-in-only literal must be fully gone"
         )
+
+    run_text = (skills_dir / "run" / "SKILL.md").read_text(encoding="utf-8")
+    assert run_text.count("runs FIRST. Either way") == 6
+    assert "this step is instead the on-behalf write" not in run_text
+    assert "THEN verify the cost ledger has new entries for" in run_text
+    assert "reverts to the pre-`IVG-249` behavior" in run_text
+
+    tp_text = (skills_dir / "thorough_plan" / "SKILL.md").read_text(encoding="utf-8")
+    assert "reverts to the pre-`IVG-249` behavior" in tp_text
+    assert "FIRST; either way, THEN append" in tp_text
+    assert "the on-behalf write rather than a guess" in tp_text

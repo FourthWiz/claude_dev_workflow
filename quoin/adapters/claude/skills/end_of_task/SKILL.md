@@ -297,6 +297,8 @@ session-age-guard behavior above, and does not change the order of or preconditi
 PR" invariant is unchanged in every mode, including autonomous — `/end_of_task` never
 creates a PR, autonomous or not.**
 
+`[quoin-onbehalf]` handling: `/run` prepends this marker to the Phase 6 spawn under default-ON capture. Strip it at bootstrap step 0 (per-spawn, non-inherited — never propagate it to a `§0` dispatch child). This skill has no session-start ledger row to suppress; the orchestrator writes the `end-of-task` row on its behalf.
+
 ## When to use
 
 Only after:

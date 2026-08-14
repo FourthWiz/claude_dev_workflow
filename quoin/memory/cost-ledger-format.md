@@ -14,7 +14,7 @@ uuid=$(python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$(pwd)
 
 Substitute the bareword placeholders `PHASE`, `MODEL`, `NOTE`, `FALLBACK_FIRES` with session-specific values before running. `LEDGER` must be set to the ledger path (e.g., `.workflow_artifacts/<task-name>/cost-ledger.md`) before invocation. `NOTE` MUST be quoted — unquoted values containing spaces or pipes will produce malformed rows. Columns: `UUID | DATE | PHASE | MODEL | task | NOTE | FALLBACK_FIRES | ATTRIBUTION`.
 
-**8-column form** (adds the optional `attribution` column — written by the on-behalf orchestrator path (stage 3: `/architect`, `/thorough_plan`, `/run`, flag-gated by `QUOIN_INLINE_COST_CAPTURE`); session-start one-liner writers keep emitting 6/7-col):
+**8-column form** (adds the optional `attribution` column — written by the on-behalf orchestrator path (stage 3: `/architect`, `/thorough_plan`, `/run`, flag-gated by `QUOIN_INLINE_COST_CAPTURE`, default ON since IVG-249 S-02); session-start one-liner writers keep emitting 6/7-col):
 
 ```bash
 uuid=$(python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$(pwd)" --phase "PHASE" 2>/dev/null || echo "unknown-PHASE-$(date -u +%Y%m%dT%H%M%SZ)") && printf '%s | %s | %s | %s | task | %s | %s | %s\n' \
@@ -22,16 +22,16 @@ uuid=$(python3 __QUOIN_HOME__/scripts/get_session_uuid.py --project-path "$(pwd)
   >> "$LEDGER"
 ```
 
-**On-behalf write (stage 3)** — a cost-aware orchestrator (`/architect`, `/thorough_plan`, `/run`) writes this row itself, on behalf of a managed child it spawned, instead of the child self-writing. Gated by `QUOIN_INLINE_COST_CAPTURE` (default OFF — see the rollout-ordering warning below). `AID` is the child's `agentId` (model-transcribed from the Agent tool result, or a unique fallback UUID on capture failure); `ATTR` is the T-01 CLI's col-8 micro-map output:
+**On-behalf write (stage 3)** — a cost-aware orchestrator (`/architect`, `/thorough_plan`, `/run`) writes this row itself, on behalf of a managed child it spawned, instead of the child self-writing. Gated by `QUOIN_INLINE_COST_CAPTURE` (default ON since IVG-249 S-02 — opt out with `=0`; see the rollout note below). `AID` is the child's `agentId` (model-transcribed from the Agent tool result, or a unique fallback UUID on capture failure); `ATTR` is the T-01 CLI's col-8 micro-map output:
 
 ```bash
-if [ "${QUOIN_INLINE_COST_CAPTURE:-0}" = "1" ]; then
+if [ "${QUOIN_INLINE_COST_CAPTURE:-1}" != "0" ]; then
   SID="$CLAUDE_CODE_SESSION_ID"
   _ERR=$(mktemp) || { echo "cost-attr WARN: mktemp failed"; _ERR=/dev/null; }
   ATTR="$(python3 __QUOIN_HOME__/scripts/agent_transcript_cost.py \
             --sid "$SID" --agent-id "$AID" --tool-use-id "$TUID" 2>"$_ERR")"
   [ -z "$ATTR" ] && ATTR="src=unresolved"
-  [ -s "$_ERR" ] && echo "cost-attr WARN: $(head -c 500 "$_ERR" | tr -d '\000-\010\013\014\016-\037' | tr '\n' ' ')"
+  [ -s "$_ERR" ] && echo "cost-attr WARN: $(head -c 500 "$_ERR" | tr '\011\012\015' '   ' | tr -d '\000-\037\177')"
   [ "$_ERR" != "/dev/null" ] && rm -f "$_ERR"
   printf '%s | %s | %s | %s | task | %s | %s | %s\n' \
     "$AID" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" "on-behalf: PHASE via /ORCH" "0" "$ATTR" \
@@ -39,7 +39,7 @@ if [ "${QUOIN_INLINE_COST_CAPTURE:-0}" = "1" ]; then
 fi
 ```
 
-**Rollout-ordering warning (stage 3 → stage 4):** `QUOIN_INLINE_COST_CAPTURE` MUST stay OFF in production until the stage-4 col-8-aware readers ship. While the flag is on but no reader prices col 8 or resolves `uuid=<agentId>` (a nested, not top-level, transcript), enabling it suppresses the child's self-write and managed phases read as $0/unresolved — a real transient regression, not a harmless one. The safe default (OFF) is the shipped default; the flag is a dev/stage-4-integration switch only.
+**Rollout note (stage 3 → stage 4):** col-8-aware readers HAVE shipped (`cost_event.parse_row` tolerates 6/7/8 and reads col 8; `analyze_cost_ledger`, `dashboard_cost`, core `spend_monitor`, and `end_of_task` Sub-phase B all apply col-8 precedence). As of IVG-249 S-02 the flag is default ON — unset means capture is enabled. Opt out with `QUOIN_INLINE_COST_CAPTURE=0`; any other value (incl. unset) enables capture. Under opt-out, managed-phase rows revert to child self-writes sharing the parent session UUID, cohort-bucketed by `cohort_attribution` — per-phase attribution is unavailable. `/run` warns at Setup when the opt-out is explicit.
 
 **6-column form** (for Conditional skills `/discover`, `/triage` that omit `fallback_fires`):
 
@@ -53,7 +53,7 @@ The 7th column (`fallback_fires`) is OPTIONAL. Existing 6-column rows are valid 
 
 The 8th column (`attribution`) is likewise OPTIONAL and default-safe: existing 6- and 7-column rows are valid forever; readers MUST tolerate 6-, 7-, and 8-column shapes. Absent means "no inline attribution was captured" — it is NEVER interpreted as `$0`-with-confidence. See `## Attribution column (col 8)` below for the value grammar.
 
-**Writer guidance:** Skills emitting a new ledger row SHOULD include the 7th column when they have a session-state `fallback_fires` value available (typically at session-end emits, not session-open). Skills MAY emit a 6-column row when no session-state exists (e.g., `/discover`, `/triage`) or when `fallback_fires` is 0; readers tolerate both shapes per the row-format spec. Column 8 (`attribution`) is written by the on-behalf orchestrator path (stage 3, flag-gated `QUOIN_INLINE_COST_CAPTURE`, default OFF — see the rollout-ordering warning above); other writers omit it and readers treat the omission as "no attribution", not as a zero-cost claim.
+**Writer guidance:** Skills emitting a new ledger row SHOULD include the 7th column when they have a session-state `fallback_fires` value available (typically at session-end emits, not session-open). Skills MAY emit a 6-column row when no session-state exists (e.g., `/discover`, `/triage`) or when `fallback_fires` is 0; readers tolerate both shapes per the row-format spec. Column 8 (`attribution`) is written by the on-behalf orchestrator path (stage 3, flag-gated `QUOIN_INLINE_COST_CAPTURE`, default ON, opt-out `=0` — see the rollout note above); other writers omit it and readers treat the omission as "no attribution", not as a zero-cost claim.
 
 ## Attribution column (col 8)
 
