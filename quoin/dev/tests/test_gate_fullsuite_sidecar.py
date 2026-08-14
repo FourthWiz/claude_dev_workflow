@@ -40,12 +40,22 @@ def _init_repo(path: Path) -> Path:
     return path
 
 
-def _record(project_root: Path, rc: int, kr_exit: int, task_profile: str = "large") -> tuple[int, dict]:
+def _record(
+    project_root: Path, rc: int, kr_exit: int, task_profile: str = "large",
+    gate_phase: str | None = "post-implement",
+) -> tuple[int, dict]:
+    # gate_phase defaults to "post-implement" (review round 1 MAJOR fix (b),
+    # IVG-249 S-03): `check`'s new provenance guard rejects any sidecar whose
+    # gate_phase isn't "post-implement"/"post-review", so every existing
+    # happy-path/degraded-path case here must record a valid one to keep
+    # exercising its OWN reason, not fall through to `no-provenance`.
     argv = [
         "record", "--project-root", str(project_root),
         "--rc", str(rc), "--known-red-exit", str(kr_exit),
         "--task-profile", task_profile, "--format", "json",
     ]
+    if gate_phase is not None:
+        argv += ["--gate-phase", gate_phase]
     import io
     import contextlib
     buf = io.StringIO()
@@ -255,6 +265,66 @@ def test_record_small_and_medium_downgrade_case_fails(tmp_path):
     code, data = _record(tmp_path, rc=1, kr_exit=0, task_profile="medium")
     assert code == 0
     assert data["verdict"] == "FAIL"
+
+
+# (p) review round 1 MAJOR fix (b): a sidecar recorded WITHOUT --gate-phase
+# (gate_phase: null in the payload — e.g. a hand-authored `record` invocation
+# that omits the flag, exactly the AC-6-acceptance-recipe hazard the review
+# flagged) must not be honored -> exit 1 no-provenance.
+def test_check_rejects_missing_gate_phase(tmp_path):
+    _init_repo(tmp_path / "repo")
+    code, _ = _record(tmp_path, rc=0, kr_exit=0, task_profile="large", gate_phase=None)
+    assert code == 0
+
+    code, data = _check(tmp_path)
+    assert code == 1
+    assert data["reason"] == "no-provenance"
+
+
+# (q) a sidecar with an out-of-band gate_phase value (unreachable via the CLI's
+# own --gate-phase choices, but reachable via a hand-authored/corrupt sidecar
+# file — the same threat model as case (n)'s unknown schema_version) must also
+# be rejected -> exit 1 no-provenance.
+def test_check_rejects_invalid_gate_phase(tmp_path):
+    _init_repo(tmp_path)
+    cache_dir = _cache_dir(tmp_path)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    sidecar_file = cache_dir / "gate-fullsuite-bogus-phase.freshness.json"
+    sidecar_file.write_text(json.dumps({
+        "schema_version": 1,
+        "recorded_at": "2030-01-01T00:00:00Z",
+        "gate_phase": "some-other-phase",
+        "verdict": "PASS",
+        "all_clean": True,
+        "repos": [],
+    }))
+
+    code, data = _check(tmp_path)
+    assert code == 1
+    assert data["reason"] == "no-provenance"
+
+
+# (r) review round 1 MINOR 1 (fold-in): an empty recorded+current repo set
+# ("repos": [] paired with discover_repos also returning []) must not grant
+# reuse with zero evidence -> exit 1 no-repos. Distinct from case (k)
+# (no-sidecar at all) and case (g)/(m) (a real, non-empty repo-set mismatch).
+def test_check_empty_repo_set_rejected(tmp_path):
+    # tmp_path itself is never git-init'd, so discover_repos(tmp_path) == [].
+    cache_dir = _cache_dir(tmp_path)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    sidecar_file = cache_dir / "gate-fullsuite-empty-repos.freshness.json"
+    sidecar_file.write_text(json.dumps({
+        "schema_version": 1,
+        "recorded_at": "2030-01-01T00:00:00Z",
+        "gate_phase": "post-implement",
+        "verdict": "PASS",
+        "all_clean": True,
+        "repos": [],
+    }))
+
+    code, data = _check(tmp_path)
+    assert code == 1
+    assert data["reason"] == "no-repos"
 
 
 def test_derive_verdict_pure_function_matrix():

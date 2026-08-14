@@ -198,10 +198,10 @@ def test_cost_summary_json_appears_before_archived_literal():
 # ---------------------------------------------------------------------------
 
 EXPECTED_NORMALIZED_PREDICATE = (
-    '{ [ -n "$AID" ] && grep -qF "$AID | " "$LEDGER" 2>/dev/null; } || \\'
+    '{ [ -n "$AID" ] && grep -qF -e "$AID | " -- "$LEDGER" 2>/dev/null; } || \\'
 )
 
-_PREDICATE_LINE_RE = re.compile(r'^.*grep -qF "\$AID \| ".*\|\| \\\s*$')
+_PREDICATE_LINE_RE = re.compile(r'^.*grep -qF -e "\$AID \| " -- .*\|\| \\\s*$')
 
 
 def _extract_predicate_line(text: str, *, is_architect: bool) -> str:
@@ -238,7 +238,7 @@ def _run_shell(shell: str, script: str, env: dict) -> "subprocess.CompletedProce
 
 
 _POST_CHECK_SCRIPT = (
-    '{ [ -n "$AID" ] && grep -qF "$AID | " "$LEDGER" 2>/dev/null; } '
+    '{ [ -n "$AID" ] && grep -qF -e "$AID | " -- "$LEDGER" 2>/dev/null; } '
     "&& echo MATCH || echo NOMATCH"
 )
 
@@ -270,6 +270,13 @@ def _assert_post_check_scenarios(tmp_path: Path, shell: str) -> None:
     assert _run_post_check(shell, "AID-999-not-present", absent) == "NOMATCH"
     assert _run_post_check(shell, "", present) == "NOMATCH"  # empty AID, F-16
     assert _run_post_check(shell, "AID-123", missing) == "NOMATCH"  # ledger absent
+    # Leading-dash AID must not be parsed as a grep option (review round 1
+    # MINOR 2, IVG-249 S-03): the old unguarded `grep -qF "$AID | " "$LEDGER"`
+    # let AID="-e" combine with the residual " | " as an attached -e pattern
+    # argument, matching any pipe-delimited row and producing a false MATCH
+    # that suppressed the fallback row. `-e "$AID | " --` fixes this — "-e"
+    # genuinely absent from `absent` must still read NOMATCH.
+    assert _run_post_check(shell, "-e", absent) == "NOMATCH"
 
 
 def test_post_check_predicate_scenarios_sh(tmp_path):

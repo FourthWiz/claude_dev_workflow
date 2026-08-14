@@ -28,12 +28,22 @@ _REASON_ORDER = (
     "disabled-by-env",
     "no-sidecar",
     "schema-unsupported",
+    "no-provenance",
     "verdict-fail",
     "dirty-at-record",
     "repo-set-changed",
+    "no-repos",
     "sha-mismatch",
     "dirty-now",
 )
+
+# gate_phase provenance guard (review round 1 MAJOR, IVG-249 S-03): `check`
+# must only honor sidecars written by an actual gate `record` invocation.
+# Both gate call sites (post-implement, post-review) already pass one of
+# these two values; a hand-authored or ad-hoc `record` call (e.g. an
+# acceptance-test recipe run against the live project cache) that omits
+# --gate-phase produces a sidecar this predicate rejects.
+_VALID_GATE_PHASES = frozenset({"post-implement", "post-review"})
 
 
 def _load_branch_hygiene():
@@ -199,6 +209,10 @@ def _cmd_check(args: argparse.Namespace) -> int:
             _emit_check_result(args, reuse=False, reason="schema-unsupported")
             return 1
 
+        if data.get("gate_phase") not in _VALID_GATE_PHASES:
+            _emit_check_result(args, reuse=False, reason="no-provenance")
+            return 1
+
         if data.get("verdict") != "PASS":
             _emit_check_result(args, reuse=False, reason="verdict-fail")
             return 1
@@ -210,6 +224,16 @@ def _cmd_check(args: argparse.Namespace) -> int:
         bh = _load_branch_hygiene()
         current_repos = bh.discover_repos(project_root)
         recorded_repos = data.get("repos", [])
+
+        # Empty-repo-set guard (review round 1 MINOR 1, IVG-249 S-03): an empty
+        # `repos: []` sidecar paired with a `discover_repos` OSError (also `[]`)
+        # made recorded_paths == current_paths == [] "match" with zero evidence
+        # — the only fail-OPEN path in this otherwise fail-CLOSED predicate.
+        # Reject before the repo-set/SHA comparisons below.
+        if not recorded_repos or not current_repos:
+            _emit_check_result(args, reuse=False, reason="no-repos")
+            return 1
+
         recorded_paths = sorted(str(Path(e["path"]).resolve()) for e in recorded_repos)
         current_paths = sorted(str(r.resolve()) for r in current_repos)
         if recorded_paths != current_paths:
@@ -240,6 +264,10 @@ def _cmd_check(args: argparse.Namespace) -> int:
 
     except Exception as exc:  # noqa: BLE001 - undeterminable: git/discovery unavailable
         print(f"gate_fullsuite_sidecar: check: undeterminable ({exc})", file=sys.stderr)
+        # MINOR 4 (review round 1, IVG-249 S-03): end_of_task's contract says
+        # to echo the emitted `reason`; exit 3 previously emitted stderr only.
+        # Emit a structured reason on stdout too, in the requested format.
+        _emit_check_result(args, reuse=False, reason="undeterminable")
         return 3
 
 

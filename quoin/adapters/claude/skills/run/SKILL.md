@@ -376,7 +376,7 @@ printf '%s | %s | %s | %s | task | %s | %s | %s\n' \
 # AID landed — immune to a stale same-phase row masking a lost row on re-run,
 # unlike a bare phase-name check. If the append above silently failed (mktemp
 # failure, disk error, sidecar crash), append a labeled fallback row now.
-{ [ -n "$AID" ] && grep -qF "$AID | " "$LEDGER" 2>/dev/null; } || \
+{ [ -n "$AID" ] && grep -qF -e "$AID | " -- "$LEDGER" 2>/dev/null; } || \
   printf '%s | %s | %s | %s | task | %s | %s\n' \
     "unknown-PHASE-$(date -u +%s)" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" \
     "/run subagent (on-behalf write failed)" "0" >> "$LEDGER"

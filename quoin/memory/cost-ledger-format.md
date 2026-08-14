@@ -42,7 +42,7 @@ if [ "${QUOIN_INLINE_COST_CAPTURE:-1}" != "0" ]; then
   # landed; if the append above silently failed, append a labeled fallback row
   # now. Every orchestrator call site embeds this — no managed spawn is left
   # with a silent zero-row path on write failure.
-  { [ -n "$AID" ] && grep -qF "$AID | " "$LEDGER" 2>/dev/null; } || \
+  { [ -n "$AID" ] && grep -qF -e "$AID | " -- "$LEDGER" 2>/dev/null; } || \
     printf '%s | %s | %s | %s | task | %s | %s\n' \
       "unknown-PHASE-$(date -u +%s)" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" \
       "/ORCH subagent (on-behalf write failed)" "0" >> "$LEDGER"
