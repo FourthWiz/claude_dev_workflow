@@ -548,7 +548,7 @@ while round <= max_rounds:
         #   # (mktemp failure, disk error, sidecar crash), append a labeled
         #   # fallback row now. This closes F-01 — the critic spawn otherwise
         #   # has no separate verify/append fallback documented anywhere.
-        #   tail -1 "$LEDGER" 2>/dev/null | grep -qF "$AID | " || \
+        #   { [ -n "$AID" ] && grep -qF -e "$AID | " -- "$LEDGER" 2>/dev/null; } || \
         #     printf '%s | %s | %s | %s | task | %s | %s\n' \
         #       "unknown-critic-$(date -u +%s)" "$(date -u +%Y-%m-%d)" "critic" "opus" \
         #       "/architect subagent (on-behalf write failed)" "0" >> "$LEDGER"

@@ -341,17 +341,30 @@ class TestIvg92SpecialCaseMapping:
     def test_skill_md_still_not_selectable_documented_residual_gap(self):
         """Regression guard for the documented residual gap (review-1.md MAJOR 2):
         an adapter SKILL.md edit — one of the citation sweep's three in-scope
-        corpora — still has no _DOCS_TO_TESTS row and falls through to ignored.
-        Mirrors test_unrelated_skill_md_still_ignored; kept as a separate,
-        explicitly-named test so the residual gap has its own regression anchor."""
+        corpora — still has no test_claude_md_citations.py row.
+
+        Two independent assertions (IVG-249 S-03 T-07 split, round-2 MIN-4):
+        (1) no test_claude_md_citations.py selector for gate/SKILL.md — the
+            citation-sweep-gap claim this test is named for, and still true
+            after T-07 (gate/SKILL.md gets a test_eot_resilience_contract.py
+            row, never a citation-sweep row).
+        (2) a SKILL.md still lands wholly in `ignored` — gate/SKILL.md no
+            longer qualifies for this half after T-07 made it selectable, so
+            this assertion moved to review/SKILL.md, which carries no
+            _DOCS_TO_TESTS row at all (verified by grep)."""
         selectors, unmatched, ignored = _at.map_changed_to_tests(
             ["quoin/adapters/claude/skills/gate/SKILL.md"], _REPO_ROOT
         )
         assert not any("test_claude_md_citations.py" in s for s in selectors), (
-            f"SKILL.md is a documented residual gap, not (yet) selectable; got {selectors}"
+            f"SKILL.md is a documented residual gap for the citation sweep; got {selectors}"
         )
-        assert "quoin/adapters/claude/skills/gate/SKILL.md" in ignored
-        assert not unmatched
+
+        selectors2, unmatched2, ignored2 = _at.map_changed_to_tests(
+            ["quoin/adapters/claude/skills/review/SKILL.md"], _REPO_ROOT
+        )
+        assert not selectors2, f"expected no selectors for review/SKILL.md, got {selectors2}"
+        assert "quoin/adapters/claude/skills/review/SKILL.md" in ignored2
+        assert not unmatched2
 
     def test_cost_ledger_format_triggers_agent_transcript_cost(self):
         """IVG-249 T-11 (D-05/MAJ-3): quoin/memory/cost-ledger-format.md ->

@@ -376,7 +376,7 @@ printf '%s | %s | %s | %s | task | %s | %s | %s\n' \
 # AID landed — immune to a stale same-phase row masking a lost row on re-run,
 # unlike a bare phase-name check. If the append above silently failed (mktemp
 # failure, disk error, sidecar crash), append a labeled fallback row now.
-tail -1 "$LEDGER" 2>/dev/null | grep -qF "$AID | " || \
+{ [ -n "$AID" ] && grep -qF -e "$AID | " -- "$LEDGER" 2>/dev/null; } || \
   printf '%s | %s | %s | %s | task | %s | %s\n' \
     "unknown-PHASE-$(date -u +%s)" "$(date -u +%Y-%m-%d)" "PHASE" "MODEL" \
     "/run subagent (on-behalf write failed)" "0" >> "$LEDGER"
@@ -897,6 +897,10 @@ Spawn `/end_of_task` as a subagent session. Because the user invoked `/run` and 
 
 Under `AUTONOMOUS`, once `/end_of_task` returns successfully, also write the phase's completion sentinel `autonomous-progress-{task}/end_of_task.done` (atomic write — T-05/T-10 write-site map). This is a separate sentinel from `end_of_task`'s own terminal `autonomous-done-{task}.md` (T-11) — this one records phase-level progress consistent with the other 8 phases; the done-sentinel is the overall supervisor-loop terminal signal.
 
+### end_of_task failure recovery (inline finish)
+
+If the Phase 6 subagent dies (stream-idle timeout, error return, context exhaustion) or is skipped, the orchestrator MUST — before any archive step — perform the cost aggregation itself, following `end_of_task/SKILL.md` Sub-phase B Steps 4 and 5 as a pointer, never a copy: read the ledger, apply the col-8 inline-first precedence rule, and write `.workflow_artifacts/<task-name>/cost-summary.json` at the identical path Sub-phase B resolves. On any aggregation failure, still write a partial `cost-summary.json` carrying `fallback_used: true` and a non-empty `fallback_note` naming the inline-finish origin. Only then archive. Bounded to the same `~15 tool uses` scope cap Sub-phase B already declares.
+
 After completion, present the final report:
 ```
 Task complete: <task-name>
@@ -907,9 +911,12 @@ Route: <full|fast> (fast: planning was skipped by routing, not by profile — se
 Phases: discover(<skipped|ran>), architect(<skipped|ran>), plan(<N> rounds), implement, review(APPROVED), finalized
 Archived: .workflow_artifacts/<task-name>/ → finalized/
 Cost ledger: .workflow_artifacts/<task-name>/cost-ledger.md (<N> sessions tracked)
+Cost: $X.XX (N sessions tracked)
 
 Next: run /pr to create a pull request from the branch.
 ```
+
+The `Cost:` line is mandatory in every report — never silently omitted (AC-7). Its value comes from `python3 __QUOIN_HOME__/scripts/cost_summary.py --format json <task-dir>/cost-summary.json`: total present with `is_partial` false → `Cost: $X.XX (N sessions tracked)`; total present with `is_partial` true → `Cost: ~$X.XX (partial) (N sessions tracked)`; total null, file missing, or aggregation skipped → `Cost: totals unavailable — cost aggregation did not complete`. Carry the F-09 one-phase-undercount note above into this line per its own instruction.
 
 ## Checkpoint interaction protocol
 
@@ -1049,7 +1056,7 @@ that tradeoff.
 
 ## Error handling
 
-- **Subagent failure:** inform the user, offer to retry the phase
+- **Subagent failure:** inform the user, offer to retry the phase. If the failed subagent was Phase 6 (`/end_of_task`), see "end_of_task failure recovery (inline finish)" under Phase 6 above before archiving.
 - **Gate failure:** present failures, offer to fix (re-run the phase) or stop
 - **Git errors:** report and let the user resolve. **Git conflict (Hard-stop #4, autonomous):** under `AUTONOMOUS`, a git conflict (merge/rebase/push conflict, at any phase) is a hard stop — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop; never attempt automatic conflict resolution.
 - **Context exhaustion:** save state, instruct user to resume with `/run --resume <task-name>`

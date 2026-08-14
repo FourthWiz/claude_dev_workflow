@@ -240,10 +240,45 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
     # Round 4 (MAJOR-1(d)): closes the Site-7 (run/SKILL.md:729) blast-radius
     # gap — test_run_fast_path.py pins the route-conditional model literal
     # this stage rewrites there. No collision: the two SKILL.md-is-ignored
-    # tests (test_affected_tests.py:211,348) both use gate/SKILL.md.
+    # tests (test_affected_tests.py:211,341) use gate/SKILL.md and
+    # review/SKILL.md respectively (T-07, IVG-249 S-03 — gate/SKILL.md
+    # stopped being the shared unselectable exemplar once the T-07 rows
+    # below made it selectable for test_eot_resilience_contract.py).
     (
         "quoin/adapters/claude/skills/run/SKILL.md",
         "quoin/dev/tests/test_run_fast_path.py",
+    ),
+    # IVG-249 S-03 T-07: gate/end_of_task/run SKILL.md edits (T-03/T-04/T-05)
+    # now select the new contract/behavior test files T-06 added. gate/SKILL.md
+    # is the ONLY genuinely unrepresented file among the three before this row
+    # set — run/end_of_task already carry on-behalf-guard rows above.
+    (
+        "quoin/adapters/claude/skills/gate/SKILL.md",
+        "quoin/dev/tests/test_eot_resilience_contract.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/end_of_task/SKILL.md",
+        "quoin/dev/tests/test_eot_resilience_contract.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_eot_resilience_contract.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_run_inline_finish.py",
+    ),
+    (
+        "quoin/memory/cost-ledger-format.md",
+        "quoin/dev/tests/test_onbehalf_default_on.py",
+    ),
+    # T-08's one-liner execution harness (the empty-UUID writer guard's shell
+    # tests) lands in test_run_inline_finish.py — without this row a future
+    # re-break of the self-write chain is not affected-area-selectable from
+    # the one file whose edit actually guards it.
+    (
+        "quoin/memory/cost-ledger-format.md",
+        "quoin/dev/tests/test_run_inline_finish.py",
     ),
 )
 
@@ -251,7 +286,8 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
 # _DOCS_TO_TESTS is a flat, per-file allowlist — there is no directory-prefix rule,
 # so an edit to any of the 32 quoin/adapters/claude/skills/*/SKILL.md files (the
 # third in-scope citation-sweep corpus, alongside the two rows above) is NOT
-# selectable and still falls through to the generic non-.py "ignored" bucket
+# selectable for test_claude_md_citations.py and still falls through to the
+# generic non-.py "ignored" bucket for that sweep specifically
 # (test_unrelated_skill_md_still_ignored pins this as expected, not a bug). A
 # directory-prefix rule would widen _DOCS_TO_TESTS's matching semantics for every
 # existing row, a larger behavior change than this seam-local fix round's scope;
@@ -264,6 +300,17 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
 # tests; this does NOT make them selectable for the citation sweep
 # (test_claude_md_citations.py), which remains gapped for all 32 SKILL.md
 # files exactly as before.
+#
+# Orthogonal addition (IVG-249 S-03 T-07): gate/SKILL.md (plus end_of_task and
+# run, already selectable above) now also carries rows selecting
+# test_eot_resilience_contract.py / test_run_inline_finish.py. gate/SKILL.md is
+# therefore no longer a member of the residual gap's "wholly unselectable"
+# exemplar set — test_skill_md_still_not_selectable_documented_residual_gap
+# (test_affected_tests.py:341) moved its "lands in ignored" assertion to
+# review/SKILL.md, which still carries no _DOCS_TO_TESTS row at all. This does
+# NOT close the citation-sweep gap itself (test_claude_md_citations.py remains
+# gapped for all 32 files, per the paragraph above) — only gate/SKILL.md's
+# general unselectability changed.
 
 
 # ---------------------------------------------------------------------------
