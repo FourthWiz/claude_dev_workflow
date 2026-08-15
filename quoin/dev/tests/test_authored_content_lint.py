@@ -156,6 +156,21 @@ def test_tier_a_unconditional_matches(text):
 @pytest.mark.parametrize(
     "text",
     [
+        "# gate_phase provenance guard (review round 1 MAJOR, IVG-249 S-03): ...",
+        "# S-2 plan T-02 section — the combined gate is evaluated against this",
+        "# CRIT-1 fix (D-05): subtract BOTH archived AND read_only ...",
+        "# T-03 — load + validate (tomllib-or-internal)",
+    ],
+)
+def test_tier_a_matches_real_world_examples(text):
+    """Real comment lines pulled verbatim from this codebase's own history,
+    each expected to match Tier A through at least one taxonomy pattern."""
+    assert acl._match_taxonomy(text, set())[0] == "A"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
         "# plan: MAJOR issue found here",
         "# critic: MINOR issue found here",
         "# gate: verdict recorded here",
