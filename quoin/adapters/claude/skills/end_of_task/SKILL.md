@@ -427,6 +427,7 @@ Run `git status`. If there are uncommitted changes:
     ]
   )
   ```
+- **Commit message content:** whichever path composes the message (autonomous or interactive), it follows the shared clean-authored-content rule — plain engineering language, no plan/review process vocabulary: __QUOIN_HOME__/memory/clean-authored-content.md.
 - **Autonomous mode:** if `_AUTONOMOUS` is true, skip the `AskUserQuestion` — auto-select
   **"Commit"** (NEVER "Abort"). Compose the conventional commit message automatically from
   the diff/plan context. Print one line: `[quoin: autonomous — committing uncommitted

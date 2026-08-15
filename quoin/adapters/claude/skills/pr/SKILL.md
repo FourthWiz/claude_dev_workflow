@@ -302,6 +302,7 @@ On start:
 2. **Gather PR content:**
    - Commits: `git log --oneline <base>..HEAD`
    - Changed files: `git diff <base>...HEAD --stat`
+   - Diff content: `git diff <base>...HEAD`
 
 3. **Derive PR title:**
    - Take the current branch name (e.g., `feat/IVG-53-pr-skill` or `fix/null-check-auth`).
@@ -320,19 +321,20 @@ On start:
    <2-3 sentence summary of what this PR does>
 
    ## Changes
-   <bullet list of key changes, derived from git log>
+   <bullet list of key changes, derived from the diff>
 
    ## Tests
    <brief note — "all tests pass" or list relevant test files>
 
    ## Related
    - Branch: <branch-name>
+   - Tracker ID: <if applicable>
 
    🤖 Generated with [Claude Code](https://claude.com/claude-code)
    EOF
    )"
    ```
-   Fill the Summary and Changes sections from the git log output. Do not invent facts.
+   Fill the Summary and Changes sections from the diff gathered in step 2, not concatenated commit subjects. Do not invent facts. PR text is shipped work product — see __QUOIN_HOME__/memory/clean-authored-content.md.
 
 5. Print the PR URL to the user.
 
