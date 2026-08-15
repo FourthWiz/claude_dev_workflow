@@ -152,6 +152,8 @@ Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`, `ci`
 
 The body should explain the "why" — the motivation for the change, not a list of files modified (the diff shows that).
 
+**Clean authored content.** Comments, commit bodies, and PR descriptions are shipped work product: they read as plain engineering to someone who has never seen the planning artifacts — no plan/decision/finding IDs, severities, review-round narration, gate verdicts, confidence scores, or `.workflow_artifacts/` paths. Full rule (all skills that author shipped content follow it): `__QUOIN_HOME__/memory/clean-authored-content.md`.
+
 #### Pull requests
 
 PR creation is handled by the `/pr` skill. When the user asks to create a PR, invoke `/pr` which handles: pre-flight checks (branch ≠ main/master, gh CLI available and authenticated), optional version bump, push if not already pushed, PR creation via `gh pr create` with a structured message, waiting for the user to merge, and switching to the merge target branch after merge.
