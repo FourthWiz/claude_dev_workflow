@@ -82,6 +82,7 @@ route override never suppresses the Large security guarantee.
 
 ## Behavior contract
 
+- Shipped authored content (comments, commit messages, PR descriptions) MUST follow the clean-authored-content rule: plain engineering language, no plan/decision/finding IDs, severities, review-round narration, gate verdicts, or planning-artifact paths.
 - The diff MUST be read in full; full files are read selectively when
   structural, security, integration, or prior-critic-flagged signals fire.
 - Tests MUST be executed, not just read.

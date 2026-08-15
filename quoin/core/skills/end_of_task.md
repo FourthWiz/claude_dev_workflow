@@ -61,6 +61,7 @@ stage-aware resolver.
 
 ## Behavior contract
 
+- Shipped authored content (comments, commit messages, PR descriptions) MUST follow the clean-authored-content rule: plain engineering language, no plan/decision/finding IDs, severities, review-round narration, gate verdicts, or planning-artifact paths.
 - The skill MUST refuse to proceed if no review artifact with verdict APPROVED
   exists at the resolved task path.
 - The skill MUST be invoked explicitly by the user; MUST NOT be auto-invoked
