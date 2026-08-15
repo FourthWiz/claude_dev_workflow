@@ -781,6 +781,12 @@ KNOWN_DEFERRED_ROSTERS: dict = {
         "applies: no skills.json field distinguishes '§0-carrying', editorial, "
         "single-file, not a candidate for RG-TESTROSTER cross-file agreement."
     ),
+    "_ADAPTER_POINTER_COUNTS@test_authored_content_rule_pointers.py": (
+        "the expected per-file pointer-site count for one guard test's own "
+        "assertion, not a skill-classification roster — no skills.json field "
+        "backs it, it is read directly against the five adapter SKILL.md "
+        "files it names in the same test, and no other file duplicates it."
+    ),
 }
 
 _ALLCAPS_RE = None  # populated lazily to avoid import cost at module load
