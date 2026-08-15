@@ -349,9 +349,9 @@ class TestIvg92SpecialCaseMapping:
             after T-07 (gate/SKILL.md gets a test_eot_resilience_contract.py
             row, never a citation-sweep row).
         (2) a SKILL.md still lands wholly in `ignored` — gate/SKILL.md no
-            longer qualifies for this half after T-07 made it selectable,
-            and review/SKILL.md stopped qualifying once the
-            clean-authored-content rule gave it a
+            longer qualifies for this half once the end-of-task resilience
+            rows made it selectable, and review/SKILL.md stopped qualifying
+            once the clean-authored-content rule gave it a
             test_authored_content_rule_pointers.py row, so this assertion
             moved to critic/SKILL.md, which carries no _DOCS_TO_TESTS row at
             all (verified by grep)."""

@@ -1,4 +1,4 @@
-"""Guard tests for the clean-authored-content rule (IVG-252 stage 1).
+"""Guard tests for the clean-authored-content rule.
 
 Covers: the rule's canary sentence appears in exactly one file (its own home);
 every pointer site is present with the right per-file count; the PR-template

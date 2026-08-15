@@ -51,7 +51,7 @@ TIER1_MEMORY_FILES = (
     "decision-gate-guard.md",
     # Added IVG-164 stage 1: generated slim-variant catalog of dropped CLAUDE.md sections
     "workflow-catalog.md",
-    # Added IVG-252 stage 1: shared clean-authored-content rule (Tier-1 memory file)
+    # Shared clean-authored-content rule (Tier-1 memory file)
     "clean-authored-content.md",
 )
 

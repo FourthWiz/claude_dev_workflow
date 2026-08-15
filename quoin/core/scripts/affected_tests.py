@@ -241,7 +241,7 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
     # gap — test_run_fast_path.py pins the route-conditional model literal
     # this stage rewrites there. No collision: the two SKILL.md-is-ignored
     # tests (test_affected_tests.py:211,341) use gate/SKILL.md and
-    # review/SKILL.md respectively (T-07, IVG-249 S-03 — gate/SKILL.md
+    # critic/SKILL.md respectively (T-07, IVG-249 S-03 — gate/SKILL.md
     # stopped being the shared unselectable exemplar once the T-07 rows
     # below made it selectable for test_eot_resilience_contract.py).
     (
@@ -335,7 +335,7 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
 # therefore no longer a member of the residual gap's "wholly unselectable"
 # exemplar set — test_skill_md_still_not_selectable_documented_residual_gap
 # (test_affected_tests.py:341) moved its "lands in ignored" assertion to
-# review/SKILL.md, which still carries no _DOCS_TO_TESTS row at all. This does
+# critic/SKILL.md, which still carries no _DOCS_TO_TESTS row at all. This does
 # NOT close the citation-sweep gap itself (test_claude_md_citations.py remains
 # gapped for all 32 files, per the paragraph above) — only gate/SKILL.md's
 # general unselectability changed.
