@@ -8,7 +8,6 @@ its own directory is already on sys.path, mirroring test_nested_root_check.py.
 Fixtures build real tmp_path git repos and use synthetic tracker-shaped comment text (e.g. a line reading "T-04" or "D-02") to exercise the taxonomy.  quoin-lint: allow
 """
 
-import shutil
 import subprocess
 import sys
 from pathlib import Path
