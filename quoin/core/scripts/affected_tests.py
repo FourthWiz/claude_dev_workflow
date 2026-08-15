@@ -280,6 +280,34 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/memory/cost-ledger-format.md",
         "quoin/dev/tests/test_run_inline_finish.py",
     ),
+    # The clean-authored-content rule's guard test lives in
+    # test_authored_content_rule_pointers.py — without these rows an
+    # affected-area /gate run on the rule file or any of its pointer sites
+    # never selects the test that guards them.
+    (
+        "quoin/memory/clean-authored-content.md",
+        "quoin/dev/tests/test_authored_content_rule_pointers.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/implement/SKILL.md",
+        "quoin/dev/tests/test_authored_content_rule_pointers.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/end_of_task/SKILL.md",
+        "quoin/dev/tests/test_authored_content_rule_pointers.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/pr/SKILL.md",
+        "quoin/dev/tests/test_authored_content_rule_pointers.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/review/SKILL.md",
+        "quoin/dev/tests/test_authored_content_rule_pointers.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_authored_content_rule_pointers.py",
+    ),
 )
 
 # SKILL.md coverage residual gap (review-1.md MAJOR 2, documented-acceptance branch):
