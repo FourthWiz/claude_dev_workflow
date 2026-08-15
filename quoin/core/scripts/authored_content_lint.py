@@ -141,12 +141,36 @@ class _Undeterminable(Exception):
 # ---------------------------------------------------------------------------
 
 def _run(args):
-    """Run a subprocess and return (stdout, stderr, returncode)."""
+    """Run a subprocess and return (stdout, stderr, returncode).
+
+    stdout is stripped — safe for ref-shaped output (a SHA, a branch name, a
+    file listing) but never for text that will be read back line-by-line,
+    since stripping silently drops leading/trailing blank lines and shifts
+    every line number after them. Line-numbered content reads must use
+    `_run_content` instead.
+    """
     try:
         proc = subprocess.run(
             args, capture_output=True, text=True, timeout=_SUBPROCESS_TIMEOUT
         )
         return proc.stdout.strip(), proc.stderr.strip(), proc.returncode
+    except subprocess.TimeoutExpired:
+        return "", "timeout", 1
+    except FileNotFoundError:
+        return "", "git not found", 1
+    except OSError as exc:
+        return "", str(exc), 1
+
+
+def _run_content(args):
+    """Run a subprocess and return (stdout, stderr, returncode) with stdout
+    left unstripped, for reads whose line numbers must match the source
+    exactly (e.g. `git show HEAD:<path>`)."""
+    try:
+        proc = subprocess.run(
+            args, capture_output=True, text=True, timeout=_SUBPROCESS_TIMEOUT
+        )
+        return proc.stdout, proc.stderr.strip(), proc.returncode
     except subprocess.TimeoutExpired:
         return "", "timeout", 1
     except FileNotFoundError:
@@ -321,7 +345,7 @@ def _read_text_source(repo_root, relpath, basis):
     """Read the post-image text for `relpath`, matching the basis frame:
     worktree file for union/whole-tree; the HEAD blob for committed."""
     if basis == "committed":
-        out, err, rc = _run(["git", "-C", str(repo_root), "show", f"HEAD:{relpath}"])
+        out, err, rc = _run_content(["git", "-C", str(repo_root), "show", f"HEAD:{relpath}"])
         if rc != 0:
             raise _Undeterminable(f"git show HEAD:{relpath} failed: {err}")
         return out

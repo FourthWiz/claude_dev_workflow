@@ -252,6 +252,17 @@ def test_basis_committed_reports_head_blob_line_ignoring_worktree_edits(tmp_path
     assert any(f["file"] == "mod.py" and f["line"] == 2 for f in result["findings"])
 
 
+def test_basis_committed_leading_blank_lines_report_true_line_number(tmp_path):
+    """The HEAD blob read for committed basis must preserve leading blank
+    lines exactly — trimming them would shift every extracted line number
+    away from the diff's post-image frame."""
+    repo = _init_repo(tmp_path)
+    (repo / "mod.py").write_text("\n\n# T-04 padded pollution\n", encoding="utf-8")
+    _commit_all(repo, "add mod.py")
+    result = _run_scan(repo, "committed")
+    assert any(f["file"] == "mod.py" and f["line"] == 3 for f in result["findings"])
+
+
 # ---------------------------------------------------------------------------
 # Whole-tree enumeration (gitignore regression guard)
 # ---------------------------------------------------------------------------
