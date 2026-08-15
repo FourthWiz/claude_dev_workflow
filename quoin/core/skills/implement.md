@@ -49,6 +49,7 @@ stage-aware path resolver when locating phase artifacts.
 
 ## Behavior contract
 
+- Shipped authored content (comments, commit messages, PR descriptions) MUST follow the clean-authored-content rule: plain engineering language, no plan/decision/finding IDs, severities, review-round narration, gate verdicts, or planning-artifact paths.
 - The skill MUST require explicit user invocation. No other skill may
   auto-invoke it. The single exception is an end-to-end orchestrator skill
   where the user has already confirmed entry to the implementation phase.

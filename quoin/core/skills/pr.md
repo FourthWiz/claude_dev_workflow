@@ -46,6 +46,8 @@ to the merge target branch and pull latest.
 
 ## Contract
 
+- Shipped authored content (the PR description) MUST follow the clean-authored-content rule: plain engineering language, no plan/decision/finding IDs, severities, review-round narration, gate verdicts, or planning-artifact paths.
+
 1. **Pre-flight:** Refuse on main/master. Verify CLI present and authenticated.
    Check for uncommitted changes. Determine if branch is already pushed.
 2. **Version bump (conditional):** Scan for version files (pyproject.toml,

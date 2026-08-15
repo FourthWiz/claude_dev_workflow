@@ -52,6 +52,7 @@ be honored when locating per-stage artifacts.
 
 ## Behavior contract
 
+- Shipped authored content (comments, commit messages, PR descriptions) MUST follow the clean-authored-content rule: plain engineering language, no plan/decision/finding IDs, severities, review-round narration, gate verdicts, or planning-artifact paths.
 - The skill MUST chain phases in this order, each conditional on the
   routing outcome determined earlier in the pipeline rather than an
   unconditional fixed sequence: discover (conditional — skip if

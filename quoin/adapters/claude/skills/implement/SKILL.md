@@ -438,7 +438,7 @@ This matches the §0 dispatch fail-OPEN pattern (architecture I-01): cost guardr
 ### Code quality
 - Follow existing code style and conventions in the repository
 - Write meaningful variable and function names
-- Add comments only where the "why" isn't obvious from the code
+- Comments follow the shared clean-authored-content rule (why-only, no process vocabulary): __QUOIN_HOME__/memory/clean-authored-content.md.
 - Handle errors properly — no swallowed exceptions, no TODO error handling
 - Respect existing abstractions and patterns
 
@@ -639,6 +639,8 @@ callers don't need to handle token expiry themselves.
 Closes #142
 ```
 
+Commit bodies follow the same clean-authored-content rule as comments — plain engineering language, no plan/review process narration: __QUOIN_HOME__/memory/clean-authored-content.md.
+
 ## Pull request preparation
 
 When the user asks to create a PR:
@@ -675,9 +677,11 @@ When the user asks to create a PR:
 - <Rollback plan>
 
 ## Related
-- Plan: <link to current-plan.md or task reference>
-- Architecture: <link to architecture.md if applicable>
+- Branch: <branch-name>
+- Tracker ID: <if applicable>
 ```
+
+Body text is shipped work product — see __QUOIN_HOME__/memory/clean-authored-content.md for what belongs in it.
 
 5. **Create the PR** using `gh pr create`
 

@@ -349,9 +349,12 @@ class TestIvg92SpecialCaseMapping:
             after T-07 (gate/SKILL.md gets a test_eot_resilience_contract.py
             row, never a citation-sweep row).
         (2) a SKILL.md still lands wholly in `ignored` — gate/SKILL.md no
-            longer qualifies for this half after T-07 made it selectable, so
-            this assertion moved to review/SKILL.md, which carries no
-            _DOCS_TO_TESTS row at all (verified by grep)."""
+            longer qualifies for this half once the end-of-task resilience
+            rows made it selectable, and review/SKILL.md stopped qualifying
+            once the clean-authored-content rule gave it a
+            test_authored_content_rule_pointers.py row, so this assertion
+            moved to critic/SKILL.md, which carries no _DOCS_TO_TESTS row at
+            all (verified by grep)."""
         selectors, unmatched, ignored = _at.map_changed_to_tests(
             ["quoin/adapters/claude/skills/gate/SKILL.md"], _REPO_ROOT
         )
@@ -360,10 +363,10 @@ class TestIvg92SpecialCaseMapping:
         )
 
         selectors2, unmatched2, ignored2 = _at.map_changed_to_tests(
-            ["quoin/adapters/claude/skills/review/SKILL.md"], _REPO_ROOT
+            ["quoin/adapters/claude/skills/critic/SKILL.md"], _REPO_ROOT
         )
-        assert not selectors2, f"expected no selectors for review/SKILL.md, got {selectors2}"
-        assert "quoin/adapters/claude/skills/review/SKILL.md" in ignored2
+        assert not selectors2, f"expected no selectors for critic/SKILL.md, got {selectors2}"
+        assert "quoin/adapters/claude/skills/critic/SKILL.md" in ignored2
         assert not unmatched2
 
     def test_cost_ledger_format_triggers_agent_transcript_cost(self):
@@ -390,6 +393,29 @@ class TestIvg92SpecialCaseMapping:
         )
         assert not ignored
         assert not unmatched
+
+    @pytest.mark.parametrize(
+        "changed_file",
+        [
+            "quoin/memory/clean-authored-content.md",
+            "quoin/adapters/claude/skills/implement/SKILL.md",
+            "quoin/adapters/claude/skills/end_of_task/SKILL.md",
+            "quoin/adapters/claude/skills/pr/SKILL.md",
+            "quoin/adapters/claude/skills/review/SKILL.md",
+            "quoin/adapters/claude/skills/run/SKILL.md",
+        ],
+    )
+    def test_clean_authored_content_pointer_sites_select_guard_test(self, changed_file):
+        """The clean-authored-content rule file and each of its pointer sites
+        must select test_authored_content_rule_pointers.py — without this
+        proof, the guard test is unselectable at an affected-area gate and
+        silently never runs on an edit to any of these files."""
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            [changed_file], _REPO_ROOT
+        )
+        assert any(
+            "test_authored_content_rule_pointers.py" in s for s in selectors
+        ), f"expected test_authored_content_rule_pointers.py in selectors for {changed_file}, got {selectors}"
 
 
 # ---------------------------------------------------------------------------

@@ -278,6 +278,7 @@ So the three dimension subagents return ONLY verdict + tagged issues + (architec
 For each task in the plan, verify:
 
 - [ ] **Completeness** — is the task fully implemented? No partial implementations or TODO comments left behind?
+- [ ] **Authored-content hygiene (advisory)** — does new code prose (comments, docstrings) avoid process vocabulary per __QUOIN_HOME__/memory/clean-authored-content.md? Advisory only; never changes this review's verdict.
 - [ ] **Acceptance criteria** — does the implementation meet every acceptance criterion listed in the plan?
 - [ ] **File accuracy** — were the correct files modified? Are there unexpected file changes?
 - [ ] **Deviations** — if the implementation deviated from the plan, is the deviation documented and justified?
