@@ -241,7 +241,7 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
     # gap — test_run_fast_path.py pins the route-conditional model literal
     # this stage rewrites there. No collision: the two SKILL.md-is-ignored
     # tests (test_affected_tests.py:211,341) use gate/SKILL.md and
-    # critic/SKILL.md respectively (T-07, IVG-249 S-03 — gate/SKILL.md
+    # critic/SKILL.md respectively (gate/SKILL.md
     # stopped being the shared unselectable exemplar once the T-07 rows
     # below made it selectable for test_eot_resilience_contract.py).
     (

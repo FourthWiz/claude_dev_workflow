@@ -1,11 +1,11 @@
 """Guard tests for the clean-authored-content rule.
 
 Covers: the rule's canary sentence appears in exactly one file (its own home);
-every pointer site is present with the right per-file count; the PR-template
-half of the AC-3 acceptance criterion holds within a precisely block-scoped
-range; the /pr gathering step collects full diff content, not stat-only; and
-no adapter file drifts into restating the rule's prohibition paragraph
-verbatim instead of pointing at it.
+every pointer site is present with the right per-file count; the PR and
+implement templates omit planning-artifact filenames within a precisely
+block-scoped range; the /pr gathering step collects full diff content, not
+stat-only; and no adapter file drifts into restating the rule's prohibition
+paragraph verbatim instead of pointing at it.
 """
 from __future__ import annotations
 
