@@ -365,7 +365,7 @@ project root):
      `print("DEBUG` in their diff hunks (use `git diff -G` or read the diff output)
    - This is advisory only — some repos legitimately use these. Flag, don't block.
 
-3. **Present findings** — if anything was found, show a categorized summary:
+3. **Present findings** — if any garbage file or debug leftover was found, show a categorized summary:
 
    ```
    Working-tree cleanup scan:
@@ -411,6 +411,23 @@ project root):
    ```
    Working-tree cleanup scan: ✅ clean
    ```
+
+**Step 1c: Authored-content lint (advisory)**
+
+This step runs unconditionally, after item 4 above, regardless of what items 1-4 found.
+Checks new code against `__QUOIN_HOME__/memory/clean-authored-content.md`.
+
+Run:
+
+    python3 __QUOIN_HOME__/scripts/authored_content_lint.py --basis union --format text
+
+Result mapping:
+- exit 0 — nothing to report.
+- exit 1 — list every reported `file:line` and its matched token under an advisory heading.
+- exit 2, exit 3, or the script is missing — print a one-line non-blocking WARN and continue.
+
+This step never calls `AskUserQuestion`, never blocks, and never changes the Step 2 commit
+decision below.
 
 **Step 2: Commit decision (interactive — must resolve before dispatching sub-phases)**
 

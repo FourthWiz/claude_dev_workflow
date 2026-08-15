@@ -382,6 +382,20 @@ The helper resolves the git repo from `--project-root` itself (CRIT-1 fix: the o
 
 **Cross-reference to IVG-71 background:** This precondition exists because a smoke-only review-1 APPROVED a deliverable whose affected-area tests (test_dashboard_assets.py) were red; review-2 caught it a full cycle late (IVG-71).
 
+### Step 6c: Authored-content lint (advisory)
+
+Run (advisory only; the result never changes this review's verdict — see the Step 2
+checklist bullet above):
+
+    python3 __QUOIN_HOME__/scripts/authored_content_lint.py --basis committed --format text
+
+Result mapping:
+- exit 0 -> nothing to report.
+- exit 1 -> list every reported `file:line` and its matched token under an advisory
+  heading in the review output; still does not affect the verdict.
+- exit 2, exit 3, or the script is missing -> print a one-line non-blocking WARN and
+  continue; do not treat this as a review finding.
+
 ### Step 6: Risk assessment
 
 Produce a risk assessment for the deployment:

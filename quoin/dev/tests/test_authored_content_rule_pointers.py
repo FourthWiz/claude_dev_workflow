@@ -35,7 +35,7 @@ _POINTER = "memory/clean-authored-content.md"
 _ADAPTER_SKILLS_DIR = _REPO_ROOT / "quoin/adapters/claude/skills"
 _ADAPTER_POINTER_COUNTS = {
     "implement": 3,
-    "end_of_task": 1,
+    "end_of_task": 2,
     "pr": 1,
     "review": 1,
     "run": 1,
@@ -111,7 +111,7 @@ def test_pointer_site_counts():
         text = skill_file.read_text(encoding="utf-8")
         counts[name] = text.count(_POINTER)
     assert counts == _ADAPTER_POINTER_COUNTS, counts
-    assert sum(counts.values()) == 7, counts
+    assert sum(counts.values()) == 8, counts
 
     claude_md = (_REPO_ROOT / "quoin/CLAUDE.md").read_text(encoding="utf-8")
     assert claude_md.count(_POINTER) == 1, claude_md.count(_POINTER)
