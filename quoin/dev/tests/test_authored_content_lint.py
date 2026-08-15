@@ -63,22 +63,25 @@ def _run_scan(repo, basis, *, triage=False):
 def test_spec_from_file_location_fails_for_sibling_import():
     """Reproduces the failure the sys.path.insert loader avoids: loading via
     spec_from_file_location does not add the module's own directory to
-    sys.path, so the sibling `affected_tests` import breaks."""
-    import importlib.util
+    sys.path, so the sibling `affected_tests` import breaks.
 
+    Runs in a fresh subprocess — the shared pytest process accumulates many
+    other test modules' own sys.path.insert(core/scripts) calls over the
+    course of a full-suite run, so an in-process repro is not hermetic.
+    """
     core_path = Path(__file__).parent.parent.parent / "core" / "scripts" / "authored_content_lint.py"
-    spec = importlib.util.spec_from_file_location("_acl_spec_probe", core_path)
-    mod = importlib.util.module_from_spec(spec)
-    saved_path = list(sys.path)
-    saved_module = sys.modules.pop("affected_tests", None)
-    try:
-        sys.path = [p for p in sys.path if "core/scripts" not in p]
-        with pytest.raises(ModuleNotFoundError):
-            spec.loader.exec_module(mod)
-    finally:
-        sys.path = saved_path
-        if saved_module is not None:
-            sys.modules["affected_tests"] = saved_module
+    probe = (
+        "import importlib.util\n"
+        f"spec = importlib.util.spec_from_file_location('_acl_spec_probe', {str(core_path)!r})\n"
+        "mod = importlib.util.module_from_spec(spec)\n"
+        "spec.loader.exec_module(mod)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True
+    )
+    assert result.returncode != 0
+    assert "ModuleNotFoundError" in result.stderr
+    assert "affected_tests" in result.stderr
 
 
 def test_module_importable_via_sys_path_insert():
