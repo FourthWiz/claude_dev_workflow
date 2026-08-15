@@ -37,6 +37,12 @@ When a task already touches a file that contains stale process vocabulary from a
 the workflow, it is reasonable to clean it up as part of the touch — but this rule does not
 mandate a sweep of untouched files.
 
+## Escape hatch
+
+A line that legitimately discusses this taxonomy as subject matter (for example, this
+detector's own tests) may carry the literal pragma `quoin-lint: allow` to suppress it from
+`authored_content_lint.py`'s findings.
+
 ## Non-scope
 
 Planning artifacts (plans, architecture documents, critic responses, session state) keep their
