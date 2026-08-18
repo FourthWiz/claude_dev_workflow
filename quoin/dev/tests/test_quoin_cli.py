@@ -795,6 +795,122 @@ def test_regen_no_op_in_wheel_mode(tmp_path, capsys):
     assert list(tmp_path.iterdir()) == []
 
 
+# ── Preamble freshness advisory (user-mode) ───────────────────────────────
+
+
+def _make_source_tree(tmp_path):
+    """tmp_path/repo/quoin looks like a real quoin source-tree clone: quoin/skills/
+    exists and the parent (tmp_path/repo) carries pyproject.toml."""
+    repo = tmp_path / "repo"
+    source_dir = repo / "quoin"
+    (source_dir / "skills").mkdir(parents=True)
+    (repo / "pyproject.toml").write_text("")
+    (source_dir / "scripts").mkdir()
+    return source_dir
+
+
+def _write_fake_build_preambles(source_dir, exit_code, stderr_text=""):
+    """A fake build_preambles.py whose exit code and stderr this test controls.
+
+    Touches a sentinel file when actually executed, so a test can assert the
+    subprocess was never invoked (case c: pyyaml precheck short-circuits first).
+    """
+    script = source_dir / "scripts" / "build_preambles.py"
+    sentinel = source_dir / "scripts" / "_fake_ran.marker"
+    script.write_text(
+        "import pathlib, sys\n"
+        f"pathlib.Path({str(sentinel)!r}).write_text('ran')\n"
+        f"sys.stderr.write({stderr_text!r})\n"
+        f"sys.exit({exit_code})\n"
+    )
+    return script, sentinel
+
+
+def test_advise_preamble_freshness_clean_check_no_warn(tmp_path, capsys):
+    """case a: fake --check exits 0 -> no [warn]; regen still prints 'Skipping...'."""
+    from quoin import installer  # noqa: PLC0415
+
+    source_dir = _make_source_tree(tmp_path)
+    _write_fake_build_preambles(source_dir, 0)
+
+    installer.regenerate_preambles(source_dir, allow_writes=False)
+
+    captured = capsys.readouterr()
+    assert "Skipping preamble regeneration" in captured.out
+    assert "[warn]" not in captured.out
+    assert "[warn]" not in captured.err
+
+
+def test_advise_preamble_freshness_stale_emits_warn(tmp_path, capsys):
+    """case b: fake --check exits 7 and writes a stale detail line -> [warn]
+    names the direct-script remediation (not a bare 'bash install.sh' claim of
+    user-mode regeneration), and the child's stderr detail is echoed."""
+    from quoin import installer  # noqa: PLC0415
+
+    source_dir = _make_source_tree(tmp_path)
+    _write_fake_build_preambles(
+        source_dir,
+        7,
+        stderr_text="Preamble for critic is stale: source quoin/memory/glossary.md changed\n",
+    )
+
+    installer.regenerate_preambles(source_dir, allow_writes=False)
+
+    captured = capsys.readouterr()
+    assert "[warn]" in captured.err
+    assert "python3 quoin/scripts/build_preambles.py" in captured.err
+    assert "bash install.sh (or" not in captured.err
+    assert "Preamble for critic is stale" in captured.err
+
+
+def test_advise_preamble_freshness_skips_without_pyyaml(tmp_path, capsys, monkeypatch):
+    """case c: pyyaml missing -> soft skip note, no [warn], fake script never executed."""
+    from quoin import installer  # noqa: PLC0415
+
+    source_dir = _make_source_tree(tmp_path)
+    _, sentinel = _write_fake_build_preambles(source_dir, 7)
+    monkeypatch.setattr(installer, "_has_pyyaml", lambda: False)
+
+    installer.regenerate_preambles(source_dir, allow_writes=False)
+
+    captured = capsys.readouterr()
+    assert "[warn]" not in captured.out
+    assert "[warn]" not in captured.err
+    assert "pyyaml" in captured.out.lower()
+    assert not sentinel.exists(), "subprocess must not run when pyyaml is missing"
+
+
+def test_advise_preamble_freshness_skips_outside_source_tree(tmp_path, capsys):
+    """case d: source_dir without skills/ or a source-tree marker -> silent skip."""
+    from quoin import installer  # noqa: PLC0415
+
+    bare_dir = tmp_path / "site-packages" / "quoin"
+    bare_dir.mkdir(parents=True)
+
+    installer.regenerate_preambles(bare_dir, allow_writes=False)
+
+    captured = capsys.readouterr()
+    assert captured.out.strip() == (
+        "Skipping preamble regeneration (user mode — pass --dev to regenerate from source)"
+    )
+    assert captured.err == ""
+
+
+def test_advise_preamble_freshness_inconclusive_on_unexpected_exit(tmp_path, capsys):
+    """case e: fake --check exits 1 (unexpected) -> inconclusive soft note, no [warn]."""
+    from quoin import installer  # noqa: PLC0415
+
+    source_dir = _make_source_tree(tmp_path)
+    _write_fake_build_preambles(source_dir, 1)
+
+    installer.regenerate_preambles(source_dir, allow_writes=False)
+
+    captured = capsys.readouterr()
+    assert "[warn]" not in captured.out
+    assert "[warn]" not in captured.err
+    assert "inconclusive" in captured.out.lower()
+
+
 def test_regen_refuses_to_write_into_package_dir():
     """allow_writes must be False when --source-dir is inside the package dir."""
     from quoin.cli import _derive_allow_writes  # noqa: PLC0415
