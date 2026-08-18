@@ -1,7 +1,7 @@
 """
 T-02 CI gate: Preamble freshness tests.
 
-Parametrized over the 7 spawn targets:
+Parametrized over the 9 spawn targets:
   - Presence test: quoin/skills/<skill>/preamble.md exists.
   - Freshness test: source_hashes in frontmatter match current git hash-object of each source.
   - Size-budget test: each preamble is < 6144 bytes.
@@ -55,7 +55,7 @@ def _parse_frontmatter(content: str) -> dict:
 
 
 class TestPresence:
-    """Each of the 7 spawn targets must have a preamble.md on disk."""
+    """Each of the 9 spawn targets must have a preamble.md on disk."""
 
     @pytest.mark.parametrize("skill", list(SPAWN_TARGETS.keys()))
     def test_preamble_exists(self, skill):
@@ -99,7 +99,8 @@ class TestFreshness:
             assert current_sha == expected_sha, (
                 f"Preamble for {skill} is stale: source {rel_path} changed "
                 f"(preamble has {expected_sha}, current is {current_sha}). "
-                f"Run: bash install.sh (or python3 quoin/scripts/build_preambles.py)"
+                f"Run: python3 quoin/scripts/build_preambles.py (or bash install.sh --dev), "
+                f"then commit the regenerated quoin/skills/*/preamble.md"
             )
 
 
