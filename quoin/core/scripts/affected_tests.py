@@ -507,6 +507,12 @@ class Selection:
     # kills the spurious exit-3/hard-RED false block (FR-6/AC-6).  Placed AFTER
     # unmatched_warning to satisfy dataclass default-ordering.
     noncollectable: list[str] = dataclasses.field(default_factory=list)
+    # Interpreter the pytest subprocess ran (or would run) under, and why it
+    # was selected — see resolve_python().  Both default to "" so every
+    # pre-resolution Selection() call site stays untouched and both fields
+    # are omitted from output until a caller actually resolves an interpreter.
+    interpreter: str = ""
+    interpreter_reason: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -521,6 +527,10 @@ class Selection:
         }
         if self.unmatched_warning:
             d["unmatched_warning"] = True
+        if self.interpreter:
+            d["interpreter"] = self.interpreter
+        if self.interpreter_reason:
+            d["interpreter_reason"] = self.interpreter_reason
         return d
 
 
@@ -556,6 +566,84 @@ def _run(args: list[str]) -> tuple[str, str, int]:
         return "", "git not found", 1
     except Exception as exc:  # noqa: BLE001
         return "", str(exc), 1
+
+
+# ---------------------------------------------------------------------------
+# Interpreter resolution
+# ---------------------------------------------------------------------------
+
+_VENV_WALK_MAX_DEPTH = 6
+
+
+def _probe_interpreter(candidate: str, probe: str) -> bool:
+    """Run `candidate -c probe` and report whether it exits 0.
+
+    Deliberately self-contained rather than routed through _run() — that
+    helper's FileNotFoundError branch hardcodes a git-specific message that
+    would be misleading here.
+    """
+    try:
+        proc = subprocess.run(
+            [candidate, "-c", probe],
+            capture_output=True,
+            text=True,
+            timeout=_subprocess_timeout(),
+        )
+        return proc.returncode == 0
+    except Exception:  # noqa: BLE001 - TimeoutExpired, FileNotFoundError, OSError, ...
+        return False
+
+
+def resolve_python(project_root: Path, probe: str | None = None) -> tuple[str, str]:
+    """Resolve the Python interpreter to run pytest with.
+
+    Resolution order: QUOIN_DISABLE_VENV_PROBE=1 short-circuits to the
+    invoking interpreter; QUOIN_PYTHON is honored if it points at an
+    executable file that passes the probe; otherwise an upward walk from
+    project_root looks for a `.venv/bin/python`, bounded by
+    _VENV_WALK_MAX_DEPTH levels and stopped before the home directory; if
+    nothing qualifies, falls back to the invoking interpreter.
+
+    The candidate path is returned verbatim, never `.resolve()`d — resolving
+    a venv interpreter symlink strips the venv prefix and silently changes
+    which site-packages it imports from.
+    """
+    if os.environ.get("QUOIN_DISABLE_VENV_PROBE", "").strip() == "1":
+        return sys.executable, "disabled"
+
+    env_py = os.environ.get("QUOIN_PYTHON", "").strip()
+    if env_py:
+        candidate = Path(env_py)
+        if (
+            candidate.is_file()
+            and os.access(candidate, os.X_OK)
+            and (probe is None or _probe_interpreter(str(candidate), probe))
+        ):
+            return str(candidate), "env-override"
+        # else fall through to the venv walk — never return an unprobed override
+
+    try:
+        anchor = Path(project_root).expanduser().resolve()
+    except (OSError, TypeError):
+        anchor = Path.cwd()
+
+    try:
+        home = Path.home()
+    except RuntimeError:
+        home = None  # undeterminable home -> the stop condition never fires
+
+    for d in [anchor, *anchor.parents][: 1 + _VENV_WALK_MAX_DEPTH]:
+        if home is not None and d == home:
+            break  # stop BEFORE the home directory; never probe ~/.venv
+        candidate = d / ".venv" / "bin" / "python"
+        if (
+            candidate.is_file()
+            and os.access(candidate, os.X_OK)
+            and (probe is None or _probe_interpreter(str(candidate), probe))
+        ):
+            return str(candidate), "venv"
+
+    return sys.executable, "fallback"
 
 
 def discover_repos(project_root: Path) -> list[Path]:
@@ -931,6 +1019,10 @@ def _format_text(sel: Selection) -> str:
         lines.append(f"noncollectable ({len(sel.noncollectable)}): {', '.join(sel.noncollectable)}")
     if sel.unmatched_warning:
         lines.append("unmatched_warning: true (--allow-unmatched in use)")
+    if sel.interpreter:
+        lines.append(f"interpreter: {sel.interpreter}")
+    if sel.interpreter_reason:
+        lines.append(f"interpreter_reason: {sel.interpreter_reason}")
     return "\n".join(lines)
 
 
@@ -1038,6 +1130,17 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="Extra argument appended to the pytest invocation (repeatable).",
     )
+    parser.add_argument(
+        "--print-interpreter",
+        action="store_true",
+        dest="print_interpreter",
+        help=(
+            "Print the resolved interpreter and exit 0, without running anything else. "
+            "Anchors at --project-root itself, not the resolved git repo; may diverge "
+            "from the interpreter a real run selects when a repo-local .venv differs "
+            "from a project-level one."
+        ),
+    )
 
     try:
         args = parser.parse_args(argv)
@@ -1045,6 +1148,17 @@ def main(argv: list[str] | None = None) -> int:
         return int(exc.code) if exc.code is not None else 2
 
     fmt = args.format
+
+    # --print-interpreter: early return, before repo resolution and every
+    # other early-exit path, so nothing can swallow it. args.project_root can
+    # legally be None here (--print-interpreter is not part of the required
+    # mode group), hence the Path.cwd() guard.
+    if args.print_interpreter:
+        anchor = args.project_root if args.project_root is not None else Path.cwd()
+        interp, interp_reason = resolve_python(anchor, probe="import pytest")
+        print(f"interpreter: {interp}")
+        print(f"interpreter_reason: {interp_reason}")
+        return 0
 
     # ------------------------------------------------------------------
     # Step 1: resolve changed files
@@ -1167,6 +1281,12 @@ def main(argv: list[str] | None = None) -> int:
     if repo_root is None:
         repo_root = Path.cwd()
 
+    # Resolve the interpreter pytest will run under. Anchored at
+    # repo_root — the only point where it is defined in all three modes — and
+    # probed for pytest importability so a candidate venv that can't run
+    # pytest falls through rather than being selected and failing later.
+    interp, interp_reason = resolve_python(repo_root, probe="import pytest")
+
     # FR-6/AC-6: partition intentionally-non-collectable files OUT of `changed`
     # BEFORE mapping.  An allowlisted .py (test or non-test) must never become a
     # selector or an unmatched_source.  Absent allowlist → empty entries →
@@ -1190,6 +1310,8 @@ def main(argv: list[str] | None = None) -> int:
             exit_reason="select-only",
             unmatched_warning=bool(unmatched_sources and args.allow_unmatched),
             noncollectable=noncollectable,
+            interpreter=interp,
+            interpreter_reason=interp_reason,
         )
         if fmt == "text":
             print(_format_text(sel))
@@ -1212,6 +1334,8 @@ def main(argv: list[str] | None = None) -> int:
             pytest_returncode=None,
             exit_reason="unmatched-sources",
             noncollectable=noncollectable,
+            interpreter=interp,
+            interpreter_reason=interp_reason,
         )
         if fmt == "text":
             print(_format_text(sel))
@@ -1242,6 +1366,8 @@ def main(argv: list[str] | None = None) -> int:
                 exit_reason="docs-only-no-selectors",
                 unmatched_warning=True,
                 noncollectable=noncollectable,
+                interpreter=interp,
+                interpreter_reason=interp_reason,
             )
             if fmt == "text":
                 print(_format_text(sel))
@@ -1265,6 +1391,8 @@ def main(argv: list[str] | None = None) -> int:
             pytest_returncode=None,
             exit_reason=empty_reason,
             noncollectable=noncollectable,
+            interpreter=interp,
+            interpreter_reason=interp_reason,
         )
         if fmt == "text":
             print(_format_text(sel))
@@ -1278,15 +1406,18 @@ def main(argv: list[str] | None = None) -> int:
     # HARD GUARD: this line is only reachable when selectors is non-empty.
     assert selectors, "BUG: pytest invocation reached with empty selectors"
 
-    # review round-2 minor 17: `sys.executable -m pytest` with pytest not
-    # importable exits rc=1 ("No module named pytest"), which the classifier
-    # below would misreport as affected-red — an environment fault presented as
-    # a red affected area. pytest runs in THIS interpreter (sys.executable), so
-    # find_spec here is authoritative; surface the same environment-fault shape
-    # as a missing pytest binary (exit 3, exit_reason="pytest-missing").
+    # review round-2 minor 17: pytest not importable in the resolved
+    # interpreter exits rc=1 ("No module named pytest"), which the classifier
+    # below would misreport as affected-red — an environment fault presented
+    # as a red affected area. When the resolver fell back to sys.executable,
+    # find_spec against THIS process is authoritative for what that
+    # subprocess will see; when it resolved a venv interpreter instead, that
+    # candidate was already probed for pytest importability by resolve_python
+    # above, so this in-process check is skipped (checking sys.executable's
+    # pytest would say nothing about the venv interpreter's).
     import importlib.util
 
-    if importlib.util.find_spec("pytest") is None:
+    if interp == sys.executable and importlib.util.find_spec("pytest") is None:
         sel = Selection(
             changed=changed,
             selectors=selectors,
@@ -1297,6 +1428,8 @@ def main(argv: list[str] | None = None) -> int:
             exit_reason="pytest-missing",
             unmatched_warning=bool(unmatched_sources and args.allow_unmatched),
             noncollectable=noncollectable,
+            interpreter=interp,
+            interpreter_reason=interp_reason,
         )
         if fmt == "text":
             print(_format_text(sel))
@@ -1306,7 +1439,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         proc = subprocess.run(
-            [sys.executable, "-m", "pytest", *selectors, *args.pytest_args],
+            [interp, "-m", "pytest", *selectors, *args.pytest_args],
             cwd=str(repo_root),
             timeout=max(600, _subprocess_timeout()),
         )
@@ -1323,6 +1456,8 @@ def main(argv: list[str] | None = None) -> int:
             exit_reason="pytest-missing",
             unmatched_warning=bool(unmatched_sources and args.allow_unmatched),
             noncollectable=noncollectable,
+            interpreter=interp,
+            interpreter_reason=interp_reason,
         )
         if fmt == "text":
             print(_format_text(sel))
@@ -1343,6 +1478,8 @@ def main(argv: list[str] | None = None) -> int:
             exit_reason="pytest-timeout",
             unmatched_warning=bool(unmatched_sources and args.allow_unmatched),
             noncollectable=noncollectable,
+            interpreter=interp,
+            interpreter_reason=interp_reason,
         )
         if fmt == "text":
             print(_format_text(sel))
@@ -1376,6 +1513,8 @@ def main(argv: list[str] | None = None) -> int:
         exit_reason=exit_reason,
         unmatched_warning=bool(unmatched_sources and args.allow_unmatched),
         noncollectable=noncollectable,
+        interpreter=interp,
+        interpreter_reason=interp_reason,
     )
     if fmt == "text":
         print(_format_text(sel))
