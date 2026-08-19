@@ -429,6 +429,150 @@ class TestReconcile:
 
 
 # ---------------------------------------------------------------------------
+# TestPhantomFailureLines
+# ---------------------------------------------------------------------------
+
+# Reproduces a real `pytest -rA` capture where a passing test's own captured
+# stdout happens to contain literal short-summary-shaped lines (e.g. a test
+# that exercises this module's own fixture strings). The nested header and
+# FAILED line appear BEFORE the real top-level short-summary section, which
+# pytest always emits last.
+_PHANTOM_CAPTURE = (
+    "==================================== PASSES ====================================\n"
+    "__________________________ test_prints_fixture_lines ___________________________\n"
+    "----------------------------- Captured stdout call -----------------------------\n"
+    "=========================== short test summary info ============================\n"
+    "FAILED test_src.py::test_src_fails - AssertionError: deliberate failure\n"
+    "=========================== 1 failed in 0.01s ============================\n"
+    "- generated xml file: ... -\n"
+    "=========================== short test summary info ============================\n"
+    "PASSED test_outer.py::test_prints_fixture_lines\n"
+    "PASSED test_outer.py::test_plain_pass\n"
+    "============================== 2 passed in 0.01s ===============================\n"
+)
+
+
+class TestPhantomFailureLines:
+    def _manifest(self, tmp_path):
+        return tmp_path / "absent.toml"  # absent → [] entries; irrelevant to these cases
+
+    def _write(self, tmp_path, name, text):
+        p = tmp_path / name
+        p.write_text(text, encoding="utf-8")
+        return p
+
+    def test_anchored_parse_ignores_pre_summary_failed_lines(self):
+        passed, failed = kr.parse_pytest_report(_PHANTOM_CAPTURE)
+        assert failed == set()
+        assert passed == {
+            "test_outer.py::test_prints_fixture_lines",
+            "test_outer.py::test_plain_pass",
+        }
+
+    def test_green_capture_with_fixture_lines_exit0_with_junit(self, tmp_path, capsys):
+        ra = self._write(tmp_path, "ra.txt", _PHANTOM_CAPTURE)
+        junit = self._write(
+            tmp_path, "j.xml",
+            '<testsuites><testsuite tests="2" failures="0" errors="0"/></testsuites>',
+        )
+        rc = kr.main([
+            "--manifest", str(self._manifest(tmp_path)), "--pytest-output", str(ra),
+            "--junit", str(junit), "--observed-rc", "0", "--format", "json",
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        assert out["reconciled"] is True
+        assert out["downgrade"] is False
+        assert out["net_new"] == []
+
+    def test_green_capture_with_fixture_lines_exit0_without_junit(self, tmp_path, capsys):
+        ra = self._write(tmp_path, "ra.txt", _PHANTOM_CAPTURE)
+        rc = kr.main([
+            "--manifest", str(self._manifest(tmp_path)), "--pytest-output", str(ra),
+            "--observed-rc", "0", "--format", "json",
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        assert out["net_new"] == []
+
+    def test_no_summary_header_falls_back_to_whole_text(self):
+        passed, failed = kr.parse_pytest_report("FAILED a::b\n")
+        assert passed == set()
+        assert failed == {"a::b"}
+
+    def test_junit_zero_backstop_without_anchor(self, tmp_path, capsys):
+        # Phantom FAILED line with NO header at all — T-01's anchor can't help here,
+        # so this proves the T-02 junit-zero backstop fires independently.
+        ra = self._write(
+            tmp_path, "ra.txt",
+            "FAILED test_src.py::test_src_fails - AssertionError: deliberate failure\n",
+        )
+        junit = self._write(
+            tmp_path, "j.xml",
+            '<testsuites><testsuite tests="1" failures="0" errors="0"/></testsuites>',
+        )
+        rc = kr.main([
+            "--manifest", str(self._manifest(tmp_path)), "--pytest-output", str(ra),
+            "--junit", str(junit), "--observed-rc", "0", "--format", "json",
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        assert out["reconciled"] is True
+        assert out["downgrade"] is False
+
+    def test_caller_green_but_junit_red_still_blocks(self, tmp_path, capsys):
+        # Two REAL failures inside the (last) summary section, rc==0, junit==2 — the
+        # junit-zero backstop must not fire, and the failures remain net-new.
+        ra = self._write(
+            tmp_path, "ra.txt",
+            "=========================== short test summary info ============================\n"
+            "FAILED test_a.py::test_1 - AssertionError\n"
+            "FAILED test_a.py::test_2 - AssertionError\n"
+            "============================== 2 failed in 0.01s ===============================\n",
+        )
+        junit = self._write(
+            tmp_path, "j.xml",
+            '<testsuites><testsuite tests="2" failures="2" errors="0"/></testsuites>',
+        )
+        rc = kr.main([
+            "--manifest", str(self._manifest(tmp_path)), "--pytest-output", str(ra),
+            "--junit", str(junit), "--observed-rc", "0", "--format", "json",
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert rc == 1
+        assert out["net_new"] == ["test_a.py::test_1", "test_a.py::test_2"]
+
+    def test_live_green_run_with_fixture_output_reconciles(self, tmp_path, capsys):
+        # Live guard mirroring TestStructuralGuard: a real pytest run whose PASSING
+        # test prints short-summary-shaped fixture lines to stdout. Pins the
+        # section-ordering assumption against real pytest behavior, not a frozen
+        # string.
+        (tmp_path / "test_fixture_printer.py").write_text(
+            "def test_prints_fixture_lines():\n"
+            "    print('=========================== short test summary info ===========================')\n"
+            "    print('FAILED test_src.py::test_src_fails - AssertionError: deliberate failure')\n"
+            "    print('=========================== 1 failed in 0.01s ===========================')\n",
+            encoding="utf-8",
+        )
+        junit = tmp_path / "live.junit.xml"
+        proc = subprocess.run(
+            [sys.executable, "-m", "pytest", "-rA", f"--junitxml={junit}",
+             "-p", "no:cacheprovider", str(tmp_path)],
+            capture_output=True, text=True, cwd=str(tmp_path), timeout=120,
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        ra = self._write(tmp_path, "live.ra.txt", proc.stdout)
+        rc = kr.main([
+            "--manifest", str(self._manifest(tmp_path)), "--pytest-output", str(ra),
+            "--junit", str(junit), "--observed-rc", str(proc.returncode), "--format", "json",
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        assert out["reconciled"] is True
+        assert out["downgrade"] is False
+
+
+# ---------------------------------------------------------------------------
 # TestCliExit
 # ---------------------------------------------------------------------------
 
