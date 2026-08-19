@@ -185,7 +185,33 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # ── scope=IN: defer ALL quoin imports inside the try region (plan D-11) ──
+    src_injected = False
+
+    def _payload(d: dict) -> dict:
+        """Tag a JSON payload with src_injected when the working-tree
+        injection below fired. Text output is deliberately never touched —
+        only the JSON payload carries this diagnostic."""
+        if src_injected:
+            d["src_injected"] = True
+        return d
+
     try:
+        # Working-tree src injection: when this checker runs against an
+        # uninstalled/edited checkout, `import quoin` below would otherwise
+        # resolve whatever quoin package happens to be on sys.path (e.g. a
+        # stale installed wheel) instead of the tree being checked. Put the
+        # resolved repo's own src/ ahead of sys.path first, scope=IN only,
+        # so the import picks up the working tree.
+        try:
+            repo = _affected_tests.resolve_repo(args.project_root)
+        except RuntimeError:
+            repo = None  # multiple repos — degrade to the pip-installed quoin
+        if repo is not None:
+            src = repo / "src"
+            if (src / "quoin" / "__init__.py").is_file() and str(src) not in sys.path:
+                sys.path.insert(0, str(src))
+                src_injected = True
+
         from quoin.cli import _resolve_source_dir
         from quoin.installer import DriftEntry, compute_drift  # noqa: F401
 
@@ -196,15 +222,15 @@ def main(argv: list[str] | None = None) -> int:
             source_dir = _resolve_source_dir(args.source_dir)
         except SystemExit:
             _emit(fmt,
-                  {"scope": "in", "reason": "source-unresolvable", "exit_code": 3},
+                  _payload({"scope": "in", "reason": "source-unresolvable", "exit_code": 3}),
                   ["Deploy drift: UNDETERMINABLE (source dir unresolvable) — fail-OPEN WARN"])
             return 3
 
         dest_root = _resolve_dest_root(args.scope)
         if not dest_root.exists():
             _emit(fmt,
-                  {"scope": "in", "reason": "dest-root-absent",
-                   "dest_root": str(dest_root), "exit_code": 3},
+                  _payload({"scope": "in", "reason": "dest-root-absent",
+                            "dest_root": str(dest_root), "exit_code": 3}),
                   [f"Deploy drift: UNDETERMINABLE (dest_root absent: {dest_root}) — fail-OPEN WARN"])
             return 3
 
@@ -213,10 +239,10 @@ def main(argv: list[str] | None = None) -> int:
         if not drift:
             # Clean PASS — MUST name checked vs not-covered categories (plan MAJ-2/D-09).
             _emit(fmt,
-                  {"scope": "in", "drift": [],
-                   "checked_categories": list(_CHECKED_CATEGORIES),
-                   "uncovered_categories": list(_UNCOVERED_CATEGORIES),
-                   "exit_code": 0},
+                  _payload({"scope": "in", "drift": [],
+                            "checked_categories": list(_CHECKED_CATEGORIES),
+                            "uncovered_categories": list(_UNCOVERED_CATEGORIES),
+                            "exit_code": 0}),
                   [_COVERAGE_QUALIFIER])
             return 0
 
@@ -231,8 +257,8 @@ def main(argv: list[str] | None = None) -> int:
             text_lines.append(f"  [{d.reason}] {d.category}: {d.deployed_path}")
         text_lines.append(_REMEDIATION)
         _emit(fmt,
-              {"scope": "in", "drift": drift_dicts,
-               "remediation": "bash quoin/install.sh", "exit_code": 1},
+              _payload({"scope": "in", "drift": drift_dicts,
+                        "remediation": "bash quoin/install.sh", "exit_code": 1}),
               text_lines)
         return 1
 
@@ -240,15 +266,15 @@ def main(argv: list[str] | None = None) -> int:
         # A bare SystemExit escaping the inner wraps (SystemExit does not subclass
         # Exception, so the generic handler below would miss it) — map to exit 3.
         _emit(fmt,
-              {"scope": "in", "reason": "systemexit", "exit_code": 3},
+              _payload({"scope": "in", "reason": "systemexit", "exit_code": 3}),
               ["Deploy drift: UNDETERMINABLE (unexpected SystemExit) — fail-OPEN WARN"])
         return 3
     except Exception as exc:  # noqa: BLE001
         # quoin unimportable (deferred `import quoin...` raised ImportError),
         # compute_drift bug, or any other runtime failure -> exit 3 (fail-OPEN WARN).
         _emit(fmt,
-              {"scope": "in", "reason": "exception",
-               "error": str(exc), "exit_code": 3},
+              _payload({"scope": "in", "reason": "exception",
+                        "error": str(exc), "exit_code": 3}),
               [f"Deploy drift: UNDETERMINABLE ({type(exc).__name__}: {exc}) — fail-OPEN WARN"])
         return 3
 

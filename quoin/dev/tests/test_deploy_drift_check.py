@@ -9,9 +9,12 @@ depend on the pip-installed `quoin` package for module collection.
 """
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import json
 import sys
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -353,3 +356,169 @@ def test_cli_drift_found_exit1(ddc, monkeypatch, tmp_path):
     monkeypatch.setattr(ddc, "_resolve_dest_root", lambda scope: dest)
     rc = ddc.main(["--no-scope-check", "--project-root", str(tmp_path)])
     assert rc == 1
+
+
+# ---------------------------------------------------------------------------
+# Working-tree src injection (T-07)
+#
+# SYS.PATH TEARDOWN: main()'s injection inserts str(src) into sys.path with
+# no production-side removal (deliberate — the real CLI wants it for the
+# process lifetime). A test that fires injection and never tears it down
+# leaves the entry in place after tmp_path is deleted; any quoin submodule
+# not yet cached resolves against the empty fake tree in a LATER test,
+# producing an "affected-area GREEN, full-suite RED" failure shape. Every
+# case below that can fire injection runs under _sys_path_guard, which
+# captures post-call state, restores unconditionally in a finally block,
+# and only then hands the captured state back for assertions — a failing
+# assertion must never leave a leaked entry in place.
+# ---------------------------------------------------------------------------
+
+@contextlib.contextmanager
+def _sys_path_guard():
+    saved_path = sys.path[:]
+    saved_modules = set(sys.modules.keys())
+    state: dict = {}
+    try:
+        yield state
+    finally:
+        state["path_after"] = sys.path[:]
+        state["modules_after"] = set(sys.modules.keys())
+        sys.path[:] = saved_path
+        for name in state["modules_after"] - saved_modules:
+            sys.modules.pop(name, None)
+        state["saved_path"] = saved_path
+        state["saved_modules"] = saved_modules
+
+
+def _make_quoin_src(repo: Path) -> Path:
+    pkg = repo / "src" / "quoin"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("")
+    return repo / "src"
+
+
+def test_injection_fires(ddc, tmp_path, capsys):
+    repo = tmp_path / "repo"
+    _make_quoin_src(repo)
+    (repo / ".git").mkdir(parents=True)
+    with _sys_path_guard() as state:
+        ddc.main(["--no-scope-check", "--project-root", str(repo), "--format", "json"])
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert data.get("src_injected") is True
+    assert str(repo / "src") in state["path_after"], "injection must actually touch sys.path"
+    assert sys.path == state["saved_path"], "sys.path must be restored to its pre-call state"
+
+
+def test_injection_does_not_fire_without_quoin_package(ddc, tmp_path, capsys):
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    with _sys_path_guard() as state:
+        ddc.main(["--no-scope-check", "--project-root", str(repo), "--format", "json"])
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert "src_injected" not in data
+    assert state["path_after"] == state["saved_path"]
+
+
+def test_injection_block_no_repo_resolvable_no_crash(ddc, tmp_path, capsys):
+    """The cheapest falsifier for the injection-block crash risk: no
+    resolvable repo at all under a bare tmp_path."""
+    with _sys_path_guard() as state:
+        rc = ddc.main(["--no-scope-check", "--project-root", str(tmp_path), "--format", "json"])
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert "src_injected" not in data
+    assert rc in (0, 1, 3)
+    assert state["path_after"] == state["saved_path"]
+
+
+def test_resolve_repo_runtime_error_tolerated(ddc, monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(
+        ddc._affected_tests, "resolve_repo",
+        lambda project_root: (_ for _ in ()).throw(RuntimeError("multiple git repos found")))
+    with _sys_path_guard() as state:
+        rc = ddc.main(["--no-scope-check", "--project-root", str(tmp_path), "--format", "json"])
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert "src_injected" not in data
+    assert rc in (0, 1, 3)
+    assert state["path_after"] == state["saved_path"]
+
+
+def test_resolve_repo_oserror_maps_to_exit3_no_nameerror(ddc, monkeypatch, tmp_path, capsys):
+    """resolve_repo itself cannot naturally raise OSError (discover_repos
+    swallows it internally), so this monkeypatches resolve_repo directly to
+    exercise the one path that reaches the generic exception handler while
+    src_injected is still unbound in the architecture's original placement
+    — proving the pre-try binding prevents a NameError from masking the
+    real OSError."""
+    monkeypatch.setattr(
+        ddc._affected_tests, "resolve_repo",
+        lambda project_root: (_ for _ in ()).throw(OSError("boom")))
+    with _sys_path_guard() as state:
+        rc = ddc.main(["--no-scope-check", "--project-root", str(tmp_path), "--format", "json"])
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert rc == 3
+    assert data["reason"] == "exception"
+    assert "boom" in data["error"]
+    assert state["path_after"] == state["saved_path"]
+
+
+def test_is_file_probe_oserror_maps_to_exit3(ddc, monkeypatch, tmp_path, capsys):
+    """The genuinely reachable OSError path is the .is_file() probe on the
+    injection candidate itself, not resolve_repo."""
+    repo = tmp_path / "repo"
+    _make_quoin_src(repo)
+    (repo / ".git").mkdir(parents=True)
+
+    real_is_file = Path.is_file
+
+    def flaky_is_file(self):
+        if self.name == "__init__.py":
+            raise OSError("simulated probe failure")
+        return real_is_file(self)
+
+    with _sys_path_guard() as state:
+        with mock.patch.object(Path, "is_file", flaky_is_file):
+            rc = ddc.main(["--no-scope-check", "--project-root", str(repo), "--format", "json"])
+    out = capsys.readouterr().out
+    data = json.loads(out)
+    assert rc == 3
+    assert data["reason"] == "exception"
+    assert state["path_after"] == state["saved_path"]
+
+
+def test_text_output_never_carries_src_injected(ddc, tmp_path, capsys):
+    repo = tmp_path / "repo"
+    _make_quoin_src(repo)
+    (repo / ".git").mkdir(parents=True)
+    with _sys_path_guard() as state:
+        ddc.main(["--no-scope-check", "--project-root", str(repo), "--format", "text"])
+    out = capsys.readouterr().out
+    assert "src_injected" not in out
+    assert str(repo / "src") in state["path_after"], "injection must actually touch sys.path"
+    assert sys.path == state["saved_path"], "sys.path must be restored to its pre-call state"
+
+
+def test_sys_path_not_duplicated_across_two_runs(ddc, tmp_path, capsys):
+    repo = tmp_path / "repo"
+    _make_quoin_src(repo)
+    (repo / ".git").mkdir(parents=True)
+    src_str = str(repo / "src")
+    with _sys_path_guard() as state:
+        ddc.main(["--no-scope-check", "--project-root", str(repo), "--format", "json"])
+        ddc.main(["--no-scope-check", "--project-root", str(repo), "--format", "json"])
+        assert sys.path.count(src_str) <= 1, "src must not be inserted twice across two runs"
+    capsys.readouterr()
+    assert src_str in state["path_after"], "injection must actually touch sys.path"
+    assert sys.path == state["saved_path"], "sys.path must be restored to its pre-call state"
+
+
+def test_coverage_qualifier_byte_identity(ddc):
+    assert ddc._COVERAGE_QUALIFIER == (
+        "Deploy drift: PASS (checked: skills, scripts, core-scripts, memory; "
+        "not covered: hooks, CLAUDE.md, settings.json, dashboard assets, "
+        "QUICKSTART.md — see D-07/D-09)"
+    )
