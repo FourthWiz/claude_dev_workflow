@@ -1444,8 +1444,15 @@ class TestInterpreterFieldWiring:
         (tmp_path / "test_x.py").write_text("def test_x(): pass\n")
         import io, contextlib
         buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            _cli(["--select-only", "--files", "test_x.py", "--repo-root", str(tmp_path)])
+        # A symlinked fake venv's OWN candidate binary is often not a proper
+        # venv launcher (no sibling pyvenv.cfg at that path), so invoking it
+        # for a real "import pytest" probe is host-dependent. Mock the probe
+        # outcome directly — resolve_python's candidate-selection logic
+        # (the thing under test here) is unaffected by how the probe itself
+        # is satisfied.
+        with mock.patch.object(_at, "_probe_interpreter", return_value=True):
+            with contextlib.redirect_stdout(buf):
+                _cli(["--select-only", "--files", "test_x.py", "--repo-root", str(tmp_path)])
         data = json.loads(buf.getvalue())
         assert data["interpreter"] == str(tmp_path / ".venv" / "bin" / "python")
         assert data["interpreter_reason"] == "venv"
@@ -1455,9 +1462,10 @@ class TestInterpreterFieldWiring:
         (tmp_path / "test_x.py").write_text("def test_x(): pass\n")
         import io, contextlib
         buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            _cli(["--select-only", "--files", "test_x.py",
-                  "--repo-root", str(tmp_path), "--format", "text"])
+        with mock.patch.object(_at, "_probe_interpreter", return_value=True):
+            with contextlib.redirect_stdout(buf):
+                _cli(["--select-only", "--files", "test_x.py",
+                      "--repo-root", str(tmp_path), "--format", "text"])
         out = buf.getvalue()
         assert "interpreter:" in out
         assert "interpreter_reason: venv" in out
@@ -1501,24 +1509,23 @@ class TestInterpreterFieldWiring:
         interpreter as argv[0], not the invoking sys.executable.
 
         Deliberately does NOT pin --repo-root to an isolated tmp_path — this
-        test's own point is to exercise the probe against a real,
+        test's own point is to exercise the probe call site against a real,
         discoverable venv, and simultaneously serves as the collision
         regression: the probe snippet contains the substring "pytest" and
         must not trip any of the pytest-not-in-call assertions elsewhere in
         this file (those live in separate test functions, unaffected by this
-        one firing correctly).
+        one firing correctly). subprocess.run is mocked to always report
+        success for BOTH the probe and the pytest calls — whether a real
+        "import pytest" subprocess succeeds through a symlinked venv
+        launcher depends on host-specific pyvenv.cfg discovery unrelated to
+        the wiring under test here.
         """
         fake = _make_fake_venv(tmp_path)
         (tmp_path / "test_x.py").write_text("def test_x(): pass\n")
 
-        real_run = subprocess.run
-
-        def side_effect(args, **kwargs):
-            if "-c" in args:
-                return real_run(args, **kwargs)  # let the real probe run
-            return subprocess.CompletedProcess(args, 0)
-
-        with mock.patch("subprocess.run", side_effect=side_effect) as mock_run:
+        with mock.patch(
+            "subprocess.run", return_value=subprocess.CompletedProcess([], 0)
+        ) as mock_run:
             rc = _cli(["--files", "test_x.py", "--repo-root", str(tmp_path)])
             assert mock_run.call_count == 2, (
                 f"expected probe + pytest calls, got {mock_run.call_args_list}"
@@ -1538,15 +1545,10 @@ class TestInterpreterFieldWiring:
         _make_fake_venv(tmp_path)
         (tmp_path / "test_x.py").write_text("def test_x(): pass\n")
 
-        real_run = subprocess.run
-
-        def side_effect(args, **kwargs):
-            if "-c" in args:
-                return real_run(args, **kwargs)
-            return subprocess.CompletedProcess(args, 0)
-
         with mock.patch("importlib.util.find_spec", return_value=None), \
-                mock.patch("subprocess.run", side_effect=side_effect):
+                mock.patch(
+                    "subprocess.run", return_value=subprocess.CompletedProcess([], 0)
+                ):
             rc = _cli(["--files", "test_x.py", "--repo-root", str(tmp_path)])
         assert rc == 0, (
             f"find_spec=None must not block when a venv interpreter is resolved, got {rc}"
@@ -1632,12 +1634,13 @@ class TestPrintInterpreter:
 
         import io, contextlib
         buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            rc = _cli(["--print-interpreter", "--project-root", str(tmp_path)])
-        assert rc == 0
-        assert str(project_venv) in buf.getvalue()
+        with mock.patch.object(_at, "_probe_interpreter", return_value=True):
+            with contextlib.redirect_stdout(buf):
+                rc = _cli(["--print-interpreter", "--project-root", str(tmp_path)])
+            assert rc == 0
+            assert str(project_venv) in buf.getvalue()
 
-        real_run_interp, _ = _at.resolve_python(repo, probe="import pytest")
+            real_run_interp, _ = _at.resolve_python(repo, probe="import pytest")
         assert real_run_interp == str(repo_venv)
         assert real_run_interp != str(project_venv), (
             "the divergence this test pins: --print-interpreter reports the "
