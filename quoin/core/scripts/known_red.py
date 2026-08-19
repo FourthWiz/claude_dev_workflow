@@ -459,6 +459,11 @@ def _reconcile(observed_rc, failed_or_error, reconcile_ok) -> bool:
     return False
 
 
+_GENERIC_UNRECONCILED_REASON = (
+    "the supplied report could not be reconciled with observed pytest rc={rc}"
+)
+
+
 def _unreconciled_reason(observed_rc, failed_or_error, reconcile_ok) -> str:
     if observed_rc != 0 and not failed_or_error:
         return (
@@ -470,10 +475,7 @@ def _unreconciled_reason(observed_rc, failed_or_error, reconcile_ok) -> str:
             f"the report's parsed failure count ({len(failed_or_error)}) disagrees "
             "with the independent junit count"
         )
-    return (
-        f"the supplied report could not be reconciled with observed pytest "
-        f"rc={observed_rc}"
-    )
+    return _GENERIC_UNRECONCILED_REASON.format(rc=observed_rc)
 
 
 def _render_text(payload, observed_rc, reason=None) -> str:
@@ -494,10 +496,7 @@ def _render_text(payload, observed_rc, reason=None) -> str:
             )
     if not payload["reconciled"]:
         lines.append("## Reconciliation")
-        fallback = (
-            f"the supplied report could not be reconciled with observed pytest "
-            f"rc={observed_rc}"
-        )
+        fallback = _GENERIC_UNRECONCILED_REASON.format(rc=observed_rc)
         lines.append(
             f"UNRECONCILED: {reason or fallback} — treating as blocking (fail-closed)"
         )

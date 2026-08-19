@@ -428,6 +428,22 @@ class TestReconcile:
         assert kr._reconcile(1, {"a::b"}, True) is True
 
 
+class TestUnreconciledReason:
+    def test_rc_zero_count_disagreement_never_mentions_red_run(self):
+        reason = kr._unreconciled_reason(0, {"a::b"}, False)
+        assert "indicates a red run" not in reason
+        assert "disagrees" in reason
+
+    def test_rc_zero_generic_fallback_never_mentions_red_run(self):
+        reason = kr._unreconciled_reason(0, set(), True)
+        assert "indicates a red run" not in reason
+        assert "could not be reconciled" in reason
+
+    def test_rc_nonzero_no_parsed_failures_keeps_existing_wording(self):
+        reason = kr._unreconciled_reason(1, set(), True)
+        assert "rc=1 indicates a red run" in reason
+
+
 # ---------------------------------------------------------------------------
 # TestPhantomFailureLines
 # ---------------------------------------------------------------------------
@@ -501,8 +517,8 @@ class TestPhantomFailureLines:
         assert failed == {"a::b"}
 
     def test_junit_zero_backstop_without_anchor(self, tmp_path, capsys):
-        # Phantom FAILED line with NO header at all — T-01's anchor can't help here,
-        # so this proves the T-02 junit-zero backstop fires independently.
+        # Phantom FAILED line with NO header at all — the header anchor can't help
+        # here, so this proves the junit-zero backstop fires independently.
         ra = self._write(
             tmp_path, "ra.txt",
             "FAILED test_src.py::test_src_fails - AssertionError: deliberate failure\n",
@@ -561,6 +577,18 @@ class TestPhantomFailureLines:
             capture_output=True, text=True, cwd=str(tmp_path), timeout=120,
         )
         assert proc.returncode == 0, proc.stdout + proc.stderr
+
+        # Pin the section-ordering property itself, independent of the junit-zero
+        # backstop: the capture must carry more than one short-summary header (the
+        # printed phantom plus the real trailing one) so the anchor is actually
+        # exercised, the phantom node-id must not survive anchored parsing, and a
+        # real passing node-id must.
+        assert proc.stdout.count("short test summary info") > 1
+        live_passed, live_failed = kr.parse_pytest_report(proc.stdout)
+        assert "test_src.py::test_src_fails" not in live_failed
+        assert live_passed
+        assert any(n.endswith("::test_prints_fixture_lines") for n in live_passed)
+
         ra = self._write(tmp_path, "live.ra.txt", proc.stdout)
         rc = kr.main([
             "--manifest", str(self._manifest(tmp_path)), "--pytest-output", str(ra),
