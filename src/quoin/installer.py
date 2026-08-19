@@ -926,10 +926,93 @@ def deploy_agentdesk(source_dir: pathlib.Path, dest_agentdesk_dir: pathlib.Path)
     print(f"Deployed agentdesk to {dest_agentdesk_dir}")
 
 
+def _has_pyyaml() -> bool:
+    """True if pyyaml is importable in the current interpreter.
+
+    A monkeypatchable seam for tests. build_preambles.py --check needs pyyaml
+    to parse preamble frontmatter; checking here first avoids spawning a
+    child process that would fail for a reason unrelated to staleness.
+    """
+    import importlib.util
+
+    return importlib.util.find_spec("yaml") is not None
+
+
+def _looks_like_source_tree(source_dir: pathlib.Path) -> bool:
+    """True if source_dir looks like a working clone, not a wheel/site-packages copy.
+
+    Mirrors conjuncts (c) and (d) of cli.py's _derive_allow_writes — copied,
+    not imported, because installer.py must not import cli.py.
+    """
+    if not (source_dir / "skills").is_dir():
+        return False
+    parent = source_dir.parent
+    return (parent / ".git").is_dir() or (parent / "pyproject.toml").is_file()
+
+
+def _preamble_check_timeout() -> int:
+    """Read QUOIN_SUBPROCESS_TIMEOUT (seconds); default 30; bad values fall back to 30.
+
+    Self-contained local copy — do NOT cross-import; each touched script owns
+    its own copy per the repo's copy-not-import convention.
+    """
+    try:
+        return int(os.environ.get("QUOIN_SUBPROCESS_TIMEOUT", "30"))
+    except (TypeError, ValueError):
+        return 30
+
+
+def _advise_preamble_freshness(source_dir: pathlib.Path) -> None:
+    """User-mode advisory: warn (never fail) when source-tree preambles are stale.
+
+    Runs build_preambles.py --check as a subprocess so any bad exit code or
+    exception in the child can never abort `quoin install`. Silent unless the
+    check is inconclusive (soft note) or the child reports stale preambles
+    (exit 7, [warn] block) — install always returns 0 regardless.
+    """
+    if os.environ.get("QUOIN_DISABLE_PREAMBLE_CHECK") == "1":
+        return
+    if not _looks_like_source_tree(source_dir):
+        return
+    script = source_dir / "scripts" / "build_preambles.py"
+    if not script.is_file():
+        print("[note] preamble freshness check skipped (generator not found)")
+        return
+    if not _has_pyyaml():
+        print("[note] preamble freshness check skipped (pyyaml is a --dev dependency)")
+        return
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script), "--check"],
+            capture_output=True,
+            text=True,
+            timeout=_preamble_check_timeout(),
+        )
+    except Exception:
+        print("[note] preamble freshness check inconclusive")
+        return
+    if result.returncode == 0:
+        return
+    if result.returncode == 7:
+        print(
+            "[warn] preambles are stale relative to quoin/memory/format-kit.md and "
+            "glossary.md. Regenerate and commit:\n"
+            "  python3 quoin/scripts/build_preambles.py  (or bash install.sh --dev)\n"
+            "then commit quoin/skills/*/preamble.md",
+            file=sys.stderr,
+        )
+        for line in result.stderr.splitlines():
+            if line.strip():
+                print(f"  {line}", file=sys.stderr)
+        return
+    print(f"[note] preamble freshness check inconclusive (exit {result.returncode})")
+
+
 def regenerate_preambles(source_dir: pathlib.Path, *, allow_writes: bool) -> None:
     """Regenerate subagent preambles if running from a writable working tree."""
     if not allow_writes:
         print("Skipping preamble regeneration (user mode — pass --dev to regenerate from source)")
+        _advise_preamble_freshness(source_dir)
         return
     import runpy
 

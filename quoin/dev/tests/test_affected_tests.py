@@ -418,6 +418,50 @@ class TestIvg92SpecialCaseMapping:
         ), f"expected test_authored_content_rule_pointers.py in selectors for {changed_file}, got {selectors}"
 
 
+# Import SPAWN_TARGETS from the generator (drift guard) — same idiom as
+# test_preamble_freshness.py:27-28. A future 10th spawn target with no
+# matching _DOCS_TO_TESTS row fails TestIvg123PreambleMapping below rather
+# than silently reopening the lesson-2026-07-04 blind spot.
+sys.path.insert(0, str(_REPO_ROOT / "quoin" / "scripts"))
+from build_preambles import SPAWN_TARGETS  # noqa: E402
+
+
+class TestIvg123PreambleMapping:
+    """Verify each spawn-target preamble.md maps to test_preamble_freshness.py."""
+
+    @pytest.mark.parametrize("skill", sorted(SPAWN_TARGETS.keys()))
+    def test_spawn_target_preamble_triggers_freshness_test(self, skill):
+        """quoin/skills/<skill>/preamble.md -> test_preamble_freshness.py, cleanly."""
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            [f"quoin/skills/{skill}/preamble.md"], _REPO_ROOT
+        )
+        assert any("test_preamble_freshness.py" in s for s in selectors), (
+            f"expected test_preamble_freshness.py in selectors for {skill}, got {selectors}"
+        )
+        assert not ignored, f"ignored should be empty for a mapped file, got {ignored}"
+        assert not unmatched
+
+    def test_bare_preamble_md_does_not_match(self):
+        """Bare 'preamble.md' (no quoin/skills/<skill>/ parent) must NOT match —
+        anchored-suffix guard, mirrors test_bare_claude_md_does_not_match."""
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["preamble.md"], _REPO_ROOT
+        )
+        assert not selectors, f"expected no selectors for bare preamble.md, got {selectors}"
+        assert not unmatched
+        assert "preamble.md" in ignored
+
+    def test_non_spawn_target_preamble_md_still_ignored(self):
+        """A preamble.md under a skill NOT in SPAWN_TARGETS still lands in
+        ignored — proves per-file enumeration, not a directory-prefix rule."""
+        selectors, unmatched, ignored = _at.map_changed_to_tests(
+            ["quoin/skills/implement/preamble.md"], _REPO_ROOT
+        )
+        assert not selectors, f"expected no selectors, got {selectors}"
+        assert not unmatched
+        assert "quoin/skills/implement/preamble.md" in ignored
+
+
 # ---------------------------------------------------------------------------
 # resolve_repo
 # ---------------------------------------------------------------------------

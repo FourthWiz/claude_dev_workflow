@@ -272,7 +272,8 @@ def run_check() -> int:
                 print(
                     f"Preamble for {skill} is stale: source {rel_path} changed "
                     f"(preamble has {expected_sha}, current is {current_sha}). "
-                    f"Run: bash install.sh (or python3 quoin/scripts/build_preambles.py)",
+                    f"Run: python3 quoin/scripts/build_preambles.py (or bash install.sh --dev), "
+                    f"then commit the regenerated quoin/skills/*/preamble.md",
                     file=sys.stderr,
                 )
                 stale.append(f"{skill}: {rel_path} changed")

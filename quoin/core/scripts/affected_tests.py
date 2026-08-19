@@ -316,6 +316,50 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/adapters/claude/skills/review/SKILL.md",
         "quoin/dev/tests/test_authored_content_lint_wiring.py",
     ),
+    # IVG-123: each of the 9 spawn-target skills' generated preamble.md
+    # (quoin/skills/<skill>/preamble.md — see build_preambles.py's
+    # SPAWN_TARGETS) selects test_preamble_freshness.py directly. Per-file
+    # rows, not a directory-prefix rule (D-04): a prefix rule would widen
+    # matching semantics for every existing row above. Duplicate-key-safe
+    # (same iterate-all-rows-into-a-set consumer as above) — these are the
+    # first rows for these specific paths, so no existing selector is
+    # widened or displaced.
+    (
+        "quoin/skills/critic/preamble.md",
+        "quoin/dev/tests/test_preamble_freshness.py",
+    ),
+    (
+        "quoin/skills/revise/preamble.md",
+        "quoin/dev/tests/test_preamble_freshness.py",
+    ),
+    (
+        "quoin/skills/revise-fast/preamble.md",
+        "quoin/dev/tests/test_preamble_freshness.py",
+    ),
+    (
+        "quoin/skills/plan/preamble.md",
+        "quoin/dev/tests/test_preamble_freshness.py",
+    ),
+    (
+        "quoin/skills/review/preamble.md",
+        "quoin/dev/tests/test_preamble_freshness.py",
+    ),
+    (
+        "quoin/skills/architect/preamble.md",
+        "quoin/dev/tests/test_preamble_freshness.py",
+    ),
+    (
+        "quoin/skills/gate/preamble.md",
+        "quoin/dev/tests/test_preamble_freshness.py",
+    ),
+    (
+        "quoin/skills/specify/preamble.md",
+        "quoin/dev/tests/test_preamble_freshness.py",
+    ),
+    (
+        "quoin/skills/enrich/preamble.md",
+        "quoin/dev/tests/test_preamble_freshness.py",
+    ),
 )
 
 # SKILL.md coverage residual gap (review-1.md MAJOR 2, documented-acceptance branch):
@@ -347,6 +391,13 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
 # NOT close the citation-sweep gap itself (test_claude_md_citations.py remains
 # gapped for all 32 files, per the paragraph above) — only gate/SKILL.md's
 # general unselectability changed.
+#
+# Orthogonal addition (IVG-123): the 9 spawn-target preamble.md files
+# (quoin/skills/<skill>/preamble.md) are now covered per-file above, selecting
+# test_preamble_freshness.py. This is unrelated to the SKILL.md citation-sweep
+# gap described above — preamble.md and SKILL.md are different files in the
+# same skill directory, and the citation-sweep gap for the 32 SKILL.md files
+# is unchanged.
 
 
 # ---------------------------------------------------------------------------
