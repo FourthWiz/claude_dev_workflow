@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -1275,3 +1276,393 @@ class TestAc6NonRegression:
         monkeypatch.delenv("QUOIN_NONCOLLECTABLE_FILE", raising=False)
         rc = _cli(["--files", "orphan.py", "--repo-root", str(fake_repo)])
         assert rc == 3
+
+
+# ---------------------------------------------------------------------------
+# resolve_python / _probe_interpreter (venv interpreter resolution)
+# ---------------------------------------------------------------------------
+
+def _make_fake_venv(base: Path) -> Path:
+    """Create base/.venv/bin/python as a SYMLINK to sys.executable.
+
+    A symlink preserves the venv prefix through resolution; a copied binary
+    would not, so this is the only fixture shape that can catch a stray
+    .resolve() regression in the candidate handling.
+    """
+    bindir = base / ".venv" / "bin"
+    bindir.mkdir(parents=True)
+    link = bindir / "python"
+    link.symlink_to(sys.executable)
+    return link
+
+
+class TestResolvePython:
+    def test_symlinked_venv_found(self, tmp_path):
+        _make_fake_venv(tmp_path)
+        interp, reason = _at.resolve_python(tmp_path)
+        assert reason == "venv"
+        assert interp == str(tmp_path / ".venv" / "bin" / "python")
+
+    def test_returned_path_is_not_realpath(self, tmp_path):
+        """The candidate must never be .resolve()d — resolving a venv symlink
+        strips the venv prefix and silently changes which site-packages it
+        imports from."""
+        _make_fake_venv(tmp_path)
+        interp, _ = _at.resolve_python(tmp_path)
+        assert interp != os.path.realpath(interp), (
+            "resolve_python must return the venv symlink verbatim, not its realpath"
+        )
+
+    def test_parent_of_repo_layout(self, tmp_path):
+        """venv one level above the anchor (the project root, not the git repo)."""
+        _make_fake_venv(tmp_path)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        interp, reason = _at.resolve_python(repo)
+        assert reason == "venv"
+        assert interp == str(tmp_path / ".venv" / "bin" / "python")
+
+    def test_relative_anchor_returns_absolute(self, tmp_path, monkeypatch):
+        _make_fake_venv(tmp_path)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        monkeypatch.chdir(tmp_path)
+        interp, reason = _at.resolve_python(Path("repo"))
+        assert reason == "venv"
+        assert Path(interp).is_absolute()
+
+    def test_no_venv_falls_back(self, tmp_path):
+        interp, reason = _at.resolve_python(tmp_path)
+        assert reason == "fallback"
+        assert interp == sys.executable
+
+    def test_non_executable_candidate_ignored(self, tmp_path):
+        bindir = tmp_path / ".venv" / "bin"
+        bindir.mkdir(parents=True)
+        candidate = bindir / "python"
+        candidate.write_text("#!/bin/sh\n")
+        candidate.chmod(0o644)
+        interp, reason = _at.resolve_python(tmp_path)
+        assert reason == "fallback"
+        assert interp == sys.executable
+
+    def test_missing_candidate_ignored(self, tmp_path):
+        (tmp_path / ".venv" / "bin").mkdir(parents=True)
+        interp, reason = _at.resolve_python(tmp_path)
+        assert reason == "fallback"
+
+    def test_disable_knob_wins_over_valid_venv(self, tmp_path, monkeypatch):
+        _make_fake_venv(tmp_path)
+        monkeypatch.setenv("QUOIN_DISABLE_VENV_PROBE", "1")
+        interp, reason = _at.resolve_python(tmp_path)
+        assert (interp, reason) == (sys.executable, "disabled")
+
+    @pytest.mark.parametrize("value", ["true", "0", ""])
+    def test_disable_knob_exact_string_parsing(self, tmp_path, monkeypatch, value):
+        _make_fake_venv(tmp_path)
+        monkeypatch.setenv("QUOIN_DISABLE_VENV_PROBE", value)
+        interp, reason = _at.resolve_python(tmp_path)
+        assert reason == "venv", f"QUOIN_DISABLE_VENV_PROBE={value!r} must NOT disable"
+
+    def test_quoin_python_accepted(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("QUOIN_PYTHON", sys.executable)
+        interp, reason = _at.resolve_python(tmp_path)
+        assert (interp, reason) == (sys.executable, "env-override")
+
+    def test_quoin_python_failing_probe_falls_through(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("QUOIN_PYTHON", sys.executable)
+        interp, reason = _at.resolve_python(tmp_path, probe="import _quoin_no_such_module_xyz")
+        assert reason == "fallback"
+        assert interp == sys.executable
+
+    def test_quoin_python_missing_file_falls_through(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("QUOIN_PYTHON", str(tmp_path / "no-such-python"))
+        interp, reason = _at.resolve_python(tmp_path)
+        assert reason == "fallback"
+
+    def test_quoin_python_non_executable_falls_through(self, tmp_path, monkeypatch):
+        bogus = tmp_path / "bogus-python"
+        bogus.write_text("not a real interpreter\n")
+        bogus.chmod(0o644)
+        monkeypatch.setenv("QUOIN_PYTHON", str(bogus))
+        interp, reason = _at.resolve_python(tmp_path)
+        assert reason == "fallback"
+
+    def test_venv_candidate_failing_probe_rejected(self, tmp_path):
+        _make_fake_venv(tmp_path)
+        interp, reason = _at.resolve_python(tmp_path, probe="import _quoin_no_such_module_xyz")
+        assert reason == "fallback"
+        assert interp == sys.executable
+
+    def test_walk_stops_before_home(self, tmp_path, monkeypatch):
+        """A .venv at $HOME must never be selected — the walk stops BEFORE it.
+
+        Path.home must be handed an already-.resolve()d path: the walk
+        anchor is .resolve()d at resolver entry, and an unresolved tmp_path
+        can differ from its resolved form by a platform path prefix.
+        """
+        resolved_home = tmp_path.resolve()
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: resolved_home))
+        _make_fake_venv(resolved_home)
+        child = resolved_home / "child"
+        child.mkdir()
+        interp, reason = _at.resolve_python(child)
+        assert reason == "fallback", "must not select a .venv at the home directory"
+
+    def test_depth_cap_stops_the_walk(self, tmp_path):
+        """A .venv 7 levels up (beyond _VENV_WALK_MAX_DEPTH=6) is not found."""
+        deep = tmp_path
+        for name in ("a", "b", "c", "d", "e", "f", "g"):
+            deep = deep / name
+        deep.mkdir(parents=True)
+        _make_fake_venv(tmp_path)  # 7 levels above `deep`
+        interp, reason = _at.resolve_python(deep)
+        assert reason == "fallback", "a .venv beyond the depth cap must not be found"
+
+    def test_probe_interpreter_missing_binary_returns_false(self, tmp_path):
+        ok = _at._probe_interpreter(str(tmp_path / "no-such-binary"), "import sys")
+        assert ok is False
+
+    def test_probe_interpreter_never_calls_run_helper(self, tmp_path, monkeypatch):
+        """_probe_interpreter must not go through _run() — that helper's
+        FileNotFoundError branch hardcodes a git-specific error message that
+        would be misleading for a python-interpreter probe."""
+        calls = []
+        monkeypatch.setattr(_at, "_run", lambda args: (calls.append(args), ("", "", 1))[1])
+        ok = _at._probe_interpreter(str(tmp_path / "no-such-binary"), "import sys")
+        assert ok is False
+        assert calls == [], "_probe_interpreter must not call _run()"
+
+
+# ---------------------------------------------------------------------------
+# Interpreter field wiring in main() (single resolution call site)
+# ---------------------------------------------------------------------------
+
+class TestInterpreterFieldWiring:
+    def test_present_in_json_venv_present(self, tmp_path):
+        _make_fake_venv(tmp_path)
+        (tmp_path / "test_x.py").write_text("def test_x(): pass\n")
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            _cli(["--select-only", "--files", "test_x.py", "--repo-root", str(tmp_path)])
+        data = json.loads(buf.getvalue())
+        assert data["interpreter"] == str(tmp_path / ".venv" / "bin" / "python")
+        assert data["interpreter_reason"] == "venv"
+
+    def test_present_in_text_format(self, tmp_path):
+        _make_fake_venv(tmp_path)
+        (tmp_path / "test_x.py").write_text("def test_x(): pass\n")
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            _cli(["--select-only", "--files", "test_x.py",
+                  "--repo-root", str(tmp_path), "--format", "text"])
+        out = buf.getvalue()
+        assert "interpreter:" in out
+        assert "interpreter_reason: venv" in out
+
+    def test_absent_on_exit5_no_task_context(self, tmp_path):
+        foreign = tmp_path / "foreign"
+        foreign.mkdir()
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = _cli(["--project-root", str(foreign), "--require-task-context"])
+        assert rc == 5
+        data = json.loads(buf.getvalue())
+        assert "interpreter" not in data
+        assert "interpreter_reason" not in data
+
+    def test_absent_on_no_changes(self, tmp_path):
+        _init_git_repo(tmp_path / "repo")
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = _cli(["--project-root", str(tmp_path)])
+        assert rc == 0
+        data = json.loads(buf.getvalue())
+        assert data["exit_reason"] == "no-changes"
+        assert "interpreter" not in data
+        assert "interpreter_reason" not in data
+
+    def test_files_mode_resolves_without_raising(self, tmp_path):
+        rc = _cli(["--select-only", "--files", "nope.py", "--repo-root", str(tmp_path)])
+        assert rc == 0
+
+    def test_files_from_mode_resolves_without_raising(self, tmp_path):
+        src = tmp_path / "list.txt"
+        src.write_text("nope.py\n")
+        rc = _cli(["--select-only", "--files-from", str(src), "--repo-root", str(tmp_path)])
+        assert rc == 0
+
+    def test_pytest_argv_uses_resolved_interpreter(self, tmp_path):
+        """Proves the pytest subprocess.run call uses the resolved venv
+        interpreter as argv[0], not the invoking sys.executable.
+
+        Deliberately does NOT pin --repo-root to an isolated tmp_path — this
+        test's own point is to exercise the probe against a real,
+        discoverable venv, and simultaneously serves as the collision
+        regression: the probe snippet contains the substring "pytest" and
+        must not trip any of the pytest-not-in-call assertions elsewhere in
+        this file (those live in separate test functions, unaffected by this
+        one firing correctly).
+        """
+        fake = _make_fake_venv(tmp_path)
+        (tmp_path / "test_x.py").write_text("def test_x(): pass\n")
+
+        real_run = subprocess.run
+
+        def side_effect(args, **kwargs):
+            if "-c" in args:
+                return real_run(args, **kwargs)  # let the real probe run
+            return subprocess.CompletedProcess(args, 0)
+
+        with mock.patch("subprocess.run", side_effect=side_effect) as mock_run:
+            rc = _cli(["--files", "test_x.py", "--repo-root", str(tmp_path)])
+            assert mock_run.call_count == 2, (
+                f"expected probe + pytest calls, got {mock_run.call_args_list}"
+            )
+            last_call = mock_run.call_args_list[-1]
+            argv = last_call[0][0] if last_call[0] else last_call.args[0]
+            assert argv[0] == str(fake), (
+                f"pytest argv[0] must be the resolved venv interpreter, got {argv}"
+            )
+        assert rc == 0
+
+    def test_precheck_skipped_when_interpreter_is_venv(self, tmp_path):
+        """When resolve_python selects a venv interpreter, the in-process
+        find_spec('pytest') precheck must be bypassed — checking THIS
+        process's pytest availability says nothing about the venv
+        interpreter's."""
+        _make_fake_venv(tmp_path)
+        (tmp_path / "test_x.py").write_text("def test_x(): pass\n")
+
+        real_run = subprocess.run
+
+        def side_effect(args, **kwargs):
+            if "-c" in args:
+                return real_run(args, **kwargs)
+            return subprocess.CompletedProcess(args, 0)
+
+        with mock.patch("importlib.util.find_spec", return_value=None), \
+                mock.patch("subprocess.run", side_effect=side_effect):
+            rc = _cli(["--files", "test_x.py", "--repo-root", str(tmp_path)])
+        assert rc == 0, (
+            f"find_spec=None must not block when a venv interpreter is resolved, got {rc}"
+        )
+
+    def test_disable_probe_pytest_missing_preserved(self, tmp_path):
+        """With the panic-button knob set, the fallback interpreter is
+        sys.executable, so the in-process find_spec precheck is authoritative
+        again and pytest-missing must still be reachable."""
+        (tmp_path / "test_x.py").write_text("def test_x(): pass\n")
+        import io, contextlib
+        buf = io.StringIO()
+        with mock.patch("importlib.util.find_spec", return_value=None):
+            with contextlib.redirect_stdout(buf):
+                rc = _cli(
+                    ["--files", "test_x.py", "--repo-root", str(tmp_path)],
+                    env={"QUOIN_DISABLE_VENV_PROBE": "1"},
+                )
+        assert rc == 3
+        data = json.loads(buf.getvalue())
+        assert data["exit_reason"] == "pytest-missing"
+        assert data.get("interpreter_reason") == "disabled"
+
+
+# ---------------------------------------------------------------------------
+# --print-interpreter (early return, before repo resolution)
+# ---------------------------------------------------------------------------
+
+def _capture_help() -> str:
+    import io, contextlib
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        try:
+            _at.main(["--help"])
+        except SystemExit:
+            pass
+    return buf.getvalue()
+
+
+class TestPrintInterpreter:
+    def test_exits_0_with_two_lines(self, tmp_path):
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = _cli(["--print-interpreter", "--project-root", str(tmp_path)])
+        assert rc == 0
+        out = buf.getvalue()
+        assert "interpreter:" in out
+        assert "interpreter_reason:" in out
+
+    def test_files_mode_does_not_raise(self):
+        """args.project_root is legally None here (--print-interpreter is
+        outside the required mode group) — must not raise TypeError."""
+        rc = _cli(["--print-interpreter", "--files", "foo.py"])
+        assert rc == 0
+
+    def test_precedes_no_repo_exit3(self, tmp_path):
+        """A dir with no git repo would normally exit 3 for --project-root
+        mode — --print-interpreter returns 0 first, before repo resolution."""
+        rc = _cli(["--print-interpreter", "--project-root", str(tmp_path)])
+        assert rc == 0
+
+    def test_precedes_require_task_context_exit5(self, tmp_path):
+        rc = _cli(["--print-interpreter", "--project-root", str(tmp_path),
+                   "--require-task-context"])
+        assert rc == 0
+
+    def test_disable_still_wins(self, tmp_path):
+        rc = _cli(["--print-interpreter", "--project-root", str(tmp_path)],
+                  env={"QUOIN_DISABLE_AFFECTED_TESTS": "1"})
+        assert rc == 3
+
+    def test_project_level_vs_repo_local_venv_divergence(self, tmp_path):
+        """Pins the documented anchor divergence: --print-interpreter anchors
+        at --project-root itself, which can differ from repo_root (a real
+        run's anchor) when a repo-local .venv and a project-level .venv
+        coexist. This is EXPECTED, not a bug — see the flag's help text."""
+        project_venv = _make_fake_venv(tmp_path)
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / ".git").mkdir()
+        repo_venv = _make_fake_venv(repo)
+
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = _cli(["--print-interpreter", "--project-root", str(tmp_path)])
+        assert rc == 0
+        assert str(project_venv) in buf.getvalue()
+
+        real_run_interp, _ = _at.resolve_python(repo, probe="import pytest")
+        assert real_run_interp == str(repo_venv)
+        assert real_run_interp != str(project_venv), (
+            "the divergence this test pins: --print-interpreter reports the "
+            "project-level interpreter while a real run at repo_root would "
+            "select the repo-local one"
+        )
+
+    def test_help_text_discloses_divergence(self):
+        out = _capture_help().lower()
+        assert "diverge" in out and "project-root" in out
+
+    def test_probe_parity_rejects_broken_venv(self, tmp_path):
+        """A venv that exists and is executable but fails the probe must
+        report interpreter_reason=fallback, not venv — proving the probe
+        argument is actually passed through and not silently dropped to
+        None."""
+        bindir = tmp_path / ".venv" / "bin"
+        bindir.mkdir(parents=True)
+        stub = bindir / "python"
+        stub.write_text("#!/bin/sh\nexit 1\n")
+        stub.chmod(0o755)
+
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = _cli(["--print-interpreter", "--project-root", str(tmp_path)])
+        assert rc == 0
+        assert "interpreter_reason: fallback" in buf.getvalue()
