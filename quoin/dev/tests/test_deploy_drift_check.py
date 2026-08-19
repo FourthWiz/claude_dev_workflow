@@ -359,7 +359,7 @@ def test_cli_drift_found_exit1(ddc, monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Working-tree src injection (T-07)
+# Working-tree src injection
 #
 # SYS.PATH TEARDOWN: main()'s injection inserts str(src) into sys.path with
 # no production-side removal (deliberate — the real CLI wants it for the

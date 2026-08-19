@@ -1281,7 +1281,7 @@ def main(argv: list[str] | None = None) -> int:
     if repo_root is None:
         repo_root = Path.cwd()
 
-    # Resolve the interpreter pytest will run under (T-01/T-03). Anchored at
+    # Resolve the interpreter pytest will run under. Anchored at
     # repo_root — the only point where it is defined in all three modes — and
     # probed for pytest importability so a candidate venv that can't run
     # pytest falls through rather than being selected and failing later.
