@@ -483,9 +483,34 @@ EXIT_UNRECONCILED = 3
 EXIT_USAGE = 64
 
 
+_MANIFEST_REL = Path("quoin") / "dev" / "tests" / "known-red.toml"
+
+
 def _default_manifest(project_root) -> Path:
+    """Resolve the manifest against the git root, not the outer project root.
+
+    A direct hit at `<project_root>/<_MANIFEST_REL>` wins unconditionally, so a
+    single-repo project behaves exactly as before. Otherwise scan `project_root`'s
+    immediate subdirectories that look like a git checkout — a `.git` ENTRY, not
+    necessarily a directory, since a worktree's `.git` is a file — in sorted order
+    for determinism, and return the first one whose manifest path exists. Absent
+    everywhere → the direct (non-existent) path, so `load_manifest` returns `[]`
+    and the fail-closed spine holds.
+    """
     root = Path(project_root) if project_root is not None else Path.cwd()
-    return root / "quoin" / "dev" / "tests" / "known-red.toml"
+    direct = root / _MANIFEST_REL
+    if direct.exists():
+        return direct
+    try:
+        candidates = sorted(p for p in root.iterdir() if p.is_dir())
+    except OSError:
+        return direct
+    for sub in candidates:
+        if (sub / ".git").exists():
+            candidate = sub / _MANIFEST_REL
+            if candidate.exists():
+                return candidate
+    return direct
 
 
 def drop_phantom_failures(observed_rc, failed_or_error, junit_count):
