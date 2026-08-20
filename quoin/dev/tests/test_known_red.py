@@ -11,6 +11,9 @@ Covers T-03..T-07 plus the round-1/2/3 regression cases:
   - TestJunitCount: real <testsuites><testsuite> wrapper; multiple children;
     tampered attrs reflect declared count; collection-error; malformed → ParseError;
     never returns a node-id.
+  - TestSelectorFilter: absolute selectors match repo-relative node-ids and vice
+    versa; bracket-aware file-prefix split; directory-shaped selectors; component-
+    boundary guard against sibling-stem matches; empty-selector fail-closed pin.
   - TestStructuralGuard: a REAL pytest run over throwaway fixtures asserts the
     -rA-parsed node-ids round-trip to real pytest node-ids and the junit count
     equals the -rA-parsed failure count.
@@ -18,7 +21,11 @@ Covers T-03..T-07 plus the round-1/2/3 regression cases:
     run-token dedup; threshold N default 3 + env override; no --full-suite → no change.
   - TestReconcile: rc!=0 + empty parse → NOT reconciled; rc==0 + empty → reconciled;
     junit-count disagreement → NOT reconciled; rc!=0 + parsed failures, no junit → reconciled.
-  - TestCliExit: full exit-code matrix incl. exit 3 (CRIT-1) and exit 64 usage cases.
+  - TestCliExit: full exit-code matrix incl. exit 3 (CRIT-1) and exit 64 usage cases;
+    plus absolute-selector downgrade/net-new coverage (IVG-254).
+  - TestManifestResolution: manifest resolves against the nested git root, not the
+    outer project root (IVG-254) — direct hit, nested layout, no-.git guard,
+    absent-everywhere, deterministic ordering, worktree `.git` file, iterdir OSError.
   - TestHumanBlock: text output lists downgrade + stale + reconciliation line.
   - TestNodeIdEndToEnd: real emitted node-id for test_sleep_scoring.py == manifest id.
 """
@@ -289,6 +296,114 @@ class TestJunitCount:
         xml = '<testsuite failures="1" errors="0"><testcase classname="a.b.c" name="t"/></testsuite>'
         result = kr.parse_junit_count(xml)
         assert isinstance(result, int)
+
+
+# ---------------------------------------------------------------------------
+# TestSelectorFilter — IVG-254 selector-shape mismatch regression
+# ---------------------------------------------------------------------------
+
+
+class TestSelectorFilter:
+    def test_absolute_selectors_match_relative_nodeids(self):
+        # the IVG-254 repro shape: affected_tests.py emits absolute selectors,
+        # -rA parsing yields repo-relative node-ids
+        passed, failed = kr.apply_selector_filter(
+            {"quoin/dev/tests/test_a.py::test_x"},
+            set(),
+            ["/repo-root/quoin/dev/tests/test_a.py"],
+        )
+        assert passed == {"quoin/dev/tests/test_a.py::test_x"}
+        assert failed == set()
+
+    def test_relative_selectors_match_absolute_nodeids(self):
+        # the inverse shape
+        passed, failed = kr.apply_selector_filter(
+            {"/repo-root/quoin/dev/tests/test_a.py::test_x"},
+            set(),
+            ["quoin/dev/tests/test_a.py"],
+        )
+        assert passed == {"/repo-root/quoin/dev/tests/test_a.py::test_x"}
+        assert failed == set()
+
+    def test_repo_relative_selectors_still_match(self):
+        # pre-fix behavior preserved: both sides repo-relative
+        passed, failed = kr.apply_selector_filter(
+            {"quoin/dev/tests/test_a.py::test_x"},
+            set(),
+            ["quoin/dev/tests/test_a.py"],
+        )
+        assert passed == {"quoin/dev/tests/test_a.py::test_x"}
+        assert failed == set()
+
+    def test_out_of_scope_nodeids_are_dropped(self):
+        # DISCRIMINATOR: a selector list that omits one file must drop that
+        # file's node-ids. A no-op `return passed, failed_or_error` passes
+        # tests 1-3 above but fails this one.
+        _, failed = kr.apply_selector_filter(
+            set(),
+            {
+                "quoin/dev/tests/test_a.py::test_x",
+                "quoin/dev/tests/test_b.py::test_y",
+            },
+            ["quoin/dev/tests/test_a.py"],
+        )
+        assert failed == {"quoin/dev/tests/test_a.py::test_x"}
+
+    def test_parametrized_bracket_nodeid_matches(self):
+        # guards the bracket-aware `_file_prefix` split (lesson 2026-07-30):
+        # an internal " - " inside the param must not truncate the node-id
+        passed, _ = kr.apply_selector_filter(
+            {"quoin/dev/tests/test_p.py::test_v[a - b]"},
+            set(),
+            ["/repo-root/quoin/dev/tests/test_p.py"],
+        )
+        assert passed == {"quoin/dev/tests/test_p.py::test_v[a - b]"}
+
+    def test_nodeid_shaped_selector_selects_whole_file(self):
+        # a selector carrying `::` is reduced by `_file_prefix` before
+        # matching, so it selects every node-id in that file
+        passed, _ = kr.apply_selector_filter(
+            {
+                "quoin/dev/tests/test_a.py::test_x",
+                "quoin/dev/tests/test_a.py::test_y",
+            },
+            set(),
+            ["/repo-root/quoin/dev/tests/test_a.py::test_x"],
+        )
+        assert passed == {
+            "quoin/dev/tests/test_a.py::test_x",
+            "quoin/dev/tests/test_a.py::test_y",
+        }
+
+    def test_directory_selector_matches_contained_nodeids(self):
+        # a directory-shaped selector (last component has no `.py` suffix)
+        # matches node-ids beneath it
+        passed, _ = kr.apply_selector_filter(
+            {"quoin/dev/tests/test_a.py::test_x"},
+            set(),
+            ["quoin/dev/tests"],
+        )
+        assert passed == {"quoin/dev/tests/test_a.py::test_x"}
+
+    def test_sibling_stem_does_not_match(self):
+        # component boundary, not string prefix: test_a.py must not match
+        # test_ab.py
+        passed, _ = kr.apply_selector_filter(
+            {"quoin/dev/tests/test_ab.py::test_x"},
+            set(),
+            ["quoin/dev/tests/test_a.py"],
+        )
+        assert passed == set()
+
+    def test_empty_selector_list_filters_everything(self):
+        # pins the existing fail-closed semantics: no selectors → nothing kept
+        passed, failed = kr.apply_selector_filter(
+            {"quoin/dev/tests/test_a.py::test_x"},
+            {"quoin/dev/tests/test_b.py::test_y"},
+            [],
+        )
+        assert passed == set()
+        assert failed == set()
 
 
 # ---------------------------------------------------------------------------
@@ -751,6 +866,125 @@ added = "2026-07-10"
         ])
         out = json.loads(capsys.readouterr().out)
         assert rc == 0 and out["downgrade"] is True
+
+    def test_absolute_selectors_downgrade_instead_of_exit3(self, tmp_path, capsys):
+        # IVG-254: pre-fix, an absolute --selectors path filters out every
+        # repo-relative node-id, leaving an empty failed set that fails
+        # reconciliation and exits 3. Post-fix it downgrades normally.
+        man = self._manifest(tmp_path)
+        ra = self._ra(
+            tmp_path,
+            ["FAILED quoin/dev/tests/test_sleep_scoring.py::test_a - boom"],
+        )
+        rc = self._run([
+            "--manifest", str(man), "--pytest-output", str(ra),
+            "--selectors", "/some/other/root/quoin/dev/tests/test_sleep_scoring.py",
+            "--observed-rc", "1", "--format", "json",
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        assert out["downgrade"] is True
+        assert out["reconciled"] is True
+        assert out["known_red"][0]["id"] == "quoin/dev/tests/test_sleep_scoring.py"
+
+    def test_net_new_under_absolute_selectors_still_exits_1(self, tmp_path, capsys):
+        # guards against the selector-shape fix turning the filter into a blanket pass: an
+        # unlisted node-id must still block even under absolute selectors
+        man = self._manifest(tmp_path)
+        ra = self._ra(
+            tmp_path,
+            ["FAILED quoin/dev/tests/test_new.py::test_x - boom"],
+        )
+        rc = self._run([
+            "--manifest", str(man), "--pytest-output", str(ra),
+            "--selectors", "/some/other/root/quoin/dev/tests/test_new.py",
+            "--observed-rc", "1", "--format", "json",
+        ])
+        out = json.loads(capsys.readouterr().out)
+        assert rc == 1
+        assert "quoin/dev/tests/test_new.py::test_x" in out["net_new"]
+
+
+# ---------------------------------------------------------------------------
+# TestManifestResolution — IVG-254, manifest-root resolution
+# ---------------------------------------------------------------------------
+
+# The outer project root two levels above the git repo root, derived the same
+# way `_default_manifest` scans for a nested checkout — used only by the
+# skip-guarded live-layout test below.
+_LIVE_PROJECT_ROOT = _CORE_PATH.resolve().parents[4]
+
+
+class TestManifestResolution:
+    def test_direct_hit_wins(self, tmp_path):
+        # single-repo projects behave exactly as before
+        direct = tmp_path / "quoin" / "dev" / "tests" / "known-red.toml"
+        direct.parent.mkdir(parents=True)
+        direct.write_text("", encoding="utf-8")
+        assert kr._default_manifest(tmp_path) == direct
+
+    def test_nested_repo_layout_resolves(self, tmp_path):
+        repo = tmp_path / "repo"
+        (repo / ".git").mkdir(parents=True)
+        nested = repo / "quoin" / "dev" / "tests" / "known-red.toml"
+        nested.parent.mkdir(parents=True)
+        nested.write_text("", encoding="utf-8")
+        assert kr._default_manifest(tmp_path) == nested
+
+    def test_subdirectory_without_git_never_searched(self, tmp_path):
+        sub = tmp_path / "not-a-repo"
+        nested = sub / "quoin" / "dev" / "tests" / "known-red.toml"
+        nested.parent.mkdir(parents=True)
+        nested.write_text("", encoding="utf-8")
+        direct = tmp_path / "quoin" / "dev" / "tests" / "known-red.toml"
+        assert kr._default_manifest(tmp_path) == direct
+        assert not direct.exists()
+
+    def test_absent_everywhere_returns_direct_path(self, tmp_path):
+        direct = tmp_path / "quoin" / "dev" / "tests" / "known-red.toml"
+        assert kr._default_manifest(tmp_path) == direct
+        assert not direct.exists()
+
+    def test_deterministic_sorted_first_hit_wins(self, tmp_path):
+        for name in ("repo-b", "repo-a"):
+            repo = tmp_path / name
+            (repo / ".git").mkdir(parents=True)
+            nested = repo / "quoin" / "dev" / "tests" / "known-red.toml"
+            nested.parent.mkdir(parents=True)
+            nested.write_text("", encoding="utf-8")
+        expected = tmp_path / "repo-a" / "quoin" / "dev" / "tests" / "known-red.toml"
+        assert kr._default_manifest(tmp_path) == expected
+
+    def test_worktree_git_file_is_recognized(self, tmp_path):
+        # a git worktree's `.git` is a FILE, not a directory
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / ".git").write_text(
+            "gitdir: /elsewhere/.git/worktrees/repo\n", encoding="utf-8"
+        )
+        nested = repo / "quoin" / "dev" / "tests" / "known-red.toml"
+        nested.parent.mkdir(parents=True)
+        nested.write_text("", encoding="utf-8")
+        assert kr._default_manifest(tmp_path) == nested
+
+    def test_oserror_from_iterdir_falls_back_to_direct(self, tmp_path, monkeypatch):
+        direct = tmp_path / "quoin" / "dev" / "tests" / "known-red.toml"
+        real_iterdir = Path.iterdir
+
+        def _boom(self):
+            if self == tmp_path:
+                raise OSError("permission denied")
+            return real_iterdir(self)
+
+        monkeypatch.setattr(Path, "iterdir", _boom)
+        assert kr._default_manifest(tmp_path) == direct
+
+    @pytest.mark.skipif(
+        not (_LIVE_PROJECT_ROOT / "quoin" / ".git").exists(),
+        reason="nested git-root layout not present (bare checkout)",
+    )
+    def test_live_nested_layout_resolves_to_committed_manifest(self):
+        assert kr._default_manifest(_LIVE_PROJECT_ROOT) == _MANIFEST
 
 
 # ---------------------------------------------------------------------------

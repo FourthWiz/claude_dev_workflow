@@ -28,7 +28,7 @@ import os
 import re
 import sys
 import xml.etree.ElementTree as ET
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 # ---------------------------------------------------------------------------
@@ -309,11 +309,61 @@ def _file_prefix(nodeid: str) -> str:
     return nodeid.split("::", 1)[0]
 
 
+def _selector_parts(s: str) -> tuple:
+    """Path-component tuple for a selector or node-id file-prefix.
+
+    Normalizes to POSIX components so an absolute selector (e.g. emitted by
+    `affected_tests.py`) and a repo-relative node-id can be compared by
+    trailing-component suffix instead of requiring literal path equality.
+    """
+    return PurePosixPath(Path(_file_prefix(s)).as_posix()).parts
+
+
+def _is_component_suffix(short: tuple, long: tuple) -> bool:
+    """True iff `short` is a whole-component tail of `long` (never a string prefix)."""
+    return len(short) <= len(long) and long[len(long) - len(short):] == short
+
+
+def _selector_matches(node_parts: tuple, sel_parts: tuple, sel_is_dir: bool) -> bool:
+    """True iff a node-id's path parts fall under a selector's path parts.
+
+    File selectors match by mutual component-suffix (either side may be the
+    absolute one). Directory selectors match iff `sel_parts` appears as a
+    contiguous window within the node-id's directory components.
+    """
+    if not sel_parts:
+        return False
+    if sel_is_dir:
+        window = node_parts[:-1]
+        n = len(sel_parts)
+        return any(
+            window[i:i + n] == sel_parts for i in range(len(window) - n + 1)
+        )
+    return _is_component_suffix(sel_parts, node_parts) or _is_component_suffix(
+        node_parts, sel_parts
+    )
+
+
 def apply_selector_filter(passed, failed_or_error, selectors) -> tuple[set, set]:
-    """Restrict both sets to node-ids whose file-prefix is in `selectors`."""
-    sel = set(selectors)
-    p = {n for n in passed if _file_prefix(n) in sel}
-    f = {n for n in failed_or_error if _file_prefix(n) in sel}
+    """Restrict both sets to node-ids whose file-prefix falls under `selectors`.
+
+    Selector and node-id may be absolute or repo-relative on either side —
+    matching is by path-component suffix, not literal string equality, so an
+    absolute selector from `affected_tests.py` matches repo-relative node-ids
+    parsed from pytest output (IVG-254).
+    """
+    prepared = []
+    for s in selectors:
+        parts = _selector_parts(s)
+        is_dir = bool(parts) and not parts[-1].endswith(".py")
+        prepared.append((parts, is_dir))
+
+    def _keep(nodeid: str) -> bool:
+        node_parts = _selector_parts(nodeid)
+        return any(_selector_matches(node_parts, p, d) for (p, d) in prepared)
+
+    p = {n for n in passed if _keep(n)}
+    f = {n for n in failed_or_error if _keep(n)}
     return p, f
 
 
@@ -433,9 +483,34 @@ EXIT_UNRECONCILED = 3
 EXIT_USAGE = 64
 
 
+_MANIFEST_REL = Path("quoin") / "dev" / "tests" / "known-red.toml"
+
+
 def _default_manifest(project_root) -> Path:
+    """Resolve the manifest against the git root, not the outer project root.
+
+    A direct hit at `<project_root>/<_MANIFEST_REL>` wins unconditionally, so a
+    single-repo project behaves exactly as before. Otherwise scan `project_root`'s
+    immediate subdirectories that look like a git checkout — a `.git` ENTRY, not
+    necessarily a directory, since a worktree's `.git` is a file — in sorted order
+    for determinism, and return the first one whose manifest path exists. Absent
+    everywhere → the direct (non-existent) path, so `load_manifest` returns `[]`
+    and the fail-closed spine holds.
+    """
     root = Path(project_root) if project_root is not None else Path.cwd()
-    return root / "quoin" / "dev" / "tests" / "known-red.toml"
+    direct = root / _MANIFEST_REL
+    if direct.exists():
+        return direct
+    try:
+        candidates = sorted(p for p in root.iterdir() if p.is_dir())
+    except OSError:
+        return direct
+    for sub in candidates:
+        if (sub / ".git").exists():
+            candidate = sub / _MANIFEST_REL
+            if candidate.exists():
+                return candidate
+    return direct
 
 
 def drop_phantom_failures(observed_rc, failed_or_error, junit_count):
