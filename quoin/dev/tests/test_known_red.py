@@ -11,6 +11,9 @@ Covers T-03..T-07 plus the round-1/2/3 regression cases:
   - TestJunitCount: real <testsuites><testsuite> wrapper; multiple children;
     tampered attrs reflect declared count; collection-error; malformed → ParseError;
     never returns a node-id.
+  - TestSelectorFilter: absolute selectors match repo-relative node-ids and vice
+    versa; bracket-aware file-prefix split; directory-shaped selectors; component-
+    boundary guard against sibling-stem matches; empty-selector fail-closed pin.
   - TestStructuralGuard: a REAL pytest run over throwaway fixtures asserts the
     -rA-parsed node-ids round-trip to real pytest node-ids and the junit count
     equals the -rA-parsed failure count.
@@ -289,6 +292,114 @@ class TestJunitCount:
         xml = '<testsuite failures="1" errors="0"><testcase classname="a.b.c" name="t"/></testsuite>'
         result = kr.parse_junit_count(xml)
         assert isinstance(result, int)
+
+
+# ---------------------------------------------------------------------------
+# TestSelectorFilter — IVG-254 selector-shape mismatch regression
+# ---------------------------------------------------------------------------
+
+
+class TestSelectorFilter:
+    def test_absolute_selectors_match_relative_nodeids(self):
+        # the IVG-254 repro shape: affected_tests.py emits absolute selectors,
+        # -rA parsing yields repo-relative node-ids
+        passed, failed = kr.apply_selector_filter(
+            {"quoin/dev/tests/test_a.py::test_x"},
+            set(),
+            ["/repo-root/quoin/dev/tests/test_a.py"],
+        )
+        assert passed == {"quoin/dev/tests/test_a.py::test_x"}
+        assert failed == set()
+
+    def test_relative_selectors_match_absolute_nodeids(self):
+        # the inverse shape
+        passed, failed = kr.apply_selector_filter(
+            {"/repo-root/quoin/dev/tests/test_a.py::test_x"},
+            set(),
+            ["quoin/dev/tests/test_a.py"],
+        )
+        assert passed == {"/repo-root/quoin/dev/tests/test_a.py::test_x"}
+        assert failed == set()
+
+    def test_repo_relative_selectors_still_match(self):
+        # pre-fix behavior preserved: both sides repo-relative
+        passed, failed = kr.apply_selector_filter(
+            {"quoin/dev/tests/test_a.py::test_x"},
+            set(),
+            ["quoin/dev/tests/test_a.py"],
+        )
+        assert passed == {"quoin/dev/tests/test_a.py::test_x"}
+        assert failed == set()
+
+    def test_out_of_scope_nodeids_are_dropped(self):
+        # DISCRIMINATOR: a selector list that omits one file must drop that
+        # file's node-ids. A no-op `return passed, failed_or_error` passes
+        # tests 1-3 above but fails this one.
+        _, failed = kr.apply_selector_filter(
+            set(),
+            {
+                "quoin/dev/tests/test_a.py::test_x",
+                "quoin/dev/tests/test_b.py::test_y",
+            },
+            ["quoin/dev/tests/test_a.py"],
+        )
+        assert failed == {"quoin/dev/tests/test_a.py::test_x"}
+
+    def test_parametrized_bracket_nodeid_matches(self):
+        # guards the bracket-aware `_file_prefix` split (lesson 2026-07-30):
+        # an internal " - " inside the param must not truncate the node-id
+        passed, _ = kr.apply_selector_filter(
+            {"quoin/dev/tests/test_p.py::test_v[a - b]"},
+            set(),
+            ["/repo-root/quoin/dev/tests/test_p.py"],
+        )
+        assert passed == {"quoin/dev/tests/test_p.py::test_v[a - b]"}
+
+    def test_nodeid_shaped_selector_selects_whole_file(self):
+        # a selector carrying `::` is reduced by `_file_prefix` before
+        # matching, so it selects every node-id in that file
+        passed, _ = kr.apply_selector_filter(
+            {
+                "quoin/dev/tests/test_a.py::test_x",
+                "quoin/dev/tests/test_a.py::test_y",
+            },
+            set(),
+            ["/repo-root/quoin/dev/tests/test_a.py::test_x"],
+        )
+        assert passed == {
+            "quoin/dev/tests/test_a.py::test_x",
+            "quoin/dev/tests/test_a.py::test_y",
+        }
+
+    def test_directory_selector_matches_contained_nodeids(self):
+        # a directory-shaped selector (last component has no `.py` suffix)
+        # matches node-ids beneath it
+        passed, _ = kr.apply_selector_filter(
+            {"quoin/dev/tests/test_a.py::test_x"},
+            set(),
+            ["quoin/dev/tests"],
+        )
+        assert passed == {"quoin/dev/tests/test_a.py::test_x"}
+
+    def test_sibling_stem_does_not_match(self):
+        # component boundary, not string prefix: test_a.py must not match
+        # test_ab.py
+        passed, _ = kr.apply_selector_filter(
+            {"quoin/dev/tests/test_ab.py::test_x"},
+            set(),
+            ["quoin/dev/tests/test_a.py"],
+        )
+        assert passed == set()
+
+    def test_empty_selector_list_filters_everything(self):
+        # pins the existing fail-closed semantics: no selectors → nothing kept
+        passed, failed = kr.apply_selector_filter(
+            {"quoin/dev/tests/test_a.py::test_x"},
+            {"quoin/dev/tests/test_b.py::test_y"},
+            [],
+        )
+        assert passed == set()
+        assert failed == set()
 
 
 # ---------------------------------------------------------------------------
