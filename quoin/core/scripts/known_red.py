@@ -245,14 +245,40 @@ _REPORT_LINE_RE = re.compile(
 )
 
 
+_SHORT_SUMMARY_HEADER_RE = re.compile(r"^=+\s*short test summary info\s*=+$")
+
+
+def _short_summary_lines(lines):
+    """Tail slice after the LAST short-summary header, or None if absent.
+
+    pytest emits the top-level short-summary section AFTER every captured-output
+    section, so a nested run's header (echoed inside a captured-stdout block) is
+    always earlier in the stream. Anchoring on the last header therefore scopes
+    parsing to the real summary. No header at all (a partial or non -rA capture)
+    returns None and the caller falls back to scanning the whole text.
+    """
+    last = None
+    for idx, line in enumerate(lines):
+        if _SHORT_SUMMARY_HEADER_RE.match(line.strip()):
+            last = idx
+    return None if last is None else lines[last + 1:]
+
+
 def parse_pytest_report(text: str) -> tuple[set, set]:
     """Parse `pytest -rA` short-summary stdout → (passed, failed_or_error).
 
     SOLE node-id identity source. PASSED → passed; FAILED/ERROR → failed_or_error.
+    Parsing is scoped to the text after the last short-summary header (if any) so
+    that a nested pytest run's captured stdout can't leak PASSED/FAILED lines into
+    the outer run's identity set.
     """
     passed: set = set()
     failed_or_error: set = set()
-    for line in text.splitlines():
+    lines = text.splitlines()
+    scoped = _short_summary_lines(lines)
+    if scoped is not None:
+        lines = scoped
+    for line in lines:
         m = _REPORT_LINE_RE.match(line.strip())
         if not m:
             continue
@@ -412,6 +438,18 @@ def _default_manifest(project_root) -> Path:
     return root / "quoin" / "dev" / "tests" / "known-red.toml"
 
 
+def drop_phantom_failures(observed_rc, failed_or_error, junit_count):
+    """Clear parsed failures when BOTH independent oracles report green.
+
+    The caller's observed rc and the junit failure/error counts are independent
+    of report text. When both say zero, any surviving parsed node-id can only be
+    an artifact of arbitrary text in captured stdout, never a real failure.
+    """
+    if observed_rc == 0 and junit_count == 0 and failed_or_error:
+        return set()
+    return failed_or_error
+
+
 def _reconcile(observed_rc, failed_or_error, reconcile_ok) -> bool:
     """D-08 reconciliation rule."""
     if observed_rc == 0 and failed_or_error == set():
@@ -421,7 +459,26 @@ def _reconcile(observed_rc, failed_or_error, reconcile_ok) -> bool:
     return False
 
 
-def _render_text(payload, observed_rc) -> str:
+_GENERIC_UNRECONCILED_REASON = (
+    "the supplied report could not be reconciled with observed pytest rc={rc}"
+)
+
+
+def _unreconciled_reason(observed_rc, failed_or_error, reconcile_ok) -> str:
+    if observed_rc != 0 and not failed_or_error:
+        return (
+            f"observed pytest rc={observed_rc} indicates a red run but no "
+            "failures/errors could be parsed from the supplied report"
+        )
+    if failed_or_error and not reconcile_ok:
+        return (
+            f"the report's parsed failure count ({len(failed_or_error)}) disagrees "
+            "with the independent junit count"
+        )
+    return _GENERIC_UNRECONCILED_REASON.format(rc=observed_rc)
+
+
+def _render_text(payload, observed_rc, reason=None) -> str:
     lines: list[str] = []
     if payload["known_red"]:
         lines.append("## Known-baseline (downgraded)")
@@ -439,10 +496,9 @@ def _render_text(payload, observed_rc) -> str:
             )
     if not payload["reconciled"]:
         lines.append("## Reconciliation")
+        fallback = _GENERIC_UNRECONCILED_REASON.format(rc=observed_rc)
         lines.append(
-            f"UNRECONCILED: observed pytest rc={observed_rc} indicates a red run but the "
-            "failures/errors could not be parsed/matched (or a junit count disagreed) from "
-            "the supplied report — treating as blocking (fail-closed)"
+            f"UNRECONCILED: {reason or fallback} — treating as blocking (fail-closed)"
         )
     return "\n".join(lines) + ("\n" if lines else "")
 
@@ -519,6 +575,7 @@ def main(argv=None) -> int:
     if args.junit is not None:
         try:
             junit_count = parse_junit_count(Path(args.junit).read_text(encoding="utf-8"))
+            failed_or_error = drop_phantom_failures(args.observed_rc, failed_or_error, junit_count)
             reconcile_ok = len(failed_or_error) == junit_count
         except ET.ParseError:
             reconcile_ok = True  # oracle unavailable → trust the -rA parse at face value
@@ -526,6 +583,7 @@ def main(argv=None) -> int:
     reconciled = _reconcile(args.observed_rc, failed_or_error, reconcile_ok)
 
     if not reconciled:
+        reason = _unreconciled_reason(args.observed_rc, failed_or_error, reconcile_ok)
         payload = {
             "downgrade": False,
             "reconciled": False,
@@ -534,7 +592,7 @@ def main(argv=None) -> int:
             "stale": [],
             "malformed": False,
         }
-        _emit(payload, args.format, args.observed_rc)
+        _emit(payload, args.format, args.observed_rc, reason)
         return EXIT_UNRECONCILED
 
     known_red, net_new = match_failures(failed_or_error, entries)
@@ -557,11 +615,11 @@ def main(argv=None) -> int:
     return EXIT_NET_NEW if net_new else EXIT_OK
 
 
-def _emit(payload, fmt, observed_rc) -> None:
+def _emit(payload, fmt, observed_rc, reason=None) -> None:
     if fmt == "json":
         print(json.dumps(payload))
     else:
-        sys.stdout.write(_render_text(payload, observed_rc))
+        sys.stdout.write(_render_text(payload, observed_rc, reason))
 
 
 if __name__ == "__main__":
