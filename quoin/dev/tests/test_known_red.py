@@ -24,7 +24,7 @@ Covers T-03..T-07 plus the round-1/2/3 regression cases:
   - TestCliExit: full exit-code matrix incl. exit 3 (CRIT-1) and exit 64 usage cases;
     plus absolute-selector downgrade/net-new coverage (IVG-254).
   - TestManifestResolution: manifest resolves against the nested git root, not the
-    outer project root (IVG-254 T-03) — direct hit, nested layout, no-.git guard,
+    outer project root (IVG-254) — direct hit, nested layout, no-.git guard,
     absent-everywhere, deterministic ordering, worktree `.git` file, iterdir OSError.
   - TestHumanBlock: text output lists downgrade + stale + reconciliation line.
   - TestNodeIdEndToEnd: real emitted node-id for test_sleep_scoring.py == manifest id.
@@ -888,7 +888,7 @@ added = "2026-07-10"
         assert out["known_red"][0]["id"] == "quoin/dev/tests/test_sleep_scoring.py"
 
     def test_net_new_under_absolute_selectors_still_exits_1(self, tmp_path, capsys):
-        # guards against T-01 turning the filter into a blanket pass: an
+        # guards against the selector-shape fix turning the filter into a blanket pass: an
         # unlisted node-id must still block even under absolute selectors
         man = self._manifest(tmp_path)
         ra = self._ra(
@@ -906,7 +906,7 @@ added = "2026-07-10"
 
 
 # ---------------------------------------------------------------------------
-# TestManifestResolution — IVG-254 T-03, manifest-root resolution
+# TestManifestResolution — IVG-254, manifest-root resolution
 # ---------------------------------------------------------------------------
 
 # The outer project root two levels above the git repo root, derived the same
