@@ -42,6 +42,16 @@ _PHASE_RE = re.compile(r"Invoke the /([a-z_]+) skill")
 _DISPATCH_SNIFF_BYTES = 600
 
 
+def _projects_root(home):
+    """`<home>/.claude/projects` — the root every transcript path is
+    relative to. `iter_transcripts`'s glob root and the T-05 ordinal-
+    labeling functions (`_corpus_label_maps`, `stable_id`) all derive it
+    from `home` the same way; folded into one place so the segment list
+    isn't repeated at each call site.
+    """
+    return Path(home) / ".claude" / "projects"
+
+
 def iter_transcripts(home, project_filter=None):
     """Yield subagent transcript paths under home/.claude/projects.
 
@@ -52,7 +62,7 @@ def iter_transcripts(home, project_filter=None):
     project-hash directory component (the first path segment under
     `projects/`).
     """
-    root = Path(home) / ".claude" / "projects"
+    root = _projects_root(home)
     if not root.exists():
         return
     for path in sorted(root.glob("**/subagents/*.jsonl")):
@@ -221,6 +231,19 @@ BYTES_PER_TOKEN_DIVISOR = 8.0
 _MIN_N_FOR_PERCENTILE = 10
 
 
+def _nearest_rank_from_sorted(xs_sorted, p):
+    """`nearest_rank_percentile`'s index arithmetic over an ALREADY-sorted
+    sequence. `nearest_rank_percentile` itself calls this after sorting
+    once; `_series_stats` calls it directly so a group's values are
+    sorted once per group rather than once per percentile it reports (up
+    to three — p50, p90, p99 — over the same series).
+    """
+    if not xs_sorted:
+        return None
+    idx = max(0, math.ceil(p * len(xs_sorted)) - 1)
+    return xs_sorted[idx]
+
+
 def nearest_rank_percentile(values, p):
     """Nearest-rank percentile, D-12's one fixed convention.
 
@@ -228,11 +251,7 @@ def nearest_rank_percentile(values, p):
     [0, 1]. Returns None for an empty `values` — callers decide how to
     report that rather than this function inventing a default.
     """
-    if not values:
-        return None
-    xs = sorted(values)
-    idx = max(0, math.ceil(p * len(xs)) - 1)
-    return xs[idx]
+    return _nearest_rank_from_sorted(sorted(values), p)
 
 
 def _byte_len(text):
@@ -273,10 +292,13 @@ def _series_stats(values, group_n, include_p99):
             "p99": None, "reported_as_max": False,
             "convention": PERCENTILE_CONVENTION,
         }
+    # Sorted once here rather than once per percentile below — up to three
+    # (p50, p90, p99) read the same series.
+    xs_sorted = sorted(values)
     result = {
         "n": len(values),
         "mean": sum(values) / len(values),
-        "max": max(values),
+        "max": xs_sorted[-1],
         "convention": PERCENTILE_CONVENTION,
     }
     if group_n < _MIN_N_FOR_PERCENTILE:
@@ -284,10 +306,10 @@ def _series_stats(values, group_n, include_p99):
         result["p90"] = None
         result["reported_as_max"] = True
     else:
-        result["p50"] = nearest_rank_percentile(values, 0.50)
-        result["p90"] = nearest_rank_percentile(values, 0.90)
+        result["p50"] = _nearest_rank_from_sorted(xs_sorted, 0.50)
+        result["p90"] = _nearest_rank_from_sorted(xs_sorted, 0.90)
         result["reported_as_max"] = False
-    result["p99"] = nearest_rank_percentile(values, 0.99) if include_p99 else None
+    result["p99"] = _nearest_rank_from_sorted(xs_sorted, 0.99) if include_p99 else None
     return result
 
 
@@ -571,6 +593,22 @@ def _ordinal_label_map(raw_values, prefix):
     return {v: f"{prefix}-{i + 1}" for i, v in enumerate(ranked)}
 
 
+def _split_transcript_rel_path(rel):
+    """Split a transcript path already relative to `_projects_root`,
+    POSIX-separated, into its `(project_dir, sid, spawn_file)` triple —
+    the same three components `_corpus_label_maps` and `stable_id` each
+    used to derive independently (T-05 ordinal-labeling). `sid` and
+    `spawn_file` are `""` when `rel` has no path segment below the
+    project directory.
+    """
+    project_dir, sep, remainder = rel.partition("/")
+    if not sep:
+        return project_dir, "", ""
+    sid, _, tail = remainder.partition("/")
+    spawn_file = tail.rsplit("/", 1)[-1]
+    return project_dir, sid, spawn_file
+
+
 def _corpus_label_maps(corpus, home):
     """Build the three ordinal label maps `stable_id` needs from a full
     `capture_corpus()` result — one map each for the project directory, the
@@ -579,15 +617,13 @@ def _corpus_label_maps(corpus, home):
     "second pass" over the corpus, after the paths are known) so every
     record's `stable_id` call draws from the same, corpus-wide maps.
     """
-    root = Path(home) / ".claude" / "projects"
+    root = _projects_root(home)
     project_dirs = set()
     sids = set()
     spawns_by_sid = {}
     for r in corpus["records"]:
         rel = Path(r["path"]).relative_to(root).as_posix()
-        project_dir, _, remainder = rel.partition("/")
-        sid, _, tail = remainder.partition("/")
-        spawn_file = tail.rsplit("/", 1)[-1]
+        project_dir, sid, spawn_file = _split_transcript_rel_path(rel)
         project_dirs.add(project_dir)
         sids.add(sid)
         spawns_by_sid.setdefault(sid, set()).add(spawn_file)
@@ -629,14 +665,12 @@ def stable_id(path, home, project_map, session_map, spawn_map):
     committed snapshot file itself (D-04), not by an id that survives
     corpus churn.
     """
-    root = Path(home) / ".claude" / "projects"
+    root = _projects_root(home)
     rel = Path(path).relative_to(root).as_posix()
-    project_dir, sep, remainder = rel.partition("/")
+    project_dir, sid, spawn_file = _split_transcript_rel_path(rel)
     project_label = project_map[project_dir]
-    if not sep:
+    if not sid:
         return project_label
-    sid, _, tail = remainder.partition("/")
-    spawn_file = tail.rsplit("/", 1)[-1]
     session_label = session_map[sid]
     spawn_label = spawn_map[(sid, spawn_file)]
     return f"{project_label}/{session_label}/{spawn_label}"
@@ -1364,10 +1398,14 @@ def main(argv=None):
         # transcript — channel_stats_from_snapshot's own contract is to run
         # unmodified over whatever records it is given (see its docstring),
         # so the run-owned filter is applied here, at the call site, exactly
-        # as the live path below applies it.
+        # as the live path below applies it. `token_cross_check` runs
+        # directly over the SAME filtered list rather than through
+        # `token_cross_check_from_snapshot` (which re-derives its own
+        # run-owned filter from the full snapshot) — one filtering pass,
+        # not two.
         snapshot_run_owned = [r for r in snapshot["records"] if r.get("run_owned")]
         stats = channel_stats(snapshot_run_owned)
-        tcc = token_cross_check_from_snapshot(snapshot)
+        tcc = token_cross_check(snapshot_run_owned)
         _print_channel_report(stats, tcc)
         return 0
 
