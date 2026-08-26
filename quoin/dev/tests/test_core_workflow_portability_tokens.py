@@ -7,8 +7,9 @@ an unconditional glob over core/workflow/*.md: no exemption set, so a file
 added to that directory later is covered automatically without an edit here.
 
 Distinct from the per-skill `*_adapter_pilot.py` tests: those cover
-quoin/core/skills/<name>.md one skill at a time; this covers the five shared
-workflow docs as one directory-wide population.
+quoin/core/skills/<name>.md one skill at a time; this covers the shared
+workflow docs (six as of the inter-agent handoff spec, T-06) as one
+directory-wide population.
 """
 
 import re
@@ -27,6 +28,7 @@ FORBIDDEN_TOKENS = ("~/.claude", "Haiku", "Sonnet", "Opus", "gh CLI")
 
 EXPECTED_FILENAMES = {
     "cost-ledger.md",
+    "handoff-format.md",
     "rules.md",
     "session-state.md",
     "skills.md",
