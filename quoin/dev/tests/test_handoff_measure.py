@@ -38,6 +38,7 @@ Cases (letters match the design doc):
 
 import ast
 import pathlib
+import re
 import shutil
 import sys
 
@@ -45,6 +46,17 @@ import pytest
 
 SCRIPTS_DIR = pathlib.Path(__file__).parent.parent.parent / "scripts"  # quoin/quoin/scripts/
 FIXTURES_SRC_PROJECTS = pathlib.Path(__file__).parent / "fixtures" / "handoff_measure" / "projects"
+BASELINE_SNAPSHOT_PATH = (
+    pathlib.Path(__file__).parent / "fixtures" / "handoff_measure" / "baseline"
+    / "handoff-baseline-snapshot.json"
+)
+
+# Ordinal-label id shape stable_id produces: a bare "project-N" (no session
+# component), or the full "project-N/session-M/spawn-K".
+_ORDINAL_ID_SHAPE = re.compile(r"^project-\d+(/session-\d+/spawn-\d+)?$")
+_UUID_SHAPE = re.compile(
+    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+)
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 import handoff_measure as hm  # noqa: E402
@@ -903,6 +915,28 @@ def test_cli_snapshot_flag_writes_a_loadable_snapshot(tmp_path, fixtures_home):
     loaded = hm.load_snapshot(snap_path)
     assert loaded["run_owned"] > 0
     assert "corpus_captured_at" in loaded
+
+
+def test_committed_baseline_snapshot_is_anonymized():
+    """Guard the committed baseline snapshot fixture ITSELF, not a rebuilt
+    copy — otherwise this large committed artifact is referenced only by
+    affected_tests.py's selector row and nothing ever loads it. Written
+    against the current anonymization scheme, so it fails hard against a
+    pre-anonymization blob: a raw parent-session UUID, a bare absolute home
+    path, or a record id that is not a pure ordinal-label shape.
+    """
+    raw = BASELINE_SNAPSHOT_PATH.read_text(encoding="utf-8")
+    # Goes through load_snapshot's own schema/key validation (not a bare
+    # json.load), so this also re-proves the fixture still satisfies it.
+    snapshot = hm.load_snapshot(BASELINE_SNAPSHOT_PATH)
+    assert snapshot["schema_version"] == hm.SNAPSHOT_SCHEMA_VERSION
+    assert "parent_session_id" not in raw
+    assert _UUID_SHAPE.search(raw) is None
+    assert "/Users/" not in raw
+    assert "/home/" not in raw
+    assert snapshot["records"], "fixture must carry at least one record for this guard to mean anything"
+    for record in snapshot["records"]:
+        assert _ORDINAL_ID_SHAPE.match(record["id"]), record["id"]
 
 
 # ---------------------------------------------------------------------------
