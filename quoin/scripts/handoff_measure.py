@@ -720,10 +720,40 @@ def write_snapshot(path, snapshot):
         fh.write("\n")
 
 
+_SNAPSHOT_REQUIRED_KEYS = (
+    "schema_version",
+    "transcripts",
+    "parsed",
+    "skipped_unreadable",
+    "skill_matched",
+    "run_owned",
+    "records",
+)
+
+
 def load_snapshot(path):
-    """Load a snapshot written by `write_snapshot` (T-05)."""
+    """Load a snapshot written by `write_snapshot` (T-05).
+
+    Validates `schema_version` against `SNAPSHOT_SCHEMA_VERSION` and the
+    presence of every key `build_snapshot` returns before handing the
+    snapshot back. `corpus_captured_at` is CLI-only metadata added after
+    `build_snapshot` runs (see `main`), so it is not in the required set —
+    a snapshot written without `--snapshot`'s caller stamping it is still
+    valid. Raises `ValueError` on either failure; the CLI maps that into
+    the same invocation-error exit as a malformed file.
+    """
     with open(path, "r", encoding="utf-8") as fh:
-        return json.load(fh)
+        snapshot = json.load(fh)
+    version = snapshot.get("schema_version")
+    if version != SNAPSHOT_SCHEMA_VERSION:
+        raise ValueError(
+            f"snapshot schema_version {version!r} does not match the "
+            f"supported version {SNAPSHOT_SCHEMA_VERSION!r}"
+        )
+    missing = [key for key in _SNAPSHOT_REQUIRED_KEYS if key not in snapshot]
+    if missing:
+        raise ValueError(f"snapshot is missing required key(s): {', '.join(missing)}")
+    return snapshot
 
 
 def channel_stats_from_snapshot(snapshot):
@@ -1319,7 +1349,7 @@ def main(argv=None):
     if args.from_snapshot:
         try:
             snapshot = load_snapshot(args.from_snapshot)
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
             print(f"handoff_measure: invocation error: {exc}", file=sys.stderr)
             return 2
         print(f"snapshot_loaded={args.from_snapshot}")
@@ -1352,9 +1382,13 @@ def main(argv=None):
           f"skipped_unreadable={corpus['skipped_unreadable']}")
     print(f"skill_matched={corpus['skill_matched']} run_owned={corpus['run_owned']}")
     if args.snapshot:
-        snapshot = build_snapshot(corpus, args.home)
-        snapshot["corpus_captured_at"] = captured_at
-        write_snapshot(args.snapshot, snapshot)
+        try:
+            snapshot = build_snapshot(corpus, args.home)
+            snapshot["corpus_captured_at"] = captured_at
+            write_snapshot(args.snapshot, snapshot)
+        except (OSError, KeyError, ValueError) as exc:
+            print(f"handoff_measure: invocation error writing snapshot: {exc}", file=sys.stderr)
+            return 2
         print(f"snapshot_written={args.snapshot}")
     if corpus["parsed"] == 0:
         print("handoff_measure: no transcripts matched the predicate; measurement refused",

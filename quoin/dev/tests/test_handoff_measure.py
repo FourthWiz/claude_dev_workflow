@@ -687,6 +687,90 @@ def test_write_then_load_snapshot_round_trips(tmp_path, fixtures_home):
     assert loaded == snapshot
 
 
+# ---------------------------------------------------------------------------
+# T-15: load_snapshot schema/key validation, and the snapshot-write block's
+# own try/except in main() (distinct from the corpus-capture try/except).
+# ---------------------------------------------------------------------------
+def test_load_snapshot_rejects_unsupported_schema_version(tmp_path):
+    bad = {
+        "schema_version": 99,
+        "transcripts": 0, "parsed": 0, "skipped_unreadable": 0,
+        "skill_matched": 0, "run_owned": 0, "records": [],
+    }
+    path = tmp_path / "bad-version.json"
+    hm.write_snapshot(path, bad)
+    with pytest.raises(ValueError, match="schema_version"):
+        hm.load_snapshot(path)
+
+
+def test_load_snapshot_rejects_missing_required_key(tmp_path):
+    missing_records = {
+        "schema_version": hm.SNAPSHOT_SCHEMA_VERSION,
+        "transcripts": 0, "parsed": 0, "skipped_unreadable": 0,
+        "skill_matched": 0, "run_owned": 0,
+        # "records" omitted
+    }
+    path = tmp_path / "missing-key.json"
+    hm.write_snapshot(path, missing_records)
+    with pytest.raises(ValueError, match="records"):
+        hm.load_snapshot(path)
+
+
+def test_from_snapshot_cli_exits_2_on_unsupported_schema_version(tmp_path, capsys):
+    bad = {
+        "schema_version": 99,
+        "transcripts": 0, "parsed": 0, "skipped_unreadable": 0,
+        "skill_matched": 0, "run_owned": 0, "records": [],
+    }
+    path = tmp_path / "bad-version.json"
+    hm.write_snapshot(path, bad)
+    exit_code = hm.main(["--from-snapshot", str(path)])
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "handoff_measure: invocation error:" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_from_snapshot_cli_exits_2_on_missing_required_key(tmp_path, capsys):
+    missing_records = {
+        "schema_version": hm.SNAPSHOT_SCHEMA_VERSION,
+        "transcripts": 0, "parsed": 0, "skipped_unreadable": 0,
+        "skill_matched": 0, "run_owned": 0,
+    }
+    path = tmp_path / "missing-key.json"
+    hm.write_snapshot(path, missing_records)
+    exit_code = hm.main(["--from-snapshot", str(path)])
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "handoff_measure: invocation error:" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_snapshot_write_block_maps_relative_to_failure_to_exit_2(
+    tmp_path, fixtures_home, monkeypatch, capsys
+):
+    """A record path outside `home` fails `relative_to` inside
+    `build_snapshot` (via `_corpus_label_maps`/`stable_id`) — the
+    snapshot-write try/except (T-15) must map that to exit 2 with the
+    snapshot-side message, distinct from the corpus-capture try/except's
+    message, and never a raw traceback."""
+    bad_record = dict(_record_for(fixtures_home, "sid-case-a"))
+    bad_record["path"] = str(tmp_path / "outside-home.jsonl")
+    bad_corpus = {
+        "transcripts": 1, "parsed": 1, "skipped_unreadable": 0,
+        "skill_matched": 1, "run_owned": 1, "records": [bad_record],
+    }
+    monkeypatch.setattr(hm, "capture_corpus", lambda home, project_filter=None: bad_corpus)
+    snap_path = tmp_path / "snap.json"
+    exit_code = hm.main(["--home", str(fixtures_home), "--snapshot", str(snap_path)])
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "handoff_measure: invocation error writing snapshot:" in captured.err
+    assert "handoff_measure: invocation error: " not in captured.err
+    assert "Traceback" not in captured.err
+    assert not snap_path.exists()
+
+
 def test_write_snapshot_is_byte_identical_across_two_writes(tmp_path, fixtures_home):
     corpus = hm.capture_corpus(fixtures_home)
     snapshot = hm.build_snapshot(corpus, fixtures_home)
