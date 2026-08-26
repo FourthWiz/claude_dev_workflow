@@ -436,44 +436,66 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/dev/tests/fixtures/handoff_measure/baseline/handoff-baseline-snapshot.json",
         "quoin/dev/tests/test_handoff_measure.py",
     ),
+    # IVG-248 stage 2 T-14: a doc-only edit to the inter-agent handoff spec
+    # is unselectable at a Standard gate without these rows — same
+    # lesson-2026-07-04 blind spot the rows above were written to close.
+    (
+        "quoin/core/workflow/handoff-format.md",
+        "quoin/dev/tests/test_core_workflow_portability_tokens.py",
+    ),
+    (
+        "quoin/core/workflow/handoff-format.md",
+        "quoin/dev/tests/test_handoff_validate.py",
+    ),
+    # IVG-248 stage 2 T-14 (durable half of the C-03 critical): gate/SKILL.md
+    # embeds the deploy-drift coverage qualifier VERBATIM, including the
+    # literal "CLAUDE.md" inside its "not covered" clause, so a gate/SKILL.md
+    # edit can stale the citation-sweep fixture the same way a memory/*.md
+    # edit can — but until this row, only the memory/*.md and CLAUDE.md
+    # sides of that sweep were selectable, not the adapter-SKILL.md side.
+    (
+        "quoin/adapters/claude/skills/gate/SKILL.md",
+        "quoin/dev/tests/test_claude_md_citations.py",
+    ),
 )
 
 # SKILL.md coverage residual gap (review-1.md MAJOR 2, documented-acceptance branch):
 # _DOCS_TO_TESTS is a flat, per-file allowlist — there is no directory-prefix rule,
-# so an edit to any of the 32 quoin/adapters/claude/skills/*/SKILL.md files (the
-# third in-scope citation-sweep corpus, alongside the two rows above) is NOT
-# selectable for test_claude_md_citations.py and still falls through to the
-# generic non-.py "ignored" bucket for that sweep specifically
-# (test_unrelated_skill_md_still_ignored pins this as expected, not a bug). A
-# directory-prefix rule would widen _DOCS_TO_TESTS's matching semantics for every
-# existing row, a larger behavior change than this seam-local fix round's scope;
-# the residual gap is accepted here rather than silently left undocumented. The
-# full-suite gate (not affected-area) remains the backstop that catches a SKILL.md
-# edit that stales the citation fixture.
+# so an edit to any of the remaining 31 adapter SKILL.md files (the third in-scope
+# citation-sweep corpus, alongside the two rows above) is NOT selectable for
+# test_claude_md_citations.py and still falls through to the generic non-.py
+# "ignored" bucket for that sweep specifically (test_unrelated_skill_md_still_ignored
+# pins this as expected, not a bug); gate/SKILL.md is covered by the row above
+# (IVG-248 stage 2 T-14). A directory-prefix rule would widen _DOCS_TO_TESTS's
+# matching semantics for every existing row, a larger behavior change than this
+# seam-local fix round's scope; the residual gap is accepted here rather than
+# silently left undocumented. The full-suite gate (not affected-area) remains
+# the backstop that catches a SKILL.md edit that stales the citation fixture.
 #
 # Orthogonal addition (IVG-249 S-02): four SKILL.md files (run, thorough_plan,
 # architect, end_of_task) now carry rows above selecting the on-behalf guard
 # tests; this does NOT make them selectable for the citation sweep
-# (test_claude_md_citations.py), which remains gapped for all 32 SKILL.md
-# files exactly as before.
+# (test_claude_md_citations.py), which remains gapped for the remaining 31
+# adapter SKILL.md files exactly as before.
 #
 # Orthogonal addition (IVG-249 S-03 T-07): gate/SKILL.md (plus end_of_task and
 # run, already selectable above) now also carries rows selecting
 # test_eot_resilience_contract.py / test_run_inline_finish.py. gate/SKILL.md is
 # therefore no longer a member of the residual gap's "wholly unselectable"
 # exemplar set — test_skill_md_still_not_selectable_documented_residual_gap
-# (test_affected_tests.py:341) moved its "lands in ignored" assertion to
-# critic/SKILL.md, which still carries no _DOCS_TO_TESTS row at all. This does
-# NOT close the citation-sweep gap itself (test_claude_md_citations.py remains
-# gapped for all 32 files, per the paragraph above) — only gate/SKILL.md's
-# general unselectability changed.
+# (test_affected_tests.py:342) moved its "lands in ignored" assertion to
+# critic/SKILL.md, which still carries no _DOCS_TO_TESTS row at all. gate/SKILL.md
+# itself later gained a citation-sweep row (IVG-248 stage 2 T-14, see above), so
+# test_claude_md_citations.py now remains gapped for the remaining 31 adapter
+# SKILL.md files, not all 32 — only gate/SKILL.md's general unselectability, and
+# later its citation coverage, changed.
 #
 # Orthogonal addition (IVG-123): the 9 spawn-target preamble.md files
 # (quoin/skills/<skill>/preamble.md) are now covered per-file above, selecting
 # test_preamble_freshness.py. This is unrelated to the SKILL.md citation-sweep
 # gap described above — preamble.md and SKILL.md are different files in the
-# same skill directory, and the citation-sweep gap for the 32 SKILL.md files
-# is unchanged.
+# same skill directory, and the citation-sweep gap for the remaining 31 adapter
+# SKILL.md files is unchanged.
 
 
 # ---------------------------------------------------------------------------

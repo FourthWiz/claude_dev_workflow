@@ -344,11 +344,17 @@ class TestIvg92SpecialCaseMapping:
         an adapter SKILL.md edit — one of the citation sweep's three in-scope
         corpora — still has no test_claude_md_citations.py row.
 
-        Two independent assertions (IVG-249 S-03 T-07 split, round-2 MIN-4):
-        (1) no test_claude_md_citations.py selector for gate/SKILL.md — the
-            citation-sweep-gap claim this test is named for, and still true
-            after T-07 (gate/SKILL.md gets a test_eot_resilience_contract.py
-            row, never a citation-sweep row).
+        Two independent assertions (IVG-249 S-03 T-07 split, round-2 MIN-4;
+        first clause rotated off gate/SKILL.md at IVG-248 stage 2 T-14):
+        (1) no test_claude_md_citations.py selector for review/SKILL.md — the
+            citation-sweep-gap claim this test is named for. gate/SKILL.md
+            stopped being the exemplar once T-14 gave it a
+            test_claude_md_citations.py row (it embeds the deploy-drift
+            coverage qualifier verbatim, including the literal "CLAUDE.md"
+            in its "not covered" clause — the durable half of the C-03
+            critical). review/SKILL.md carries an authored-content row (so
+            it is not wholly ignored — see clause 2's own file for that) but
+            no citation-sweep row, so it remains a genuine residual.
         (2) a SKILL.md still lands wholly in `ignored` — gate/SKILL.md no
             longer qualifies for this half once the end-of-task resilience
             rows made it selectable, and review/SKILL.md stopped qualifying
@@ -357,7 +363,7 @@ class TestIvg92SpecialCaseMapping:
             moved to critic/SKILL.md, which carries no _DOCS_TO_TESTS row at
             all (verified by grep)."""
         selectors, unmatched, ignored = _at.map_changed_to_tests(
-            ["quoin/adapters/claude/skills/gate/SKILL.md"], _REPO_ROOT
+            ["quoin/adapters/claude/skills/review/SKILL.md"], _REPO_ROOT
         )
         assert not any("test_claude_md_citations.py" in s for s in selectors), (
             f"SKILL.md is a documented residual gap for the citation sweep; got {selectors}"
