@@ -360,6 +360,82 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/skills/enrich/preamble.md",
         "quoin/dev/tests/test_preamble_freshness.py",
     ),
+    # IVG-248 stage-1 T-08: the handoff_measure fixture tree is committed
+    # non-Python JSONL (subagent + parent-session transcripts) plus a
+    # future committed snapshot (T-05/T-10). The selector name-matches
+    # test_<stem>*.py against files on disk, so a fixture-only edit lands
+    # in `ignored` and selects zero tests without an explicit row here —
+    # same lesson-2026-07-04 blind spot the rows above were written to
+    # close. Both key and value are REPO-relative (resolved against the
+    # git root), matching every other row in this table.
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-case-a/subagents/agent-case-a.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-case-b/subagents/agent-case-b.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-case-c/subagents/agent-case-c.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-case-d/subagents/agent-case-d.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-case-e/subagents/agent-case-e.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-case-f/subagents/agent-case-f.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-case-g/subagents/agent-case-g.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-case-h/subagents/agent-case-h.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-case-i/subagents/agent-case-i.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-case-j/subagents/agent-case-j.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-case-k/subagents/agent-case-k.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-case-l/subagents/agent-case-l.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-case-m/subagents/agent-case-m.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-case-n/subagents/agent-case-n.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-joint.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-joint/subagents/agent-joint.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/baseline/handoff-baseline-snapshot.json",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
 )
 
 # SKILL.md coverage residual gap (review-1.md MAJOR 2, documented-acceptance branch):

@@ -1,0 +1,1373 @@
+#!/usr/bin/env python3
+# CLAUDE-ADAPTER-OWNED — this instrument reads the nested Claude Code subagent
+# transcript tree (~/.claude/projects/**/subagents/*.jsonl) to measure agent
+# handoff payload sizes. Do NOT import this module from quoin/core/ — the
+# adapter/core boundary is documented in quoin/docs/runtime-portability.md.
+#
+# handoff_measure.py — instrument for the IVG-248 agent-handoff-format
+# stage 1 baseline (stage-1/current-plan.md T-01). Every filesystem root is a
+# function parameter, never a module constant, so tests never touch the
+# developer's live tree (mirrors agent_transcript_cost.py's
+# home= / project_path= overrides).
+#
+# Published enumeration predicate, verbatim:
+#   <home>/.claude/projects/**/subagents/*.jsonl   (recursive)
+
+import argparse
+import datetime
+import hashlib
+import json
+import math
+import re
+import sys
+from pathlib import Path
+
+# Phases the /run orchestrator spawns as on-behalf subagents. Enumerated
+# here rather than reached only through an appendix: a re-deriver who
+# substitutes a plausible wrong set (e.g. adding "plan", "critic" or "gate" —
+# all frequent skill-matched phases and none of them run-owned) silently
+# gets a different population and a different median with no error raised.
+RUN_OWNED_PHASES = frozenset({
+    "discover",
+    "enrich",
+    "specify",
+    "architect",
+    "thorough_plan",
+    "implement",
+    "review",
+    "end_of_task",
+})
+
+_PHASE_RE = re.compile(r"Invoke the /([a-z_]+) skill")
+_DISPATCH_SNIFF_BYTES = 600
+
+
+def iter_transcripts(home, project_filter=None):
+    """Yield subagent transcript paths under home/.claude/projects.
+
+    Globs the published predicate verbatim: <home>/.claude/projects/**/subagents/*.jsonl,
+    recursive. `home` is a required parameter (never a module constant) so
+    tests operate on a fixture tree, never the developer's live tree.
+    `project_filter`, if given, is matched as a substring of each path's
+    project-hash directory component (the first path segment under
+    `projects/`).
+    """
+    root = Path(home) / ".claude" / "projects"
+    if not root.exists():
+        return
+    for path in sorted(root.glob("**/subagents/*.jsonl")):
+        if project_filter is not None:
+            try:
+                rel = path.relative_to(root)
+            except ValueError:
+                continue
+            if project_filter not in rel.parts[0]:
+                continue
+        yield path
+
+
+def payload_text(content):
+    """Extract the text payload from a transcript message's `content` field.
+
+    `content` is a transcript row's `message.content` value — either a bare
+    str, or a list of content blocks. Only blocks with `type == "text"`
+    contribute; `thinking` / `tool_use` / `tool_result` blocks are dropped.
+    Returns "" when no text is present (e.g. a tool_use-only assistant turn,
+    or a thinking-only tail block) rather than raising.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text = block.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
+    return ""
+
+
+def detect_phase(dispatch_text):
+    """Detect the skill name a dispatch payload invokes, or None.
+
+    Applies `Invoke the /([a-z_]+) skill` to the first 600 BYTES (not
+    characters) of the UTF-8-encoded dispatch payload, decoding with
+    errors="ignore" so a multi-byte character straddling the boundary
+    cannot raise. Bytes, not characters — the published predicate is
+    byte-denominated and the two differ on non-ASCII prefixes.
+    """
+    if not dispatch_text:
+        return None
+    encoded = dispatch_text.encode("utf-8", errors="ignore")
+    sniff = encoded[:_DISPATCH_SNIFF_BYTES].decode("utf-8", errors="ignore")
+    match = _PHASE_RE.search(sniff)
+    if match is None:
+        return None
+    return match.group(1)
+
+
+def extract_payloads(path):
+    """Read one subagent transcript and return its dispatch/return payloads.
+
+    Returns a dict: `dispatch_text` (the first user message's text, "" if
+    absent), `return_text` (the last assistant message's text, "" if absent
+    or text-free), and `last_assistant` (that row's raw JSON dict, or None
+    — so callers needing `usage` / `stop_reason`, e.g. the T-03 token
+    cross-check, can read it without a second pass over the file).
+
+    A malformed JSON line among otherwise-good lines is skipped, not
+    raised (line-level tolerance). FileNotFoundError, PermissionError, and
+    any other OSError raised while opening or reading `path` propagate to
+    the caller unchanged — this function does not itself decide the
+    corpus-wide skipped_unreadable tally; see `capture_corpus`.
+    """
+    dispatch_text = ""
+    return_text = ""
+    last_assistant = None
+    dispatch_seen = False
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            message = row.get("message")
+            if not isinstance(message, dict):
+                continue
+            role = message.get("role")
+            if role == "user" and not dispatch_seen:
+                dispatch_text = payload_text(message.get("content"))
+                dispatch_seen = True
+            elif role == "assistant":
+                last_assistant = row
+    if last_assistant is not None:
+        return_text = payload_text(last_assistant.get("message", {}).get("content"))
+    return {
+        "dispatch_text": dispatch_text,
+        "return_text": return_text,
+        "last_assistant": last_assistant,
+    }
+
+
+def capture_corpus(home, project_filter=None):
+    """Walk the published predicate once, returning per-transcript records
+    plus corpus-level counters.
+
+    File-level fail-open lives here: a transcript that vanishes between
+    glob and open (FileNotFoundError), or that this process cannot read
+    (PermissionError / other OSError), is skipped and tallied in
+    `skipped_unreadable` rather than aborting the capture. The corpus is
+    genuinely volatile — see stage-1/current-plan.md T-01.
+    """
+    records = []
+    parsed = 0
+    unreadable = 0
+    skill_matched = 0
+    run_owned = 0
+    for path in iter_transcripts(home, project_filter=project_filter):
+        try:
+            payloads = extract_payloads(path)
+        except (FileNotFoundError, PermissionError, OSError):
+            unreadable += 1
+            continue
+        parsed += 1
+        phase = detect_phase(payloads["dispatch_text"])
+        is_run_owned = phase in RUN_OWNED_PHASES
+        if phase is not None:
+            skill_matched += 1
+        if is_run_owned:
+            run_owned += 1
+        records.append({
+            "path": str(path),
+            "phase": phase,
+            "run_owned": is_run_owned,
+            "dispatch_text": payloads["dispatch_text"],
+            "return_text": payloads["return_text"],
+            "last_assistant": payloads["last_assistant"],
+        })
+    return {
+        "records": records,
+        "transcripts": parsed + unreadable,
+        "parsed": parsed,
+        "skipped_unreadable": unreadable,
+        "skill_matched": skill_matched,
+        "run_owned": run_owned,
+    }
+
+
+
+# ---------------------------------------------------------------------------
+# T-03: channels one and two — dispatch and return, bytes and tokens
+# ---------------------------------------------------------------------------
+
+# D-12 — one percentile convention, named once and applied everywhere.
+PERCENTILE_CONVENTION = "nearest-rank"
+
+# D-08 — the divisor is published at 8.0. Its only call site,
+# compute_utilization() in quoin/quoin/hooks/_lib.sh, applies it to wc -c of
+# the WHOLE session JSONL file (structural overhead, tool results, metadata),
+# not to payload text bytes, which is what this instrument measures. Citing
+# that call site names the constant's ORIGIN, not validation for this use —
+# the category error is published alongside the number, never silently.
+BYTES_PER_TOKEN_DIVISOR = 8.0
+
+# Below this per-group n, a percentile is not reported as a percentile — the
+# max is reported and labeled the max instead (per-phase n runs as low as 2
+# in the live corpus, where p99 equals the max under every convention).
+_MIN_N_FOR_PERCENTILE = 10
+
+
+def nearest_rank_percentile(values, p):
+    """Nearest-rank percentile, D-12's one fixed convention.
+
+    `sorted(xs)[max(0, ceil(p * len(xs)) - 1)]`. `p` is a fraction in
+    [0, 1]. Returns None for an empty `values` — callers decide how to
+    report that rather than this function inventing a default.
+    """
+    if not values:
+        return None
+    xs = sorted(values)
+    idx = max(0, math.ceil(p * len(xs)) - 1)
+    return xs[idx]
+
+
+def _byte_len(text):
+    return len(text.encode("utf-8")) if text else 0
+
+
+def dispatch_bytes(record):
+    """Dispatch-payload byte count for one capture_corpus record.
+
+    Also accepts a T-05 snapshot record, which carries the count directly
+    as `dispatch_bytes` (never payload text — see D-04) rather than a
+    `dispatch_text` field. Checking for the precomputed key first is what
+    lets `channel_stats` run unmodified over either shape (T-05's
+    `--from-snapshot` ack: the same statistics function, not a
+    reimplementation, is what proves a live run and a snapshot replay
+    agree).
+    """
+    if "dispatch_bytes" in record:
+        return record["dispatch_bytes"]
+    return _byte_len(record.get("dispatch_text", ""))
+
+
+def return_bytes(record):
+    """Return-payload byte count for one capture_corpus record.
+
+    See `dispatch_bytes` — also accepts a T-05 snapshot record's
+    precomputed `return_bytes`.
+    """
+    if "return_bytes" in record:
+        return record["return_bytes"]
+    return _byte_len(record.get("return_text", ""))
+
+
+def _series_stats(values, group_n, include_p99):
+    if not values:
+        return {
+            "n": 0, "mean": None, "max": None, "p50": None, "p90": None,
+            "p99": None, "reported_as_max": False,
+            "convention": PERCENTILE_CONVENTION,
+        }
+    result = {
+        "n": len(values),
+        "mean": sum(values) / len(values),
+        "max": max(values),
+        "convention": PERCENTILE_CONVENTION,
+    }
+    if group_n < _MIN_N_FOR_PERCENTILE:
+        result["p50"] = None
+        result["p90"] = None
+        result["reported_as_max"] = True
+    else:
+        result["p50"] = nearest_rank_percentile(values, 0.50)
+        result["p90"] = nearest_rank_percentile(values, 0.90)
+        result["reported_as_max"] = False
+    result["p99"] = nearest_rank_percentile(values, 0.99) if include_p99 else None
+    return result
+
+
+def _group_channel_stats(group, include_p99):
+    d = [dispatch_bytes(r) for r in group]
+    rt = [return_bytes(r) for r in group]
+    ratios = [b / a for a, b in zip(d, rt) if a > 0]
+    n = len(group)
+    return {
+        "n": n,
+        "dispatch": _series_stats(d, n, include_p99),
+        "return": _series_stats(rt, n, include_p99),
+        "ratio": _series_stats(ratios, n, include_p99),
+    }
+
+
+def channel_stats(records):
+    """Per-phase and overall dispatch/return byte statistics (T-03).
+
+    Groups `records` (each carrying `phase`, `dispatch_text`, `return_text`)
+    by `phase`. Reports n, p50, p90 and mean of dispatch bytes, return
+    bytes, and the return/dispatch ratio, per phase and overall, all under
+    the nearest-rank convention (D-12). p99 is reported ONLY for the
+    overall pool, never per phase — per-phase n can be as low as 2, where
+    p99 equals the max under every convention and publishing it as a
+    percentile overstates precision. Where a group's n is below
+    `_MIN_N_FOR_PERCENTILE` (10), p50/p90 are withheld and the max is
+    reported in their place, labeled `reported_as_max`.
+    """
+    by_phase = {}
+    for r in records:
+        by_phase.setdefault(r.get("phase"), []).append(r)
+    per_phase = {
+        phase: _group_channel_stats(group, include_p99=False)
+        for phase, group in by_phase.items()
+    }
+    overall = _group_channel_stats(records, include_p99=True)
+    return {
+        "per_phase": per_phase,
+        "overall": overall,
+        "byte_divisor": BYTES_PER_TOKEN_DIVISOR,
+        "byte_divisor_note": (
+            "8.0 is the QUOIN_BYTES_PER_TOKEN default at "
+            "quoin/quoin/hooks/_lib.sh:48 — that citation names the "
+            "constant's origin, not evidence it fits this use; its only "
+            "call site applies it to whole-session JSONL bytes, not "
+            "payload text bytes."
+        ),
+    }
+
+
+def token_validity(record):
+    """Per-record token-cross-check fields, return direction only (D-06).
+
+    `presence`: the last assistant message's `usage` carries an
+    `output_tokens` field at all. `validity`:
+    `stop_reason == "end_turn"` — presence is not validity, and treating
+    presence as a proxy for validity was the round-1 defect this gates
+    against. `thinking_tokens` is the raw
+    `output_tokens_details.thinking_tokens` value when the field is
+    present, else None — the missing-as-zero adjustment rule is applied by
+    the aggregator (`token_cross_check`), not here, so this stays a pure
+    per-record read.
+
+    Also accepts a T-05 snapshot record (no `last_assistant` key, but
+    `stop_reason` / `output_tokens` / `thinking_tokens` carried directly) —
+    dispatched to `_token_validity_flat` — so callers built against this
+    function's return shape work identically over a live capture or a
+    `--from-snapshot` replay.
+    """
+    if "last_assistant" not in record:
+        return _token_validity_flat(record)
+    last = record.get("last_assistant") or {}
+    message = last.get("message", {}) if isinstance(last, dict) else {}
+    usage = message.get("usage") if isinstance(message, dict) else None
+    if not isinstance(usage, dict):
+        usage = {}
+    stop_reason = message.get("stop_reason") if isinstance(message, dict) else None
+    presence = "output_tokens" in usage
+    output_tokens = usage.get("output_tokens") if presence else None
+    validity = stop_reason == "end_turn"
+    details = usage.get("output_tokens_details")
+    thinking_present = isinstance(details, dict) and "thinking_tokens" in details
+    thinking_tokens = details.get("thinking_tokens") if thinking_present else None
+    return {
+        "presence": presence,
+        "validity": validity,
+        "stop_reason": stop_reason,
+        "output_tokens": output_tokens,
+        "thinking_present": thinking_present,
+        "thinking_tokens": thinking_tokens,
+    }
+
+
+def _token_validity_flat(record):
+    """token_validity's flat-shape branch, for a T-05 snapshot record.
+
+    A snapshot record carries `stop_reason` / `output_tokens` /
+    `thinking_tokens` directly (extracted once at capture time) rather than
+    a `last_assistant` row to re-derive them from. `None` on either field
+    means "absent", exactly as the nested path's `presence` /
+    `thinking_present` booleans do.
+    """
+    output_tokens = record.get("output_tokens")
+    thinking_tokens = record.get("thinking_tokens")
+    stop_reason = record.get("stop_reason")
+    return {
+        "presence": output_tokens is not None,
+        "validity": stop_reason == "end_turn",
+        "stop_reason": stop_reason,
+        "output_tokens": output_tokens,
+        "thinking_present": thinking_tokens is not None,
+        "thinking_tokens": thinking_tokens,
+    }
+
+
+def token_cross_check(records):
+    """Return-direction token cross-check over run-owned records (T-03/D-06).
+
+    Reports presence, validity and thinking-coverage as three DISTINCT
+    fractions — presence is not validity. The headline is the POOLED
+    ratio (sum of return bytes over sum of output tokens across admitted
+    rows), never a median of per-row ratios; per-row mean and median are
+    reported alongside, over both the gated (`validity == True`) and
+    ungated populations, so a reader can see the ungated distribution is
+    pathological rather than merely noisy. The thinking-adjustment rule is
+    named: MISSING MEANS ZERO — a row without
+    `output_tokens_details.thinking_tokens` contributes its `output_tokens`
+    unadjusted and stays in the population. Excluded (non-`end_turn`) rows
+    are broken out by their `stop_reason` value. `output_tokens` counts the
+    entire final API message including thinking and tool-use content while
+    the byte count is text-only, so every ratio here is a lower bound by
+    construction.
+    """
+    n = len(records)
+    presence_n = 0
+    validity_n = 0
+    thinking_n = 0
+    excluded_by_reason = {}
+
+    gated_bytes = gated_tokens = gated_thinking_tokens = 0
+    gated_ratios = []
+    ungated_bytes = ungated_tokens = ungated_thinking_tokens = 0
+    ungated_ratios = []
+
+    for r in records:
+        tv = token_validity(r)
+        rb = return_bytes(r)
+        if tv["presence"]:
+            presence_n += 1
+        if tv["thinking_present"]:
+            thinking_n += 1
+        if not tv["validity"]:
+            excluded_by_reason[tv["stop_reason"]] = (
+                excluded_by_reason.get(tv["stop_reason"], 0) + 1
+            )
+        else:
+            validity_n += 1
+
+        output_tokens = tv["output_tokens"]
+        if output_tokens is None:
+            continue
+        thinking_tokens = tv["thinking_tokens"] if tv["thinking_tokens"] is not None else 0
+        ratio = (rb / output_tokens) if output_tokens else None
+
+        ungated_bytes += rb
+        ungated_tokens += output_tokens
+        ungated_thinking_tokens += output_tokens + thinking_tokens
+        if ratio is not None:
+            ungated_ratios.append(ratio)
+
+        if tv["validity"]:
+            gated_bytes += rb
+            gated_tokens += output_tokens
+            gated_thinking_tokens += output_tokens + thinking_tokens
+            if ratio is not None:
+                gated_ratios.append(ratio)
+
+    def _pooled(bytes_total, tokens_total):
+        return (bytes_total / tokens_total) if tokens_total else None
+
+    def _mean(xs):
+        return (sum(xs) / len(xs)) if xs else None
+
+    def _population(bytes_total, tokens_total, thinking_tokens_total, ratios):
+        return {
+            "pooled_ratio": _pooled(bytes_total, tokens_total),
+            "pooled_ratio_thinking_adjusted": _pooled(bytes_total, thinking_tokens_total),
+            "mean_of_row_ratios": _mean(ratios),
+            "median_of_row_ratios": nearest_rank_percentile(ratios, 0.50),
+        }
+
+    return {
+        "n": n,
+        "presence_fraction": (presence_n / n) if n else None,
+        "validity_fraction": (validity_n / n) if n else None,
+        "thinking_coverage_fraction": (thinking_n / n) if n else None,
+        "excluded_by_stop_reason": excluded_by_reason,
+        "gated": _population(gated_bytes, gated_tokens, gated_thinking_tokens, gated_ratios),
+        "ungated": _population(ungated_bytes, ungated_tokens, ungated_thinking_tokens, ungated_ratios),
+        "thinking_adjustment_rule": "missing-means-zero",
+        "lower_bound_note": (
+            "output_tokens counts the entire final API message including "
+            "thinking and tool-use content, while the byte count is "
+            "text-only, so the implied bytes-per-token ratio is a lower "
+            "bound by construction."
+        ),
+        "percentile_convention": PERCENTILE_CONVENTION,
+    }
+
+
+# ---------------------------------------------------------------------------
+# T-05: snapshot mode — the reproducibility contract
+# ---------------------------------------------------------------------------
+#
+# PARTIAL, same discipline T-03/T-04 already used in this file: the schema
+# below carries every field stage-1/current-plan.md T-05 names, but two of
+# them ship as explicit `None` placeholders rather than real values —
+# `sentinel_bucket` (D-09's classification is not yet built) and
+# `growth_bound` (T-14's estimator is not yet built). `channel_three` is
+# also `None` at the per-record level: capture_corpus does not yet carry a
+# spawn's own tool_use_id, so a per-spawn boundary-attribution slice cannot
+# be joined onto a specific subagent-transcript record. Recorded as NOT
+# DONE in stage-1/current-plan.md T-05 rather than filled with fabricated
+# values. The mechanism itself — write/load/recompute — is real and
+# exercised by fixture-only tests; wiring the placeholders is T-10/T-14's
+# job, per T-03/T-04's own precedent of deferring live-corpus
+# re-derivation to T-10.
+
+SNAPSHOT_SCHEMA_VERSION = 1
+
+# D-09 — sentinel-bucket classification. The on-behalf sentinel marks an
+# orchestrator-spawned phase, the closest available discriminator for the
+# migrated population, but it is necessary-not-sufficient because
+# /thorough_plan also spawns on-behalf.
+_SENTINEL_MARKERS = (
+    ("on_behalf", "[quoin-onbehalf]"),
+    ("no_interactive", "[no-interactive]"),
+    ("no_redispatch", "[no-redispatch]"),
+)
+
+
+def sentinel_bucket(dispatch_text):
+    """D-09's sentinel-bucket label for one dispatch payload's text.
+
+    Returns a `+`-joined label of the sentinel markers present (checked in a
+    fixed order: on_behalf, no_interactive, no_redispatch), or `"none"` when
+    none are present. A record's `sentinel_bucket` is this label, not a
+    boolean — the baseline reports the bucket distribution, not just the
+    on-behalf count, per D-09.
+    """
+    text = dispatch_text or ""
+    present = [name for name, marker in _SENTINEL_MARKERS if marker in text]
+    return "+".join(present) if present else "none"
+
+
+def _ordinal_label_map(raw_values, prefix):
+    """Deterministic ordinal labels for a set of raw identifier strings.
+
+    Each raw value is assigned `<prefix>-1`, `<prefix>-2`, ... in the order
+    of its own SHA-256 digest, never in input or filesystem order, so the
+    assignment carries no information about which value sorts where beyond
+    a random-looking tiebreak. This is genuinely non-invertible in a way a
+    bare hash of the raw value is not: there is no computation that maps a
+    candidate raw value to a label, because the label only exists as a
+    position within this specific set. A keyed HMAC was considered
+    and rejected — an uncommitted key would make a second party's
+    regenerated snapshot non-comparable to the committed one, which is the
+    property the snapshot task exists to deliver.
+
+    The label a given raw value receives is stable across two captures of
+    the SAME set of raw values (same input set, same digest order, same
+    label), but it is NOT stable across a changed set: the same raw value
+    can receive a different ordinal on a different machine (a different
+    set of sibling projects/sessions/spawns on disk), or after the corpus
+    this set was drawn from grows or shrinks. Reproducibility is delivered
+    by the committed snapshot file itself (D-04), not by a label that
+    survives corpus churn.
+    """
+    ranked = sorted(raw_values, key=lambda v: hashlib.sha256(v.encode("utf-8")).hexdigest())
+    return {v: f"{prefix}-{i + 1}" for i, v in enumerate(ranked)}
+
+
+def _corpus_label_maps(corpus, home):
+    """Build the three ordinal label maps `stable_id` needs from a full
+    `capture_corpus()` result — one map each for the project directory, the
+    parent session id and the per-session spawn (subagent transcript file)
+    component of every record's path. Built once per snapshot build (a
+    "second pass" over the corpus, after the paths are known) so every
+    record's `stable_id` call draws from the same, corpus-wide maps.
+    """
+    root = Path(home) / ".claude" / "projects"
+    project_dirs = set()
+    sids = set()
+    spawns_by_sid = {}
+    for r in corpus["records"]:
+        rel = Path(r["path"]).relative_to(root).as_posix()
+        project_dir, _, remainder = rel.partition("/")
+        sid, _, tail = remainder.partition("/")
+        spawn_file = tail.rsplit("/", 1)[-1]
+        project_dirs.add(project_dir)
+        sids.add(sid)
+        spawns_by_sid.setdefault(sid, set()).add(spawn_file)
+
+    project_map = _ordinal_label_map(project_dirs, "project")
+    session_map = _ordinal_label_map(sids, "session")
+    spawn_map = {}
+    for sid, spawn_files in spawns_by_sid.items():
+        for spawn_file, label in _ordinal_label_map(spawn_files, "spawn").items():
+            spawn_map[(sid, spawn_file)] = label
+    return project_map, session_map, spawn_map
+
+
+def stable_id(path, home, project_map, session_map, spawn_map):
+    """Per-record identifier: the transcript path relative to
+    <home>/.claude/projects, with every component that carries a real
+    identifier replaced by an opaque ordinal label (T-05).
+
+    `project_map`, `session_map` and `spawn_map` come from
+    `_corpus_label_maps` — a single pass over the whole corpus, built once
+    per snapshot build, so every record's id draws from the same,
+    consistently-ranked maps. The path has three real identifiers: the
+    project directory (Claude Code's sanitized-absolute-path directory
+    name, which embeds the real filesystem path of whatever project
+    produced the transcript), the parent session UUID, and the subagent
+    transcript's own UUID filename. All three are ordinal-labeled; none is
+    carried verbatim or hashed into the id — a bare hash of a low-entropy
+    value like a project name is dictionary-attackable, and carrying the
+    real session/spawn UUIDs at all, hashed or not, would still let a
+    holder of this project's own `.workflow_artifacts/` ledgers join back
+    to this snapshot's real activity window.
+
+    Stable across two captures of the SAME corpus (see `_ordinal_label_map`
+    for the precise stability contract), NOT stable across live-corpus
+    growth or shrinkage — a transcript present in one capture and gone by
+    the next has no corresponding id in the other, and a project/session/
+    spawn common to both captures can still receive a different label if
+    the surrounding set changed. Reproducibility is delivered by the
+    committed snapshot file itself (D-04), not by an id that survives
+    corpus churn.
+    """
+    root = Path(home) / ".claude" / "projects"
+    rel = Path(path).relative_to(root).as_posix()
+    project_dir, sep, remainder = rel.partition("/")
+    project_label = project_map[project_dir]
+    if not sep:
+        return project_label
+    sid, _, tail = remainder.partition("/")
+    spawn_file = tail.rsplit("/", 1)[-1]
+    session_label = session_map[sid]
+    spawn_label = spawn_map[(sid, spawn_file)]
+    return f"{project_label}/{session_label}/{spawn_label}"
+
+
+def build_snapshot_record(record, home, project_map, session_map, spawn_map):
+    """Assemble one T-05 snapshot record from a capture_corpus record.
+
+    Carries counts and identifiers only, never payload text (D-04): the
+    stable id, phase, run-owned flag, dispatch/return byte counts, and the
+    token-cross-check's per-record fields (stop_reason, output_tokens,
+    thinking_tokens) via `token_validity`. The real parent-session UUID is
+    NOT carried as a separate field — it has no snapshot consumer (its only
+    reads are inside the live growth-bound path over `capture_corpus`
+    records, never over a loaded snapshot), and carrying it verbatim would
+    undo the anonymization `stable_id`'s ordinal labels provide: a holder
+    of a project's own `.workflow_artifacts/*/cost-ledger.md` files could
+    join a real session UUID back to that project's activity window.
+    `project_map`/`session_map`/`spawn_map` come from `_corpus_label_maps`
+    and are threaded through to `stable_id` unchanged.
+
+    See the module-level PARTIAL note above the T-05 section header for
+    what `sentinel_bucket` / `channel_three` / `growth_bound` carry and why.
+    """
+    tv = token_validity(record)
+    return {
+        "id": stable_id(record["path"], home, project_map, session_map, spawn_map),
+        "phase": record.get("phase"),
+        "run_owned": bool(record.get("run_owned", False)),
+        "sentinel_bucket": sentinel_bucket(record.get("dispatch_text", "")),
+        "dispatch_bytes": dispatch_bytes(record),
+        "return_bytes": return_bytes(record),
+        "output_tokens": tv["output_tokens"],
+        "thinking_tokens": tv["thinking_tokens"],
+        "stop_reason": tv["stop_reason"],
+        "channel_three": None,
+        "growth_bound": None,
+    }
+
+
+def build_snapshot(corpus, home):
+    """Build a full T-05 snapshot dict from a capture_corpus() result.
+
+    Records are sorted by their stable id, so two captures of an
+    unchanged corpus — and a live capture versus a `--from-snapshot`
+    replay of the file it wrote — emit byte-identical JSON. Corpus-level
+    counters ride alongside so a snapshot consumer sees the same header a
+    live run prints. The ordinal label maps are built once, in a single
+    pass over the whole corpus, before any record is assembled, so every
+    record's id draws from the same maps.
+    """
+    project_map, session_map, spawn_map = _corpus_label_maps(corpus, home)
+    records = [
+        build_snapshot_record(r, home, project_map, session_map, spawn_map)
+        for r in corpus["records"]
+    ]
+    records.sort(key=lambda r: r["id"])
+    return {
+        "schema_version": SNAPSHOT_SCHEMA_VERSION,
+        "transcripts": corpus["transcripts"],
+        "parsed": corpus["parsed"],
+        "skipped_unreadable": corpus["skipped_unreadable"],
+        "skill_matched": corpus["skill_matched"],
+        "run_owned": corpus["run_owned"],
+        "records": records,
+    }
+
+
+def write_snapshot(path, snapshot):
+    """Write a T-05 snapshot dict as deterministic JSON.
+
+    `sort_keys=True` plus a fixed indent make two writes of an identical
+    snapshot dict byte-identical — the property the ack's
+    two-consecutive-runs requirement checks (via `--from-snapshot`
+    replaying the same written file, not via re-writing it).
+    """
+    out_path = Path(path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as fh:
+        json.dump(snapshot, fh, sort_keys=True, indent=2)
+        fh.write("\n")
+
+
+def load_snapshot(path):
+    """Load a snapshot written by `write_snapshot` (T-05)."""
+    with open(path, "r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def channel_stats_from_snapshot(snapshot):
+    """`channel_stats` over a snapshot's records — no filesystem access.
+
+    Reuses `channel_stats` unmodified: `dispatch_bytes` / `return_bytes`
+    read a snapshot record's precomputed byte counts directly (see their
+    docstrings), so this is the SAME statistics function a live run uses,
+    not a reimplementation — which is what makes a live run and a
+    `--from-snapshot` replay provably agree (T-05 ack).
+    """
+    return channel_stats(snapshot["records"])
+
+
+def token_cross_check_from_snapshot(snapshot):
+    """`token_cross_check` over a snapshot's run-owned records — no
+    filesystem access. See `channel_stats_from_snapshot`: same function,
+    same agreement guarantee.
+    """
+    run_owned = [r for r in snapshot["records"] if r.get("run_owned")]
+    return token_cross_check(run_owned)
+
+
+# ---------------------------------------------------------------------------
+# T-04: channel three — orchestrator-side artifact re-read bytes
+# ---------------------------------------------------------------------------
+
+_WORKFLOW_ARTIFACTS_MARKER = ".workflow_artifacts"
+
+
+def resolve_parent_transcript_path(transcript_path):
+    """Resolve a subagent transcript's parent-session transcript path.
+
+    `transcript_path` is `<home>/.claude/projects/<hash>/<sid>/subagents/<file>.jsonl`.
+    The parent session id is `Path(transcript_path).parents[1].name` — the
+    `<sid>` directory component, not `id` and not any other guess — and its
+    transcript lives one level up, at `<home>/.claude/projects/<hash>/<sid>.jsonl`.
+    """
+    p = Path(transcript_path)
+    sid = p.parents[1].name
+    project_dir = p.parents[2]
+    return project_dir / f"{sid}.jsonl"
+
+
+def _tool_result_bytes(content):
+    """Byte length of a `tool_result` block's `content`, str or block-list shape."""
+    if isinstance(content, str):
+        return _byte_len(content)
+    if isinstance(content, list):
+        total = 0
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            text = block.get("text")
+            if isinstance(text, str):
+                total += _byte_len(text)
+        return total
+    return 0
+
+
+def iter_parent_tool_pairs(parent_transcript_path):
+    """Walk a parent-session transcript, yielding paired tool_use/tool_result events.
+
+    Builds `tool_use_id -> (name, input)` from assistant `tool_use` blocks and
+    pairs each against a later user `tool_result` block on **`tool_use_id`**
+    (not `id`, not `use_id` — the wrong key silently yields zero matches, which
+    is why T-06 pins this with an always-on test). A `tool_result` whose id
+    matches no known `tool_use` contributes nothing and is not absorbed into
+    any bucket. Returns an ordered list of dicts: `tool_use_id`, `name`,
+    `input`, `result_bytes`.
+    """
+    pending = {}
+    events = []
+    with open(parent_transcript_path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            message = row.get("message")
+            if not isinstance(message, dict):
+                continue
+            role = message.get("role")
+            content = message.get("content")
+            if role == "assistant" and isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "tool_use":
+                        tid = block.get("id")
+                        if tid is not None:
+                            pending[tid] = (block.get("name"), block.get("input") or {})
+            elif role == "user" and isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "tool_result":
+                        tid = block.get("tool_use_id")
+                        if tid is None or tid not in pending:
+                            continue
+                        name, tool_input = pending.pop(tid)
+                        events.append({
+                            "tool_use_id": tid,
+                            "name": name,
+                            "input": tool_input,
+                            "result_bytes": _tool_result_bytes(block.get("content")),
+                        })
+    return events
+
+
+def channel_three_for_session(parent_transcript_path, run_owned_tool_use_ids=None):
+    """Channel-three extraction for one parent session (T-04).
+
+    Sub-channel 3a is `Read` where `input.file_path` contains
+    `.workflow_artifacts`; sub-channel 3b is `Bash` where `input.command`
+    mentions `.workflow_artifacts`. Also reports the `Agent` tool_result byte
+    total as an independent cross-check on the T-03 subagent-transcript return
+    figure.
+
+    Per-boundary attribution: a 3a/3b call is attributed to the run-owned
+    spawn whose `Agent` tool_result **immediately precedes it** in transcript
+    order. Calls before the first run-owned spawn's return, and calls after
+    the last, land in the `residual` bucket. `run_owned_tool_use_ids`
+    restricts which `Agent` events count as boundaries (so a gate spawn's
+    Agent return, interleaved between two run-owned ones, does not reset the
+    boundary); pass None to treat every `Agent` return as a boundary.
+    """
+    events = iter_parent_tool_pairs(parent_transcript_path)
+
+    boundary_indices = [
+        i for i, ev in enumerate(events)
+        if ev["name"] == "Agent"
+        and (run_owned_tool_use_ids is None or ev["tool_use_id"] in run_owned_tool_use_ids)
+    ]
+    last_boundary_idx = boundary_indices[-1] if boundary_indices else -1
+
+    sub_a_bytes = sub_a_calls = 0
+    sub_b_bytes = sub_b_calls = 0
+    agent_return_bytes = agent_return_calls = 0
+    per_boundary = {}
+    residual_bytes = residual_calls = 0
+    current_boundary = None
+
+    for i, ev in enumerate(events):
+        name = ev["name"]
+        if name == "Agent":
+            agent_return_bytes += ev["result_bytes"]
+            agent_return_calls += 1
+            if i in boundary_indices:
+                current_boundary = ev["tool_use_id"]
+            continue
+        tool_input = ev["input"]
+        is_3a = name == "Read" and _WORKFLOW_ARTIFACTS_MARKER in str(tool_input.get("file_path", ""))
+        is_3b = name == "Bash" and _WORKFLOW_ARTIFACTS_MARKER in str(tool_input.get("command", ""))
+        if not (is_3a or is_3b):
+            continue
+        if is_3a:
+            sub_a_bytes += ev["result_bytes"]
+            sub_a_calls += 1
+        if is_3b:
+            sub_b_bytes += ev["result_bytes"]
+            sub_b_calls += 1
+        if current_boundary is None or i > last_boundary_idx:
+            residual_bytes += ev["result_bytes"]
+            residual_calls += 1
+        else:
+            b = per_boundary.setdefault(current_boundary, {"bytes": 0, "calls": 0})
+            b["bytes"] += ev["result_bytes"]
+            b["calls"] += 1
+
+    return {
+        "sub_a_bytes": sub_a_bytes, "sub_a_calls": sub_a_calls,
+        "sub_b_bytes": sub_b_bytes, "sub_b_calls": sub_b_calls,
+        "agent_return_bytes": agent_return_bytes, "agent_return_calls": agent_return_calls,
+        "per_boundary": per_boundary,
+        "residual_bytes": residual_bytes, "residual_calls": residual_calls,
+    }
+
+
+def _session_distribution(values):
+    """Distribution stats for a list of per-session byte totals (T-04).
+
+    Median and p90 are nearest-rank (D-12); reports mean, the zero-session
+    count and the max alongside the ordered value list itself, so a reviewer
+    can recompute under any convention.
+    """
+    ordered = sorted(values)
+    n = len(ordered)
+    return {
+        "n": n,
+        "values_ordered": ordered,
+        "mean": (sum(ordered) / n) if n else None,
+        "median": nearest_rank_percentile(ordered, 0.50),
+        "p90": nearest_rank_percentile(ordered, 0.90),
+        "zero_count": sum(1 for v in ordered if v == 0),
+        "max": max(ordered) if ordered else None,
+        "convention": PERCENTILE_CONVENTION,
+    }
+
+
+def channel_three_stats(session_results):
+    """Aggregate channel-three figures across parent sessions (T-04).
+
+    `session_results` is a list of `channel_three_for_session(...)` dicts,
+    one per parent session carrying run-owned spawns. Reports both
+    sub-channel totals with byte share and event share (byte share is the
+    R-02/DIV-6 decision figure — the command bucket is high-count, low-byte
+    traffic and a bare event share understates the read channel by roughly
+    six times); per-call averages; the Agent-return cross-check total; the
+    residual bucket's byte total and its share of the channel; and a
+    per-session distribution for each sub-channel.
+    """
+    sub_a_bytes = sum(s["sub_a_bytes"] for s in session_results)
+    sub_a_calls = sum(s["sub_a_calls"] for s in session_results)
+    sub_b_bytes = sum(s["sub_b_bytes"] for s in session_results)
+    sub_b_calls = sum(s["sub_b_calls"] for s in session_results)
+    agent_return_bytes = sum(s["agent_return_bytes"] for s in session_results)
+    residual_bytes = sum(s["residual_bytes"] for s in session_results)
+    residual_calls = sum(s["residual_calls"] for s in session_results)
+    total_bytes = sub_a_bytes + sub_b_bytes
+    total_calls = sub_a_calls + sub_b_calls
+    return {
+        "sub_a_bytes": sub_a_bytes, "sub_a_calls": sub_a_calls,
+        "sub_b_bytes": sub_b_bytes, "sub_b_calls": sub_b_calls,
+        "sub_a_avg_bytes_per_call": (sub_a_bytes / sub_a_calls) if sub_a_calls else None,
+        "sub_b_avg_bytes_per_call": (sub_b_bytes / sub_b_calls) if sub_b_calls else None,
+        "byte_share_3a": (sub_a_bytes / total_bytes) if total_bytes else None,
+        "event_share_3a": (sub_a_calls / total_calls) if total_calls else None,
+        "sum_bytes": total_bytes,
+        "agent_return_bytes": agent_return_bytes,
+        "residual_bytes": residual_bytes,
+        "residual_calls": residual_calls,
+        "residual_share_of_sum": (residual_bytes / total_bytes) if total_bytes else None,
+        "sub_a_per_session": _session_distribution([s["sub_a_bytes"] for s in session_results]),
+        "sub_b_per_session": _session_distribution([s["sub_b_bytes"] for s in session_results]),
+        "percentile_convention": PERCENTILE_CONVENTION,
+        "stated_limits": (
+            "Read calls with offset/limit count what was delivered, not file "
+            "size; reads performed inside gate subagents are out of scope; "
+            "Grep and Glob results are excluded."
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# T-14: re-read growth-bound estimator (D-11, D-13)
+# ---------------------------------------------------------------------------
+
+# proc:trigger's whole-envelope clamp. A spawn's "clamp-deleted bytes" — the
+# ceiling the capped charge models below use — is max(0, return_bytes - this).
+ENVELOPE_CLAMP_B = 1024
+
+_GENERIC_ABS_PREFIXES = ("Users", "tmp", "private", "var", "opt", "etc")
+_CANDIDATE_TRAILING_STRIP = " .,;:)]}"
+
+
+def _candidate_path_regex(home, project_root):
+    """Build the D-11 candidate-path regex for one (home, project_root) pair.
+
+    An injectable-root prefix (home or project_root, regex-escaped) OR a
+    generic absolute-path prefix not preceded by an alnum char, followed by
+    a path body that admits spaces (this workspace's project root contains
+    "My Drive") but excludes newline/tab/backtick/quote/angle-bracket/pipe/
+    wildcard characters. Prose trailing a path is trimmed by the
+    space-boundary resolver below, not by the regex itself.
+    """
+    roots = [re.escape(str(r)) for r in (home, project_root) if r]
+    generic = "|".join(_GENERIC_ABS_PREFIXES)
+    alts = roots + [rf"(?<![A-Za-z0-9])/(?:{generic})"]
+    prefix = "(?:" + "|".join(alts) + ")"
+    return re.compile(prefix + r"(?:/[^\n\r\t`\"'<>|*?]+)")
+
+
+def _extract_raw_candidates(text, pattern):
+    """Raw D-11 candidates in `text`, right-stripped of trailing punctuation."""
+    out = []
+    for m in pattern.finditer(text or ""):
+        s = m.group(0).rstrip(_CANDIDATE_TRAILING_STRIP)
+        if s:
+            out.append(s)
+    return out
+
+
+def _resolve_candidate(raw):
+    """Resolve one raw candidate to the longest space-cut prefix that is an
+    existing file (D-11 space-handling rule), or None if no prefix resolves.
+    """
+    tokens = raw.split(" ")
+    for cut in range(len(tokens), 0, -1):
+        prefix = " ".join(tokens[:cut])
+        if prefix and Path(prefix).is_file():
+            return prefix
+    return None
+
+
+def _read_file_paths_in_session(parent_transcript_path):
+    """Every `Read` tool_use `file_path` anywhere in a parent session,
+    whole-session and regardless of pairing (D-11's already-read rule).
+    """
+    paths = set()
+    try:
+        with open(parent_transcript_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                message = row.get("message")
+                if not isinstance(message, dict) or message.get("role") != "assistant":
+                    continue
+                content = message.get("content")
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "tool_use" \
+                            and block.get("name") == "Read":
+                        fp = (block.get("input") or {}).get("file_path")
+                        if isinstance(fp, str):
+                            paths.add(fp)
+    except (FileNotFoundError, PermissionError, OSError):
+        pass
+    return paths
+
+
+def _bash_result_texts_in_session(parent_transcript_path):
+    """Every Bash `tool_result` content string in a parent session, for the
+    already-read rule widened to Bash-delivered reads (D-11 sensitivity row).
+    """
+    texts = []
+    try:
+        with open(parent_transcript_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                message = row.get("message")
+                if not isinstance(message, dict) or message.get("role") != "user":
+                    continue
+                content = message.get("content")
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "tool_result":
+                        c = block.get("content")
+                        if isinstance(c, str):
+                            texts.append(c)
+                        elif isinstance(c, list):
+                            for b2 in c:
+                                if isinstance(b2, dict) and isinstance(b2.get("text"), str):
+                                    texts.append(b2["text"])
+    except (FileNotFoundError, PermissionError, OSError):
+        pass
+    return texts
+
+
+def _self_written_paths_in_spawn(spawn_transcript_path):
+    """`Write`/`Edit` tool_use `file_path` values in a spawn's OWN transcript
+    (not the parent) — paths that spawn wrote and then, per the architecture's
+    files-as-shared-workspace design, may have announced (D-13's self-written
+    exclusion row).
+    """
+    paths = set()
+    try:
+        with open(spawn_transcript_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                message = row.get("message")
+                if not isinstance(message, dict) or message.get("role") != "assistant":
+                    continue
+                content = message.get("content")
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "tool_use" \
+                            and block.get("name") in ("Write", "Edit"):
+                        fp = (block.get("input") or {}).get("file_path")
+                        if isinstance(fp, str):
+                            paths.add(fp)
+    except (FileNotFoundError, PermissionError, OSError):
+        pass
+    return paths
+
+
+def growth_bound(run_owned_records, home, project_root,
+                  already_read_scope="session",
+                  path_filter="permissive",
+                  exclude_self_written=False):
+    """T-14's re-read growth-bound estimator (D-11), one filter combination.
+
+    `already_read_scope`: "session" (D-11 published rule — whole parent
+    session, any Read tool_use, paired or not), "session+bash" (widened to
+    Bash-delivered reads), or "none" (filter removed entirely — the round-5
+    sensitivity row).
+    `path_filter`: "permissive" (published) or "workflow_artifacts_only".
+    `exclude_self_written`: drop candidates the spawn's own transcript shows
+    it wrote (D-13's self-written-exclusion row).
+
+    Returns per-spawn detail (raw/resolved candidates, both charge models)
+    plus aggregate figures: `charges` (charge instances) vs `distinct`
+    (unique files) — the two differ whenever one file is charged by more
+    than one spawn — `extraction_coverage` (fraction of return payloads
+    yielding >=1 raw candidate, measured before resolution and before the
+    already-read filter), and BOTH charge-model totals (D-13): whole
+    on-disk file size (upper endpoint, `whole_*`) and clamp-deleted-bytes
+    caps, per-candidate (`per_candidate_*`, the lower endpoint) and per-spawn
+    (`per_spawn_cap_*`, reported alongside, not itself an endpoint). Per-spawn
+    de-duplication is applied inline; `per_session_dedup_total` recomputes the
+    whole-file model with de-duplication scoped to the parent session instead
+    (D-11's per-session-dedup sensitivity row).
+    """
+    pattern = _candidate_path_regex(home, project_root)
+    already_read_cache = {}
+    bash_texts_cache = {}
+    per_spawn = []
+    coverage_hits = 0
+    session_sizes = {}  # parent_session_id -> {path: size}, dedupes across spawns
+
+    for record in run_owned_records:
+        return_text = record.get("return_text", "")
+        raw = _extract_raw_candidates(return_text, pattern)
+        if raw:
+            coverage_hits += 1
+
+        parent_path = resolve_parent_transcript_path(record["path"])
+        sid = parent_path.stem
+        if sid not in already_read_cache:
+            already_read_cache[sid] = _read_file_paths_in_session(parent_path)
+        already_read = already_read_cache[sid] if already_read_scope != "none" else set()
+        if already_read_scope == "session+bash":
+            if sid not in bash_texts_cache:
+                bash_texts_cache[sid] = _bash_result_texts_in_session(parent_path)
+            bash_texts = bash_texts_cache[sid]
+        else:
+            bash_texts = []
+
+        resolved = []
+        seen = set()
+        for r in raw:
+            p = _resolve_candidate(r)
+            if p is None:
+                continue
+            if path_filter == "workflow_artifacts_only" and _WORKFLOW_ARTIFACTS_MARKER not in p:
+                continue
+            if p in already_read:
+                continue
+            if bash_texts and any(p in t for t in bash_texts):
+                continue
+            if p in seen:
+                continue
+            seen.add(p)
+            try:
+                size = Path(p).stat().st_size
+            except OSError:
+                size = 0
+            resolved.append({"path": p, "size": size})
+
+        if exclude_self_written:
+            self_written = _self_written_paths_in_spawn(record["path"])
+            resolved = [r for r in resolved if r["path"] not in self_written]
+
+        deleted_bytes = max(0, return_bytes(record) - ENVELOPE_CLAMP_B)
+        whole_charge = sum(r["size"] for r in resolved)
+        per_candidate_charge = sum(min(r["size"], deleted_bytes) for r in resolved)
+        per_spawn_charge = min(whole_charge, deleted_bytes)
+
+        per_spawn.append({
+            "path": record["path"], "parent_session_id": sid,
+            "raw_candidates": len(raw), "resolved": resolved,
+            "deleted_bytes": deleted_bytes, "whole_charge": whole_charge,
+            "per_candidate_charge": per_candidate_charge,
+            "per_spawn_charge": per_spawn_charge,
+        })
+        for r in resolved:
+            session_sizes.setdefault(sid, {})[r["path"]] = r["size"]
+
+    n = len(run_owned_records)
+    sessions = sorted({s["parent_session_id"] for s in per_spawn}) or \
+        sorted({resolve_parent_transcript_path(r["path"]).stem for r in run_owned_records})
+    n_sessions = len(sessions) or 1
+
+    def _sum(key):
+        return sum(s[key] for s in per_spawn)
+
+    def _per_session(charge_key):
+        totals = {sid: 0 for sid in sessions}
+        for s in per_spawn:
+            totals[s["parent_session_id"]] = totals.get(s["parent_session_id"], 0) + s[charge_key]
+        return totals
+
+    charges = sum(len(s["resolved"]) for s in per_spawn)
+    distinct = len({r["path"] for s in per_spawn for r in s["resolved"]})
+    dedup_total = sum(sum(sizes.values()) for sizes in session_sizes.values())
+
+    return {
+        "n_spawns": n, "n_sessions": n_sessions,
+        "extraction_coverage": (coverage_hits / n) if n else None,
+        "charges": charges, "distinct": distinct,
+        "per_spawn": per_spawn,
+        "whole_total": _sum("whole_charge"),
+        "whole_per_run": (_sum("whole_charge") / n_sessions) if n_sessions else None,
+        "per_candidate_total": _sum("per_candidate_charge"),
+        "per_candidate_per_run": (_sum("per_candidate_charge") / n_sessions) if n_sessions else None,
+        "per_spawn_cap_total": _sum("per_spawn_charge"),
+        "per_spawn_cap_per_run": (_sum("per_spawn_charge") / n_sessions) if n_sessions else None,
+        "per_session_dedup_total": dedup_total,
+        "per_session_dedup_per_run": (dedup_total / n_sessions) if n_sessions else None,
+        "per_session_whole": _per_session("whole_charge"),
+        "per_session_lower": _per_session("per_candidate_charge"),
+    }
+
+
+def _print_channel_report(stats, tcc):
+    """Print the channel one/two and token-cross-check summary shared by
+    the live-capture and `--from-snapshot` code paths in `main()` (T-05
+    re-derivation contract, F-03).
+
+    Takes an already-computed `channel_stats()`/`channel_stats_from_snapshot()`
+    result and an already-computed `token_cross_check()`/
+    `token_cross_check_from_snapshot()` result, so this function has no
+    filesystem access of its own — the caller decides live vs. snapshot.
+
+    Emits every field `token_cross_check()` returns, not a subset: the
+    gated population fed the verdict, but the ungated population and the
+    excluded-by-reason breakdown are published figures too, and every one
+    of them needs to be printable from a loaded snapshot for the
+    reproducibility scope statement to hold.
+    """
+    overall = stats["overall"]
+    for label in ("dispatch", "return", "ratio"):
+        s = overall[label]
+        print(f"{label}: n={s['n']} p50={s['p50']} p90={s['p90']} p99={s['p99']} "
+              f"mean={s['mean']} max={s['max']} reported_as_max={s['reported_as_max']} "
+              f"convention={s['convention']}")
+    print(f"byte_divisor={stats['byte_divisor']}")
+    print(f"token_cross_check: n={tcc['n']} presence_fraction={tcc['presence_fraction']} "
+          f"validity_fraction={tcc['validity_fraction']} "
+          f"thinking_coverage_fraction={tcc['thinking_coverage_fraction']}")
+    print(f"excluded_by_stop_reason={tcc['excluded_by_stop_reason']}")
+    for population in ("gated", "ungated"):
+        p = tcc[population]
+        print(f"{population}_pooled_ratio={p['pooled_ratio']} "
+              f"{population}_pooled_ratio_thinking_adjusted={p['pooled_ratio_thinking_adjusted']} "
+              f"{population}_mean_of_row_ratios={p['mean_of_row_ratios']} "
+              f"{population}_median_of_row_ratios={p['median_of_row_ratios']}")
+
+
+def _build_arg_parser():
+    parser = argparse.ArgumentParser(
+        prog="handoff_measure.py",
+        description="Measure agent handoff dispatch/return payload sizes "
+                     "over the nested Claude Code subagent transcript tree "
+                     "(IVG-248 stage 1 instrument).",
+    )
+    parser.add_argument(
+        "--home", default=str(Path.home()),
+        help="Root containing .claude/projects/ (default: the real home dir).",
+    )
+    parser.add_argument(
+        "--project-filter", default=None,
+        help="Only consider transcripts under a project-hash dir containing this substring.",
+    )
+    parser.add_argument(
+        "--snapshot", default=None,
+        help="Write a T-05 reproducibility snapshot JSON to this path after a live capture.",
+    )
+    parser.add_argument(
+        "--from-snapshot", default=None,
+        help="Recompute channel one/two dispatch/return statistics and the token "
+             "cross-check from this snapshot file; no live filesystem access, --home and "
+             "--project-filter are ignored. Channel three and the growth-bound estimator "
+             "are not in the snapshot (see the baseline artifact's reproducibility scope "
+             "statement) and are not recomputed by this flag.",
+    )
+    return parser
+
+
+def main(argv=None):
+    parser = _build_arg_parser()
+    args = parser.parse_args(argv)
+
+    if args.from_snapshot:
+        try:
+            snapshot = load_snapshot(args.from_snapshot)
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"handoff_measure: invocation error: {exc}", file=sys.stderr)
+            return 2
+        print(f"snapshot_loaded={args.from_snapshot}")
+        print(f"transcripts={snapshot['transcripts']} parsed={snapshot['parsed']} "
+              f"skipped_unreadable={snapshot['skipped_unreadable']}")
+        print(f"skill_matched={snapshot['skill_matched']} run_owned={snapshot['run_owned']}")
+        if not snapshot["records"]:
+            print("handoff_measure: empty snapshot; measurement refused", file=sys.stderr)
+            return 1
+        # Channel one/two is reported over the run-owned population (matching
+        # the baseline's "n = 77 run-owned" convention), not every parsed
+        # transcript — channel_stats_from_snapshot's own contract is to run
+        # unmodified over whatever records it is given (see its docstring),
+        # so the run-owned filter is applied here, at the call site, exactly
+        # as the live path below applies it.
+        snapshot_run_owned = [r for r in snapshot["records"] if r.get("run_owned")]
+        stats = channel_stats(snapshot_run_owned)
+        tcc = token_cross_check_from_snapshot(snapshot)
+        _print_channel_report(stats, tcc)
+        return 0
+
+    try:
+        corpus = capture_corpus(args.home, project_filter=args.project_filter)
+    except Exception as exc:  # invocation-level failure, not a per-file skip
+        print(f"handoff_measure: invocation error: {exc}", file=sys.stderr)
+        return 2
+    captured_at = datetime.datetime.now().isoformat(timespec="seconds")
+    print(f"corpus_captured_at={captured_at}")
+    print(f"transcripts={corpus['transcripts']} parsed={corpus['parsed']} "
+          f"skipped_unreadable={corpus['skipped_unreadable']}")
+    print(f"skill_matched={corpus['skill_matched']} run_owned={corpus['run_owned']}")
+    if args.snapshot:
+        snapshot = build_snapshot(corpus, args.home)
+        snapshot["corpus_captured_at"] = captured_at
+        write_snapshot(args.snapshot, snapshot)
+        print(f"snapshot_written={args.snapshot}")
+    if corpus["parsed"] == 0:
+        print("handoff_measure: no transcripts matched the predicate; measurement refused",
+              file=sys.stderr)
+        return 1
+    # Channel one/two is reported over the run-owned population (matching the
+    # baseline's "n = 77 run-owned" convention), not every parsed transcript.
+    run_owned = [r for r in corpus["records"] if r.get("run_owned")]
+    stats = channel_stats(run_owned)
+    tcc = token_cross_check(run_owned)
+    _print_channel_report(stats, tcc)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

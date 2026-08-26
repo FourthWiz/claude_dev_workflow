@@ -142,6 +142,7 @@ DEPLOYED_SCRIPTS = (
     "build_claude_slim.py",  # IVG-164 stage 1 T-04: slim CLAUDE.md variant generator (standalone, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS twin, mirrors build_preambles.py)
     "context_bundle.py",  # IVG-164 stage 2 T-02: context bundle helper for orchestrator spawn-prompt construction (standalone, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS twin, mirrors build_claude_slim.py)
     "gate_fullsuite_sidecar.py",  # IVG-249 stage-3 gate full-suite freshness sidecar (wrapped portable-core — also in CORE_SCRIPTS)
+    "handoff_measure.py",  # IVG-248: agent-handoff payload-size instrument (adapter-only, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS twin, mirrors footprint_report.py)
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
