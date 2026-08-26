@@ -1,5 +1,5 @@
 """test_handoff_measure.py — fixture-only tests for handoff_measure.py
-(IVG-248 agent-handoff-format stage 1: instrument skeleton, stage-1/current-plan.md T-01/T-02).
+(agent-handoff-format stage 1: instrument skeleton).
 
 All tests point the instrument at a SYNTHETIC fixture tree materialized under
 <tmp_path>/.claude/projects/<hash>/<sid>/subagents/ (copied at test time from the
@@ -12,7 +12,7 @@ deliberately has NO literal ".claude" path segment, because quoin/.gitignore ign
 any ".claude/" directory anywhere in the repo — a committed ".claude"-named fixture
 tree would be silently invisible in a clean checkout.
 
-Cases (mirrors stage-1/current-plan.md T-02; letters match the plan):
+Cases (letters match the design doc):
   (a) run-owned marker in the first 100 B -> detect_phase + run_owned True
   (b) marker beginning at byte 640 -> no match (600-byte window)
   (c) marker naming a non-run-owned skill -> skill_matched, not run_owned
@@ -281,7 +281,7 @@ def test_cases_m_and_n_land_in_distinct_excluded_buckets(fixtures_home):
 
 
 # ---------------------------------------------------------------------------
-# T-03: nearest_rank_percentile (D-12)
+# nearest_rank_percentile
 # ---------------------------------------------------------------------------
 def test_nearest_rank_percentile_basic():
     xs = [10, 20, 30, 40, 50]
@@ -299,7 +299,7 @@ def test_nearest_rank_percentile_unsorted_input_is_sorted_first():
 
 
 # ---------------------------------------------------------------------------
-# T-03: channel_stats — per-phase and overall dispatch/return byte stats
+# channel_stats — per-phase and overall dispatch/return byte stats
 # ---------------------------------------------------------------------------
 def _fake_record(phase, dispatch, return_):
     return {"phase": phase, "dispatch_text": dispatch, "return_text": return_}
@@ -332,7 +332,7 @@ def test_channel_stats_ratio_and_divisor_present():
 
 
 # ---------------------------------------------------------------------------
-# T-03: token_cross_check — gating, three fractions, pooled ratio (D-06)
+# token_cross_check — gating, three fractions, pooled ratio
 # ---------------------------------------------------------------------------
 def test_token_cross_check_gates_on_stop_reason_end_turn():
     admitted = {
@@ -400,11 +400,10 @@ def test_token_cross_check_empty_input_does_not_raise():
     assert result["gated"]["pooled_ratio"] is None
 
 
-# Mutation proof for the two stop_reason-gating mutations deferred from T-02
-# (drop the stop_reason gate; invert the gate) is run directly against
+# Mutation proof for the two stop_reason-gating mutations (drop the
+# stop_reason gate; invert the gate) is run directly against
 # handoff_measure.py's source and pins on test_token_cross_check_gates_on_
-# stop_reason_end_turn above — see this task's implementation notes in
-# stage-1/current-plan.md for the recorded red/green results.
+# stop_reason_end_turn above.
 
 
 # ---------------------------------------------------------------------------
@@ -412,7 +411,7 @@ def test_token_cross_check_empty_input_does_not_raise():
 # ---------------------------------------------------------------------------
 def test_iter_transcripts_requires_home_param(fixtures_home):
     paths = list(hm.iter_transcripts(fixtures_home))
-    assert len(paths) == 15  # 14 cases (a)-(n) + sid-joint's subagent transcript (T-06)
+    assert len(paths) == 15  # 14 cases (a)-(n) + sid-joint's subagent transcript
     assert all(p.name.startswith("agent-case-") or p.name == "agent-joint.jsonl" for p in paths)
 
 
@@ -444,7 +443,7 @@ def test_cli_main_refuses_measurement_on_empty_corpus(tmp_path, capsys):
 
 
 # ---------------------------------------------------------------------------
-# T-04: channel three — orchestrator-side artifact re-read bytes
+# Channel three — orchestrator-side artifact re-read bytes
 # ---------------------------------------------------------------------------
 
 def _write_parent_transcript(path, rows):
@@ -592,7 +591,7 @@ def test_channel_three_stats_per_session_distribution(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# T-05: snapshot mode — the reproducibility contract
+# Snapshot mode — the reproducibility contract
 # ---------------------------------------------------------------------------
 
 def test_stable_id_opaque_labels_every_path_component():
@@ -650,11 +649,11 @@ def test_build_snapshot_record_carries_no_payload_text(fixtures_home):
     # project's own cost-ledger files join back to the real session
     assert "parent_session_id" not in snap
     assert "sid-case-a" not in str(snap)
-    # never payload text (D-04)
+    # never payload text
     dumped = str(snap)
     assert record["dispatch_text"] not in dumped
     assert record["return_text"] not in dumped
-    # T-10 fills sentinel_bucket (D-09); channel_three/growth_bound stay
+    # sentinel_bucket is filled for real; channel_three/growth_bound stay
     # explicit PARTIAL placeholders (see module note) rather than omitted.
     assert snap["sentinel_bucket"] == hm.sentinel_bucket(record.get("dispatch_text", ""))
     assert snap["channel_three"] is None
@@ -688,8 +687,8 @@ def test_write_then_load_snapshot_round_trips(tmp_path, fixtures_home):
 
 
 # ---------------------------------------------------------------------------
-# T-15: load_snapshot schema/key validation, and the snapshot-write block's
-# own try/except in main() (distinct from the corpus-capture try/except).
+# load_snapshot schema/key validation, and the snapshot-write block's own
+# try/except in main() (distinct from the corpus-capture try/except).
 # ---------------------------------------------------------------------------
 def test_load_snapshot_rejects_unsupported_schema_version(tmp_path):
     bad = {
@@ -751,7 +750,7 @@ def test_snapshot_write_block_maps_relative_to_failure_to_exit_2(
 ):
     """A record path outside `home` fails `relative_to` inside
     `build_snapshot` (via `_corpus_label_maps`/`stable_id`) — the
-    snapshot-write try/except (T-15) must map that to exit 2 with the
+    snapshot-write try/except must map that to exit 2 with the
     snapshot-side message, distinct from the corpus-capture try/except's
     message, and never a raw traceback."""
     bad_record = dict(_record_for(fixtures_home, "sid-case-a"))
@@ -907,7 +906,7 @@ def test_cli_snapshot_flag_writes_a_loadable_snapshot(tmp_path, fixtures_home):
 
 
 # ---------------------------------------------------------------------------
-# T-06: always-on parent-side channel-three joint test, against a COMMITTED
+# Always-on parent-side channel-three joint test, against a COMMITTED
 # fixture transcript (not a synthetic tmp_path row set) — the producer
 # (parent-transcript resolution + tool_use/tool_result pairing) and consumer
 # (channel_three_for_session) must agree on a real file at the real resolved
@@ -930,7 +929,7 @@ def test_joint_resolve_parent_transcript_path_matches_committed_fixture():
 
 def test_joint_channel_three_sub_a_and_sub_b_byte_totals():
     result = hm.channel_three_for_session(_JOINT_PARENT_PATH)
-    # r1 and r3 are both genuine .workflow_artifacts Reads (r2 pairs to
+    # r1 and r3 are both genuine workflow-artifacts Reads (r2 pairs to
     # nothing, see the wrong-key test below); b1 is the one Bash pair.
     assert result["sub_a_calls"] == 2
     assert result["sub_a_bytes"] == (
@@ -971,7 +970,7 @@ def test_joint_channel_three_boundary_window_attribution():
 
 def test_joint_wrong_result_key_use_id_contributes_zero_not_absorbed():
     result = hm.channel_three_for_session(_JOINT_PARENT_PATH)
-    # r2's Read is a genuine .workflow_artifacts candidate, but its
+    # r2's Read is a genuine workflow-artifacts candidate, but its
     # tool_result is spelled "use_id" (not "tool_use_id") — it must NOT be
     # silently absorbed into sub_a's total. sub_a_calls is exactly 2 (r1 and
     # r3 only); if r2 were wrongly counted it would be 3.
@@ -988,7 +987,7 @@ def test_joint_unpaired_orphan_tool_result_is_ignored():
     assert len(events) == 5  # a1, r1, b1, a2, r3 — r2 (wrong key) and the orphan pair to nothing
 
 
-# Mutation proof, run and recorded (T-06 ack) — applied once each directly
+# Mutation proof, run and recorded — applied once each directly
 # against handoff_measure.py's source, confirmed red, reverted. All three
 # run against `-k "channel_three or joint"`; the fourth number is the count
 # of tests in that filtered set that went red.
@@ -1001,7 +1000,7 @@ def test_joint_unpaired_orphan_tool_result_is_ignored():
 #      to 1 (only r2, the one pair that happens to already use "use_id" as
 #      its own key), so the committed fixture's five real "tool_use_id"
 #      pairs vanish. Reverted; full suite green after revert.
-#   2. dropped the ".workflow_artifacts" filter from is_3a in
+#   2. dropped the workflow-artifacts filter from is_3a in
 #      channel_three_for_session (`is_3a = name == "Read"`) -> RED (1):
 #      test_channel_three_classifies_3a_and_3b, whose t3 Read of
 #      "/x/other/file.py" now wrongly counts, moving sub_a_calls from 1 to
@@ -1019,7 +1018,7 @@ def test_joint_unpaired_orphan_tool_result_is_ignored():
 
 
 # ---------------------------------------------------------------------------
-# T-06: opt-in live test — gated on QUOIN_HANDOFF_LIVE_CORPUS=1 and the real
+# Opt-in live test — gated on QUOIN_HANDOFF_LIVE_CORPUS=1 and the real
 # corpus existing; skips cleanly otherwise since subagent transcripts are
 # not portable across machines.
 # ---------------------------------------------------------------------------
@@ -1057,18 +1056,18 @@ def test_channel_three_agent_return_cross_check(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# T-14: re-read growth-bound estimator (D-11, D-13)
+# Re-read growth-bound estimator
 #
-# Deviation from stage-1/current-plan.md T-14, recorded here rather than
-# silently: the plan asks for cases (p)-(w) "in the committed parent-session
-# fixture tree from T-06". These use tmp_path-generated transcripts and
-# real on-disk files instead — every candidate path in these tests resolves
-# against an actual file under tmp_path (which the D-11 regex's generic
-# /private or /tmp prefix matches on both macOS and Linux runners), so the
-# resolution and charge-model mechanics under test are exercised exactly as
-# they would be against a committed fixture, without adding nine more
-# committed *.jsonl files and a T-08 selector row for each. The always-on
-# property (no live-corpus gate) is preserved.
+# Deliberate deviation, recorded here rather than silently: cases (p)-(w)
+# use tmp_path-generated transcripts and real on-disk files rather than the
+# committed parent-session fixture tree used elsewhere in this file — every
+# candidate path in these tests resolves against an actual file under
+# tmp_path (which the candidate-path regex's generic /private or /tmp
+# prefix matches on both macOS and Linux runners), so the resolution and
+# charge-model mechanics under test are exercised exactly as they would be
+# against a committed fixture, without adding nine more committed *.jsonl
+# files and a selector row for each. The always-on property (no live-corpus
+# gate) is preserved.
 # ---------------------------------------------------------------------------
 
 def _growth_home(tmp_path, sid="sid-growth"):
@@ -1115,7 +1114,7 @@ def test_growth_bound_case_q_already_read_contributes_zero(tmp_path):
     result = hm.growth_bound([record], home, None)
     assert result["whole_total"] == 0
     # a raw candidate WAS extracted, so it still counts toward coverage —
-    # a low bound must never disguise itself as low coverage (D-11).
+    # a low bound must never disguise itself as low coverage.
     assert result["extraction_coverage"] == 1.0
 
 
@@ -1225,7 +1224,7 @@ def test_growth_bound_workflow_artifacts_only_filter_excludes_other_paths(tmp_pa
     assert restricted["whole_total"] == 0
 
 
-# Mutation proof, run and recorded (T-14 ack) — applied once each directly
+# Mutation proof, run and recorded — applied once each directly
 # against handoff_measure.py's source, confirmed red, reverted:
 #   1. replaced the space-safe resolver's per-token cut loop with a
 #      whitespace-delimited `raw.split(" ")[0]` pattern -> RED (1):
