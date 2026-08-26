@@ -143,6 +143,7 @@ DEPLOYED_SCRIPTS = (
     "context_bundle.py",  # IVG-164 stage 2 T-02: context bundle helper for orchestrator spawn-prompt construction (standalone, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS twin, mirrors build_claude_slim.py)
     "gate_fullsuite_sidecar.py",  # IVG-249 stage-3 gate full-suite freshness sidecar (wrapped portable-core — also in CORE_SCRIPTS)
     "handoff_measure.py",  # IVG-248: agent-handoff payload-size instrument (adapter-only, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS twin, mirrors footprint_report.py)
+    "handoff_validate.py",  # IVG-248: inter-agent handoff envelope validator (wrapped portable-core — also in CORE_SCRIPTS)
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -445,6 +446,7 @@ CORE_SCRIPTS = (
     "plan_path_lint.py",  # IVG-143: wrapped impl; required by ~/.claude/scripts/plan_path_lint.py parents[1] loader
     "authored_content_lint.py",  # advisory authored-content lint core impl (wrapped portable-core)
     "gate_fullsuite_sidecar.py",  # IVG-249 stage-3 gate full-suite freshness sidecar (wrapped portable-core — also in CORE_SCRIPTS)
+    "handoff_validate.py",  # IVG-248: inter-agent handoff envelope validator core impl; required by ~/.claude/scripts/handoff_validate.py parents[1] loader
 )
 
 
