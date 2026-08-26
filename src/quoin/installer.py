@@ -463,6 +463,34 @@ def deploy_core_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> No
         print(f"Copied core {fname} to {dest_root}/core/scripts/")
 
 
+# Portable core workflow docs deployed alongside core scripts in ~/.claude/core/workflow/.
+# IVG-248: runtime-neutral workflow semantics (rules.md, task-layout.md, session-state.md,
+# cost-ledger.md, skills.md, skills.json) plus the inter-agent handoff spec (T-06, D-10).
+CORE_WORKFLOW_FILES = (
+    "cost-ledger.md",
+    "rules.md",
+    "session-state.md",
+    "skills.json",
+    "skills.md",
+    "task-layout.md",
+)
+
+
+def deploy_core_workflow(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
+    """Copy portable core workflow docs from source_dir/core/workflow/ to dest_root/core/workflow/."""
+    src_workflow = source_dir / "core" / "workflow"
+    dst_workflow = dest_root / "core" / "workflow"
+    dst_workflow.mkdir(parents=True, exist_ok=True)
+    for fname in CORE_WORKFLOW_FILES:
+        src = src_workflow / fname
+        if not src.exists():
+            print(f"quoin: Expected core workflow file {fname} at {src} but not found", file=sys.stderr)
+            sys.exit(1)
+        dst = dst_workflow / fname
+        _copy_with_substitution(src, dst, dest_root)
+        print(f"Copied core workflow {fname} to {dest_root}/core/workflow/")
+
+
 def deploy_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
     """Copy scripts from source_dir/scripts/ to dest_root/scripts/."""
     src_scripts = source_dir / "scripts"
