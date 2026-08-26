@@ -511,7 +511,7 @@ def deploy_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
 # Category names compute_drift knows how to compare. Kept in sync with the
 # deploy manifests above. The CLI (deploy_drift_check.py) surfaces this list as
 # `checked_categories` and names everything NOT here as `uncovered_categories`.
-DRIFT_CATEGORIES: tuple[str, ...] = ("skills", "scripts", "core-scripts", "memory")
+DRIFT_CATEGORIES: tuple[str, ...] = ("skills", "scripts", "core-scripts", "core-workflow", "memory")
 
 
 class DriftEntry(NamedTuple):
@@ -601,6 +601,12 @@ def compute_drift(
         dst_core = dest_root / "core" / "scripts"
         for fname in CORE_SCRIPTS:
             _check("core-scripts", src_core / fname, dst_core / fname)
+
+    if "core-workflow" in selected:
+        src_workflow = source_dir / "core" / "workflow"
+        dst_workflow = dest_root / "core" / "workflow"
+        for fname in CORE_WORKFLOW_FILES:
+            _check("core-workflow", src_workflow / fname, dst_workflow / fname)
 
     return drift
 

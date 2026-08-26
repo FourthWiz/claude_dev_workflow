@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 from unittest import mock
@@ -69,11 +70,15 @@ def _build_trees(installer, tmp_path, monkeypatch):
     # core-scripts
     (src / "core" / "scripts").mkdir(parents=True)
     (src / "core" / "scripts" / "c1.py").write_text("print('c1')\n", encoding="utf-8")
+    # core-workflow
+    (src / "core" / "workflow").mkdir(parents=True)
+    (src / "core" / "workflow" / "w1.md").write_text("workflow body\n", encoding="utf-8")
 
     monkeypatch.setattr(installer, "TIER1_MEMORY_FILES", ("m1.md",))
     monkeypatch.setattr(installer, "CANONICAL_SKILLS", ("alpha",))
     monkeypatch.setattr(installer, "DEPLOYED_SCRIPTS", ("s1.py",))
     monkeypatch.setattr(installer, "CORE_SCRIPTS", ("c1.py",))
+    monkeypatch.setattr(installer, "CORE_WORKFLOW_FILES", ("w1.md",))
 
     # Deploy each file: write expected_deployed_content to the dest path.
     def _deploy(src_path: Path, dest_path: Path):
@@ -88,6 +93,7 @@ def _build_trees(installer, tmp_path, monkeypatch):
             dest / "skills" / "alpha" / "preamble.md")
     _deploy(src / "scripts" / "s1.py", dest / "scripts" / "s1.py")
     _deploy(src / "core" / "scripts" / "c1.py", dest / "core" / "scripts" / "c1.py")
+    _deploy(src / "core" / "workflow" / "w1.md", dest / "core" / "workflow" / "w1.md")
 
     return src, dest
 
@@ -146,6 +152,15 @@ def test_compute_drift_a_stale_skill(installer, tmp_path, monkeypatch):
     (dest / "skills" / "alpha" / "SKILL.md").write_text("MUTATED\n", encoding="utf-8")
     drift = installer.compute_drift(src, dest)
     assert any(d.reason == "stale" and d.category == "skills" for d in drift)
+
+
+def test_compute_drift_o_stale_core_workflow(installer, tmp_path, monkeypatch):
+    # IVG-248 T-03: core-workflow is a checked category (D-10) — mirrors the
+    # core-scripts drift case (a mutated deployed core/workflow/*.md file drifts).
+    src, dest = _build_trees(installer, tmp_path, monkeypatch)
+    (dest / "core" / "workflow" / "w1.md").write_text("MUTATED\n", encoding="utf-8")
+    drift = installer.compute_drift(src, dest)
+    assert any(d.reason == "stale" and d.category == "core-workflow" for d in drift)
 
 
 def test_compute_drift_b_missing_script(installer, tmp_path, monkeypatch):
@@ -518,7 +533,29 @@ def test_sys_path_not_duplicated_across_two_runs(ddc, tmp_path, capsys):
 
 def test_coverage_qualifier_byte_identity(ddc):
     assert ddc._COVERAGE_QUALIFIER == (
-        "Deploy drift: PASS (checked: skills, scripts, core-scripts, memory; "
+        "Deploy drift: PASS (checked: skills, scripts, core-scripts, core-workflow, memory; "
         "not covered: hooks, CLAUDE.md, settings.json, dashboard assets, "
         "QUICKSTART.md — see D-07/D-09)"
+    )
+
+
+def test_gate_skill_qualifier_prefixes_coverage_qualifier(ddc):
+    """MIN-2 (T-03 site 6): gate/SKILL.md quotes the checked/not-covered qualifier
+    verbatim (minus the internal " — see D-07/D-09" cross-reference) three times.
+    This closes the qualifier class permanently: any future category added to
+    _COVERAGE_QUALIFIER without updating all three gate/SKILL.md instances fails
+    here instead of drifting silently."""
+    gate_skill_path = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "gate" / "SKILL.md"
+    text = gate_skill_path.read_text(encoding="utf-8")
+
+    matches = re.findall(r"checked: [^\n]*?QUICKSTART\.md", text)
+    assert len(matches) == 3, f"expected exactly 3 qualifier quotes in gate/SKILL.md, found {len(matches)}"
+    assert len(set(matches)) == 1, "all 3 qualifier quotes in gate/SKILL.md must be byte-identical"
+
+    start = ddc._COVERAGE_QUALIFIER.index("(") + 1
+    end = ddc._COVERAGE_QUALIFIER.rindex(")")
+    parenthetical = ddc._COVERAGE_QUALIFIER[start:end]
+    assert parenthetical.startswith(matches[0]), (
+        "gate/SKILL.md's coverage-qualifier quote must be a prefix of "
+        "deploy_drift_check._COVERAGE_QUALIFIER's parenthetical"
     )
