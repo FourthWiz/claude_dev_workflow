@@ -10,8 +10,11 @@ optional fields, field ordering, delimiters, escaping, byte bounds, and
 version-marker rules for either direction.
 
 This is a payload format for the run orchestrator's phase-dispatch and
-phase-return path. It is not the Codex session continuation handoff — a
-different artifact under `.workflow_artifacts/memory/sessions/`.
+phase-return path. It is not the Codex session continuation handoff
+(`quoin/adapters/codex/handoff.md`), which governs how one Codex session
+hands off to its successor session via an artifact under
+`.workflow_artifacts/memory/sessions/` — a different artifact from the
+dispatch/return envelope this file defines.
 
 ## Envelope Placement
 

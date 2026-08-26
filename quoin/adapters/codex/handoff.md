@@ -13,6 +13,7 @@ Portable contracts:
 - `quoin/core/skills/end_of_day.md`
 - `quoin/core/skills/weekly_review.md`
 - `quoin/adapters/codex/cost.md`
+- `quoin/core/workflow/handoff-format.md` — the inter-agent dispatch/return envelope between an orchestrator and a subagent; this file governs session continuation between one Codex session and its successor, a different artifact.
 
 ## Location
 
