@@ -23,6 +23,7 @@ def test_runtime_portability_docs_exist():
         "quoin/core/workflow/cost-ledger.md",
         "quoin/core/workflow/skills.json",
         "quoin/core/workflow/skills.md",
+        "quoin/core/workflow/handoff-format.md",
         "quoin/adapters/README.md",
         "quoin/adapters/claude/README.md",
         "quoin/adapters/claude/models.md",
@@ -152,7 +153,7 @@ def test_core_workflow_docs_are_referenced_from_runtime_boundary_and_claude_rule
     runtime = read_rel("quoin/docs/runtime-portability.md")
     claude = read_rel("quoin/CLAUDE.md")
 
-    for name in ["rules.md", "task-layout.md", "session-state.md", "cost-ledger.md"]:
+    for name in ["rules.md", "task-layout.md", "session-state.md", "cost-ledger.md", "handoff-format.md"]:
         assert name in runtime
         assert name in claude
 
