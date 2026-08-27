@@ -457,11 +457,119 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/adapters/claude/skills/gate/SKILL.md",
         "quoin/dev/tests/test_claude_md_citations.py",
     ),
+    # IVG-248 stage 3 T-10: the agent-handoff envelope section and its ten
+    # emit directives (T-03/T-04) touch structural regions of run/SKILL.md
+    # that the four named structural guards plus six additive-edit traps
+    # already pin — without these rows an affected-area /gate run on this
+    # file selects none of them and the guards only run at the full suite.
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_run_partial_continuation.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_run_fast_path_heading_freeze.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_plain_run_unchanged.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_autonomous_sentinel_contract.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_run_resume_idempotent.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_claude_md_citations.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_decision_gate_census.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_path_resolve_e2e.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_autonomous_hooks_untouched.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_budget_roster_census.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_handoff_producer_conformance.py",
+    ),
+    # IVG-248 stage 3 T-10: the envelope-versus-inline-summary branch (T-07)
+    # and its extended guard (T-08) touch implement, review and
+    # thorough_plan's summary sections — without these rows a Standard gate
+    # on any of the three selects neither the section guard nor the
+    # producer-conformance guard.
+    (
+        "quoin/adapters/claude/skills/implement/SKILL.md",
+        "quoin/dev/tests/test_inline_step_summary_present.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/implement/SKILL.md",
+        "quoin/dev/tests/test_handoff_producer_conformance.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/review/SKILL.md",
+        "quoin/dev/tests/test_inline_step_summary_present.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/review/SKILL.md",
+        "quoin/dev/tests/test_handoff_producer_conformance.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/thorough_plan/SKILL.md",
+        "quoin/dev/tests/test_inline_step_summary_present.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/thorough_plan/SKILL.md",
+        "quoin/dev/tests/test_handoff_producer_conformance.py",
+    ),
+    # IVG-248 stage 3 T-10: end_of_task's four fail-closed no-envelope
+    # clauses (T-07) are read by the fifth function in
+    # test_inline_step_summary_present.py — without this row the affected-
+    # area gate after this file's own edit never runs the guard that covers
+    # it.
+    (
+        "quoin/adapters/claude/skills/end_of_task/SKILL.md",
+        "quoin/dev/tests/test_inline_step_summary_present.py",
+    ),
+    # IVG-248 stage 3 T-10: core/skills/run.md carried no selector row at
+    # all before this stage. Four rows close the hole for the guards this
+    # stage's edit class can break: the partial-continuation and autonomous-
+    # sentinel structural guards, plus the two forbidden-token scanners
+    # T-06's edit must stay clean against.
+    (
+        "quoin/core/skills/run.md",
+        "quoin/dev/tests/test_run_partial_continuation.py",
+    ),
+    (
+        "quoin/core/skills/run.md",
+        "quoin/dev/tests/test_autonomous_sentinel_contract.py",
+    ),
+    (
+        "quoin/core/skills/run.md",
+        "quoin/dev/tests/test_run_adapter_pilot.py",
+    ),
+    (
+        "quoin/core/skills/run.md",
+        "quoin/dev/tests/test_run_core_autonomous.py",
+    ),
 )
 
 # SKILL.md coverage residual gap (review-1.md MAJOR 2, documented-acceptance branch):
 # _DOCS_TO_TESTS is a flat, per-file allowlist — there is no directory-prefix rule,
-# so an edit to any of the remaining 31 adapter SKILL.md files (the third in-scope
+# so an edit to any of the remaining 30 adapter SKILL.md files (the third in-scope
 # citation-sweep corpus, alongside the two rows above) is NOT selectable for
 # test_claude_md_citations.py and still falls through to the generic non-.py
 # "ignored" bucket for that sweep specifically (test_unrelated_skill_md_still_ignored
@@ -475,7 +583,7 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
 # Orthogonal addition (IVG-249 S-02): four SKILL.md files (run, thorough_plan,
 # architect, end_of_task) now carry rows above selecting the on-behalf guard
 # tests; this does NOT make them selectable for the citation sweep
-# (test_claude_md_citations.py), which remains gapped for the remaining 31
+# (test_claude_md_citations.py), which remains gapped for the remaining 30
 # adapter SKILL.md files exactly as before.
 #
 # Orthogonal addition (IVG-249 S-03 T-07): gate/SKILL.md (plus end_of_task and
@@ -486,7 +594,7 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
 # (test_affected_tests.py:342) moved its "lands in ignored" assertion to
 # critic/SKILL.md, which still carries no _DOCS_TO_TESTS row at all. gate/SKILL.md
 # itself later gained a citation-sweep row (IVG-248 stage 2 T-14, see above), so
-# test_claude_md_citations.py now remains gapped for the remaining 31 adapter
+# test_claude_md_citations.py now remains gapped for the remaining 30 adapter
 # SKILL.md files, not all 32 — only gate/SKILL.md's general unselectability, and
 # later its citation coverage, changed.
 #
@@ -494,8 +602,16 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
 # (quoin/skills/<skill>/preamble.md) are now covered per-file above, selecting
 # test_preamble_freshness.py. This is unrelated to the SKILL.md citation-sweep
 # gap described above — preamble.md and SKILL.md are different files in the
-# same skill directory, and the citation-sweep gap for the remaining 31 adapter
+# same skill directory, and the citation-sweep gap for the remaining 30 adapter
 # SKILL.md files is unchanged.
+#
+# Orthogonal addition (IVG-248 stage 3 T-10): run/SKILL.md now also carries a
+# citation-sweep row (see above), alongside gate/SKILL.md's existing one, so
+# the residual gap for test_claude_md_citations.py narrows from 31 remaining
+# adapter SKILL.md files to 30. The same commit also gives implement, review,
+# thorough_plan and end_of_task rows for the new envelope-branch guard, and
+# core/skills/run.md its first four rows ever — none of which touch the
+# citation-sweep gap described above, which remains about that one sweep only.
 
 
 # ---------------------------------------------------------------------------
