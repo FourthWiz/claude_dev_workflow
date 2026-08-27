@@ -69,6 +69,8 @@ SENTINEL_TOKENS = (
     "[quoin-onbehalf]",
     "[no-phase-budget]",
     "[no-session-age-guard]",
+    "[quoin-handoff/",
+    "[/quoin-handoff]",
 )
 
 _HEADING_SCAN_LIMIT = 50

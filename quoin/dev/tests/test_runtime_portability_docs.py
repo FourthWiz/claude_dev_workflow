@@ -23,6 +23,7 @@ def test_runtime_portability_docs_exist():
         "quoin/core/workflow/cost-ledger.md",
         "quoin/core/workflow/skills.json",
         "quoin/core/workflow/skills.md",
+        "quoin/core/workflow/handoff-format.md",
         "quoin/adapters/README.md",
         "quoin/adapters/claude/README.md",
         "quoin/adapters/claude/models.md",
@@ -139,6 +140,7 @@ def test_portable_scripts_have_core_implementation_and_wrappers():
         "validate_artifact.py",
         "classify_critic_issues.py",
         "validate_adapter_drift.py",
+        "handoff_validate.py",
     ]:
         core_path = REPO_ROOT / "quoin" / "core" / "scripts" / name
         wrapper_path = REPO_ROOT / "quoin" / "scripts" / name
@@ -151,7 +153,7 @@ def test_core_workflow_docs_are_referenced_from_runtime_boundary_and_claude_rule
     runtime = read_rel("quoin/docs/runtime-portability.md")
     claude = read_rel("quoin/CLAUDE.md")
 
-    for name in ["rules.md", "task-layout.md", "session-state.md", "cost-ledger.md"]:
+    for name in ["rules.md", "task-layout.md", "session-state.md", "cost-ledger.md", "handoff-format.md"]:
         assert name in runtime
         assert name in claude
 
@@ -159,6 +161,34 @@ def test_core_workflow_docs_are_referenced_from_runtime_boundary_and_claude_rule
     assert "quoin/core/workflow/" in claude
     assert "bash quoin/install.sh" in claude
     assert "active Claude Code runtime rules file" in claude
+
+
+def test_codex_handoff_and_core_spec_cross_reference():
+    """The Codex session handoff and the inter-agent handoff envelope spec
+    name each other, so a reader following either file finds the other.
+
+    A bare substring check cannot catch a wrong path spelling here: the
+    project-root spelling (`quoin/quoin/core/workflow/handoff-format.md`)
+    contains the correct repo-root spelling as a substring, so `in` would
+    pass on either. The predicate instead extracts the backticked path
+    token each file cites for the other and requires it to resolve on
+    disk from REPO_ROOT — a wrong spelling fails the file-existence check
+    even though it would pass a containment check.
+    """
+    codex_handoff = read_rel("quoin/adapters/codex/handoff.md")
+    core_spec = read_rel("quoin/core/workflow/handoff-format.md")
+
+    codex_match = re.search(r"`(quoin/core/workflow/handoff-format\.md)`", codex_handoff)
+    assert codex_match, "handoff.md must cite handoff-format.md by backticked repo-root path"
+    assert (REPO_ROOT / codex_match.group(1)).is_file()
+
+    spec_match = re.search(r"`(quoin/adapters/codex/handoff\.md)`", core_spec)
+    assert spec_match, "handoff-format.md must cite handoff.md by backticked repo-root path"
+    assert (REPO_ROOT / spec_match.group(1)).is_file()
+
+    # both files must also state the distinction, not just the path
+    assert "session continuation" in codex_handoff
+    assert "session continuation" in core_spec
 
 
 def test_skill_manifest_matches_current_claude_frontmatter():

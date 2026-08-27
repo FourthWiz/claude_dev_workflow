@@ -296,6 +296,7 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
     installer.deploy_skills(source_dir, dest_root)
     installer.deploy_scripts(source_dir, dest_root)
     installer.deploy_core_scripts(source_dir, dest_root)
+    installer.deploy_core_workflow(source_dir, dest_root)  # IVG-248: portable workflow docs (D-10)
     installer.deploy_dashboard_assets(source_dir, dest_root)  # T-12: SPA assets (D-11)
     installer.cleanup_obsolete_scripts(dest_root)
 
@@ -555,6 +556,18 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         print(f"  {status} {fname}")
         if not found:
             errors.append(f"Missing core script: {fname}")
+
+    print()
+
+    # Core workflow docs
+    print(f"Core workflow ({dest_label}/core/workflow/):")
+    for fname in installer.CORE_WORKFLOW_FILES:
+        p = dest_root / "core" / "workflow" / fname
+        found = p.exists()
+        status = "✓" if found else "✗"
+        print(f"  {status} {fname}")
+        if not found:
+            errors.append(f"Missing core workflow file: {fname}")
 
     print()
 

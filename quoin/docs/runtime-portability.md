@@ -77,6 +77,7 @@ satisfying mitigation.
   - `session-state.md` defines handoff, lessons, and daily insight semantics.
   - `cost-ledger.md` defines portable ledger shape while leaving runtime cost capture to adapters.
   - `skills.json` defines runtime-neutral skill metadata while preserving current Claude model mappings.
+  - `handoff-format.md` defines the inter-agent dispatch/return envelope, independent of the Codex session-handoff artifact.
 - Shared reference material in `quoin/memory/`, including `format-kit.md`, `format-kit.sections.json`, `glossary.md`, `terse-rubric.md`, `summary-prompt.md`, `workflow-rules.md`, and `lessons-learned.md`.
 
 The portable core should not know where a runtime stores global instructions, commands, sessions, approvals, or sandbox settings.

@@ -143,6 +143,7 @@ DEPLOYED_SCRIPTS = (
     "context_bundle.py",  # IVG-164 stage 2 T-02: context bundle helper for orchestrator spawn-prompt construction (standalone, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS twin, mirrors build_claude_slim.py)
     "gate_fullsuite_sidecar.py",  # IVG-249 stage-3 gate full-suite freshness sidecar (wrapped portable-core — also in CORE_SCRIPTS)
     "handoff_measure.py",  # IVG-248: agent-handoff payload-size instrument (adapter-only, DEPLOYED_SCRIPTS-only — no CORE_SCRIPTS twin, mirrors footprint_report.py)
+    "handoff_validate.py",  # IVG-248: inter-agent handoff envelope validator (wrapped portable-core — also in CORE_SCRIPTS)
 )
 
 # T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
@@ -445,6 +446,7 @@ CORE_SCRIPTS = (
     "plan_path_lint.py",  # IVG-143: wrapped impl; required by ~/.claude/scripts/plan_path_lint.py parents[1] loader
     "authored_content_lint.py",  # advisory authored-content lint core impl (wrapped portable-core)
     "gate_fullsuite_sidecar.py",  # IVG-249 stage-3 gate full-suite freshness sidecar (wrapped portable-core — also in CORE_SCRIPTS)
+    "handoff_validate.py",  # IVG-248: inter-agent handoff envelope validator core impl; required by ~/.claude/scripts/handoff_validate.py parents[1] loader
 )
 
 
@@ -461,6 +463,35 @@ def deploy_core_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> No
         dst = dst_core / fname
         _copy_with_substitution(src, dst, dest_root)
         print(f"Copied core {fname} to {dest_root}/core/scripts/")
+
+
+# Portable core workflow docs deployed alongside core scripts in ~/.claude/core/workflow/.
+# IVG-248: runtime-neutral workflow semantics (rules.md, task-layout.md, session-state.md,
+# cost-ledger.md, skills.md, skills.json) plus the inter-agent handoff spec (T-06, D-10).
+CORE_WORKFLOW_FILES = (
+    "cost-ledger.md",
+    "handoff-format.md",
+    "rules.md",
+    "session-state.md",
+    "skills.json",
+    "skills.md",
+    "task-layout.md",
+)
+
+
+def deploy_core_workflow(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
+    """Copy portable core workflow docs from source_dir/core/workflow/ to dest_root/core/workflow/."""
+    src_workflow = source_dir / "core" / "workflow"
+    dst_workflow = dest_root / "core" / "workflow"
+    dst_workflow.mkdir(parents=True, exist_ok=True)
+    for fname in CORE_WORKFLOW_FILES:
+        src = src_workflow / fname
+        if not src.exists():
+            print(f"quoin: Expected core workflow file {fname} at {src} but not found", file=sys.stderr)
+            sys.exit(1)
+        dst = dst_workflow / fname
+        _copy_with_substitution(src, dst, dest_root)
+        print(f"Copied core workflow {fname} to {dest_root}/core/workflow/")
 
 
 def deploy_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
@@ -483,7 +514,7 @@ def deploy_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> None:
 # Category names compute_drift knows how to compare. Kept in sync with the
 # deploy manifests above. The CLI (deploy_drift_check.py) surfaces this list as
 # `checked_categories` and names everything NOT here as `uncovered_categories`.
-DRIFT_CATEGORIES: tuple[str, ...] = ("skills", "scripts", "core-scripts", "memory")
+DRIFT_CATEGORIES: tuple[str, ...] = ("skills", "scripts", "core-scripts", "core-workflow", "memory")
 
 
 class DriftEntry(NamedTuple):
@@ -573,6 +604,12 @@ def compute_drift(
         dst_core = dest_root / "core" / "scripts"
         for fname in CORE_SCRIPTS:
             _check("core-scripts", src_core / fname, dst_core / fname)
+
+    if "core-workflow" in selected:
+        src_workflow = source_dir / "core" / "workflow"
+        dst_workflow = dest_root / "core" / "workflow"
+        for fname in CORE_WORKFLOW_FILES:
+            _check("core-workflow", src_workflow / fname, dst_workflow / fname)
 
     return drift
 

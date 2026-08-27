@@ -36,7 +36,7 @@ Future adapter work may use this manifest to generate runtime-specific command t
 
 Phase 22 added two optional boolean fields per skill entry. Both default to `false` when absent (backward-compatible with existing schema-v1 readers).
 
-- `section_0` — whether the Claude adapter `SKILL.md` must carry the `## §0 Model dispatch (FIRST STEP — execute before anything else)` block. Derived from the 12 cheap-tier enumeration in `quoin/CLAUDE.md` (§0 Model dispatch preamble section). Skills with `section_0: true` self-dispatch to their declared model tier when invoked from a more expensive session. When adding a new skill, set `section_0: true` if the skill is cheap-tier (Haiku or Sonnet) and must carry the §0 dispatch block.
+- `section_0` — whether the Claude adapter `SKILL.md` must carry the `## §0 Model dispatch (FIRST STEP — execute before anything else)` block. Derived from the 12 cheap-tier enumeration in `quoin/CLAUDE.md` (§0 Model dispatch preamble section). Skills with `section_0: true` self-dispatch to their declared model tier when invoked from a more expensive session. When adding a new skill, set `section_0: true` if the skill is cheap-tier (any tier below the strongest model) and must carry the §0 dispatch block.
 
 - `spawn_target` — whether the skill is a subagent-preamble spawn target (one of the 7 skills in `build_preambles.py::SPAWN_TARGETS`). Spawn-target skills must have a `preamble.md` alongside the legacy stub at `quoin/skills/<name>/preamble.md` (the path install.sh copies from). When adding a new skill that is a spawn target, generate and commit the preamble via `build_preambles.py`, then set `spawn_target: true`.
 

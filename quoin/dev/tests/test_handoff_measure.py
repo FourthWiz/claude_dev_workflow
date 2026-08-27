@@ -1,5 +1,5 @@
 """test_handoff_measure.py — fixture-only tests for handoff_measure.py
-(IVG-248 agent-handoff-format stage 1: instrument skeleton, stage-1/current-plan.md T-01/T-02).
+(agent-handoff-format stage 1: instrument skeleton).
 
 All tests point the instrument at a SYNTHETIC fixture tree materialized under
 <tmp_path>/.claude/projects/<hash>/<sid>/subagents/ (copied at test time from the
@@ -12,7 +12,7 @@ deliberately has NO literal ".claude" path segment, because quoin/.gitignore ign
 any ".claude/" directory anywhere in the repo — a committed ".claude"-named fixture
 tree would be silently invisible in a clean checkout.
 
-Cases (mirrors stage-1/current-plan.md T-02; letters match the plan):
+Cases (letters match the design doc):
   (a) run-owned marker in the first 100 B -> detect_phase + run_owned True
   (b) marker beginning at byte 640 -> no match (600-byte window)
   (c) marker naming a non-run-owned skill -> skill_matched, not run_owned
@@ -38,6 +38,7 @@ Cases (mirrors stage-1/current-plan.md T-02; letters match the plan):
 
 import ast
 import pathlib
+import re
 import shutil
 import sys
 
@@ -45,6 +46,17 @@ import pytest
 
 SCRIPTS_DIR = pathlib.Path(__file__).parent.parent.parent / "scripts"  # quoin/quoin/scripts/
 FIXTURES_SRC_PROJECTS = pathlib.Path(__file__).parent / "fixtures" / "handoff_measure" / "projects"
+BASELINE_SNAPSHOT_PATH = (
+    pathlib.Path(__file__).parent / "fixtures" / "handoff_measure" / "baseline"
+    / "handoff-baseline-snapshot.json"
+)
+
+# Ordinal-label id shape stable_id produces: a bare "project-N" (no session
+# component), or the full "project-N/session-M/spawn-K".
+_ORDINAL_ID_SHAPE = re.compile(r"^project-\d+(/session-\d+/spawn-\d+)?$")
+_UUID_SHAPE = re.compile(
+    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+)
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 import handoff_measure as hm  # noqa: E402
@@ -281,7 +293,7 @@ def test_cases_m_and_n_land_in_distinct_excluded_buckets(fixtures_home):
 
 
 # ---------------------------------------------------------------------------
-# T-03: nearest_rank_percentile (D-12)
+# nearest_rank_percentile
 # ---------------------------------------------------------------------------
 def test_nearest_rank_percentile_basic():
     xs = [10, 20, 30, 40, 50]
@@ -299,7 +311,7 @@ def test_nearest_rank_percentile_unsorted_input_is_sorted_first():
 
 
 # ---------------------------------------------------------------------------
-# T-03: channel_stats — per-phase and overall dispatch/return byte stats
+# channel_stats — per-phase and overall dispatch/return byte stats
 # ---------------------------------------------------------------------------
 def _fake_record(phase, dispatch, return_):
     return {"phase": phase, "dispatch_text": dispatch, "return_text": return_}
@@ -332,7 +344,7 @@ def test_channel_stats_ratio_and_divisor_present():
 
 
 # ---------------------------------------------------------------------------
-# T-03: token_cross_check — gating, three fractions, pooled ratio (D-06)
+# token_cross_check — gating, three fractions, pooled ratio
 # ---------------------------------------------------------------------------
 def test_token_cross_check_gates_on_stop_reason_end_turn():
     admitted = {
@@ -400,11 +412,10 @@ def test_token_cross_check_empty_input_does_not_raise():
     assert result["gated"]["pooled_ratio"] is None
 
 
-# Mutation proof for the two stop_reason-gating mutations deferred from T-02
-# (drop the stop_reason gate; invert the gate) is run directly against
+# Mutation proof for the two stop_reason-gating mutations (drop the
+# stop_reason gate; invert the gate) is run directly against
 # handoff_measure.py's source and pins on test_token_cross_check_gates_on_
-# stop_reason_end_turn above — see this task's implementation notes in
-# stage-1/current-plan.md for the recorded red/green results.
+# stop_reason_end_turn above.
 
 
 # ---------------------------------------------------------------------------
@@ -412,7 +423,7 @@ def test_token_cross_check_empty_input_does_not_raise():
 # ---------------------------------------------------------------------------
 def test_iter_transcripts_requires_home_param(fixtures_home):
     paths = list(hm.iter_transcripts(fixtures_home))
-    assert len(paths) == 15  # 14 cases (a)-(n) + sid-joint's subagent transcript (T-06)
+    assert len(paths) == 15  # 14 cases (a)-(n) + sid-joint's subagent transcript
     assert all(p.name.startswith("agent-case-") or p.name == "agent-joint.jsonl" for p in paths)
 
 
@@ -444,7 +455,7 @@ def test_cli_main_refuses_measurement_on_empty_corpus(tmp_path, capsys):
 
 
 # ---------------------------------------------------------------------------
-# T-04: channel three — orchestrator-side artifact re-read bytes
+# Channel three — orchestrator-side artifact re-read bytes
 # ---------------------------------------------------------------------------
 
 def _write_parent_transcript(path, rows):
@@ -592,7 +603,7 @@ def test_channel_three_stats_per_session_distribution(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# T-05: snapshot mode — the reproducibility contract
+# Snapshot mode — the reproducibility contract
 # ---------------------------------------------------------------------------
 
 def test_stable_id_opaque_labels_every_path_component():
@@ -650,11 +661,11 @@ def test_build_snapshot_record_carries_no_payload_text(fixtures_home):
     # project's own cost-ledger files join back to the real session
     assert "parent_session_id" not in snap
     assert "sid-case-a" not in str(snap)
-    # never payload text (D-04)
+    # never payload text
     dumped = str(snap)
     assert record["dispatch_text"] not in dumped
     assert record["return_text"] not in dumped
-    # T-10 fills sentinel_bucket (D-09); channel_three/growth_bound stay
+    # sentinel_bucket is filled for real; channel_three/growth_bound stay
     # explicit PARTIAL placeholders (see module note) rather than omitted.
     assert snap["sentinel_bucket"] == hm.sentinel_bucket(record.get("dispatch_text", ""))
     assert snap["channel_three"] is None
@@ -685,6 +696,90 @@ def test_write_then_load_snapshot_round_trips(tmp_path, fixtures_home):
     hm.write_snapshot(out, snapshot)
     loaded = hm.load_snapshot(out)
     assert loaded == snapshot
+
+
+# ---------------------------------------------------------------------------
+# load_snapshot schema/key validation, and the snapshot-write block's own
+# try/except in main() (distinct from the corpus-capture try/except).
+# ---------------------------------------------------------------------------
+def test_load_snapshot_rejects_unsupported_schema_version(tmp_path):
+    bad = {
+        "schema_version": 99,
+        "transcripts": 0, "parsed": 0, "skipped_unreadable": 0,
+        "skill_matched": 0, "run_owned": 0, "records": [],
+    }
+    path = tmp_path / "bad-version.json"
+    hm.write_snapshot(path, bad)
+    with pytest.raises(ValueError, match="schema_version"):
+        hm.load_snapshot(path)
+
+
+def test_load_snapshot_rejects_missing_required_key(tmp_path):
+    missing_records = {
+        "schema_version": hm.SNAPSHOT_SCHEMA_VERSION,
+        "transcripts": 0, "parsed": 0, "skipped_unreadable": 0,
+        "skill_matched": 0, "run_owned": 0,
+        # "records" omitted
+    }
+    path = tmp_path / "missing-key.json"
+    hm.write_snapshot(path, missing_records)
+    with pytest.raises(ValueError, match="records"):
+        hm.load_snapshot(path)
+
+
+def test_from_snapshot_cli_exits_2_on_unsupported_schema_version(tmp_path, capsys):
+    bad = {
+        "schema_version": 99,
+        "transcripts": 0, "parsed": 0, "skipped_unreadable": 0,
+        "skill_matched": 0, "run_owned": 0, "records": [],
+    }
+    path = tmp_path / "bad-version.json"
+    hm.write_snapshot(path, bad)
+    exit_code = hm.main(["--from-snapshot", str(path)])
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "handoff_measure: invocation error:" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_from_snapshot_cli_exits_2_on_missing_required_key(tmp_path, capsys):
+    missing_records = {
+        "schema_version": hm.SNAPSHOT_SCHEMA_VERSION,
+        "transcripts": 0, "parsed": 0, "skipped_unreadable": 0,
+        "skill_matched": 0, "run_owned": 0,
+    }
+    path = tmp_path / "missing-key.json"
+    hm.write_snapshot(path, missing_records)
+    exit_code = hm.main(["--from-snapshot", str(path)])
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "handoff_measure: invocation error:" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_snapshot_write_block_maps_relative_to_failure_to_exit_2(
+    tmp_path, fixtures_home, monkeypatch, capsys
+):
+    """A record path outside `home` fails `relative_to` inside
+    `build_snapshot` (via `_corpus_label_maps`/`stable_id`) — the
+    snapshot-write try/except must map that to exit 2 with the
+    snapshot-side message, distinct from the corpus-capture try/except's
+    message, and never a raw traceback."""
+    bad_record = dict(_record_for(fixtures_home, "sid-case-a"))
+    bad_record["path"] = str(tmp_path / "outside-home.jsonl")
+    bad_corpus = {
+        "transcripts": 1, "parsed": 1, "skipped_unreadable": 0,
+        "skill_matched": 1, "run_owned": 1, "records": [bad_record],
+    }
+    monkeypatch.setattr(hm, "capture_corpus", lambda home, project_filter=None: bad_corpus)
+    snap_path = tmp_path / "snap.json"
+    exit_code = hm.main(["--home", str(fixtures_home), "--snapshot", str(snap_path)])
+    captured = capsys.readouterr()
+    assert exit_code == 2
+    assert "handoff_measure: invocation error writing snapshot:" in captured.err
+    assert "handoff_measure: invocation error: " not in captured.err
+    assert "Traceback" not in captured.err
+    assert not snap_path.exists()
 
 
 def test_write_snapshot_is_byte_identical_across_two_writes(tmp_path, fixtures_home):
@@ -822,8 +917,30 @@ def test_cli_snapshot_flag_writes_a_loadable_snapshot(tmp_path, fixtures_home):
     assert "corpus_captured_at" in loaded
 
 
+def test_committed_baseline_snapshot_is_anonymized():
+    """Guard the committed baseline snapshot fixture ITSELF, not a rebuilt
+    copy — otherwise this large committed artifact is referenced only by
+    affected_tests.py's selector row and nothing ever loads it. Written
+    against the current anonymization scheme, so it fails hard against a
+    pre-anonymization blob: a raw parent-session UUID, a bare absolute home
+    path, or a record id that is not a pure ordinal-label shape.
+    """
+    raw = BASELINE_SNAPSHOT_PATH.read_text(encoding="utf-8")
+    # Goes through load_snapshot's own schema/key validation (not a bare
+    # json.load), so this also re-proves the fixture still satisfies it.
+    snapshot = hm.load_snapshot(BASELINE_SNAPSHOT_PATH)
+    assert snapshot["schema_version"] == hm.SNAPSHOT_SCHEMA_VERSION
+    assert "parent_session_id" not in raw
+    assert _UUID_SHAPE.search(raw) is None
+    assert "/Users/" not in raw
+    assert "/home/" not in raw
+    assert snapshot["records"], "fixture must carry at least one record for this guard to mean anything"
+    for record in snapshot["records"]:
+        assert _ORDINAL_ID_SHAPE.match(record["id"]), record["id"]
+
+
 # ---------------------------------------------------------------------------
-# T-06: always-on parent-side channel-three joint test, against a COMMITTED
+# Always-on parent-side channel-three joint test, against a COMMITTED
 # fixture transcript (not a synthetic tmp_path row set) — the producer
 # (parent-transcript resolution + tool_use/tool_result pairing) and consumer
 # (channel_three_for_session) must agree on a real file at the real resolved
@@ -846,7 +963,7 @@ def test_joint_resolve_parent_transcript_path_matches_committed_fixture():
 
 def test_joint_channel_three_sub_a_and_sub_b_byte_totals():
     result = hm.channel_three_for_session(_JOINT_PARENT_PATH)
-    # r1 and r3 are both genuine .workflow_artifacts Reads (r2 pairs to
+    # r1 and r3 are both genuine workflow-artifacts Reads (r2 pairs to
     # nothing, see the wrong-key test below); b1 is the one Bash pair.
     assert result["sub_a_calls"] == 2
     assert result["sub_a_bytes"] == (
@@ -887,7 +1004,7 @@ def test_joint_channel_three_boundary_window_attribution():
 
 def test_joint_wrong_result_key_use_id_contributes_zero_not_absorbed():
     result = hm.channel_three_for_session(_JOINT_PARENT_PATH)
-    # r2's Read is a genuine .workflow_artifacts candidate, but its
+    # r2's Read is a genuine workflow-artifacts candidate, but its
     # tool_result is spelled "use_id" (not "tool_use_id") — it must NOT be
     # silently absorbed into sub_a's total. sub_a_calls is exactly 2 (r1 and
     # r3 only); if r2 were wrongly counted it would be 3.
@@ -904,7 +1021,7 @@ def test_joint_unpaired_orphan_tool_result_is_ignored():
     assert len(events) == 5  # a1, r1, b1, a2, r3 — r2 (wrong key) and the orphan pair to nothing
 
 
-# Mutation proof, run and recorded (T-06 ack) — applied once each directly
+# Mutation proof, run and recorded — applied once each directly
 # against handoff_measure.py's source, confirmed red, reverted. All three
 # run against `-k "channel_three or joint"`; the fourth number is the count
 # of tests in that filtered set that went red.
@@ -917,7 +1034,7 @@ def test_joint_unpaired_orphan_tool_result_is_ignored():
 #      to 1 (only r2, the one pair that happens to already use "use_id" as
 #      its own key), so the committed fixture's five real "tool_use_id"
 #      pairs vanish. Reverted; full suite green after revert.
-#   2. dropped the ".workflow_artifacts" filter from is_3a in
+#   2. dropped the workflow-artifacts filter from is_3a in
 #      channel_three_for_session (`is_3a = name == "Read"`) -> RED (1):
 #      test_channel_three_classifies_3a_and_3b, whose t3 Read of
 #      "/x/other/file.py" now wrongly counts, moving sub_a_calls from 1 to
@@ -935,7 +1052,7 @@ def test_joint_unpaired_orphan_tool_result_is_ignored():
 
 
 # ---------------------------------------------------------------------------
-# T-06: opt-in live test — gated on QUOIN_HANDOFF_LIVE_CORPUS=1 and the real
+# Opt-in live test — gated on QUOIN_HANDOFF_LIVE_CORPUS=1 and the real
 # corpus existing; skips cleanly otherwise since subagent transcripts are
 # not portable across machines.
 # ---------------------------------------------------------------------------
@@ -973,18 +1090,18 @@ def test_channel_three_agent_return_cross_check(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# T-14: re-read growth-bound estimator (D-11, D-13)
+# Re-read growth-bound estimator
 #
-# Deviation from stage-1/current-plan.md T-14, recorded here rather than
-# silently: the plan asks for cases (p)-(w) "in the committed parent-session
-# fixture tree from T-06". These use tmp_path-generated transcripts and
-# real on-disk files instead — every candidate path in these tests resolves
-# against an actual file under tmp_path (which the D-11 regex's generic
-# /private or /tmp prefix matches on both macOS and Linux runners), so the
-# resolution and charge-model mechanics under test are exercised exactly as
-# they would be against a committed fixture, without adding nine more
-# committed *.jsonl files and a T-08 selector row for each. The always-on
-# property (no live-corpus gate) is preserved.
+# Deliberate deviation, recorded here rather than silently: cases (p)-(w)
+# use tmp_path-generated transcripts and real on-disk files rather than the
+# committed parent-session fixture tree used elsewhere in this file — every
+# candidate path in these tests resolves against an actual file under
+# tmp_path (which the candidate-path regex's generic /private or /tmp
+# prefix matches on both macOS and Linux runners), so the resolution and
+# charge-model mechanics under test are exercised exactly as they would be
+# against a committed fixture, without adding nine more committed *.jsonl
+# files and a selector row for each. The always-on property (no live-corpus
+# gate) is preserved.
 # ---------------------------------------------------------------------------
 
 def _growth_home(tmp_path, sid="sid-growth"):
@@ -1031,7 +1148,7 @@ def test_growth_bound_case_q_already_read_contributes_zero(tmp_path):
     result = hm.growth_bound([record], home, None)
     assert result["whole_total"] == 0
     # a raw candidate WAS extracted, so it still counts toward coverage —
-    # a low bound must never disguise itself as low coverage (D-11).
+    # a low bound must never disguise itself as low coverage.
     assert result["extraction_coverage"] == 1.0
 
 
@@ -1141,7 +1258,7 @@ def test_growth_bound_workflow_artifacts_only_filter_excludes_other_paths(tmp_pa
     assert restricted["whole_total"] == 0
 
 
-# Mutation proof, run and recorded (T-14 ack) — applied once each directly
+# Mutation proof, run and recorded — applied once each directly
 # against handoff_measure.py's source, confirmed red, reverted:
 #   1. replaced the space-safe resolver's per-token cut loop with a
 #      whitespace-delimited `raw.split(" ")[0]` pattern -> RED (1):
