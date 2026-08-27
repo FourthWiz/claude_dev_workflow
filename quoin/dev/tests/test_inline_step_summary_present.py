@@ -137,6 +137,91 @@ class TestAdapterSkillInlineSummary:
             f"(once per verdict branch); found {count}"
         )
 
+    def test_thorough_plan_has_envelope_branch(self):
+        """A dispatched thorough_plan phase emits the return envelope instead of prose."""
+        text = self._skill_text("thorough_plan")
+        section = _extract_section(text, SECTION_HEADINGS["thorough_plan"])
+        assert section, "## Final output section not found in thorough_plan/SKILL.md"
+        low = section.lower()
+        assert "return: envelope" in low, (
+            "thorough_plan/SKILL.md ## Final output must name the 'return: envelope' sentinel"
+        )
+        assert "inline summary" in low, (
+            "thorough_plan/SKILL.md ## Final output must still carry the inline-summary branch"
+        )
+        assert "otherwise" in low, (
+            "thorough_plan/SKILL.md ## Final output must present the two branches as alternatives"
+        )
+
+    def test_implement_has_envelope_branch(self):
+        """A dispatched implement phase emits the return envelope instead of prose."""
+        text = self._skill_text("implement")
+        section = _extract_section(text, SECTION_HEADINGS["implement"])
+        assert section, "## After implementation section not found in implement/SKILL.md"
+        low = section.lower()
+        assert "return: envelope" in low, (
+            "implement/SKILL.md ## After implementation must name the 'return: envelope' sentinel"
+        )
+        assert "inline summary" in low, (
+            "implement/SKILL.md ## After implementation must still carry the inline-summary branch"
+        )
+        assert "otherwise" in low, (
+            "implement/SKILL.md ## After implementation must present the two branches as alternatives"
+        )
+
+    def test_review_has_envelope_branch(self):
+        """A dispatched review phase emits the return envelope instead of prose, on both verdict branches."""
+        text = self._skill_text("review")
+        section = _extract_section(text, SECTION_HEADINGS["review"])
+        assert section, "## After the review section not found in review/SKILL.md"
+        low = section.lower()
+        assert "return: envelope" in low, (
+            "review/SKILL.md ## After the review must name the 'return: envelope' sentinel"
+        )
+        assert "inline summary" in low, (
+            "review/SKILL.md ## After the review must still carry the inline-summary branch"
+        )
+        assert "otherwise" in low, (
+            "review/SKILL.md ## After the review must present the two branches as alternatives"
+        )
+
+    def test_envelope_branch_count_review(self):
+        """Review must name the envelope branch on BOTH verdict branches (APPROVED + CHANGES_REQUESTED)."""
+        text = self._skill_text("review")
+        section = _extract_section(text, SECTION_HEADINGS["review"])
+        count = section.lower().count("return: envelope")
+        assert count >= 2, (
+            f"review/SKILL.md ## After the review should name 'return: envelope' at least twice "
+            f"(once per verdict branch); found {count}"
+        )
+
+    def test_fail_closed_sites_emit_no_envelope(self):
+        """D-15 producer-side guard: every fail-closed final-message line also carries the
+        no-envelope clause, same line, in both implement and end_of_task. File-level, not
+        section-level — the fail-closed sites sit outside the sectioned After-implementation /
+        After-the-review blocks this class otherwise reads."""
+        fail_closed_literal = "gate-result: needs-decision` block as the final message"
+        no_envelope_sentinel = "emits no envelope here"
+        expected_counts = {"implement": 1, "end_of_task": 4}
+        for skill, expected in expected_counts.items():
+            text = self._skill_text(skill).lower()
+            lines = text.splitlines()
+            literal_lines = [ln for ln in lines if fail_closed_literal in ln]
+            sentinel_lines = [ln for ln in lines if no_envelope_sentinel in ln]
+            co_occurring = [ln for ln in literal_lines if no_envelope_sentinel in ln]
+            assert len(literal_lines) == expected, (
+                f"{skill}/SKILL.md: expected {expected} fail-closed final-message line(s), "
+                f"found {len(literal_lines)}"
+            )
+            assert len(sentinel_lines) == expected, (
+                f"{skill}/SKILL.md: expected {expected} no-envelope sentinel line(s), "
+                f"found {len(sentinel_lines)}"
+            )
+            assert len(co_occurring) == expected and len(co_occurring) > 0, (
+                f"{skill}/SKILL.md: every fail-closed final-message line must also carry "
+                f"'{no_envelope_sentinel}' on the SAME line; {len(co_occurring)}/{expected} co-occur"
+            )
+
 
 class TestClaudeMdCommunicationRule:
     """quoin/quoin/CLAUDE.md must define the shared End-of-step inline summary rule."""
