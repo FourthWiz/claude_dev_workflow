@@ -60,8 +60,8 @@ def test_sentinel_token_literal_parity():
         f"only in context_bundle.py: {set(bundle_tokens) - set(validator_tokens)}, "
         f"only in handoff_validate.py: {set(validator_tokens) - set(bundle_tokens)}"
     )
-    assert len(bundle_tokens) == 9, f"expected nine entries in context_bundle.py, got {len(bundle_tokens)}"
-    assert len(validator_tokens) == 9, f"expected nine entries in handoff_validate.py, got {len(validator_tokens)}"
+    assert len(bundle_tokens) == 11, f"expected eleven entries in context_bundle.py, got {len(bundle_tokens)}"
+    assert len(validator_tokens) == 11, f"expected eleven entries in handoff_validate.py, got {len(validator_tokens)}"
 
 
 def test_sentinel_token_parity_mutation_sensitive():

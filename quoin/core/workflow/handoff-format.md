@@ -34,6 +34,14 @@ close marker, `[/quoin-handoff]`, is its match. The envelope is everything
 strictly between the two markers. Byte bounds on the envelope as a whole are
 measured over this marker-to-marker span only, never over the whole payload.
 
+The close marker is recognised only when it occupies an entire line of its
+own — immediately preceded by the start of the payload or a newline, and
+immediately followed by a newline or the end of the payload. A
+close-marker-shaped substring appearing elsewhere on a line (for example
+quoted inside a field value) is not a match and does not terminate the
+envelope; the matching close marker is the first occurrence satisfying the
+own-line condition after the open marker.
+
 Placement is normative, not advisory: the text between the end of the
 sentinel zone and the open marker must contain only whitespace (prose before
 the envelope is a violation), and the open marker must begin at the start of
@@ -260,7 +268,11 @@ one-way, so that sequence can never legitimately appear in source text).
 Values are control-character-free; control characters are stripped. Every
 free-text value is checked against the sentinel-token probe reused from the
 bundle convention — a value must not itself contain a sentinel-style bracket
-token. All of this — the list delimiter, the one-way escape, the
+token. The envelope's own markers count as sentinel-style tokens for this
+probe: a value quoting either the version-marker prefix (`[quoin-handoff/`)
+or the close marker (`[/quoin-handoff]`) is rejected the same way any other
+sentinel token is — a marker literal may never appear inside a value. All of
+this — the list delimiter, the one-way escape, the
 split-on-first-delimiter consumer rule, control-character stripping, and the
 sentinel-token probe — is reused by reference from
 `quoin/scripts/context_bundle.py` rather than reinvented; only that script's

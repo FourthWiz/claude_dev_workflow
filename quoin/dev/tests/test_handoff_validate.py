@@ -203,6 +203,19 @@ def test_h11_sentinel_token_in_value():
     _assert_isolated("h11-sentinel-in-value.md", 1, "FAIL H-11")
 
 
+def test_h11_close_marker_in_value_is_not_envelope_smuggling():
+    """Regression: a value quoting the close marker literal must not
+    truncate the envelope early. Before the fix, the validator located the
+    close marker by naive substring search, so this fixture's summary value
+    was mistaken for the real close marker; everything after it (including
+    the live sentinel tokens on the final line) became unvalidated prose and
+    the payload passed with exit 0. The close marker is now recognised only
+    when it occupies its own line, so the real close marker (line 6) is
+    found instead, the summary value is parsed whole, and the embedded
+    marker literal inside it trips H-11."""
+    _assert_isolated("h11-close-marker-in-value.md", 1, "FAIL H-11")
+
+
 # ── H-12 (ADVISORY, first occurrence wins) ──────────────────────────────────
 
 
@@ -259,6 +272,17 @@ def test_h17_literal_escape_sequence():
 def test_h18_direction_assertion_disagrees_with_marker():
     _assert_isolated(
         "h18-direction-mismatch.md", 1, "FAIL H-18", extra_args=("--direction", "dispatch")
+    )
+
+
+def test_h18_skipped_when_marker_direction_itself_is_invalid():
+    """D-29's E4 cell: when the marker's own direction keyword is invalid
+    (H-04 fires), H-18 has no marker direction to compare --direction
+    against and must be skipped, not fired alongside H-04. Reuses the H-04
+    fixture with an explicit --direction to exercise the combination the
+    original H-04 test (no --direction) never reaches."""
+    _assert_isolated(
+        "h04-bad-direction.md", 1, "FAIL H-04", extra_args=("--direction", "return")
     )
 
 

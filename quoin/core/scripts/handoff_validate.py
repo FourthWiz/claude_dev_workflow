@@ -29,7 +29,10 @@ _SUPPORTED_MINORS = frozenset({0})
 
 # Deliberate copy of context_bundle.py's SENTINEL_TOKENS (D-19): core cannot
 # import the adapter-layer script, so the list is duplicated and a parity
-# test (T-11) keeps both copies in lockstep.
+# test (T-11) keeps both copies in lockstep. The envelope's own markers are
+# included: a value quoting either marker literal is a sentinel-style token
+# in its own right, so an embedded marker inside a field value is rejected
+# by H-11 rather than silently accepted as prose.
 _SENTINEL_TOKENS = (
     "[quoin-bundle]",
     "[/quoin-bundle]",
@@ -40,6 +43,8 @@ _SENTINEL_TOKENS = (
     "[quoin-onbehalf]",
     "[no-phase-budget]",
     "[no-session-age-guard]",
+    "[quoin-handoff/",
+    "[/quoin-handoff]",
 )
 
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -113,6 +118,29 @@ def _locate_open_marker(text: str):
     return (m.start(), m.end(), int(shape.group(1)), int(shape.group(2)), shape.group(3))
 
 
+def _find_close_marker(text: str, start: int) -> int:
+    """Return the index of the first close marker that is structurally a
+    marker line of its own — immediately preceded by the start of the text
+    or a newline, and immediately followed by a newline or the end of the
+    text. A close-marker-shaped substring elsewhere on a line (for example
+    quoted inside a field value) is not a match, since it is not the
+    envelope's own close marker; the search continues past it. Returns -1
+    if no structural match exists."""
+    pos = start
+    n = len(text)
+    marker_len = len(_CLOSE_MARKER)
+    while True:
+        idx = text.find(_CLOSE_MARKER, pos)
+        if idx == -1:
+            return -1
+        line_start_ok = idx == 0 or text[idx - 1] == "\n"
+        end = idx + marker_len
+        line_end_ok = end == n or text[end] == "\n"
+        if line_start_ok and line_end_ok:
+            return idx
+        pos = idx + 1
+
+
 # ── Envelope body parsing ────────────────────────────────────────────────────
 
 
@@ -151,7 +179,7 @@ def _parse_body(body_lines: list[str]):
 
     for idx, line in enumerate(body_lines):
         line_no = idx + 1
-        if line == "":
+        if line.strip() == "":
             blank_lines.append(line_no)
             current_block = None
             continue
@@ -432,7 +460,7 @@ def check_h_05(direction_kw: str, parsed: dict, status_ok: bool, messages: list[
     required = _STATUS_REQUIRED.get(status_value)
     if required is None:
         return
-    missing = [k for k in required if k not in present]
+    missing = [k for k in _RETURN_ORDER if k in required and k not in present]
     if status_value == "NEEDS-DECISION" and not ({"checkpoint", "artifact"} & present):
         missing.append("checkpoint-or-artifact")
     if missing:
@@ -454,7 +482,7 @@ def validate(text: str, direction_arg: str | None) -> list[str]:
         return messages
 
     marker_start, marker_end, major, minor, direction_kw = located
-    close_idx = text.find(_CLOSE_MARKER, marker_end)
+    close_idx = _find_close_marker(text, marker_end)
     has_close = close_idx != -1
 
     if not has_close:
@@ -463,7 +491,8 @@ def validate(text: str, direction_arg: str | None) -> list[str]:
             return messages
         direction_valid = check_h_04(direction_kw, messages)
         check_h_13(text, marker_start, messages)
-        check_h_18(direction_kw, direction_arg, messages)
+        if direction_valid:
+            check_h_18(direction_kw, direction_arg, messages)
         return messages
 
     if check_h_02_h_03(major, minor, messages):
@@ -482,7 +511,7 @@ def validate(text: str, direction_arg: str | None) -> list[str]:
 
     parsed = _parse_body(body_lines)
 
-    check_h_09(text, envelope_start, envelope_end, messages)
+    check_h_09(text, marker_end, envelope_end, messages)
     check_h_12(parsed, messages)
     check_h_15(parsed, messages)
     check_h_19(parsed, messages)
@@ -490,7 +519,8 @@ def validate(text: str, direction_arg: str | None) -> list[str]:
     check_h_08_h_10_h_11(parsed, messages)
 
     direction_valid = check_h_04(direction_kw, messages)
-    check_h_18(direction_kw, direction_arg, messages)
+    if direction_valid:
+        check_h_18(direction_kw, direction_arg, messages)
 
     if direction_valid:
         order, known, list_keys = _direction_tables(direction_kw)
