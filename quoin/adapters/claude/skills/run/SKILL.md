@@ -1090,6 +1090,8 @@ Each phase runs as a separate subagent session — never inline. This keeps the 
 - Spawning mechanism: same as `/thorough_plan`'s "Invoking each agent" section — the `Skill` tool invokes each subagent as a fresh session. Phases are sequential (not parallel).
 - Known gate/SKILL.md diagram inconsistency: `gate/SKILL.md` shows a gate after discover, but `CLAUDE.md`'s workflow sequence does not. This skill follows `CLAUDE.md` — no gate after discover. The gate skill determines context from disk artifacts, so the discrepancy has no runtime effect.
 - **Within-phase isolation, autonomous (T-12).** Under `AUTONOMOUS`, the "paths and parameters only" rule above is a HARD requirement, not just a lean-context preference: a phase subagent returns a PATH plus a short summary, never raw file content, so the orchestrator's own transcript stays bounded across a multi-relaunch autonomous span. A phase subagent that nears its own limit writes a checkpoint to disk and returns a structured `PARTIAL` signal instead of exhausting itself mid-phase; the orchestrator responds by dispatching a FRESH subagent to CONTINUE that same phase from the checkpoint (see "Within-phase PARTIAL continuation" under "## Error handling" below). This keeps orchestrator context bounded WITHIN a phase, complementing the cross-phase relaunch a supervisor performs between phases.
+- **Return envelope on dispatch.** A phase subagent dispatched with `return: envelope` replies with the return envelope, defined in the handoff-envelope section above, in place of its usual English summary. The orchestrator still authors its own Checkpoint A through D chat summaries from the artifacts it re-reads from disk — the envelope replaces the subagent's own prose, not the orchestrator's.
+- **Status and verdict vocabulary.** The contract's `status` enum has exactly four members and `status` is the sole discriminator of a return's shape. The returns this stage's run-owned phases emit are `COMPLETE` and `PARTIAL`. A phase that fails closed continues to emit the shipped `gate-result: NEEDS-DECISION` block exactly as today — that stays the token the orchestrator recognises, and the phase emits no envelope for that return. `NEEDS-DECISION` and `BLOCKED` are contract vocabulary reserved for a next wave, not dead words and not something this stage emits. On a complete return, the `verdict` field carries `PASS` for discover, enrich, specify, architect, implement and end_of_task; review substitutes its own vocabulary (`APPROVED`, `CHANGES_REQUESTED`, `BLOCKED`); thorough_plan substitutes `PASS` or `REVISE`.
 - **Self-utilization vs. scope-cap fallback.** A phase subagent SHOULD attempt to read its own transcript utilization to decide when to checkpoint-and-return-`PARTIAL` proactively, before it is forced to stop mid-tool-call. When a subagent cannot resolve its own transcript utilization, it MUST fall back to a fixed tool-use scope cap (mirroring `end_of_task`'s existing "Scope cap: ~N tool uses; if blocked, write to disk and return" pattern) so `PARTIAL` is still returned deterministically rather than the subagent silently running until it is killed.
 
 ## Parallel tasks
@@ -1152,6 +1154,10 @@ that tradeoff.
        restarting the phase from scratch.
     c. Repeat until the phase returns its normal phase-complete summary
        (not `PARTIAL`) or a hard-stop condition fires.
+    d. The `PARTIAL` signal above is the return envelope's `status: PARTIAL`
+       shape; `checkpoint` is the field carrying the path step (a) reads.
+       See the handoff-envelope section above for the full partial-status
+       field set.
   This is a WITHIN-phase mechanism — distinct from a supervisor's
   cross-phase relaunch (`autonomous-progress-{task}/{phase}.done`
   sentinels), and distinct from the stream-idle recovery above (which

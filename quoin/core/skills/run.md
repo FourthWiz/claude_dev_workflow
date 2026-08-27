@@ -191,6 +191,16 @@ until the phase reports normal completion. Whether a subagent detects its
 own nearness-to-limit or falls back to a fixed work-unit cap is
 adapter-specific.
 
+The channel a spawned phase uses to report its own completion or partial
+progress back to the orchestrator is a return envelope, whose full field
+set is declared in `quoin/core/workflow/handoff-format.md`, the
+return-channel contract shared by every adapter this document constrains.
+The partial-completion signal named above is a `status` value of that
+same return shape, carrying the checkpoint path the orchestrator resumes
+from. This paragraph describes that success-path return only; a phase
+that fails closed is a separate, adapter-owned channel this document does
+not describe.
+
 A resume that honors this contract MUST read the marker before any
 other decision point, so a relaunch never reverts to an interactive
 default and stalls; MUST derive the next phase from the completion
