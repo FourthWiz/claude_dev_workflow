@@ -170,7 +170,7 @@ class TestAdapterSkillInlineSummary:
         )
 
     def test_review_has_envelope_branch(self):
-        """A dispatched review phase emits the return envelope instead of prose, on both verdict branches."""
+        """A dispatched review phase emits the return envelope instead of prose, on both outcome branches."""
         text = self._skill_text("review")
         section = _extract_section(text, SECTION_HEADINGS["review"])
         assert section, "## After the review section not found in review/SKILL.md"
@@ -186,7 +186,7 @@ class TestAdapterSkillInlineSummary:
         )
 
     def test_envelope_branch_count_review(self):
-        """Review must name the envelope branch on BOTH verdict branches (APPROVED + CHANGES_REQUESTED)."""
+        """Review must name the envelope branch on BOTH outcome branches (APPROVED + CHANGES_REQUESTED)."""
         text = self._skill_text("review")
         section = _extract_section(text, SECTION_HEADINGS["review"])
         count = section.lower().count("return: envelope")
@@ -196,7 +196,7 @@ class TestAdapterSkillInlineSummary:
         )
 
     def test_fail_closed_sites_emit_no_envelope(self):
-        """D-15 producer-side guard: every fail-closed final-message line also carries the
+        """Producer-side guard: every fail-closed final-message line also carries the
         no-envelope clause, same line, in both implement and end_of_task. File-level, not
         section-level — the fail-closed sites sit outside the sectioned After-implementation /
         After-the-review blocks this class otherwise reads."""

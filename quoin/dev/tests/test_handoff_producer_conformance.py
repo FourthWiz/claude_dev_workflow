@@ -1,8 +1,8 @@
 """
 Black-box pytest tests for the run skill's handoff-envelope producer
-prose (T-09, FR-10, AC-07).
+prose.
 
-FR-10 requires the validator be driven from REAL emitted payload values
+The validator must be driven from REAL emitted payload values
 rather than synthetic hand-constructed pairs. The producer here is
 instruction text in adapter skill files, not executable code, so "real
 emitted values" means the literal fenced blocks those files instruct the
@@ -33,9 +33,10 @@ RUN_SKILL = os.path.join(
     QUOIN_DIR, "adapters", "claude", "skills", "run", "SKILL.md"
 )
 # The three summary-mandating skills — at this commit they carry no
-# literal handoff blocks of their own (T-07 lands later), so the
-# extractor is expected to find zero blocks in each; they are scanned
-# anyway so a future block landing in one of them is picked up for free.
+# literal handoff blocks of their own (a later change adds the envelope
+# branch to their final-message prose), so the extractor is expected to
+# find zero blocks in each; they are scanned anyway so a future block
+# landing in one of them is picked up for free.
 SUMMARY_MANDATING_SKILLS = [
     os.path.join(QUOIN_DIR, "adapters", "claude", "skills", "implement", "SKILL.md"),
     os.path.join(QUOIN_DIR, "adapters", "claude", "skills", "review", "SKILL.md"),
@@ -68,8 +69,8 @@ def run_validator(payload_text, direction):
 def extract_blocks(path):
     """Return a list of (direction, block_text) for every marker-first fenced
     block in the file at path. block_text spans open marker through close
-    marker inclusive — the first-line rule is what T-03's marker-first
-    template shape exists to satisfy (D-14)."""
+    marker inclusive — the first-line rule is what the envelope templates'
+    marker-first shape exists to satisfy."""
     with open(path, encoding="utf-8") as fh:
         content = fh.read()
     found = []
@@ -131,7 +132,7 @@ def test_every_extracted_block_validates_clean():
         assert lines == [], f"{direction} block warned: {lines}"
 
 
-# ── Composed-payload case — AC-07 and the bundle-coexistence mechanism ────
+# ── Composed-payload case — sentinel stacking and bundle coexistence ────
 
 
 def test_review_spawn_composed_payload_validates():
@@ -140,8 +141,7 @@ def test_review_spawn_composed_payload_validates():
     run skill verbatim, then a prose line, then a wrapped bundle block
     with both bundle markers on their own lines. The whole payload must
     validate clean as a dispatch — this discharges the placement rule,
-    the sentinel-stacking half of AC-07, and the bundle/envelope
-    coexistence line all at once."""
+    sentinel stacking, and bundle/envelope coexistence all at once."""
     dispatch_blocks = [
         block for direction, block in extract_blocks(RUN_SKILL) if direction == "dispatch"
     ]

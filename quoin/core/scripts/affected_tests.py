@@ -457,11 +457,11 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/adapters/claude/skills/gate/SKILL.md",
         "quoin/dev/tests/test_claude_md_citations.py",
     ),
-    # IVG-248 stage 3 T-10: the agent-handoff envelope section and its ten
-    # emit directives (T-03/T-04) touch structural regions of run/SKILL.md
-    # that the four named structural guards plus six additive-edit traps
-    # already pin — without these rows an affected-area /gate run on this
-    # file selects none of them and the guards only run at the full suite.
+    # This stage's agent-handoff envelope section and its emit
+    # directives touch structural regions of run/SKILL.md that the named
+    # structural guards plus several additive-edit traps already pin —
+    # without these rows an affected-area /gate run on this file selects
+    # none of them and the guards only run at the full suite.
     (
         "quoin/adapters/claude/skills/run/SKILL.md",
         "quoin/dev/tests/test_run_partial_continuation.py",
@@ -506,11 +506,10 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/adapters/claude/skills/run/SKILL.md",
         "quoin/dev/tests/test_handoff_producer_conformance.py",
     ),
-    # IVG-248 stage 3 T-10: the envelope-versus-inline-summary branch (T-07)
-    # and its extended guard (T-08) touch implement, review and
-    # thorough_plan's summary sections — without these rows a Standard gate
-    # on any of the three selects neither the section guard nor the
-    # producer-conformance guard.
+    # This stage's envelope-versus-inline-summary branch and its
+    # extended guard touch implement, review and thorough_plan's summary
+    # sections — without these rows a Standard gate on any of the three
+    # selects neither the section guard nor the producer-conformance guard.
     (
         "quoin/adapters/claude/skills/implement/SKILL.md",
         "quoin/dev/tests/test_inline_step_summary_present.py",
@@ -535,20 +534,19 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/adapters/claude/skills/thorough_plan/SKILL.md",
         "quoin/dev/tests/test_handoff_producer_conformance.py",
     ),
-    # IVG-248 stage 3 T-10: end_of_task's four fail-closed no-envelope
-    # clauses (T-07) are read by the fifth function in
-    # test_inline_step_summary_present.py — without this row the affected-
-    # area gate after this file's own edit never runs the guard that covers
-    # it.
+    # This stage's end_of_task fail-closed no-envelope clauses are
+    # read by a guard function in test_inline_step_summary_present.py —
+    # without this row the affected-area gate after this file's own edit
+    # never runs the guard that covers it.
     (
         "quoin/adapters/claude/skills/end_of_task/SKILL.md",
         "quoin/dev/tests/test_inline_step_summary_present.py",
     ),
-    # IVG-248 stage 3 T-10: core/skills/run.md carried no selector row at
-    # all before this stage. Four rows close the hole for the guards this
+    # core/skills/run.md carried no selector row at all
+    # before this stage. Four rows close the hole for the guards this
     # stage's edit class can break: the partial-continuation and autonomous-
-    # sentinel structural guards, plus the two forbidden-token scanners
-    # T-06's edit must stay clean against.
+    # sentinel structural guards, plus the two forbidden-token scanners the
+    # portable-mirror edit must stay clean against.
     (
         "quoin/core/skills/run.md",
         "quoin/dev/tests/test_run_partial_continuation.py",
@@ -605,7 +603,7 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
 # same skill directory, and the citation-sweep gap for the remaining 30 adapter
 # SKILL.md files is unchanged.
 #
-# Orthogonal addition (IVG-248 stage 3 T-10): run/SKILL.md now also carries a
+# Orthogonal addition (this stage): run/SKILL.md now also carries a
 # citation-sweep row (see above), alongside gate/SKILL.md's existing one, so
 # the residual gap for test_claude_md_citations.py narrows from 31 remaining
 # adapter SKILL.md files to 30. The same commit also gives implement, review,
