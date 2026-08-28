@@ -32,11 +32,10 @@ VALIDATOR = os.path.join(QUOIN_DIR, "core", "scripts", "handoff_validate.py")
 RUN_SKILL = os.path.join(
     QUOIN_DIR, "adapters", "claude", "skills", "run", "SKILL.md"
 )
-# The three summary-mandating skills — at this commit they carry no
-# literal handoff blocks of their own (a later change adds the envelope
-# branch to their final-message prose), so the extractor is expected to
-# find zero blocks in each; they are scanned anyway so a future block
-# landing in one of them is picked up for free.
+# The three summary-mandating skills each inline the COMPLETE (and, for
+# implement, PARTIAL) return template directly in their final-message
+# prose, so a compliant emission never requires reading the workflow-
+# directory contract at runtime — the contract stays the normative pointer.
 SUMMARY_MANDATING_SKILLS = [
     os.path.join(QUOIN_DIR, "adapters", "claude", "skills", "implement", "SKILL.md"),
     os.path.join(QUOIN_DIR, "adapters", "claude", "skills", "review", "SKILL.md"),
@@ -58,7 +57,12 @@ def run_validator(payload_text, direction):
         path = fh.name
     try:
         cmd = [sys.executable, VALIDATOR, "--direction", direction, path]
-        result = subprocess.run(cmd, capture_output=True, cwd=PROJECT_ROOT)
+        try:
+            result = subprocess.run(cmd, capture_output=True, cwd=PROJECT_ROOT, timeout=30)
+        except subprocess.TimeoutExpired as exc:
+            raise AssertionError(
+                f"validator subprocess exceeded 30s timeout for direction={direction!r}: {exc}"
+            ) from exc
     finally:
         os.unlink(path)
     stderr = result.stderr.decode("utf-8", errors="replace")
@@ -118,6 +122,27 @@ def test_dispatch_block_carries_return_envelope_field():
     dispatch_blocks = [block for direction, block in blocks if direction == "dispatch"]
     assert dispatch_blocks, "no dispatch block found"
     assert any("return: envelope" in block for block in dispatch_blocks)
+
+
+def test_dispatch_block_carries_spec_field():
+    blocks = all_producer_blocks()
+    dispatch_blocks = [block for direction, block in blocks if direction == "dispatch"]
+    assert dispatch_blocks, "no dispatch block found"
+    assert any(re.search(r"^spec:\s*\S+", block, re.MULTILINE) for block in dispatch_blocks), (
+        "no dispatch block carries a spec: field pointing a producer at the contract"
+    )
+
+
+def test_producer_skills_name_the_contract_file():
+    """Each summary-mandating skill must name handoff-format.md somewhere in its
+    final-message prose, so a producer reading its own SKILL.md can locate the
+    normative contract without depending on the dispatch payload alone."""
+    for path in SUMMARY_MANDATING_SKILLS:
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        assert "handoff-format.md" in text, (
+            f"{path} never names handoff-format.md"
+        )
 
 
 # ── Per-block validation — every extracted block validates clean ──────────

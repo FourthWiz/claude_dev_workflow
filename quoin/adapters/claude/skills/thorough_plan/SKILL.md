@@ -435,7 +435,16 @@ Then spawn `/gate` as a subagent session (post-plan boundary — subagent dispat
 
 Present automated checks and a summary to the user.
 
-**Final-message branch.** If the incoming dispatch prompt carried a handoff dispatch envelope with `return: envelope`, emit the return envelope defined in the workflow-directory contract as the final message, instead of the inline summary below — the orchestrator authors the human-facing checkpoint from the artifacts it re-reads. Otherwise — standalone invocation, no envelope — after the gate, print an **inline summary** in the chat as your final user-facing message, plain and human-readable (REQUIRED — do NOT rely on the user reading `current-plan.md`; the plan body is Tier-3 terse). Cover the canonical field set:
+**Final-message branch.** If the incoming dispatch prompt carried a handoff dispatch envelope with `return: envelope`, emit the return envelope as the final message, instead of the inline summary below — the orchestrator authors the human-facing checkpoint from the artifacts it re-reads. Full field/byte-bound reference stays the workflow-directory contract named in the dispatch's `spec:` field (__QUOIN_HOME__/core/workflow/handoff-format.md); the shape below is inlined so a compliant emission never requires reading it:
+```text
+[quoin-handoff/1.0 return]
+status: COMPLETE
+artifact: <task_dir>/current-plan.md
+verdict: PASS
+summary: <clamped, one line, <=600 B>
+[/quoin-handoff]
+```
+(`verdict: REVISE` if max-rounds was hit without convergence.) `status` is exactly one of `COMPLETE`, `PARTIAL`, `NEEDS-DECISION`, `BLOCKED`; `verdict` (when carried) is exactly one of `PASS`, `REVISE`, `APPROVED`, `CHANGES_REQUESTED`, `BLOCKED`. Otherwise — standalone invocation, no envelope — after the gate, print an **inline summary** in the chat as your final user-facing message, plain and human-readable (REQUIRED — do NOT rely on the user reading `current-plan.md`; the plan body is Tier-3 terse). Cover the canonical field set:
 1. **What this step produced** — e.g., "Produced a converged Medium-profile plan in N round(s)."
 2. **Main planned tasks** — 2–4 bullets in plain language (e.g., "Add retry logic to the payment client", "Write integration tests for the new endpoint") — no terse glyphs, no T-NN shorthand.
 3. **How many rounds and main revision themes** — e.g., "1 round, PASS on first critic pass" or "2 rounds: main revision addressed missing error-handling in the queue consumer."

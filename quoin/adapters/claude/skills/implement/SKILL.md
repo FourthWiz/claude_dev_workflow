@@ -731,7 +731,30 @@ This is what `/end_of_day` reads to consolidate the day's work. Without it, this
 
 When all requested tasks are complete:
 1. Run `/gate` **inline** — read `/gate/SKILL.md` from the same session and execute the gate process directly (do not spawn a subagent). The post-implement boundary keeps the parent's cache hot. Step 5 audit-log persistence applies; write `gate-implement-<date>.md` per `/gate/SKILL.md` before yielding control.
-2. **Final-message branch.** If the incoming dispatch prompt carried a handoff dispatch envelope with `return: envelope`, emit the return envelope defined in the workflow-directory contract as the final message, instead of the inline summary below — the orchestrator authors the human-facing checkpoint from the artifacts it re-reads. Otherwise — standalone invocation, no envelope — print an **inline summary** in the chat as your final user-facing message, plain and human-readable (REQUIRED on both the clean-finish path and the §0a scope-cap path — do NOT rely on the user reading terse `current-plan.md`). Cover the canonical field set:
+2. **Final-message branch.** If the incoming dispatch prompt carried a handoff dispatch envelope with `return: envelope`, emit the return envelope as the final message, instead of the inline summary below — the orchestrator authors the human-facing checkpoint from the artifacts it re-reads. Full field/byte-bound reference stays the workflow-directory contract named in the dispatch's `spec:` field (__QUOIN_HOME__/core/workflow/handoff-format.md); the shapes below are inlined so a compliant emission never requires reading it:
+
+   Clean finish:
+   ```text
+   [quoin-handoff/1.0 return]
+   status: COMPLETE
+   artifact: <task_dir>/current-plan.md
+   verdict: PASS
+   summary: <clamped, one line, <=600 B>
+   [/quoin-handoff]
+   ```
+
+   §0a scope-cap hit (some requested tasks remain ⏳):
+   ```text
+   [quoin-handoff/1.0 return]
+   status: PARTIAL
+   checkpoint: <boundary-checkpoint path>
+   phase: implement
+   remaining: <short, one line naming the deferred task IDs>
+   resume_hint: <short, one line>
+   [/quoin-handoff]
+   ```
+
+   `status` is exactly one of `COMPLETE`, `PARTIAL`, `NEEDS-DECISION`, `BLOCKED`; `verdict` (when carried) is exactly one of `PASS`, `REVISE`, `APPROVED`, `CHANGES_REQUESTED`, `BLOCKED` — implement always emits `PASS` on a `COMPLETE` return, never a review-style verdict. Otherwise — standalone invocation, no envelope — print an **inline summary** in the chat as your final user-facing message, plain and human-readable (REQUIRED on both the clean-finish path and the §0a scope-cap path — do NOT rely on the user reading terse `current-plan.md`). Cover the canonical field set:
    - **What was implemented** — e.g., "Implemented T-01 through T-04 (shared rule + 3 SKILL.md edits)."
    - **Files created or modified** — list paths in plain language.
    - **Tests written or run** — state pass/fail.
