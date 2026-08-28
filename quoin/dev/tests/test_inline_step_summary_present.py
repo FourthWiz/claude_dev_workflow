@@ -197,12 +197,14 @@ class TestAdapterSkillInlineSummary:
 
     def test_fail_closed_sites_emit_no_envelope(self):
         """Producer-side guard: every fail-closed final-message line also carries the
-        no-envelope clause, same line, in both implement and end_of_task. File-level, not
+        no-envelope clause, same line, in implement, end_of_task, and gate. File-level, not
         section-level — the fail-closed sites sit outside the sectioned After-implementation /
-        After-the-review blocks this class otherwise reads."""
+        After-the-review blocks this class otherwise reads. gate is covered because it runs
+        INLINE inside an envelope-dispatched implement/review session, sharing the final-message
+        slot with that phase's envelope branch (unlike rollback, which is not run-dispatched)."""
         fail_closed_literal = "gate-result: needs-decision` block as the final message"
         no_envelope_sentinel = "emits no envelope here"
-        expected_counts = {"implement": 1, "end_of_task": 4}
+        expected_counts = {"implement": 1, "end_of_task": 4, "gate": 1}
         for skill, expected in expected_counts.items():
             text = self._skill_text(skill).lower()
             lines = text.splitlines()
