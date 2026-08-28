@@ -542,6 +542,20 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/adapters/claude/skills/end_of_task/SKILL.md",
         "quoin/dev/tests/test_inline_step_summary_present.py",
     ),
+    # This stage's fail-closed no-envelope clauses in implement and
+    # end_of_task sit alongside pre-existing decision-gate markers in both
+    # files; the universal census guard covers them today only when
+    # run/SKILL.md changes in the same diff (it already carries a row
+    # above). These two rows make an implement- or end_of_task-only edit
+    # select the census guard on its own.
+    (
+        "quoin/adapters/claude/skills/implement/SKILL.md",
+        "quoin/dev/tests/test_decision_gate_census.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/end_of_task/SKILL.md",
+        "quoin/dev/tests/test_decision_gate_census.py",
+    ),
     # core/skills/run.md carried no selector row at all
     # before this stage. Four rows close the hole for the guards this
     # stage's edit class can break: the partial-continuation and autonomous-
