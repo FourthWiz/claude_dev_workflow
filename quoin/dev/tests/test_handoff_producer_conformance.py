@@ -135,28 +135,126 @@ def test_return_blocks_cover_complete_and_partial_status():
     assert "PARTIAL" in statuses
 
 
-def test_each_summary_mandating_skill_yields_a_complete_return_block():
-    """Per-file guard, mirroring the co-occurrence pattern in
+VERDICT_RE = re.compile(r"^verdict:\s*(\S+)\s*$", re.MULTILINE)
+
+# Exact total block count (dispatch + return combined) per producer file.
+# An at-least-one guard fires only when a file's LAST block goes; this fires
+# on the deletion of ANY block below, including implement's PARTIAL template
+# and either of review's two verdict-carrying COMPLETE templates — the exact
+# gap round-3 MAJOR 2 named (deleting implement's PARTIAL template, review's
+# CHANGES_REQUESTED template, or review's APPROVED template each left the
+# suite green under the old at-least-one guard).
+EXPECTED_BLOCK_COUNTS = {
+    RUN_SKILL: 3,  # 1 dispatch + COMPLETE + PARTIAL
+    os.path.join(QUOIN_DIR, "adapters", "claude", "skills", "implement", "SKILL.md"): 2,
+    os.path.join(QUOIN_DIR, "adapters", "claude", "skills", "review", "SKILL.md"): 2,
+    os.path.join(QUOIN_DIR, "adapters", "claude", "skills", "thorough_plan", "SKILL.md"): 1,
+}
+
+# Exact per-file multiset of (status, verdict) shapes for the summary-mandating
+# skills' return blocks. Pins the SHAPES, not merely the count, so swapping one
+# template for a same-status duplicate would also be caught.
+EXPECTED_RETURN_SHAPES = {
+    os.path.join(QUOIN_DIR, "adapters", "claude", "skills", "implement", "SKILL.md"): [
+        ("COMPLETE", "PASS"),
+        ("PARTIAL", None),
+    ],
+    os.path.join(QUOIN_DIR, "adapters", "claude", "skills", "review", "SKILL.md"): [
+        ("COMPLETE", "CHANGES_REQUESTED"),
+        ("COMPLETE", "APPROVED"),
+    ],
+    os.path.join(QUOIN_DIR, "adapters", "claude", "skills", "thorough_plan", "SKILL.md"): [
+        ("COMPLETE", "PASS"),
+    ],
+}
+
+
+def status_and_verdict(block):
+    status_m = STATUS_RE.search(block)
+    verdict_m = VERDICT_RE.search(block)
+    return (
+        status_m.group(1) if status_m else None,
+        verdict_m.group(1) if verdict_m else None,
+    )
+
+
+def field_names(block):
+    """Ordered field names (the `name` in each `name: value` line), skipping
+    the open/close marker lines. Used to compare block SHAPE (which fields,
+    in which order) independently of field VALUES."""
+    names = []
+    for line in block.splitlines():
+        if MARKER_RE.match(line.strip()):
+            continue
+        m = re.match(r"^([A-Za-z_]+):\s*.*$", line)
+        if m:
+            names.append(m.group(1))
+    return names
+
+
+def test_each_producer_file_yields_exact_block_counts():
+    """Per-file exact-count guard, mirroring the co-occurrence pattern in
     test_inline_step_summary_present.py's test_fail_closed_sites_emit_no_envelope
     (expected_counts keyed per file, asserted individually). The aggregate
     set-guards above are satisfied by run/SKILL.md alone and cannot reveal a
-    producer file whose own inlined templates go unseen by the extractor —
-    this is exactly the gap that let four of five newly inlined templates
-    validate nothing. Each summary-mandating skill must independently yield
-    at least one COMPLETE return block from its own file."""
+    producer file whose own inlined templates go unseen by the extractor, or
+    whose non-COMPLETE templates are silently deletable — this is the gap
+    that let three of five newly inlined templates validate nothing under an
+    at-least-one guard."""
+    for path, expected in EXPECTED_BLOCK_COUNTS.items():
+        blocks = extract_blocks(path)
+        assert len(blocks) == expected, (
+            f"{path}: expected exactly {expected} extracted block(s), found {len(blocks)}"
+        )
+
+
+def test_summary_mandating_skill_return_block_shapes():
+    """Per-file exact multiset of (status, verdict) return-block shapes for
+    the three summary-mandating skills. Deletion probe (round-3 MAJOR 2):
+    removing implement's PARTIAL template, review's CHANGES_REQUESTED
+    template, or review's APPROVED template must now fail this test, not
+    merely pass a weaker at-least-one guard."""
+    for path, expected in EXPECTED_RETURN_SHAPES.items():
+        blocks = extract_blocks(path)
+        shapes = sorted(
+            status_and_verdict(block) for direction, block in blocks if direction == "return"
+        )
+        assert shapes == sorted(expected), (
+            f"{path}: expected return-block shapes {sorted(expected)}, found {shapes}"
+        )
+
+
+def test_summary_mandating_complete_blocks_match_run_shape():
+    """Cross-file guard (round-3 MAJOR 3): each summary-mandating skill's
+    COMPLETE return block must be field-name- and field-order-identical to
+    run/SKILL.md's injected COMPLETE template, so the two shape sources
+    cannot silently diverge — `verdict` is explicitly allowlisted to differ
+    in VALUE (each producer emits its own branch's outcome; that is expected
+    and is exactly what test_summary_mandating_skill_return_block_shapes
+    above already pins), so only field NAMES and their ORDER are compared
+    here, never verdict's value."""
+    run_complete = [
+        block
+        for direction, block in extract_blocks(RUN_SKILL)
+        if direction == "return" and status_and_verdict(block)[0] == "COMPLETE"
+    ]
+    assert len(run_complete) == 1, f"expected exactly one COMPLETE block in {RUN_SKILL}"
+    run_fields = field_names(run_complete[0])
+
     for path in SUMMARY_MANDATING_SKILLS:
         blocks = extract_blocks(path)
-        complete_count = 0
-        for direction, block in blocks:
-            if direction != "return":
-                continue
-            m = STATUS_RE.search(block)
-            if m and m.group(1) == "COMPLETE":
-                complete_count += 1
-        assert complete_count >= 1, (
-            f"{path}: expected at least one COMPLETE return block extracted "
-            f"from this file, found {complete_count}"
-        )
+        complete_blocks = [
+            block
+            for direction, block in blocks
+            if direction == "return" and status_and_verdict(block)[0] == "COMPLETE"
+        ]
+        assert complete_blocks, f"{path}: no COMPLETE return block found"
+        for block in complete_blocks:
+            fields = field_names(block)
+            assert fields == run_fields, (
+                f"{path}: COMPLETE block fields {fields} do not match "
+                f"run/SKILL.md's COMPLETE block fields {run_fields}"
+            )
 
 
 def test_dispatch_block_carries_return_envelope_field():
@@ -203,21 +301,34 @@ def test_every_extracted_block_validates_clean():
 
 
 def test_review_spawn_composed_payload_validates():
-    """Build the review spawn's payload exactly as the skill instructs:
-    a stacked sentinel line, then the dispatch block extracted from the
-    run skill verbatim, then a prose line, then a wrapped bundle block
-    with both bundle markers on their own lines. The whole payload must
-    validate clean as a dispatch — this discharges the placement rule,
-    sentinel stacking, and bundle/envelope coexistence all at once."""
-    dispatch_blocks = [
-        block for direction, block in extract_blocks(RUN_SKILL) if direction == "dispatch"
-    ]
+    """Build the review spawn's payload as the skill instructs post-774f83d:
+    a stacked sentinel line, then the dispatch block extracted from the run
+    skill verbatim, then the injected COMPLETE return template (appended
+    immediately after the dispatch envelope per the handoff-envelope
+    section), then a prose line, then a wrapped bundle block with both
+    bundle markers on their own lines. The whole payload must validate
+    clean as a dispatch — this discharges the placement rule, sentinel
+    stacking, the injected-template insertion, and bundle/envelope
+    coexistence all at once."""
+    run_blocks = extract_blocks(RUN_SKILL)
+    dispatch_blocks = [block for direction, block in run_blocks if direction == "dispatch"]
     assert dispatch_blocks, "run skill carries no dispatch block to compose with"
     dispatch_block = dispatch_blocks[0]
+
+    complete_blocks = [
+        block
+        for direction, block in run_blocks
+        if direction == "return" and STATUS_RE.search(block)
+        and STATUS_RE.search(block).group(1) == "COMPLETE"
+    ]
+    assert complete_blocks, "run skill carries no injected COMPLETE return template"
+    complete_block = complete_blocks[0]
 
     payload = (
         "[no-redispatch] [autonomous]\n"
         + dispatch_block
+        + "\n"
+        + complete_block
         + "\n"
         + "Review the implementation against the converged plan.\n"
         + "[quoin-bundle]\n"
