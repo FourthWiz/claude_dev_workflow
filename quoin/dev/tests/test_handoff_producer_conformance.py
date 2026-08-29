@@ -21,6 +21,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import textwrap
 
 TEST_DIR = os.path.dirname(os.path.abspath(__file__))
 DEV_DIR = os.path.dirname(TEST_DIR)                # quoin/dev/
@@ -36,6 +37,11 @@ RUN_SKILL = os.path.join(
 # implement, PARTIAL) return template directly in their final-message
 # prose, so a compliant emission never requires reading the workflow-
 # directory contract at runtime — the contract stays the normative pointer.
+# These inlined blocks sit indented under a numbered-list or bullet item in
+# their source files, so extract_blocks() below dedents each candidate
+# block before the marker match: without that, an indented block's first
+# line fails the column-zero marker anchor and is silently dropped, and
+# this comment's coverage claim would be false.
 SUMMARY_MANDATING_SKILLS = [
     os.path.join(QUOIN_DIR, "adapters", "claude", "skills", "implement", "SKILL.md"),
     os.path.join(QUOIN_DIR, "adapters", "claude", "skills", "review", "SKILL.md"),
@@ -43,7 +49,13 @@ SUMMARY_MANDATING_SKILLS = [
 ]
 PRODUCER_FILES = [RUN_SKILL] + SUMMARY_MANDATING_SKILLS
 
-FENCE_RE = re.compile(r"```text\n(.*?)\n```", re.DOTALL)
+# The closing fence tolerates leading whitespace ([ \t]*) because a block
+# embedded under a numbered-list or bullet item (implement/SKILL.md,
+# review/SKILL.md) indents every line of the fence, including the close —
+# without this, the non-greedy match never finds a same-indentation close
+# fence and either absorbs unrelated content until the next column-zero
+# close fence, or fails to match at all when no such fence follows.
+FENCE_RE = re.compile(r"```text\n(.*?)\n[ \t]*```", re.DOTALL)
 MARKER_RE = re.compile(r"^\[quoin-handoff/\d+\.\d+ (dispatch|return)\]$")
 STATUS_RE = re.compile(r"^status:\s*(\S+)\s*$", re.MULTILINE)
 
@@ -72,14 +84,20 @@ def run_validator(payload_text, direction):
 
 def extract_blocks(path):
     """Return a list of (direction, block_text) for every marker-first fenced
-    block in the file at path. block_text spans open marker through close
+    block in the file at path. Each candidate block is dedented before the
+    marker match, so a block indented under a numbered-list or bullet item
+    (implement/SKILL.md, review/SKILL.md) is found on equal footing with a
+    column-zero block (run/SKILL.md, thorough_plan/SKILL.md) — MARKER_RE is
+    anchored to the start of the line, so a leading-whitespace first line
+    would otherwise fail the anchor and the whole block would be silently
+    dropped. block_text is the dedented span from open marker through close
     marker inclusive — the first-line rule is what the envelope templates'
     marker-first shape exists to satisfy."""
     with open(path, encoding="utf-8") as fh:
         content = fh.read()
     found = []
     for m in FENCE_RE.finditer(content):
-        block = m.group(1)
+        block = textwrap.dedent(m.group(1))
         first_line = block.splitlines()[0] if block else ""
         marker_match = MARKER_RE.match(first_line)
         if marker_match:
@@ -115,6 +133,30 @@ def test_return_blocks_cover_complete_and_partial_status():
             statuses.add(m.group(1))
     assert "COMPLETE" in statuses
     assert "PARTIAL" in statuses
+
+
+def test_each_summary_mandating_skill_yields_a_complete_return_block():
+    """Per-file guard, mirroring the co-occurrence pattern in
+    test_inline_step_summary_present.py's test_fail_closed_sites_emit_no_envelope
+    (expected_counts keyed per file, asserted individually). The aggregate
+    set-guards above are satisfied by run/SKILL.md alone and cannot reveal a
+    producer file whose own inlined templates go unseen by the extractor —
+    this is exactly the gap that let four of five newly inlined templates
+    validate nothing. Each summary-mandating skill must independently yield
+    at least one COMPLETE return block from its own file."""
+    for path in SUMMARY_MANDATING_SKILLS:
+        blocks = extract_blocks(path)
+        complete_count = 0
+        for direction, block in blocks:
+            if direction != "return":
+                continue
+            m = STATUS_RE.search(block)
+            if m and m.group(1) == "COMPLETE":
+                complete_count += 1
+        assert complete_count >= 1, (
+            f"{path}: expected at least one COMPLETE return block extracted "
+            f"from this file, found {complete_count}"
+        )
 
 
 def test_dispatch_block_carries_return_envelope_field():
