@@ -363,13 +363,12 @@ class TestIvg92SpecialCaseMapping:
             moved to critic/SKILL.md, which carries no _DOCS_TO_TESTS row at
             all (verified by grep).
 
-        Rotation history (IVG-248 stage 3 review round-1 fix pass): re-ran
-        this test before and after adding the implement/end_of_task ->
-        test_decision_gate_census.py rows (review MINOR 11). Both clauses'
-        exemplars are unaffected by that edit class — clause 1's exemplar
-        (review/SKILL.md) still carries no citation-sweep row, clause 2's
-        exemplar (critic/SKILL.md) still carries no _DOCS_TO_TESTS row at
-        all — no rotation needed, recorded either way per T-11's own rule."""
+        Rotation check: re-ran this test before and after adding the
+        implement/end_of_task -> test_decision_gate_census.py selector rows.
+        Both clauses' exemplars are unaffected by that edit class — clause 1's
+        exemplar (review/SKILL.md) still carries no citation-sweep row, clause
+        2's exemplar (critic/SKILL.md) still carries no _DOCS_TO_TESTS row at
+        all — neither needed rotating."""
         selectors, unmatched, ignored = _at.map_changed_to_tests(
             ["quoin/adapters/claude/skills/review/SKILL.md"], _REPO_ROOT
         )
