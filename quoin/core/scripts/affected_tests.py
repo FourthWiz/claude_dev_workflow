@@ -556,6 +556,21 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/adapters/claude/skills/end_of_task/SKILL.md",
         "quoin/dev/tests/test_decision_gate_census.py",
     ),
+    # gate/SKILL.md's own no-envelope clause at its fail-closed site now sits
+    # alongside pre-existing decision-gate markers, guarded by both the
+    # inline-summary co-occurrence check (test_fail_closed_sites_emit_no_envelope,
+    # which already reads gate) and the universal census. Neither of gate's two
+    # existing rows (test_claude_md_citations.py, test_eot_resilience_contract.py)
+    # selects either guard, so a gate-only edit deleting that clause would not
+    # select the test that exists to catch it.
+    (
+        "quoin/adapters/claude/skills/gate/SKILL.md",
+        "quoin/dev/tests/test_inline_step_summary_present.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/gate/SKILL.md",
+        "quoin/dev/tests/test_decision_gate_census.py",
+    ),
     # core/skills/run.md carried no selector row at all
     # before this stage. Four rows close the hole for the guards this
     # stage's edit class can break: the partial-continuation and autonomous-
