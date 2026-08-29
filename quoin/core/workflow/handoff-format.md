@@ -110,6 +110,13 @@ Ordering below): `status`, `artifact`, `verdict`, `summary`, `checkpoint`,
 is per direction, never per status — a `BLOCKED` return's `reason` is a known
 key for that reason, not because `BLOCKED` alone declares it.
 
+`NEEDS-DECISION` and `BLOCKED` are reserved for a subagent's own genuine
+inability to proceed; a fail-closed hard stop reached by a spawned phase
+emits the shipped `gate-result: NEEDS-DECISION` block INSTEAD of any
+envelope on that return, never a `NEEDS-DECISION` envelope alongside or in
+place of it — the orchestrator recognises only the gate-result token at that
+site, so a `NEEDS-DECISION` envelope emitted there would go unrecognised.
+
 Complete:
 
 ```text
