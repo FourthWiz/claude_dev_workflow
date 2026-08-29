@@ -432,6 +432,18 @@ summary: <one-line plain-English summary of what this phase produced>
 [/quoin-handoff]
 ```
 
+Every dispatch appends the COMPLETE return template above to the child spawn prompt,
+immediately after the dispatch envelope — this covers all 8 phase dispatches below
+(discover, enrich, specify, architect, thorough_plan, implement, review, end_of_task),
+so a producer's own spawn prompt is the shape source for its return, not the bare
+`spec:` pointer alone. The `spec:` field stays in the dispatch envelope as the
+normative pointer to the full contract (needed for the partial/needs-decision/blocked
+shapes and the byte/escaping rules this ~230 B template omits), but a compliant
+COMPLETE return never requires opening it. This is stated once, here, rather than
+repeated at each of the 8 phase sections below — each of those sections already reads
+"Emit the dispatch envelope described in the handoff-envelope section above," which
+now carries this rule by reference.
+
 Return template, partial status:
 ```text
 [quoin-handoff/1.0 return]
