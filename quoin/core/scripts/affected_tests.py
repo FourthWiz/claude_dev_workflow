@@ -424,6 +424,46 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-case-n/subagents/agent-case-n.jsonl",
         "quoin/dev/tests/test_handoff_measure.py",
     ),
+    # T-02 (agent-handoff-format stage 4): envelope partition / D-07
+    # envelope-anchored phase discriminator / contract-read channel fixtures,
+    # fresh sid-env-a..i namespace (see test_handoff_measure.py's own
+    # collision-avoidance note next to the sid-case-* fixtures above).
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-env-a/subagents/agent-env-a.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-env-b/subagents/agent-env-b.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-env-c/subagents/agent-env-c.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-env-d/subagents/agent-env-d.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-env-e/subagents/agent-env-e.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-env-f/subagents/agent-env-f.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-env-g/subagents/agent-env-g.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-env-h/subagents/agent-env-h.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-env-i/subagents/agent-env-i.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
     (
         "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-joint.jsonl",
         "quoin/dev/tests/test_handoff_measure.py",

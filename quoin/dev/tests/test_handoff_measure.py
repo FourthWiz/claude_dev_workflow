@@ -423,8 +423,13 @@ def test_token_cross_check_empty_input_does_not_raise():
 # ---------------------------------------------------------------------------
 def test_iter_transcripts_requires_home_param(fixtures_home):
     paths = list(hm.iter_transcripts(fixtures_home))
-    assert len(paths) == 15  # 14 cases (a)-(n) + sid-joint's subagent transcript
-    assert all(p.name.startswith("agent-case-") or p.name == "agent-joint.jsonl" for p in paths)
+    # 14 cases (a)-(n) + sid-joint's subagent transcript + 9 T-02 env-a..i cases
+    assert len(paths) == 24
+    assert all(
+        p.name.startswith("agent-case-") or p.name == "agent-joint.jsonl"
+        or p.name.startswith("agent-env-")
+        for p in paths
+    )
 
 
 def test_iter_transcripts_empty_when_no_claude_dir(tmp_path):
@@ -1276,3 +1281,139 @@ def test_growth_bound_workflow_artifacts_only_filter_excludes_other_paths(tmp_pa
 #      test_growth_bound_case_u_capped_model_caps_at_deleted_bytes
 #      (per_candidate_total becomes 5000, not the asserted `deleted` value
 #      below 5000). Reverted; full file green after revert.
+
+
+# ---------------------------------------------------------------------------
+# T-02 (D-07 envelope-anchored predicate, envelope partition, contract-read
+# channel). Fresh, non-colliding namespace: fixture dirs sid-env-a..i, test
+# functions test_env_<letter>_*, agent filenames agent-env-<letter>.jsonl —
+# none of these strings contain, nor are contained by, any existing
+# sid-case-*/agent-case-* name.
+#
+# Cases:
+#   (a) run-owned with a dispatch envelope
+#   (b) run-owned with a return envelope only
+#   (c) run-owned with neither envelope
+#   (d) non-run-owned dispatch text that still contains the marker -> counted
+#       in the aggregate envelope_partition_count but excluded from per_phase
+#       (per_phase is scoped to run-owned records, matching capture_corpus()'s
+#       own per-phase counters)
+#   (e) marker present with leading whitespace/indent (normalisation)
+#   (f) a 1.1-versioned marker (prefix match, not literal match)
+#   (g) envelope_phase() resolves a phase the legacy 600-byte sniff misses
+#       entirely (migration-stable vs. fragile contrast)
+#   (h) contract_reads_in_spawn() detects a Read of handoff-format.md in a
+#       spawn's own transcript
+#   (i) contract_reads_in_spawn() returns none when the spawn's transcript
+#       has no such read
+# ---------------------------------------------------------------------------
+
+
+def test_env_a_run_owned_with_dispatch_envelope(fixtures_home):
+    record = _record_for(fixtures_home, "sid-env-a")
+    assert record["run_owned"] is True
+    ep = hm.envelope_partition([record])
+    assert ep["dispatch_envelope_count"] == 1
+    assert ep["return_envelope_count"] == 0
+    assert ep["per_phase"]["implement"]["dispatch_envelope"] == 1
+
+
+def test_env_b_run_owned_with_return_envelope_only(fixtures_home):
+    record = _record_for(fixtures_home, "sid-env-b")
+    assert record["run_owned"] is True
+    ep = hm.envelope_partition([record])
+    assert ep["dispatch_envelope_count"] == 0
+    assert ep["return_envelope_count"] == 1
+    assert ep["per_phase"]["implement"]["return_envelope"] == 1
+
+
+def test_env_c_run_owned_with_neither_envelope(fixtures_home):
+    record = _record_for(fixtures_home, "sid-env-c")
+    assert record["run_owned"] is True
+    ep = hm.envelope_partition([record])
+    assert ep["dispatch_envelope_count"] == 0
+    assert ep["return_envelope_count"] == 0
+
+
+def test_env_d_non_run_owned_marker_excluded_from_per_phase(fixtures_home):
+    record = _record_for(fixtures_home, "sid-env-d")
+    assert record["run_owned"] is False
+    ep = hm.envelope_partition([record])
+    # Counted in the aggregate ...
+    assert ep["dispatch_envelope_count"] == 1
+    # ... but NOT in per_phase, which is scoped to run-owned records only.
+    assert ep["per_phase"] == {}
+
+
+def test_env_e_marker_with_leading_whitespace_normalised(fixtures_home):
+    record = _record_for(fixtures_home, "sid-env-e")
+    ep = hm.envelope_partition([record])
+    assert ep["dispatch_envelope_count"] == 1
+    assert hm.envelope_phase(record["dispatch_text"]) == "implement"
+
+
+def test_env_f_versioned_marker_prefix_match(fixtures_home):
+    record = _record_for(fixtures_home, "sid-env-f")
+    assert hm.envelope_phase(record["dispatch_text"]) == "review"
+
+
+def test_env_g_envelope_phase_resolves_where_legacy_sniff_misses(fixtures_home):
+    record = _record_for(fixtures_home, "sid-env-g")
+    # Legacy 600-byte-sniff detector never resolves this payload at all.
+    assert record["phase"] is None
+    assert record["run_owned"] is False
+    # The migration-stable envelope discriminator resolves it correctly.
+    assert hm.envelope_phase(record["dispatch_text"]) == "implement"
+
+
+def test_env_h_contract_read_detected_in_spawn(fixtures_home):
+    record = _record_for(fixtures_home, "sid-env-h")
+    assert hm.contract_reads_in_spawn(record["path"]) is True
+
+
+def test_env_i_contract_read_absent_in_spawn(fixtures_home):
+    record = _record_for(fixtures_home, "sid-env-i")
+    assert hm.contract_reads_in_spawn(record["path"]) is False
+
+
+def test_env_contract_read_partition_over_population(fixtures_home):
+    h = _record_for(fixtures_home, "sid-env-h")
+    i = _record_for(fixtures_home, "sid-env-i")
+    result = hm.contract_read_partition([h, i])
+    assert result["n"] == 2
+    assert result["hits"] == 1
+    assert result["fraction"] == 0.5
+
+
+def test_env_contract_read_partition_empty_population_fraction_is_none():
+    result = hm.contract_read_partition([])
+    assert result["n"] == 0
+    assert result["fraction"] is None
+
+
+def test_env_phase_no_marker_returns_none():
+    assert hm.envelope_phase("plain text, no envelope at all") is None
+    assert hm.envelope_phase("") is None
+
+
+def test_env_phase_open_without_close_returns_none():
+    assert hm.envelope_phase("[quoin-handoff/1.0 dispatch]\nskill: implement\n") is None
+
+
+# Mutation proof, run and recorded — applied once each directly against
+# handoff_measure.py's source, confirmed red, reverted:
+#   1. changed envelope_phase()'s skill-field extraction to always return ""
+#      -> RED (3): test_env_e_marker_with_leading_whitespace_normalised,
+#      test_env_f_versioned_marker_prefix_match, and
+#      test_env_g_envelope_phase_resolves_where_legacy_sniff_misses all fail
+#      (each asserts a specific skill name). Reverted; full file green after
+#      revert.
+#   2. removed the `if r.get("run_owned")` guard in envelope_partition() so
+#      per_phase includes non-run-owned records -> RED (1):
+#      test_env_d_non_run_owned_marker_excluded_from_per_phase (per_phase
+#      becomes non-empty). Reverted; full file green after revert.
+#   3. changed contract_reads_in_spawn()'s `fp.endswith(contract_names)` to
+#      `fp.startswith(contract_names)` -> RED (2):
+#      test_env_h_contract_read_detected_in_spawn and
+#      test_env_contract_read_partition_over_population both fail (hit count
+#      drops to 0). Reverted; full file green after revert.

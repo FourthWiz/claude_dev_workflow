@@ -568,6 +568,90 @@ def sentinel_bucket(dispatch_text):
     return "+".join(present) if present else "none"
 
 
+# ---------------------------------------------------------------------------
+# Envelope partition, envelope-anchored phase discriminator (D-07)
+# ---------------------------------------------------------------------------
+
+_ENVELOPE_MARKER_PREFIX = "[quoin-handoff"
+_ENVELOPE_CLOSE_MARKER = "[/quoin-handoff]"
+# Prefix-matches the version ("[quoin-handoff/1.0 dispatch]",
+# "[quoin-handoff/1.1 dispatch]", ...) rather than a pinned literal, so a
+# later minor-version envelope still resolves.
+_ENVELOPE_DISPATCH_OPEN_RE = re.compile(r"\[quoin-handoff/[^\]\n]*\sdispatch\]")
+_ENVELOPE_SKILL_FIELD_RE = re.compile(r"^\s*skill:\s*(\S+)\s*$", re.MULTILINE)
+
+
+def envelope_partition(records):
+    """Per-record dispatch/return envelope-marker presence, plus aggregate
+    and per-phase counts.
+
+    Matches the bare marker prefix `[quoin-handoff`, never a version-pinned
+    literal, so a `1.1` envelope still counts. Presence is a plain substring
+    test, so surrounding whitespace/indentation before the marker never
+    affects detection. Only run-owned records (per the legacy predicate)
+    contribute to `per_phase` — this mirrors the corpus-wide per-phase
+    counters `capture_corpus()` already reports.
+    """
+    per_record = []
+    dispatch_count = 0
+    return_count = 0
+    per_phase = {}
+    for r in records:
+        has_dispatch = _ENVELOPE_MARKER_PREFIX in (r.get("dispatch_text") or "")
+        has_return = _ENVELOPE_MARKER_PREFIX in (r.get("return_text") or "")
+        if has_dispatch:
+            dispatch_count += 1
+        if has_return:
+            return_count += 1
+        per_record.append({
+            "path": r.get("path"),
+            "dispatch_envelope": has_dispatch,
+            "return_envelope": has_return,
+        })
+        if r.get("run_owned"):
+            bucket = per_phase.setdefault(
+                r.get("phase"), {"n": 0, "dispatch_envelope": 0, "return_envelope": 0},
+            )
+            bucket["n"] += 1
+            if has_dispatch:
+                bucket["dispatch_envelope"] += 1
+            if has_return:
+                bucket["return_envelope"] += 1
+    return {
+        "n": len(records),
+        "dispatch_envelope_count": dispatch_count,
+        "return_envelope_count": return_count,
+        "per_phase": per_phase,
+        "per_record": per_record,
+    }
+
+
+def envelope_phase(dispatch_text):
+    """Migration-stable phase discriminator (D-07).
+
+    Searches the FULL dispatch text (never sniff-limited, unlike
+    `detect_phase()`) for a `[quoin-handoff/<ver> dispatch]` ...
+    `[/quoin-handoff]` block and returns its `skill:` field value, or None
+    when no such block (or no `skill:` field inside it) is found. This is
+    a second, additive predicate published beside `detect_phase()` — it
+    does not read or modify `_DISPATCH_SNIFF_BYTES`, and it never replaces
+    the legacy detector (D-07).
+    """
+    if not dispatch_text:
+        return None
+    open_match = _ENVELOPE_DISPATCH_OPEN_RE.search(dispatch_text)
+    if open_match is None:
+        return None
+    close_idx = dispatch_text.find(_ENVELOPE_CLOSE_MARKER, open_match.end())
+    if close_idx == -1:
+        return None
+    block = dispatch_text[open_match.end():close_idx]
+    skill_match = _ENVELOPE_SKILL_FIELD_RE.search(block)
+    if skill_match is None:
+        return None
+    return skill_match.group(1)
+
+
 def _ordinal_label_map(raw_values, prefix):
     """Deterministic ordinal labels for a set of raw identifier strings.
 
@@ -1190,6 +1274,59 @@ def _self_written_paths_in_spawn(spawn_transcript_path):
     return paths
 
 
+def contract_reads_in_spawn(spawn_transcript_path, contract_names=("handoff-format.md",)):
+    """`Read` tool_use events in a SPAWN'S OWN transcript (not the parent)
+    whose `input.file_path` ends in one of `contract_names` (MAJ-2's
+    contract-read channel) — same file-open/JSON-line-tolerant/OSError-fail-
+    open shape as `_self_written_paths_in_spawn`, reused rather than
+    reimplemented.
+
+    Returns True when the spawn's own transcript shows AT LEAST ONE such
+    read, False otherwise. This is presence, not a count (MIN-14): a spawn
+    that reads the contract twice reports the same True as one that reads
+    it once, so a rate computed from this function's output is a LOWER
+    BOUND on the true contract-read cost whenever any spawn re-reads.
+    """
+    try:
+        with open(spawn_transcript_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                message = row.get("message")
+                if not isinstance(message, dict) or message.get("role") != "assistant":
+                    continue
+                content = message.get("content")
+                if not isinstance(content, list):
+                    continue
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "tool_use" \
+                            and block.get("name") == "Read":
+                        fp = (block.get("input") or {}).get("file_path")
+                        if isinstance(fp, str) and fp.endswith(contract_names):
+                            return True
+    except (FileNotFoundError, PermissionError, OSError):
+        pass
+    return False
+
+
+def contract_read_partition(run_owned_records, contract_names=("handoff-format.md",)):
+    """Over `run_owned_records`, report the count and fraction of spawns
+    whose own transcript shows at least one `Read` of a name in
+    `contract_names` (MAJ-2). Uses `contract_reads_in_spawn()` per record;
+    `fraction` is None when `run_owned_records` is empty (never a
+    ZeroDivisionError, mirroring `growth_bound()`'s `extraction_coverage`
+    convention).
+    """
+    n = len(run_owned_records)
+    hits = sum(1 for r in run_owned_records if contract_reads_in_spawn(r["path"], contract_names))
+    return {"n": n, "hits": hits, "fraction": (hits / n) if n else None}
+
+
 def growth_bound(run_owned_records, home, project_root,
                   already_read_scope="session",
                   path_filter="permissive",
@@ -1379,6 +1516,21 @@ def _build_arg_parser():
              "are not in the snapshot (see the baseline artifact's reproducibility scope "
              "statement) and are not recomputed by this flag.",
     )
+    parser.add_argument(
+        "--envelope-partition", action="store_true",
+        help="Print dispatch/return envelope-marker partition counts and per-phase "
+             "split over the live-captured corpus.",
+    )
+    parser.add_argument(
+        "--envelope-phase-partition", action="store_true",
+        help="Print run-owned counts under the envelope-anchored phase discriminator "
+             "(D-07), beside the legacy detect_phase() counts, over the live-captured corpus.",
+    )
+    parser.add_argument(
+        "--contract-read-partition", action="store_true",
+        help="Print the count and fraction of run-owned (legacy-predicate) spawns whose "
+             "own transcript shows a Read of handoff-format.md (MAJ-2).",
+    )
     return parser
 
 
@@ -1444,6 +1596,26 @@ def main(argv=None):
     stats = channel_stats(run_owned)
     tcc = token_cross_check(run_owned)
     _print_channel_report(stats, tcc)
+    if args.envelope_partition:
+        ep = envelope_partition(corpus["records"])
+        print(f"envelope_partition: n={ep['n']} "
+              f"dispatch_envelope_count={ep['dispatch_envelope_count']} "
+              f"return_envelope_count={ep['return_envelope_count']}")
+        for phase, counts in sorted(ep["per_phase"].items(), key=lambda kv: str(kv[0])):
+            print(f"envelope_partition_phase={phase} n={counts['n']} "
+                  f"dispatch_envelope={counts['dispatch_envelope']} "
+                  f"return_envelope={counts['return_envelope']}")
+    if args.envelope_phase_partition:
+        envelope_run_owned = [
+            r for r in corpus["records"]
+            if envelope_phase(r.get("dispatch_text", "")) in RUN_OWNED_PHASES
+        ]
+        print(f"envelope_phase_run_owned={len(envelope_run_owned)} "
+              f"(legacy run_owned={corpus['run_owned']} for comparison)")
+    if args.contract_read_partition:
+        crp = contract_read_partition(run_owned)
+        print(f"contract_read_partition: n={crp['n']} hits={crp['hits']} "
+              f"fraction={crp['fraction']}")
     return 0
 
 
