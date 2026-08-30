@@ -4,6 +4,10 @@ All notable changes to Quoin are documented here. Format follows [Keep a Changel
 
 ## [Unreleased]
 
+### Added
+
+- **`handoff_measure.py` gains an envelope partition, an envelope-anchored phase discriminator, and a contract-read detector.** `envelope_partition()` reports per-record dispatch/return handoff-envelope-marker presence plus aggregate and per-phase counts; `envelope_phase()` is a migration-stable phase discriminator that searches the full dispatch payload for a handoff-envelope block's `skill:` field rather than sniffing only the first bytes, so it keeps working as dispatch payloads grow past the legacy detector's fixed window; `contract_reads_in_spawn()` (plus `contract_read_partition()` over a population) detects whether a spawn's own transcript shows it reading the inter-agent handoff contract file. All three are additive, published alongside the existing detector, and exposed via three new CLI flags (`--envelope-partition`, `--envelope-phase-partition`, `--contract-read-partition`).
+
 ### Changed
 
 - **`QUOIN_INLINE_COST_CAPTURE` (on-behalf per-phase cost attribution) now defaults ON** (IVG-249 S-02; v0.19.1). Previously opt-in (`=1`), the flag now defaults to enabled — unset or any value other than `0` means capture is ON. Every managed phase spawn under `/run`, `/thorough_plan`, and `/architect` (discover, enrich, specify, architect, thorough_plan/plan/critic/revise, implement, review, end_of_task, and the two `/gate` subagent spawns) now has its cost-ledger row written on-behalf by the parent orchestrator using the real `agentId`, instead of the child sharing the parent `/run` session's UUID — closing the shared-parent-UUID attribution gap. Opt out with `QUOIN_INLINE_COST_CAPTURE=0` to restore the pre-IVG-249 behavior (child self-writes, cohort-bucketed by session UUID); `/run` now warns at Setup when the opt-out is explicit. Every on-behalf write site carries an identifier-keyed post-check (verifies its own write landed; appends a `(on-behalf write failed)`-labeled fallback row otherwise) so a write failure never produces a silent zero-row phase.
