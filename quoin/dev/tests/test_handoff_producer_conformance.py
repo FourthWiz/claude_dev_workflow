@@ -112,6 +112,25 @@ def all_producer_blocks():
     return blocks
 
 
+# Matches the quoted trailing note appended after the injected COMPLETE
+# template in run/SKILL.md's handoff-envelope section — the note carries the
+# verdict-vocabulary and own-template-preference instruction into the actual
+# child spawn prompt, not only into this file's surrounding prose.
+TRAILING_NOTE_RE = re.compile(r'reads, verbatim:\s*\n\n"(.*?)"', re.DOTALL)
+
+
+def extract_trailing_note(path):
+    """Return the trailing note text as it is appended to a spawn prompt —
+    the markdown source wraps it across lines for readability, so this joins
+    those lines back into the single unbroken line the child actually
+    receives."""
+    with open(path, encoding="utf-8") as fh:
+        content = fh.read()
+    m = TRAILING_NOTE_RE.search(content)
+    assert m, f"{path}: no trailing note found after 'reads, verbatim:'"
+    return " ".join(line.strip() for line in m.group(1).splitlines())
+
+
 # ── Set-guards (a), (b), (c) — a zero-block sweep must FAIL loudly ─────────
 
 
@@ -138,12 +157,13 @@ def test_return_blocks_cover_complete_and_partial_status():
 VERDICT_RE = re.compile(r"^verdict:\s*(\S+)\s*$", re.MULTILINE)
 
 # Exact total block count (dispatch + return combined) per producer file.
-# An at-least-one guard fires only when a file's LAST block goes; this fires
-# on the deletion of ANY block below, including implement's PARTIAL template
-# and either of review's two verdict-carrying COMPLETE templates — the exact
-# gap round-3 MAJOR 2 named (deleting implement's PARTIAL template, review's
-# CHANGES_REQUESTED template, or review's APPROVED template each left the
-# suite green under the old at-least-one guard).
+# An at-least-one guard fires only when a file's LAST block goes, so a
+# file's non-final templates were silently deletable — this covers the
+# deletion of ANY block below, including implement's PARTIAL template and
+# either of review's two verdict-carrying COMPLETE templates (deleting
+# implement's PARTIAL template, review's CHANGES_REQUESTED template, or
+# review's APPROVED template each left the suite green under a weaker
+# at-least-one guard).
 EXPECTED_BLOCK_COUNTS = {
     RUN_SKILL: 3,  # 1 dispatch + COMPLETE + PARTIAL
     os.path.join(QUOIN_DIR, "adapters", "claude", "skills", "implement", "SKILL.md"): 2,
@@ -210,7 +230,7 @@ def test_each_producer_file_yields_exact_block_counts():
 
 def test_summary_mandating_skill_return_block_shapes():
     """Per-file exact multiset of (status, verdict) return-block shapes for
-    the three summary-mandating skills. Deletion probe (round-3 MAJOR 2):
+    the three summary-mandating skills. Verified by direct deletion:
     removing implement's PARTIAL template, review's CHANGES_REQUESTED
     template, or review's APPROVED template must now fail this test, not
     merely pass a weaker at-least-one guard."""
@@ -225,7 +245,7 @@ def test_summary_mandating_skill_return_block_shapes():
 
 
 def test_summary_mandating_complete_blocks_match_run_shape():
-    """Cross-file guard (round-3 MAJOR 3): each summary-mandating skill's
+    """Cross-file guard: each summary-mandating skill's
     COMPLETE return block must be field-name- and field-order-identical to
     run/SKILL.md's injected COMPLETE template, so the two shape sources
     cannot silently diverge — `verdict` is explicitly allowlisted to differ
@@ -303,13 +323,15 @@ def test_every_extracted_block_validates_clean():
 def test_review_spawn_composed_payload_validates():
     """Build the review spawn's payload as the skill instructs post-774f83d:
     a stacked sentinel line, then the dispatch block extracted from the run
-    skill verbatim, then the injected COMPLETE return template (appended
-    immediately after the dispatch envelope per the handoff-envelope
-    section), then a prose line, then a wrapped bundle block with both
-    bundle markers on their own lines. The whole payload must validate
-    clean as a dispatch — this discharges the placement rule, sentinel
-    stacking, the injected-template insertion, and bundle/envelope
-    coexistence all at once."""
+    skill verbatim, then the injected COMPLETE return template, then the
+    trailing note appended immediately after the template (both extracted
+    from the same handoff-envelope section — this is what the child spawn
+    prompt actually carries, not only the template), then a prose line,
+    then a wrapped bundle block with both bundle markers on their own
+    lines. The whole payload must validate clean as a dispatch — this
+    discharges the placement rule, sentinel stacking, the injected-template
+    insertion, the trailing note, and bundle/envelope coexistence all at
+    once."""
     run_blocks = extract_blocks(RUN_SKILL)
     dispatch_blocks = [block for direction, block in run_blocks if direction == "dispatch"]
     assert dispatch_blocks, "run skill carries no dispatch block to compose with"
@@ -324,11 +346,15 @@ def test_review_spawn_composed_payload_validates():
     assert complete_blocks, "run skill carries no injected COMPLETE return template"
     complete_block = complete_blocks[0]
 
+    trailing_note = extract_trailing_note(RUN_SKILL)
+
     payload = (
         "[no-redispatch] [autonomous]\n"
         + dispatch_block
         + "\n"
         + complete_block
+        + "\n"
+        + trailing_note
         + "\n"
         + "Review the implementation against the converged plan.\n"
         + "[quoin-bundle]\n"

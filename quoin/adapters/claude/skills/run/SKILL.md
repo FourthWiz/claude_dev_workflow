@@ -441,26 +441,32 @@ A phase whose own skill file inlines a branch-specific return template
 (implement, review, thorough_plan) uses that inlined template in preference
 to this generic one — the inlined template carries the phase's own verdict
 vocabulary and stays authoritative for that phase, so this generic
-template's `verdict: PASS` never actually reaches those three phases' return.
+template's `verdict: PASS` should not reach those three phases' return.
 
-Every dispatch appends the COMPLETE return template above to the child spawn prompt,
-immediately after the dispatch envelope — this covers all 8 phase dispatches below
-(discover, enrich, specify, architect, thorough_plan, implement, review, end_of_task),
-so a producer's own spawn prompt is the shape source for its return, not the bare
-`spec:` pointer alone. The `spec:` field stays in the dispatch
-envelope as the normative pointer to the full contract (needed for the
-partial/needs-decision/blocked shapes and the escaping rules this 222 B
-marker-to-marker (234 B with fences) template omits), but a compliant COMPLETE return
-never requires opening it. This template describes the COMPLETE shape only — a
-fail-closed hard stop still emits the shipped decision-gate block instead of any
-envelope, regardless of what this template shows. The whole envelope (marker to
-marker) is clamped to 1,024 B. This is stated once, here, rather than repeated at
-each of the 8 phase sections below or at the two refix re-dispatch sites (the Phase 4
-gate fix-loop re-spawn and the Phase 5 review fix-loop re-spawn) — every phase section
-already reads "Emit the dispatch envelope described in the handoff-envelope section
-above," and both re-dispatch sites already read "inherits the dispatch envelope
-described in the handoff-envelope section above, unchanged from the primary spawn" —
-both phrasings carry this rule by reference.
+Every dispatch appends the COMPLETE return template above, plus the trailing
+note below, to the child spawn prompt immediately after the dispatch envelope
+— this covers all 8 phase dispatches below (discover, enrich, specify,
+architect, thorough_plan, implement, review, end_of_task), so the vocabulary
+and preference rule ride in the payload the child actually receives, not only
+in this file's own prose. The trailing note reads, verbatim:
+
+"Emit whichever of PASS/REVISE/APPROVED/CHANGES_REQUESTED/BLOCKED matches
+this phase's outcome; prefer this phase's own inlined template if its skill
+file has one. This shows the COMPLETE shape only — a fail-closed hard stop
+still emits the decision-gate block, not an envelope."
+
+The `spec:` field stays in the dispatch envelope as the normative pointer to
+the full contract (needed for the partial/needs-decision/blocked shapes and
+the escaping rules this 222 B marker-to-marker (234 B with fences) template
+omits), but a compliant COMPLETE return never requires opening it. The whole
+envelope (marker to marker) is clamped to 1,024 B. This is stated once, here,
+rather than repeated at each of the 8 phase sections below or at the two
+refix re-dispatch sites (the Phase 4 gate fix-loop re-spawn and the Phase 5
+review fix-loop re-spawn) — every phase section already reads "Emit the
+dispatch envelope described in the handoff-envelope section above," and both
+re-dispatch sites already read "inherits the dispatch envelope described in
+the handoff-envelope section above, unchanged from the primary spawn" — both
+phrasings carry the template-plus-note by reference.
 
 Return template, partial status:
 ```text
