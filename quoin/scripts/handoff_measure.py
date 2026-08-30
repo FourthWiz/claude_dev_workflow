@@ -1286,7 +1286,13 @@ def contract_reads_in_spawn(spawn_transcript_path, contract_names=("handoff-form
     that reads the contract twice reports the same True as one that reads
     it once, so a rate computed from this function's output is a LOWER
     BOUND on the true contract-read cost whenever any spawn re-reads.
+
+    `contract_names` is passed straight to `str.endswith`, which requires
+    a str or a tuple of str (a list raises TypeError) — coerced to a tuple
+    here so either call shape works.
     """
+    if isinstance(contract_names, list):
+        contract_names = tuple(contract_names)
     try:
         with open(spawn_transcript_path, "r", encoding="utf-8") as fh:
             for line in fh:
