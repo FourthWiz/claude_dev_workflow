@@ -404,6 +404,85 @@ aggregates as before; each phase's existing best-effort ledger-verify fallback c
 exactly as it does under default-ON (per the CRIT-2 fix above) — the fallback was never
 opt-out-only.
 
+## Handoff envelope (phase dispatch and return)
+
+The normative contract for the fields, ordering, and validation rules below is `__QUOIN_HOME__/core/workflow/handoff-format.md` — an absent or unrecognised envelope degrades to today's free-form prose and never blocks a phase.
+
+Dispatch template:
+```text
+[quoin-handoff/1.0 dispatch]
+skill: <spawned-skill-name>
+task: <task-name>
+task_dir: <resolved task directory>
+project_root: <project root>
+profile: <task profile>
+inputs: <upstream artifact> | <upstream artifact>
+return: envelope
+spec: __QUOIN_HOME__/core/workflow/handoff-format.md
+[/quoin-handoff]
+```
+
+Return template, complete status:
+```text
+[quoin-handoff/1.0 return]
+status: COMPLETE
+artifact: <path to the primary artifact written this phase>
+verdict: PASS
+summary: <one-line plain-English summary of what this phase produced, clamped to 600 B>
+[/quoin-handoff]
+```
+
+`verdict` here shows `PASS`, the default outcome for a phase with no
+approve/reject branch of its own (discover, enrich, specify, architect,
+end_of_task) — emit whichever member of the five-value vocabulary (`PASS`,
+`REVISE`, `APPROVED`, `CHANGES_REQUESTED`, `BLOCKED`) actually matches this
+phase's outcome, never the literal shown here irrespective of that outcome.
+A phase whose own skill file inlines a branch-specific return template
+(implement, review, thorough_plan) uses that inlined template in preference
+to this generic one — the inlined template carries the phase's own verdict
+vocabulary and stays authoritative for that phase, so this generic
+template's `verdict: PASS` should not reach those three phases' return.
+
+Every dispatch appends the COMPLETE return template above, plus the trailing
+note below, to the child spawn prompt immediately after the dispatch envelope
+— this covers all 8 phase dispatches below (discover, enrich, specify,
+architect, thorough_plan, implement, review, end_of_task), so the vocabulary
+and preference rule ride in the payload the child actually receives, not only
+in this file's own prose. The trailing note reads, verbatim:
+
+"Emit whichever of PASS/REVISE/APPROVED/CHANGES_REQUESTED/BLOCKED matches
+this phase's outcome; prefer this phase's own inlined template if its skill
+file has one. This shows the COMPLETE shape only — a fail-closed hard stop
+still emits the decision-gate block, not an envelope."
+
+The `spec:` field stays in the dispatch envelope as the normative pointer to
+the full contract (needed for the partial/needs-decision/blocked shapes and
+the escaping rules this 222 B marker-to-marker (234 B with fences) template
+omits), but a compliant COMPLETE return never requires opening it. The whole
+envelope (marker to marker) is clamped to 1,024 B. This is stated once, here,
+rather than repeated at each of the 8 phase sections below or at the two
+refix re-dispatch sites (the Phase 4 gate fix-loop re-spawn and the Phase 5
+review fix-loop re-spawn) — every phase section already reads "Emit the
+dispatch envelope described in the handoff-envelope section above," and both
+re-dispatch sites already read "inherits the dispatch envelope described in
+the handoff-envelope section above, unchanged from the primary spawn" — both
+phrasings carry the template-plus-note by reference.
+
+Return template, partial status:
+```text
+[quoin-handoff/1.0 return]
+status: PARTIAL
+checkpoint: <path to the saved checkpoint>
+phase: <phase name>
+remaining: <one line describing what is left, written as prose, never a delimited list>
+resume_hint: <one line telling the next dispatch where to pick up>
+[/quoin-handoff]
+```
+
+The envelope always sits strictly after the leading sentinel-token zone and never wraps it — sentinel tokens such as `[no-redispatch]` and `[autonomous]` stay outside the marker pair, never inside it.
+
+The fail-closed decision-gate block a spawned phase already emits on a hard stop is unchanged by any of this — it stays the token this orchestrator recognises, and a phase taking that path emits no envelope on that return.
+
 ## Phase 1 — Discover (conditional)
 
 **Skip condition:** Check if `.workflow_artifacts/cache/_staleness.md` exists AND its modification time is less than 7 days old. Fall back to `.workflow_artifacts/memory/repo-heads.md` if `_staleness.md` does not exist:
@@ -414,6 +493,8 @@ Also check for `repos-inventory.md` (plural) as secondary confirmation.
 
 - **If skipping:** tell the user "Discovery files are recent (<N> days old) — skipping /discover. Say 'rediscover' to force a fresh scan."
 - **If running:** spawn `/discover` as a subagent session (same mechanism as `/thorough_plan` uses for `/critic` — see its "Invoking each agent" section). Pass the project folder path. No gate runs after discover — it feeds directly into architect.
+
+Emit the dispatch envelope described in the handoff-envelope section above, naming this phase's skill as `discover` and `return: envelope`.
 
 Unless `QUOIN_INLINE_COST_CAPTURE=0`, the on-behalf write per "On-behalf cost capture" above (phase=discover, model=opus) runs FIRST. Either way (on-behalf write above, or under opt-out the child's own self-write), THEN verify the cost ledger has a new entry for the `discover` phase. If still not present, append a best-effort entry: `unknown-discover-<timestamp> | <date> | discover | opus | task | /run subagent (on-behalf write failed, if capture was ON — else no UUID recorded)`.
 
@@ -430,6 +511,8 @@ On entry, PROMPT via `AskUserQuestion`: "Run prompt enrichment on this task, or 
 - **If skipping:** tell the user "Skipping /enrich per your choice." and proceed to Phase 1.5.
 - **If running:** spawn `/enrich` as a subagent session (same mechanism as the Phase 1.5 specify spawn). Pass the raw task description and the task folder path.
 
+Emit the dispatch envelope described in the handoff-envelope section above, naming this phase's skill as `enrich` and `return: envelope`.
+
 Unless `QUOIN_INLINE_COST_CAPTURE=0`, the on-behalf write per "On-behalf cost capture" above (phase=enrich, model=opus) runs FIRST. Either way (on-behalf write above, or under opt-out the child's own self-write), THEN verify the cost ledger has a new entry for the `enrich` phase. If still not present, append a best-effort entry: `unknown-enrich-<timestamp> | <date> | enrich | opus | task | /run subagent (on-behalf write failed, if capture was ON — else no UUID recorded)` (mirrors the Phase 1/Phase 1.5 best-effort append pattern).
 
 Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/enrich.done` (atomic write — T-05/T-10 write-site map) — including when enrich was skipped via the AskUserQuestion prompt above (a skipped phase still counts as reaching this point in the pipeline; resume must not re-offer the prompt).
@@ -444,6 +527,8 @@ Under non-interactive dispatch (no way to present `AskUserQuestion`), degrade to
 
 - **If skipping:** tell the user "Skipping /specify (Small task | spec already exists)."
 - **If running:** spawn `/specify` as a subagent session (same mechanism as the Phase 2 architect spawn). Pass the task description and the task folder path.
+
+Emit the dispatch envelope described in the handoff-envelope section above, naming this phase's skill as `specify` and `return: envelope`.
 
 Unless `QUOIN_INLINE_COST_CAPTURE=0`, the on-behalf write per "On-behalf cost capture" above (phase=specify, model=opus) runs FIRST. Either way (on-behalf write above, or under opt-out the child's own self-write), THEN verify the cost ledger has a new entry for the `specify` phase. If still not present, append a best-effort entry: `unknown-specify-<timestamp> | <date> | specify | opus | task | /run subagent (on-behalf write failed, if capture was ON — else no UUID recorded)` (mirrors the Phase 1/Phase 2 best-effort append pattern).
 
@@ -671,6 +756,8 @@ plain (non-autonomous) run never writes this file, in either mode.
 - **If running:** spawn `/architect` as a subagent session, passing the task description, paths to discovery output files (`repos-inventory.md`, `architecture-overview.md`, `dependencies-map.md`), and the path to `<task-root>/spec.md` if it exists (read-if-exists).
   - **Note:** `/architect` now includes a Phase 4 critic loop (max 2 rounds default, 4 in strict mode); expect 1-2 additional `critic` phase rows in the cost ledger per round. If Phase 4 triggers the cost-guard confirmation (pre-round-2), the architect subagent will pause for user input — watch for the prompt `[critic round 2 starting — ~$10-30 estimated based on body size]` in the subagent output.
 
+Emit the dispatch envelope described in the handoff-envelope section above, naming this phase's skill as `architect` and `return: envelope`.
+
 Unless `QUOIN_INLINE_COST_CAPTURE=0`, the on-behalf write per "On-behalf cost capture" above (phase=architect, model=opus) runs FIRST. Either way (on-behalf write above, or under opt-out the child's own self-write), THEN verify the cost ledger has a new entry for the `architect` phase. If still not present, append a best-effort entry with `unknown-architect-<timestamp>`. Also check for `critic` phase rows from Phase 4 (1-2 expected; accept their absence if Phase 4 was skipped via `max_rounds: 0`) — the Phase 4 critic-round rows are architect's OWN on-behalf writes, per its own on-behalf mechanism, independent of this one.
 
 Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/architect.done` (atomic write — T-05/T-10 write-site map), including when architect was skipped for a Small task or for the fast route.
@@ -712,6 +799,8 @@ dispatched to `/implement` directly.
 
 `/thorough_plan` handles its own internal plan→critic→revise loop and runs its own post-plan smoke gate.
 
+Emit the dispatch envelope described in the handoff-envelope section above, naming this phase's skill as `thorough_plan` and `return: envelope`.
+
 After the phase, unless `QUOIN_INLINE_COST_CAPTURE=0`, the on-behalf write per "On-behalf cost capture" above (phase=thorough-plan, model=opus) runs FIRST for the `thorough-plan` row — the plan/critic/revise/enrich rows are thorough_plan's OWN on-behalf writes, per its own on-behalf mechanism, independent of this one. Either way, THEN verify the cost ledger has new entries for `thorough-plan`, `plan`, `critic`, and (if applicable) `revise` phases. If any are still missing, append best-effort entries with `unknown-<phase>-<timestamp>`.
 
 Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/thorough_plan.done` (atomic write — T-05/T-10 write-site map), including when thorough_plan was skipped for the fast route.
@@ -743,6 +832,8 @@ Only evaluated under `AUTONOMOUS` — plain `/run` never evaluates this bar and 
 ## Phase 4 — Implement
 
 Spawn `/implement` as a subagent session, passing path to `<task_dir>/current-plan.md` (where `<task_dir>` is resolved via `python3 __QUOIN_HOME__/scripts/path_resolve.py --task <task-name> [--stage <N-or-name>]` in Setup §) and all repo paths. Because the user invoked `/run` and confirmed at Checkpoint B (or, on the fast route, at Checkpoint A1 — Checkpoint B never fires on that route), the `/run` exception in `implement/SKILL.md` applies.
+
+Emit the dispatch envelope described in the handoff-envelope section above, naming this phase's skill as `implement` and `return: envelope`, placed after the whole sentinel prefix zone described in the fast-route ordering rule below.
 
 **On the fast route,** dispatch this spawn with model opus, and the spawn prompt's FIRST token must be bare `[no-redispatch]` — any `[autonomous]` / `[no-interactive]` / `[quoin-onbehalf]` markers follow it, in that order. This order is load-bearing: `implement/SKILL.md`'s §0 conditions on the prompt "starting with" a `[no-redispatch]` form, and §0‴ likewise — the wrong order lets `/implement` silently down-dispatch to Sonnet while every mechanical check still passes. On the full path this dispatch is unchanged (default model tier, no forced sentinel).
 
@@ -776,7 +867,7 @@ Continue to review? (yes / no / show changes)
 ```
 
 If the gate **failed**: present the failures and ask "Fix and retry, or stop?"
-- "fix" → spawn `/implement` again for the failing items (on the fast route, same model-opus / leading-`[no-redispatch]` dispatch as the primary Phase 4 spawn above), then re-run `/gate` inline (post-implement boundary — same inline mechanism as the primary path; audit-log persistence applies per `/gate/SKILL.md`)
+- "fix" → spawn `/implement` again for the failing items (on the fast route, same model-opus / leading-`[no-redispatch]` dispatch as the primary Phase 4 spawn above), then re-run `/gate` inline (post-implement boundary — same inline mechanism as the primary path; audit-log persistence applies per `/gate/SKILL.md`). This re-dispatch inherits the dispatch envelope described in the handoff-envelope section above, unchanged from the primary spawn.
 - "stop" → halt, preserve artifacts
 
 **(fast route only)** a third option, "escalate to full", is also offered here. Escalation is ONE
@@ -830,7 +921,11 @@ If the user says "show changes": run `git diff --stat` and display, then re-ask.
 
 ## Phase 5 — Review
 
-Spawn `/review` as a **fresh subagent session** (unbiased assessment requires clean context). Pass plan path, architecture path, spec path (if it exists), and repo paths. Then append a ``[quoin-bundle]`` block to the spawn prompt in two steps:
+Spawn `/review` as a **fresh subagent session** (unbiased assessment requires clean context). Pass plan path, architecture path, spec path (if it exists), and repo paths.
+
+Emit the dispatch envelope described in the handoff-envelope section above, naming this phase's skill as `review` and `return: envelope`.
+
+Then append a ``[quoin-bundle]`` block to the spawn prompt in two steps:
 
 1. Run via the Bash tool (resolve `<task-name>` to the actual task and `<N>` to the resolved stage number; OMIT `--stage` entirely for single-stage/grandfathered tasks):
    ```bash
@@ -847,7 +942,7 @@ Under `AUTONOMOUS`, once Checkpoint D confirms (APPROVED or accepted, gate passe
 **If APPROVED:** run `/gate` inline (Full level, post-review — read `/gate/SKILL.md` from the same session and execute the gate process directly). Step 5 audit-log persistence applies in inline mode per the gate skill's existing rule. Proceed to Checkpoint D.
 
 **If CHANGES_REQUESTED:** present the issues to the user. Offer:
-1. **"fix"** → spawn `/implement` again with the review issues as the spec (on the fast route, same model-opus / leading-`[no-redispatch]` dispatch as the primary Phase 4 spawn above). After fix-implement completes, re-run the post-implementation gate inline (same level as before; audit-log persistence per `/gate/SKILL.md`). Then re-spawn `/review`. Cap at 3 review rounds to prevent infinite cycling.
+1. **"fix"** → spawn `/implement` again with the review issues as the spec (on the fast route, same model-opus / leading-`[no-redispatch]` dispatch as the primary Phase 4 spawn above). This re-dispatch inherits the dispatch envelope described in the handoff-envelope section above, unchanged from the primary spawn. After fix-implement completes, re-run the post-implementation gate inline (same level as before; audit-log persistence per `/gate/SKILL.md`). Then re-spawn `/review`. Cap at 3 review rounds to prevent infinite cycling.
 2. **"accept"** → treat as approved despite requested changes. Log this decision in session state. Proceed to Checkpoint D.
 
 **(fast route only)** after the 3-round CHANGES_REQUESTED cap, a third option, "escalate to full",
@@ -891,7 +986,11 @@ Finalize and push? (yes / no / show review)
 
 ## Phase 6 — End of Task
 
-Spawn `/end_of_task` as a subagent session. Because the user invoked `/run` and confirmed at Checkpoint D, the `/run` exception in `end_of_task/SKILL.md` applies. All 8 steps run as normal (pre-flight, commit, push, lessons, session state, cost aggregation, archive, report). Unless `QUOIN_INLINE_COST_CAPTURE=0`, this spawn also follows "On-behalf cost capture" above (phase=end-of-task, model=sonnet) — see the `end_of_task` note in its `## Autonomous mode bootstrap` section (post-`<!-- §0tripleprime-end -->`, not the old `§0-end`-only anchor; no T-06 skip predicate to pair with; this write is additive, not a suppression-replace).
+Spawn `/end_of_task` as a subagent session. Because the user invoked `/run` and confirmed at Checkpoint D, the `/run` exception in `end_of_task/SKILL.md` applies. All 8 steps run as normal (pre-flight, commit, push, lessons, session state, cost aggregation, archive, report).
+
+Emit the dispatch envelope described in the handoff-envelope section above, naming this phase's skill as `end_of_task` and `return: envelope`.
+
+Unless `QUOIN_INLINE_COST_CAPTURE=0`, this spawn also follows "On-behalf cost capture" above (phase=end-of-task, model=sonnet) — see the `end_of_task` note in its `## Autonomous mode bootstrap` section (post-`<!-- §0tripleprime-end -->`, not the old `§0-end`-only anchor; no T-06 skip predicate to pair with; this write is additive, not a suppression-replace).
 
 Commit and PR text composed under `/run` follows the same clean-authored-content rule as standalone `/end_of_task`/`/pr` — `/run` composes no commit/PR text itself, only delegates. Full rule: __QUOIN_HOME__/memory/clean-authored-content.md.
 
@@ -1027,6 +1126,8 @@ Each phase runs as a separate subagent session — never inline. This keeps the 
 - Spawning mechanism: same as `/thorough_plan`'s "Invoking each agent" section — the `Skill` tool invokes each subagent as a fresh session. Phases are sequential (not parallel).
 - Known gate/SKILL.md diagram inconsistency: `gate/SKILL.md` shows a gate after discover, but `CLAUDE.md`'s workflow sequence does not. This skill follows `CLAUDE.md` — no gate after discover. The gate skill determines context from disk artifacts, so the discrepancy has no runtime effect.
 - **Within-phase isolation, autonomous (T-12).** Under `AUTONOMOUS`, the "paths and parameters only" rule above is a HARD requirement, not just a lean-context preference: a phase subagent returns a PATH plus a short summary, never raw file content, so the orchestrator's own transcript stays bounded across a multi-relaunch autonomous span. A phase subagent that nears its own limit writes a checkpoint to disk and returns a structured `PARTIAL` signal instead of exhausting itself mid-phase; the orchestrator responds by dispatching a FRESH subagent to CONTINUE that same phase from the checkpoint (see "Within-phase PARTIAL continuation" under "## Error handling" below). This keeps orchestrator context bounded WITHIN a phase, complementing the cross-phase relaunch a supervisor performs between phases.
+- **Return envelope on dispatch.** A phase subagent dispatched with `return: envelope` replies with the return envelope, defined in the handoff-envelope section above, in place of its usual English summary. The orchestrator still authors its own Checkpoint A through D chat summaries from the artifacts it re-reads from disk — the envelope replaces the subagent's own prose, not the orchestrator's.
+- **Status and verdict vocabulary.** The contract's `status` enum has exactly four members and `status` is the sole discriminator of a return's shape. The returns this stage's run-owned phases emit are `COMPLETE` and `PARTIAL`. A phase that fails closed continues to emit the shipped `gate-result: NEEDS-DECISION` block exactly as today — that stays the token the orchestrator recognises, and the phase emits no envelope for that return. `NEEDS-DECISION` and `BLOCKED` are contract vocabulary reserved for a next wave, not dead words and not something this stage emits. On a complete return, the `verdict` field carries `PASS` for discover, enrich, specify, architect, implement and end_of_task; review substitutes its own vocabulary (`APPROVED`, `CHANGES_REQUESTED`, `BLOCKED`); thorough_plan substitutes `PASS` or `REVISE`.
 - **Self-utilization vs. scope-cap fallback.** A phase subagent SHOULD attempt to read its own transcript utilization to decide when to checkpoint-and-return-`PARTIAL` proactively, before it is forced to stop mid-tool-call. When a subagent cannot resolve its own transcript utilization, it MUST fall back to a fixed tool-use scope cap (mirroring `end_of_task`'s existing "Scope cap: ~N tool uses; if blocked, write to disk and return" pattern) so `PARTIAL` is still returned deterministically rather than the subagent silently running until it is killed.
 
 ## Parallel tasks
@@ -1089,6 +1190,10 @@ that tradeoff.
        restarting the phase from scratch.
     c. Repeat until the phase returns its normal phase-complete summary
        (not `PARTIAL`) or a hard-stop condition fires.
+    d. The `PARTIAL` signal above is the return envelope's `status: PARTIAL`
+       shape; `checkpoint` is the field carrying the path step (a) reads.
+       See the handoff-envelope section above for the full partial-status
+       field set.
   This is a WITHIN-phase mechanism — distinct from a supervisor's
   cross-phase relaunch (`autonomous-progress-{task}/{phase}.done`
   sentinels), and distinct from the stream-idle recovery above (which

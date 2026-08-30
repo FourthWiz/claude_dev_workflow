@@ -491,7 +491,16 @@ Filename auto-detection identifies type as `review` (matches `^review-` regex in
 ## After the review
 
 If the verdict is CHANGES_REQUESTED or BLOCKED:
-- Print an **inline summary** in the chat (REQUIRED — do NOT rely on the user reading the terse review artifact). Cover the canonical field set:
+- **Final-message branch.** If the incoming dispatch prompt carried a handoff dispatch envelope with `return: envelope`, emit the return envelope as the final message, instead of the inline summary below — the orchestrator authors the human-facing checkpoint from the artifacts it re-reads. Full field reference stays the workflow-directory contract named in the dispatch's `spec:` field (__QUOIN_HOME__/core/workflow/handoff-format.md); the shape below is inlined so a compliant emission never requires reading it:
+  ```text
+  [quoin-handoff/1.0 return]
+  status: COMPLETE
+  artifact: <task_dir>/review-N.md
+  verdict: CHANGES_REQUESTED
+  summary: <clamped, one line, <=600 B>
+  [/quoin-handoff]
+  ```
+  (`verdict: BLOCKED` on the rare blocked outcome instead.) `status` is exactly one of `COMPLETE`, `PARTIAL`, `NEEDS-DECISION`, `BLOCKED`; `verdict` (when carried) is exactly one of `PASS`, `REVISE`, `APPROVED`, `CHANGES_REQUESTED`, `BLOCKED` — emit whichever of `CHANGES_REQUESTED` or `BLOCKED` matches this review's actual outcome, never a value lifted from the worked example irrespective of that outcome. The whole envelope (marker to marker) is clamped to 1,024 B. Otherwise — standalone invocation, no envelope — print an **inline summary** in the chat, plain and human-readable (REQUIRED — do NOT rely on the user reading the terse review artifact). Cover the canonical field set:
   - **Verdict** — "CHANGES_REQUESTED" or "BLOCKED" in plain language (e.g., "Review requires changes before implementation can proceed").
   - **2–4 most important findings** — in plain language, no terse glyphs.
   - **Specific issues that must be fixed** — file and location where relevant.
@@ -503,7 +512,16 @@ If the verdict is CHANGES_REQUESTED or BLOCKED:
 
 If the verdict is APPROVED:
 - **Run `/gate` inline** (Full level, post-review — read `/gate/SKILL.md` from the same session and execute the gate process directly; write the audit log per gate Step 5 before yielding control). This is the manual (non-`/run`) post-review boundary; audit-log persistence applies inline per `/gate/SKILL.md`.
-- Print an **inline summary** in the chat as your final user-facing message (REQUIRED — do NOT rely on the user reading the terse review artifact). Cover the canonical field set:
+- **Final-message branch.** If the incoming dispatch prompt carried a handoff dispatch envelope with `return: envelope`, emit the return envelope as the final message, instead of the inline summary below — the orchestrator authors the human-facing checkpoint from the artifacts it re-reads. Full field reference stays the workflow-directory contract named in the dispatch's `spec:` field (__QUOIN_HOME__/core/workflow/handoff-format.md); the shape below is inlined so a compliant emission never requires reading it:
+  ```text
+  [quoin-handoff/1.0 return]
+  status: COMPLETE
+  artifact: <task_dir>/review-N.md
+  verdict: APPROVED
+  summary: <clamped, one line, <=600 B>
+  [/quoin-handoff]
+  ```
+  `status` is exactly one of `COMPLETE`, `PARTIAL`, `NEEDS-DECISION`, `BLOCKED`; `verdict` (when carried) is exactly one of `PASS`, `REVISE`, `APPROVED`, `CHANGES_REQUESTED`, `BLOCKED` — this branch only ever emits `APPROVED`. The whole envelope (marker to marker) is clamped to 1,024 B. Otherwise — standalone invocation, no envelope — print an **inline summary** in the chat as your final user-facing message, plain and human-readable (REQUIRED — do NOT rely on the user reading the terse review artifact). Cover the canonical field set:
   - **Verdict** — "APPROVED" in plain language.
   - **2–4 most important findings or highlights** — what was verified, in plain language.
   - **Remaining concerns** — one line; "none" if clean.

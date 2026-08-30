@@ -361,7 +361,14 @@ class TestIvg92SpecialCaseMapping:
             once the clean-authored-content rule gave it a
             test_authored_content_rule_pointers.py row, so this assertion
             moved to critic/SKILL.md, which carries no _DOCS_TO_TESTS row at
-            all (verified by grep)."""
+            all (verified by grep).
+
+        Rotation check: re-ran this test before and after adding the
+        implement/end_of_task -> test_decision_gate_census.py selector rows.
+        Both clauses' exemplars are unaffected by that edit class — clause 1's
+        exemplar (review/SKILL.md) still carries no citation-sweep row, clause
+        2's exemplar (critic/SKILL.md) still carries no _DOCS_TO_TESTS row at
+        all — neither needed rotating."""
         selectors, unmatched, ignored = _at.map_changed_to_tests(
             ["quoin/adapters/claude/skills/review/SKILL.md"], _REPO_ROOT
         )
