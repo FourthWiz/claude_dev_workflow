@@ -470,6 +470,7 @@ def deploy_core_scripts(source_dir: pathlib.Path, dest_root: pathlib.Path) -> No
 # cost-ledger.md, skills.md, skills.json) plus the inter-agent handoff spec (T-06, D-10).
 CORE_WORKFLOW_FILES = (
     "cost-ledger.md",
+    "handoff-format-reference.md",
     "handoff-format.md",
     "rules.md",
     "session-state.md",

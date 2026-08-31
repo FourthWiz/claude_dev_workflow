@@ -406,7 +406,7 @@ opt-out-only.
 
 ## Handoff envelope (phase dispatch and return)
 
-The normative contract for the fields, ordering, and validation rules below is `__QUOIN_HOME__/core/workflow/handoff-format.md` — an absent or unrecognised envelope degrades to today's free-form prose and never blocks a phase.
+The normative contract for the fields, ordering, delimiters, and escaping below is `__QUOIN_HOME__/core/workflow/handoff-format.md`; the checkable rules and their interaction cascade are defined in `__QUOIN_HOME__/core/workflow/handoff-format-reference.md`. An absent or unrecognised envelope degrades to today's free-form prose and never blocks a phase.
 
 Dispatch template:
 ```text

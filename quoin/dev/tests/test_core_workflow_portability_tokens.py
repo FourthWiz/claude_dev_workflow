@@ -8,12 +8,15 @@ added to that directory later is covered automatically without an edit here.
 
 Distinct from the per-skill `*_adapter_pilot.py` tests: those cover
 quoin/core/skills/<name>.md one skill at a time; this covers the shared
-workflow docs (six as of the inter-agent handoff spec, T-06) as one
-directory-wide population.
+workflow docs (one entry per markdown file in the installer's registration
+tuple, minus the non-markdown `skills.json` member) as one directory-wide
+population.
 """
 
 import re
 from pathlib import Path
+
+import quoin.installer as _inst
 
 THIS_FILE = Path(__file__).resolve()
 TESTS_DIR = THIS_FILE.parent
@@ -26,14 +29,7 @@ CORE_SKILLS_DIR = PKG_DIR / "core" / "skills"
 # "orchestrator" / "subagent" vocabulary core/workflow/ legitimately uses.
 FORBIDDEN_TOKENS = ("~/.claude", "Haiku", "Sonnet", "Opus", "gh CLI")
 
-EXPECTED_FILENAMES = {
-    "cost-ledger.md",
-    "handoff-format.md",
-    "rules.md",
-    "session-state.md",
-    "skills.md",
-    "task-layout.md",
-}
+EXPECTED_FILENAMES = set(_inst.CORE_WORKFLOW_FILES) - {"skills.json"}
 
 
 def _slash_regex(name: str) -> re.Pattern:
@@ -72,16 +68,36 @@ def _scan_forbidden_tokens(path: Path) -> list:
     return hits
 
 
-def test_core_workflow_population_is_nonempty_and_contains_expected_five():
-    """Guards the population itself, not just the scan: a missing file would
-    silently shrink coverage rather than fail loudly."""
+def test_core_workflow_population_matches_installer_registration():
+    """Guards the population itself, not just the scan: a missing OR an
+    unregistered file would silently break deployment rather than fail
+    loudly. Anchored to the installer's own CORE_WORKFLOW_FILES tuple (the
+    thing that actually gates deployment), not a test-local filename set —
+    a set-equality guard here catches both directions: a file added to
+    core/workflow/ without a matching installer row, and an installer row
+    with no matching file on disk."""
     files = _core_workflow_files()
     names = {p.name for p in files}
     assert files, f"expected at least one *.md file under {CORE_WORKFLOW_DIR}"
-    missing = EXPECTED_FILENAMES - names
-    assert not missing, (
-        f"core/workflow/*.md is missing expected file(s): {sorted(missing)} "
+    assert names == EXPECTED_FILENAMES, (
+        f"core/workflow/*.md does not match quoin.installer.CORE_WORKFLOW_FILES "
+        f"(minus skills.json): missing {sorted(EXPECTED_FILENAMES - names)}, "
+        f"unregistered {sorted(names - EXPECTED_FILENAMES)} "
         f"(found: {sorted(names)})"
+    )
+
+
+def test_core_workflow_population_guard_catches_unrostered_file(tmp_path):
+    """Mutation guard: an extra *.md file dropped into a copy of the real
+    population, with no matching installer row, must fail the set-equality
+    predicate the test above asserts — proving the guard actually bites
+    rather than vacuously passing on today's population."""
+    real_names = {p.name for p in _core_workflow_files()}
+    assert real_names == EXPECTED_FILENAMES, "population already out of sync; fix that first"
+
+    mutated_names = real_names | {"unrostered-doc.md"}
+    assert mutated_names != EXPECTED_FILENAMES, (
+        "expected an unrostered file to break the set-equality guard"
     )
 
 

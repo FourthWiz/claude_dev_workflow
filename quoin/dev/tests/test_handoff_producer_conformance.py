@@ -294,10 +294,11 @@ def test_dispatch_block_carries_spec_field():
 
 
 def test_producer_skills_name_the_contract_file():
-    """Each summary-mandating skill must name handoff-format.md somewhere in its
-    final-message prose, so a producer reading its own SKILL.md can locate the
-    normative contract without depending on the dispatch payload alone."""
-    for path in SUMMARY_MANDATING_SKILLS:
+    """Every producer file — each summary-mandating skill, and the run skill
+    that spawns them — must name handoff-format.md somewhere in its own
+    prose, so a producer reading its own SKILL.md can locate the normative
+    contract without depending on the dispatch payload alone."""
+    for path in PRODUCER_FILES:
         with open(path, encoding="utf-8") as fh:
             text = fh.read()
         assert "handoff-format.md" in text, (

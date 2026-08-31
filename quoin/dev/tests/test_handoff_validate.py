@@ -35,7 +35,7 @@ QUOIN_DIR = os.path.dirname(DEV_DIR)               # quoin/
 PROJECT_ROOT = os.path.dirname(QUOIN_DIR)          # project root
 
 VALIDATOR = os.path.join(QUOIN_DIR, "core", "scripts", "handoff_validate.py")
-SPEC = os.path.join(QUOIN_DIR, "core", "workflow", "handoff-format.md")
+SPEC = os.path.join(QUOIN_DIR, "core", "workflow", "handoff-format-reference.md")
 
 
 def fixture(name):
@@ -337,7 +337,7 @@ def test_status_coverage_h05_violating_fixtures_exercise_all_four_statuses():
 
 # ── Three-way rule-ID set equality (proc:T-10) ──────────────────────────────
 #
-# spec_ids: extracted from handoff-format.md's checkable-rule table (the
+# spec_ids: extracted from handoff-format-reference.md's checkable-rule table (the
 # only table whose first column is bare H-NN and whose second column is a
 # severity token — the Rule Interaction Cascade table's first column carries
 # extra prose after the ID, so it never matches this pattern).

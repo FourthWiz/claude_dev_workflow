@@ -491,6 +491,17 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/core/workflow/handoff-format.md",
         "quoin/dev/tests/test_handoff_validate.py",
     ),
+    # Stage 5 (T-03): the checkable-rule table and its interaction cascade
+    # moved to a companion file — a doc-only edit there needs the same
+    # selectability the core file already has, above.
+    (
+        "quoin/core/workflow/handoff-format-reference.md",
+        "quoin/dev/tests/test_core_workflow_portability_tokens.py",
+    ),
+    (
+        "quoin/core/workflow/handoff-format-reference.md",
+        "quoin/dev/tests/test_handoff_validate.py",
+    ),
     # IVG-248 stage 2 T-14 (durable half of the C-03 critical): gate/SKILL.md
     # embeds the deploy-drift coverage qualifier VERBATIM, including the
     # literal "CLAUDE.md" inside its "not covered" clause, so a gate/SKILL.md
