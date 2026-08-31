@@ -284,12 +284,18 @@ def test_dispatch_block_carries_return_envelope_field():
     assert any("return: envelope" in block for block in dispatch_blocks)
 
 
-def test_dispatch_block_carries_spec_field():
+def test_dispatch_block_no_longer_carries_spec_field():
+    """Deliberate inversion of the former test_dispatch_block_carries_spec_field:
+    stage 3 pinned spec: as a green invariant; this stage's 1.1 dispatch
+    template drops the field in favor of the trailing note (see
+    extract_trailing_note above), which becomes the sole path to the full
+    contract for every dispatch. This flip is by design, not a regression."""
     blocks = all_producer_blocks()
     dispatch_blocks = [block for direction, block in blocks if direction == "dispatch"]
     assert dispatch_blocks, "no dispatch block found"
-    assert any(re.search(r"^spec:\s*\S+", block, re.MULTILINE) for block in dispatch_blocks), (
-        "no dispatch block carries a spec: field pointing a producer at the contract"
+    assert not any(re.search(r"^spec:\s*\S+", block, re.MULTILINE) for block in dispatch_blocks), (
+        "a dispatch block still carries a spec: field; the 1.1 template drops it "
+        "in favor of the trailing note"
     )
 
 

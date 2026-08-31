@@ -52,22 +52,22 @@ its own violation — the assertion never overrides the marker.
 ## Dispatch Envelope
 
 Orchestrator to subagent. Required: `skill`, `task`, `task_dir`,
-`project_root`, `return`. Optional: `profile`, `inputs`, `spec`,
-`bundle[N]` (tabular sub-form, see below).
+`project_root`, `return` (minor 1 drops `project_root`; `task_dir` then
+ABSOLUTE). Optional: `profile`, `inputs`, `spec`, `bundle[N]` (tabular
+sub-form, see below).
 
-Canonical field order (dispatch known-key set): `skill`, `task`,
-`task_dir`, `project_root`, `profile`, `inputs`, `return`, `spec`,
-`bundle`.
+Canonical field order (known-key set): `skill`, `task`, `task_dir`,
+`project_root`, `profile`, `inputs`, `return`, `spec`, `bundle`.
 
 ```text
 [no-redispatch] [autonomous] [quoin-onbehalf]
 [quoin-handoff/1.0 dispatch]
 skill: architect
-task: agent-handoff-format
-task_dir: .workflow_artifacts/agent-handoff-format/
-project_root: /abs/path/to/project
+task: my-task
+task_dir: /abs/project/.workflow_artifacts/my-task/
+project_root: /abs/project
 profile: Large
-inputs: spec.md | enriched-prompt.md | memory/repos-inventory.md
+inputs: spec.md | architecture.md
 return: envelope
 spec: __QUOIN_HOME__/core/workflow/handoff-format.md
 [/quoin-handoff]
@@ -150,7 +150,7 @@ reference for what a conforming payload must and may carry.
 
 `verdict` is optional wherever it appears and checked only when present —
 an omitted required field is a required-field violation, not a verdict
-one.
+one (dispatch `project_root`: minor 0 only).
 
 ## Status And Verdict Vocabulary
 

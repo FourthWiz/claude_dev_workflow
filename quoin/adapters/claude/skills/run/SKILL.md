@@ -410,15 +410,12 @@ The normative contract for the fields, ordering, delimiters, and escaping below 
 
 Dispatch template:
 ```text
-[quoin-handoff/1.0 dispatch]
+[quoin-handoff/1.1 dispatch]
 skill: <spawned-skill-name>
 task: <task-name>
 task_dir: <resolved task directory>
-project_root: <project root>
-profile: <task profile>
 inputs: <upstream artifact> | <upstream artifact>
 return: envelope
-spec: __QUOIN_HOME__/core/workflow/handoff-format.md
 [/quoin-handoff]
 ```
 
@@ -455,10 +452,11 @@ this phase's outcome; prefer this phase's own inlined template if its skill
 file has one. This shows the COMPLETE shape only — a fail-closed hard stop
 still emits the decision-gate block, not an envelope."
 
-The `spec:` field stays in the dispatch envelope as the normative pointer to
-the full contract (needed for the partial/needs-decision/blocked shapes and
-the escaping rules this 222 B marker-to-marker (234 B with fences) template
-omits), but a compliant COMPLETE return never requires opening it. The whole
+With `spec:` no longer part of the dispatch payload, the trailing note above
+is the path to the full contract (needed for the partial/needs-decision/
+blocked shapes and the escaping rules this 222 B marker-to-marker (234 B
+with fences) template omits), but a compliant COMPLETE return never requires
+opening it. The whole
 envelope (marker to marker) is clamped to 1,024 B. This is stated once, here,
 rather than repeated at each of the 8 phase sections below or at the two
 refix re-dispatch sites (the Phase 4 gate fix-loop re-spawn and the Phase 5

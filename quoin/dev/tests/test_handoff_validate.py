@@ -60,6 +60,14 @@ def test_conforming_dispatch_exits_clean():
     assert lines == []
 
 
+def test_conforming_dispatch_minor1_exits_clean():
+    """Minor 1's relaxed dispatch shape: no project_root, no spec:/profile:,
+    task_dir carried absolute."""
+    rc, lines = run_validator("conforming-dispatch-minor1.md")
+    assert rc == 0
+    assert lines == []
+
+
 def test_conforming_return_complete_exits_clean():
     rc, lines = run_validator("conforming-return-complete.md")
     assert rc == 0
@@ -141,6 +149,15 @@ def test_h03_unknown_minor_continues_processing():
     _assert_isolated("h03-unknown-minor.md", 0, "WARN H-03")
 
 
+def test_h03_unknown_minor_dispatch_direction():
+    """Dispatch-direction sibling of the return-direction fixture above: an
+    unrecognised minor (1.5) still validates the payload against the
+    highest recognised minor's required set (_DISPATCH_REQUIRED's fallback)
+    rather than skipping H-05 entirely — this fixture carries all four of
+    minor 1's required fields, so it warns H-03 and nothing else."""
+    _assert_isolated("h03-unknown-minor-dispatch.md", 0, "WARN H-03")
+
+
 # ── H-04 (FATAL, gating: direction-keyed rules skip) ────────────────────────
 
 
@@ -149,6 +166,23 @@ def test_h04_bad_direction_keyword():
 
 
 # ── H-05 (FATAL, one violating fixture per status — MAJ-2) ─────────────────
+
+
+def test_h05_dispatch_missing_task_dir():
+    """task_dir stays required under BOTH minors — this fixture, otherwise a
+    conforming minor-1 dispatch, omits only task_dir and must still fail
+    H-05, proving task_dir survived the project_root relaxation."""
+    _assert_isolated("h05-dispatch-missing-task-dir.md", 1, "FAIL H-05")
+
+
+def test_h05_dispatch_1_0_missing_project_root_is_version_keyed():
+    """Regression guard for a global (non-version-keyed) relaxation: this
+    fixture is a 1.0 dispatch carrying task_dir and every other required
+    field, omitting ONLY project_root. Under the version-keyed required set
+    (minor 0 still requires project_root) it fails H-05; under a global
+    relaxation to minor 1's tuple it would validate clean, so this
+    assertion reds exactly on that regression."""
+    _assert_isolated("h05-dispatch-1.0-no-project-root.md", 1, "FAIL H-05")
 
 
 def test_h05_complete_missing_summary():
