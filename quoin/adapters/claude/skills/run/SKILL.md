@@ -450,7 +450,9 @@ in this file's own prose. The trailing note reads, verbatim:
 "Emit whichever of PASS/REVISE/APPROVED/CHANGES_REQUESTED/BLOCKED matches
 this phase's outcome; prefer this phase's own inlined template if its skill
 file has one. This shows the COMPLETE shape only — a fail-closed hard stop
-still emits the decision-gate block, not an envelope."
+still emits the decision-gate block, not an envelope. Do not open
+__QUOIN_HOME__/core/workflow/handoff-format.md unless you need other
+shapes/escaping."
 
 With `spec:` no longer part of the dispatch payload, the trailing note above
 is the path to the full contract (needed for the partial/needs-decision/

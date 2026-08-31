@@ -23,6 +23,8 @@ import sys
 import tempfile
 import textwrap
 
+import pytest
+
 TEST_DIR = os.path.dirname(os.path.abspath(__file__))
 DEV_DIR = os.path.dirname(TEST_DIR)                # quoin/dev/
 QUOIN_DIR = os.path.dirname(DEV_DIR)                # quoin/
@@ -116,7 +118,25 @@ def all_producer_blocks():
 # template in run/SKILL.md's handoff-envelope section — the note carries the
 # verdict-vocabulary and own-template-preference instruction into the actual
 # child spawn prompt, not only into this file's surrounding prose.
-TRAILING_NOTE_RE = re.compile(r'reads, verbatim:\s*\n\n"(.*?)"', re.DOTALL)
+# Paragraph-bounded, not quote-bounded: the group closes on the LAST quote
+# in the paragraph (the one immediately followed by the blank line that ends
+# it), not the FIRST quote found. A note carrying an embedded quote (e.g. the
+# __QUOIN_HOME__ pointer sentence) is captured in full instead of truncating
+# at that inner quote, which the prior non-greedy quote-bounded pattern did
+# silently. Parity is still checked below — this widening trades silent
+# truncation for a loud rejection, not for silent over-capture.
+TRAILING_NOTE_RE = re.compile(r'reads, verbatim:\s*\n\n(".*?")\n\n', re.DOTALL)
+
+
+def _extract_trailing_note_from_text(content, source_label="<text>"):
+    m = TRAILING_NOTE_RE.search(content)
+    assert m, f"{source_label}: no trailing note found after 'reads, verbatim:'"
+    block = m.group(1)
+    assert block.count('"') % 2 == 0, (
+        f"{source_label}: trailing note has an unbalanced (odd-count) quote"
+    )
+    inner = block[1:-1]
+    return " ".join(line.strip() for line in inner.splitlines())
 
 
 def extract_trailing_note(path):
@@ -126,9 +146,7 @@ def extract_trailing_note(path):
     receives."""
     with open(path, encoding="utf-8") as fh:
         content = fh.read()
-    m = TRAILING_NOTE_RE.search(content)
-    assert m, f"{path}: no trailing note found after 'reads, verbatim:'"
-    return " ".join(line.strip() for line in m.group(1).splitlines())
+    return _extract_trailing_note_from_text(content, source_label=path)
 
 
 # ── Set-guards (a), (b), (c) — a zero-block sweep must FAIL loudly ─────────
@@ -297,6 +315,61 @@ def test_dispatch_block_no_longer_carries_spec_field():
         "a dispatch block still carries a spec: field; the 1.1 template drops it "
         "in favor of the trailing note"
     )
+
+
+# ── T-06: the trailing note names the contract and stays in budget ────────
+
+
+def test_trailing_note_names_contract_file_and_resolves():
+    """With `spec:` dropped, the trailing note is the only contract path
+    discover/enrich/specify/architect/end_of_task ever receive. It must name
+    the contract by the same `__QUOIN_HOME__`-substituted spelling D-10 uses
+    for the core/reference pointer pair (a deployed child resolves from the
+    deploy root, where a repo-root or bare-filename spelling would not), and
+    that pointer must actually resolve on disk — mirrors
+    test_handoff_format_core_and_reference_cross_reference in
+    test_runtime_portability_docs.py, applied to this second pointer."""
+    note = extract_trailing_note(RUN_SKILL)
+    match = re.search(r"__QUOIN_HOME__(/core/workflow/handoff-format\.md)", note)
+    assert match, (
+        "trailing note must name the contract file by a backticked-free "
+        "__QUOIN_HOME__-substituted path"
+    )
+    assert os.path.isfile(QUOIN_DIR + match.group(1))
+
+
+def test_trailing_note_has_no_double_quote():
+    """The note is injected verbatim inside a double-quoted block
+    (`TRAILING_NOTE_RE`); an inner double quote would corrupt that framing."""
+    note = extract_trailing_note(RUN_SKILL)
+    assert '"' not in note
+
+
+def test_trailing_note_byte_length_pinned():
+    """Pins the note's exact byte length (measured per proc:bytes, without
+    the enclosing quote characters) so a future edit that silently grows or
+    truncates it is loud. Current: 377 B, cap 379 B (279 B pre-T-06 plus the
+    100 B growth cap)."""
+    note = extract_trailing_note(RUN_SKILL)
+    length = len(note.encode("utf-8"))
+    assert length == 377, f"trailing note is {length} B, expected exactly 377 B"
+    assert length <= 379, f"trailing note is {length} B, exceeds the 379 B cap"
+
+
+def test_trailing_note_extractor_rejects_unbalanced_quote():
+    """Mutation-proof for the widened, paragraph-bounded TRAILING_NOTE_RE: a
+    note carrying an odd (unbalanced/unclosed) quote count must fail loudly.
+    The prior non-greedy quote-bounded pattern would have silently truncated
+    at the first inner quote instead; a naive greedy widening would instead
+    silently over-capture past the note's real end. Neither is acceptable —
+    this proves the parity check catches what the bounding alone cannot."""
+    text = (
+        "The trailing note reads, verbatim:\n\n"
+        '"This note has an unbalanced " quote inside it."\n\n'
+        "Next paragraph.\n"
+    )
+    with pytest.raises(AssertionError, match="unbalanced"):
+        _extract_trailing_note_from_text(text)
 
 
 def test_producer_skills_name_the_contract_file():
