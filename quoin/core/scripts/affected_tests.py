@@ -465,6 +465,10 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/dev/tests/test_handoff_measure.py",
     ),
     (
+        "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-env-j/subagents/agent-env-j.jsonl",
+        "quoin/dev/tests/test_handoff_measure.py",
+    ),
+    (
         "quoin/dev/tests/fixtures/handoff_measure/projects/-fake-project/sid-joint.jsonl",
         "quoin/dev/tests/test_handoff_measure.py",
     ),
