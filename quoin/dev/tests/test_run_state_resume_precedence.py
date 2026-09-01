@@ -1,16 +1,33 @@
-"""IVG-258 T-12: resume-precedence tests for the D-02 four-tier contract.
-
-Behavioural against `run_state.py` -- fixtures build real records via
-subprocess and pin every mtime with explicit `os.utime` -- plus a
-documented-contract check of Resume Step 1b's own text.
+"""IVG-258 T-12: reader-contract harness for the D-02 four-tier resume
+algorithm (relabeled from "resume-precedence tests" per review-1.md issue 8
+-- the original name overstated what this module actually guards).
 
 The four-tier decision algorithm itself lives in `run/SKILL.md` prose (an
 LLM instruction followed at `/run` resume time, not executable code) --
-there is no production Python function to import for it. The `_resolve_*`
-helpers below are a literal, test-only transcription of that documented
-algorithm, kept ONLY as an executable oracle so the contract can be
-regression-tested against real `run_state.py` output; they are not shipped
-anywhere and must never be imported by production code.
+there is no production Python function to import for it, so nothing here
+can execute that algorithm end to end. What this module DOES pin, real and
+behavioural against `run_state.py` via subprocess:
+  - the WIRE CONTRACT the algorithm depends on being able to trust --
+    lowercase `true`/`false` string rendering, empty stdout on a stale or
+    schema-forward record, `--require-existing` as a genuine no-op that
+    never resurrects a cleared record and never touches mtime.
+  - that `run/SKILL.md`'s own Step 1b prose contains the algorithm's load-
+    bearing invariant SENTENCES verbatim (see
+    `test_step_1b_prose_carries_verbatim_invariant_pins` below), not merely
+    the four tier names in some order.
+
+The `_resolve_*` helpers are a literal, test-only transcription of the
+documented algorithm, used ONLY to drive the wire-contract assertions above
+against real `run_state.py` output -- they are not shipped anywhere and
+must never be imported by production code. Because they are derived FROM
+the prose rather than independently, they are tautological with respect to
+the algorithm itself: rewriting Step 1b to invert a rule (record overrides
+sentinels, drop the `at_stage_boundary` precondition, ordering instead of
+string equality) would not fail a single `_resolve_*`-driven test, since
+those helpers would simply be re-derived to match. The invariant-pin test
+is what actually guards the documented algorithm against that class of
+regression -- it is not a lesser check bolted on alongside the tier tests,
+it is the ONLY one of the two halves that reads `run/SKILL.md`'s own words.
 """
 from __future__ import annotations
 
@@ -385,3 +402,34 @@ def test_step_1b_read_call_passes_max_age_days():
     body = sl[sl.index("**Step 1b (") :]
     assert "run_state.py --read" in body
     assert "--max-age-days" in body
+
+
+def test_step_1b_prose_carries_verbatim_invariant_pins():
+    """The three checks above (tier ordinal position, tier-name substrings,
+    flag presence) do not discriminate the documented algorithm from an
+    inverted one: rewriting Step 1b to say the record OVERRIDES the
+    sentinels, dropping the `at_stage_boundary: false` precondition, or
+    swapping string equality for ordering would still pass every one of
+    them, and every `_resolve_*`-driven tier test above (issue 8 -- those
+    helpers are transcribed FROM this same prose, so they cannot catch a
+    change to it). Pin the exact invariant sentences instead."""
+    sl = _resume_slice()
+    body = sl[sl.index("**Step 1b (") :]
+    assert "The record NEVER overrides them." in body
+    assert "STRING EQUALITY" in body
+    assert "at_stage_boundary: false" in body
+    assert "is DISCARDED, not obeyed" in body
+
+
+def test_step_1b_fields_argument_is_complete_and_matches_the_oracle():
+    """`--fields` completeness assert (issue 8): the exact field list Resume
+    Step 1b requests from `run_state.py --read` must match this module's
+    own `ALL_FIELDS` oracle constant exactly, so a field silently dropped
+    from either side -- the doc's `--read` call, or the fixture helpers
+    above that build and read records through that same field set -- fails
+    a test instead of drifting unnoticed."""
+    sl = _resume_slice()
+    body = sl[sl.index("**Step 1b (") :]
+    m = re.search(r"--fields ([a-z_,]+)", body)
+    assert m, "Step 1b's run_state.py --read call must carry a --fields argument"
+    assert m.group(1) == ALL_FIELDS
