@@ -1197,10 +1197,48 @@ directory) for `<task-name>`:
   at the first sub-phase lacking its own completion sentinel, rather than
   restarting the whole phase from scratch.
 - If NO `autonomous-progress-{task}/` directory exists for the task (a resume that
-  predates the sentinel contract, or a non-autonomous run that never wrote one),
-  fall back to the pre-T-09 behavior:
+  predates the sentinel contract, or a non-autonomous run that never wrote one), check for
+  a fresh active run-state record next: `run_state.py --read --project-root "$PROJECT_ROOT"
+  --task "{task}" --max-age-days ${QUOIN_RUN_STATE_STALE_DAYS:-1} --fields active,phase`. If
+  that returns `active=true` with a non-empty `phase`, its `phase`/`phase_index` decides
+  where to resume — this is what makes a plain (non-autonomous) `/run`, which writes no
+  `.done` sentinels, first-class resumable too. Only when this read ALSO returns nothing
+  does the plan fall back to the pre-T-09 behavior:
   1. Read `.workflow_artifacts/memory/sessions/<latest>-<task-name>.md` to find the last completed phase.
   2. Identify the next phase.
+
+**Step 1b (`D-53`) — within-sub-phase re-entry.** Read the run-state record once:
+```
+python3 __QUOIN_HOME__/scripts/run_state.py --read \
+  --project-root "$PROJECT_ROOT" --task "{task}" \
+  --max-age-days ${QUOIN_RUN_STATE_STALE_DAYS:-1} \
+  --fields schema,active,phase,phase_index,subphase,step,at_stage_boundary,next_action,notes_path,resume_command,updated_at
+```
+Empty stdout means no usable record — absent, unreadable, schema-forward, or older than the
+freshness window — and Resume proceeds to Step 2 exactly as today. When a record IS
+returned, it refines — never overrides — the sentinel-derived answer, across four tiers:
+
+1. **which phase** — `{phase}.done` sentinels decide first (Step 1 above); when no
+   `autonomous-progress-{task}/` directory exists, a fresh active record's `phase`/
+   `phase_index` decides instead (Step 1's extended fallback bullet); only when both of
+   those are absent does the pre-T-09 session-state prose apply.
+2. **which sub-phase** — `{phase}.{subphase}.done` sentinels decide exactly as Step 1 does
+   today. The record NEVER overrides them.
+3. **where inside the first incomplete sub-phase** — the record's `step`, and only there.
+   Sub-phase comparison is STRING EQUALITY against the sub-phase Step 1 selected — the
+   first sub-phase with no `.done` sentinel. A `subphase` naming a sub-phase whose `.done`
+   already EXISTS is DISCARDED, not obeyed; so is a `subphase` naming anything else. There
+   is no ordering over sub-phase identifiers — arbitrary names (e.g. `batch-3`,
+   `round-2-critic`) are permitted and neither ranked nor compared numerically.
+4. **what to do next** — the record's `next_action` and `notes_path`. A `notes_path` naming
+   a file that does not exist means "no notes", never an error or a reason to discard the
+   record.
+
+Re-enter at `step` only when the record is fresh (the read above returned something at
+all), `active: true`, agrees with the selected phase and sub-phase by string equality, AND
+carries `at_stage_boundary: false`; otherwise restart the sub-phase as today. A record whose
+`schema` exceeds the one this step knows is treated as ABSENT and Resume falls to the next
+tier.
 
 **Step 2 — announce and proceed.** Tell the user: "Resuming `<task-name>` from
 Phase N (`<phase-name>`). Phases 1–M already completed." Start from the next
