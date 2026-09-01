@@ -53,6 +53,11 @@ vscode-extension/.workflow_artifacts/
 
 # Workflow cost ledgers — internal session tracking, never in repo
 **/cost-ledger.md
+# …except the core workflow spec, which is tracked source. Without this
+# negation, hatchling's sdist build honors the pattern above and drops the
+# file, so the wheel built from the sdist (python -m build / PyPI publish)
+# ships without data/core/workflow/cost-ledger.md and `quoin install` fails.
+!/quoin/core/workflow/cost-ledger.md
 
 # Process/scratch files at project root
 /next-steps*.md
