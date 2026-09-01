@@ -66,6 +66,16 @@ def test_core_doc_never_auto_creates_pr() -> None:
     )
 
 
+def test_core_doc_documents_the_resume_record() -> None:
+    """review-3 MINOR 13: the portable core previously said nothing about
+    the plain-run resumability record -- a Codex adapter implementing this
+    skill from `core/skills/run.md` alone would not know to write it."""
+    text = _text()
+    assert "run-state-{task}.json" in text
+    assert "run-notes-{task}.md" in text
+    assert "never before the gate or verdict that determines" in text
+
+
 def test_core_doc_stays_token_clean() -> None:
     text = _text()
     hits = [t for t in FORBIDDEN_TOKENS if t in text]

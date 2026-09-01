@@ -212,6 +212,42 @@ writing its own completion sentinel once its work is done, so the
 reader and writer sides of this contract stay independently
 verifiable.
 
+## Resume record (plain, non-autonomous runs)
+
+The sentinel contract above (marker, per-phase `.done` files, halt/done
+sentinels) only exists under the opt-in autonomous supervisor. A plain,
+non-autonomous invocation of this skill — no supervisor, no relaunch —
+writes none of those files, so it needs an independent, always-on
+resumability record: a single JSON file,
+`run-state-{task}.json`, alongside its append-only companion notes log
+(`run-notes-{task}.md`), both under `.workflow_artifacts/memory/` for the
+same archival-survival reason the sentinels live there.
+
+The orchestrator writes this record at every phase boundary — unconditional
+on autonomous mode, and unconditional on whether the phase itself ran or
+was skipped by its own skip condition — recording, at minimum, which phase
+just completed and what to start next. A resume reads it back only when
+the sentinel-derived answer is unavailable (no per-phase `.done` sentinels
+exist for the task), refining rather than overriding whatever the sentinel
+contract already decided. The record additionally supports resuming
+partway through a single long phase, at whatever granularity that phase's
+own boundary writes checkpoint to — the shape is a phase/sub-phase/step
+triple that a resume applies in that order, most-specific first, falling
+back one level whenever the next-more-specific answer is absent or stale.
+An entry whose age exceeds an adapter-defined freshness window is treated
+as absent, never as a decision.
+
+Because this record is the ONLY resumability source on a plain run, an
+adapter implementing it MUST write it only once the outcome it records is
+actually known — never before the gate or verdict that determines what
+comes next — so a session lost mid-phase never resumes into a decision
+that was never actually made. The full write-ordering and quoting
+constraints this implies are adapter-specific (see the Claude adapter's
+own `run/SKILL.md` for the worked contract); this document fixes only the
+record's existence, its file-path shape, and the "never before the
+decision it records" ordering rule, so an independently implemented
+resumer and writer agree on the same guarantee.
+
 ## Notes
 
 - The orchestrator owns coordination only, never artifact content;
