@@ -20,7 +20,13 @@ THOROUGH_PLAN_SKILL = (
 
 WRITE_CALL = "run_state.py --write"
 CLEAR_CALL = "run_state.py --clear"
-ARCHITECT_REWIND = "--phase architect --phase-index 2"
+# The escalation rewind sets `phase` to the last phase actually completed
+# before the forced re-entry (fast_path_triage), never to the re-entry
+# target (architect) itself -- see the "Field invariant" paragraph in
+# run/SKILL.md's Resume Step 1.
+ESCALATION_REWIND = "--phase fast_path_triage --phase-index 1"
+REWIND_PHRASE = "rewind the run-state record"
+REENTER_PHRASE = "re-enter at the architect phase"
 
 
 def _text(path: Path) -> str:
@@ -117,7 +123,26 @@ def test_escalation_sites_rewind_the_record():
     text = _text(RUN_SKILL)
     for sl in _escalation_slices(text):
         assert WRITE_CALL in sl, f"escalation slice has no rewind write:\n{sl}"
-        assert ARCHITECT_REWIND in sl, f"escalation slice does not rewind to architect:\n{sl}"
+        assert ESCALATION_REWIND in sl, (
+            f"escalation slice does not rewind phase to fast_path_triage:\n{sl}"
+        )
+
+
+def test_escalation_sites_frame_and_order_the_rewind():
+    """Each escalation slice must (a) carry a framing sentence introducing the
+    rewind -- not a bare code block -- and (b) perform the rewind BEFORE
+    transferring control with "re-enter at the architect phase". A rewind
+    ordered after the re-enter instruction is scheduled after control has
+    already left the atomic unit and, on an interactive run with no
+    sentinels, is never reached.
+    """
+    text = _text(RUN_SKILL)
+    for sl in _escalation_slices(text):
+        assert REWIND_PHRASE in sl, f"escalation slice has no rewind framing sentence:\n{sl}"
+        assert REENTER_PHRASE in sl, f"escalation slice has no re-enter instruction:\n{sl}"
+        assert sl.index(REWIND_PHRASE) < sl.index(REENTER_PHRASE), (
+            f"rewind must precede re-enter in escalation slice:\n{sl}"
+        )
 
 
 def test_escalation_rewind_at_the_blocked_site_is_inline_on_one_line():
