@@ -1069,10 +1069,8 @@ not yet cleared.
      --at-stage-boundary true --route "{route}" --profile "{profile}" \
      --next-action "start implement" --artifact "{task_dir}/current-plan.md" || true
    ```
-   Then spawn `/implement` again with the review issues as the spec (on the fast route, same
-   model-opus / leading-`[no-redispatch]` dispatch as the primary Phase 4 spawn above). Re-dispatch
-   inherits the dispatch envelope (above), unchanged. After fix-implement completes, re-run the
-   post-implementation gate inline (same level as before; audit-log persistence per
+   Then spawn `/implement` again with the review issues as the spec (on the fast route, same model-opus / leading-`[no-redispatch]` dispatch as the primary Phase 4 spawn above). Re-dispatch
+   inherits the dispatch envelope (above), unchanged. After fix-implement completes, re-run the post-implementation gate inline (same level as before; audit-log persistence per
    `/gate/SKILL.md`). Then re-spawn `/review`. Cap at 3 review rounds to prevent infinite cycling.
 2. **"accept"** → treat as approved despite requested changes. Log this decision in session state.
    Write the same call as the APPROVED branch above (accepting is the same terminal outcome as an
@@ -1118,12 +1116,12 @@ implementation work is preserved. On the full path this option does not exist.
 
 Under `AUTONOMOUS`: auto-select "fix" at each round — never auto-select "accept". If still CHANGES_REQUESTED after the 3-round cap, this is Hard-stop #3 (Review CHANGES_REQUESTED after 3 rounds) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop. **On a fast-route run, offer "escalate to full" as a third option alongside this halt — same mechanism as the Checkpoint C escalation above**, performed per the atomic unit above; under `[autonomous]` this ALSO routes through the same NEEDS-DECISION return path, writing it in addition to the halt-sentinel already written above — never instead of it — rather than a silent auto-select — named writer (same shared guard as Checkpoint C): `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill run --site fast-route-escalation-changes-requested --reason "<3-round CHANGES_REQUESTED summary>" --resume-hint "re-run /run --resume <task-name>"`. On the full path this branch is unchanged — still a bare halt.
 
-**If BLOCKED:** present the blocking issues. Before stopping, write a non-parsing `next_action`
-marker — never `start end_of_task` and never `start review` (the review just ran and its result was
-BLOCKED, not something to re-enter): a plain `/run --resume` that reads this record back sees a
-`next_action` that fails to match the `start <phase>` format (mirroring the `run complete` terminal
-marker) and correctly falls through to the pre-T-09 session-state read rather than resuming into a
-phase this verdict never cleared:
+**If BLOCKED:** present the blocking issues. **STOP.** Do not offer to continue. Before stopping,
+write a non-parsing `next_action` marker — never `start end_of_task` and never `start review` (the
+review just ran and its result was BLOCKED, not something to re-enter): a plain `/run --resume`
+that reads this record back sees a `next_action` that fails to match the `start <phase>` format
+(mirroring the `run complete` terminal marker) and correctly falls through to the pre-T-09
+session-state read rather than resuming into a phase this verdict never cleared:
 ```
 python3 __QUOIN_HOME__/scripts/run_state.py --write \
   --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
@@ -1133,7 +1131,7 @@ python3 __QUOIN_HOME__/scripts/run_state.py --write \
 ```
 (On the fast-route escalation choice below, this marker is immediately superseded by that branch's
 own `fast_path_triage` rewind — write it here regardless, since the user may choose the bare stop
-instead of escalating.) **STOP.** Do not offer to continue. Tell the user: "Review found blocking
+instead of escalating.) Tell the user: "Review found blocking
 issues. The workflow cannot continue until these are resolved. Artifacts are preserved at
 `.workflow_artifacts/<task-name>/`." **(fast route only)** this bare stop is the full-path behavior; on the fast route, "escalate to full" is offered alongside it instead — the same atomic unit as the Checkpoint C escalation above, same crash-safe order (in-session `route` flip to `full`; rewrite `triage-decision.md`; strip the stub's `Review shape:` and `Route:` lines per the same provenance-conditioned rule — no outright delete yet; THEN DELETE `autonomous-progress-{task}/architect.done`, `autonomous-progress-{task}/thorough_plan.done`, AND `autonomous-progress-{task}/implement.done` plus any `implement.*.done` sub-sentinels, since it already exists at this site too; optionally delete the stripped stub outright once the sentinels are gone (provenance-marked stubs only — same condition as Checkpoint C step 5); then rewind the run-state record so a resumed session re-enters at architect, not wherever the run actually halted: `python3 __QUOIN_HOME__/scripts/run_state.py --write --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" --phase fast_path_triage --phase-index 1 --subphase "" --step "" --at-stage-boundary true --route full --profile "{profile}" --next-action "start architect" || true`; only then re-enter at the architect phase). Completed implementation work is preserved.
 
