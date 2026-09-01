@@ -31,8 +31,15 @@ esac
 # non-negative integer in decimal but not in the octal `$(( ))` treats a
 # leading-zero literal as -- bash errors ("value too great for base") and
 # dash silently misreads it ("010" as 8). Strip leading zeros (keeping a
-# lone "0") before it reaches arithmetic expansion below.
-STALE_DAYS=$(printf '%s' "$STALE_DAYS" | sed 's/^0*\([0-9]\)/\1/')
+# lone "0") before it reaches arithmetic expansion below. Pure-shell
+# case/parameter-expansion loop -- no `printf | sed` fork, since this file's
+# whole purpose is to stay cheap enough for a future hook stanza.
+while true; do
+    case "$STALE_DAYS" in
+        0?*) STALE_DAYS="${STALE_DAYS#0}" ;;
+        *) break ;;
+    esac
+done
 
 [ -n "$MEMORY_DIR" ] || exit 0
 [ -d "$MEMORY_DIR" ] || exit 0
