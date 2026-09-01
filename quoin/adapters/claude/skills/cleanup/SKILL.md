@@ -198,7 +198,7 @@ find "$MEMORY_DIR" -maxdepth 1 \
   \( -name 'run-state-*.json' -o -name 'run-notes-*.md' -o -name 'run-notes-*.md.1' \) \
   -mtime "+${QUOIN_CLEANUP_RUNSTATE_WINDOW:-30}" -print0
 find "$MEMORY_DIR" -maxdepth 1 -name 'run-state-*.json.*.tmp' \
-  -mtime "+${QUOIN_CLEANUP_SENTINEL_WINDOW:-7}" -print0
+  -mtime "+${QUOIN_CLEANUP_SENTINEL_WINDOW:-1}" -print0
 ```
 For each candidate: `trash_move "<path>" "$MEMORY_DIR"`. Age-only — no UUID protection and
 no `active` guard: the record and its notes file are swept INDEPENDENTLY of each other and
