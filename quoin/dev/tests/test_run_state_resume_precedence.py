@@ -31,6 +31,7 @@ it is the ONLY one of the two halves that reads `run/SKILL.md`'s own words.
 """
 from __future__ import annotations
 
+import importlib
 import os
 import re
 import subprocess
@@ -60,6 +61,16 @@ ALL_FIELDS = (
     "schema,active,phase,phase_index,subphase,step,at_stage_boundary,"
     "next_action,notes_path,resume_command,updated_at"
 )
+
+
+def test_local_roster_matches_supervisor_roster():
+    """review-3 MINOR 14: this module's own `RESUMABLE_PHASES` duplicate
+    (used only to drive the `_resolve_*` test-only oracle above) must stay
+    in step with `quoin.supervisor.RESUMABLE_PHASES`, the single source of
+    truth -- test_run_state_wiring.py pins the SKILL.md prose copy against
+    the same source separately."""
+    supervisor = importlib.import_module("quoin.supervisor")
+    assert RESUMABLE_PHASES == supervisor.RESUMABLE_PHASES
 
 
 def _run(args):
@@ -137,9 +148,32 @@ def _resolve_phase(sentinel_done_phases, record):
     return None
 
 
+class _NoCandidates:
+    """Tier-2 sentinel distinguishing "this phase has no known sub-phase
+    sentinel NAMES at all" from "every known sub-phase is done" (both would
+    otherwise collapse to `None`). Only the former is what production
+    actually hits today -- see `_resolve_subphase`'s docstring."""
+
+    def __repr__(self):
+        return "_NO_CANDIDATES"
+
+
+_NO_CANDIDATES = _NoCandidates()
+
+
 def _resolve_subphase(candidate_subphases_in_order, done_subphases):
     """Tier 2: which sub-phase. Sentinels ALWAYS decide -- the record is
-    never consulted here."""
+    never consulted here.
+
+    Returns `_NO_CANDIDATES` when `candidate_subphases_in_order` is empty --
+    i.e. the selected phase has no `{phase}.{subphase}.done` sentinel NAMES
+    written for it anywhere in the tree at all. This is the real production
+    shape for `thorough_plan`: no phase writes `thorough_plan.round-N-*.done`
+    sentinels, so its tier-2 candidate set is always empty (distinct from
+    every candidate being done, which returns `None` below as before).
+    """
+    if not candidate_subphases_in_order:
+        return _NO_CANDIDATES
     for subphase in candidate_subphases_in_order:
         if subphase not in done_subphases:
             return subphase
@@ -149,12 +183,15 @@ def _resolve_subphase(candidate_subphases_in_order, done_subphases):
 def _resolve_step(selected_subphase, record):
     """Tier 3: where inside the first incomplete sub-phase.
 
-    Re-entry requires STRING EQUALITY against the tier-2 selection, an
-    active record, and `at_stage_boundary: false`.
+    Re-entry requires an active record and `at_stage_boundary: false`, plus
+    one of: STRING EQUALITY against the tier-2 selection, OR -- in the
+    no-sub-phase-sentinel case (`selected_subphase is _NO_CANDIDATES`) --
+    the record's own `subphase` is accepted directly, since there is no
+    tier-2 selection to compare it against.
     """
     if not record:
         return None
-    if record.get("subphase") != selected_subphase:
+    if selected_subphase is not _NO_CANDIDATES and record.get("subphase") != selected_subphase:
         return None
     if record.get("active") != "true":
         return None
@@ -260,18 +297,43 @@ def test_tier2_subphase_sentinels_win_over_record(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+def test_tier3_no_sub_phase_sentinels_accepts_the_record_subphase_directly(tmp_path):
+    """The real production pair (review-3 MAJOR 4): `/thorough_plan`'s
+    round-boundary write is the sole writer of a non-empty `subphase`
+    anywhere in the tree, and no phase writes `thorough_plan.round-N-*.done`
+    sentinels -- so `thorough_plan`'s tier-2 candidate set is always empty.
+    Tier 3 must accept the record's own `subphase` directly in that case,
+    rather than discarding it for failing to string-equal a selection that
+    was never made.
+    """
+    _write(
+        tmp_path,
+        "t4",
+        phase="thorough_plan",
+        subphase="round-3-critic",
+        step="critic round 3 dispatched",
+        at_stage_boundary=False,
+    )
+    record = _read(tmp_path, "t4")
+    selected = _resolve_subphase([], done_subphases=set())
+    assert selected is _NO_CANDIDATES
+    assert _resolve_step(selected, record) == "critic round 3 dispatched"
+
+
+# The four tests below (batch-N identifiers) pin the tier-2/tier-3 sub-phase
+# resolution algorithm in the abstract -- they are NOT production-reachable
+# today, since no phase in the tree currently writes `{phase}.{subphase}.done`
+# sentinels (the only production `subphase` writer is `/thorough_plan`'s
+# round boundary, covered by the no-sub-phase-sentinel test above). They
+# remain here as a contract pin for the day a phase does checkpoint at
+# sub-phase granularity with real sentinels.
+
+
 def test_tier3_subphase_with_existing_done_sentinel_is_discarded(tmp_path):
     _write(tmp_path, "t3", subphase="batch-1", step="stale", at_stage_boundary=False)
     record = _read(tmp_path, "t3")
     selected = _resolve_subphase(["batch-1", "batch-2"], done_subphases={"batch-1"})
     assert _resolve_step(selected, record) is None
-
-
-def test_tier3_subphase_equal_to_first_incomplete_subphase_is_obeyed(tmp_path):
-    _write(tmp_path, "t4", subphase="batch-2", step="editing file X", at_stage_boundary=False)
-    record = _read(tmp_path, "t4")
-    selected = _resolve_subphase(["batch-1", "batch-2"], done_subphases={"batch-1"})
-    assert _resolve_step(selected, record) == "editing file X"
 
 
 def test_tier3_subphase_naming_an_unknown_subphase_is_discarded(tmp_path):
@@ -468,6 +530,12 @@ def test_step_1b_prose_carries_verbatim_invariant_pins():
     assert "STRING EQUALITY" in body
     assert "at_stage_boundary: false" in body
     assert "is DISCARDED, not obeyed" in body
+    # review-3 MAJOR 4: the no-sub-phase-sentinel case must be stated, not
+    # left implicit -- without it, tier 3's only production writer
+    # (`/thorough_plan`'s round boundary) can never re-enter, since its
+    # phase has no known sub-phase sentinel names to string-equal against.
+    assert "No-sub-phase-sentinel case" in body
+    assert "tier 2 has\n   no candidate set to select from" in body
 
 
 def test_step_1b_fields_argument_is_complete_and_matches_the_oracle():

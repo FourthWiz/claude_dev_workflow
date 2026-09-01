@@ -35,6 +35,43 @@ def _text(path: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Call-site census (review-3 MAJOR 5) -- round 2 specified two guards, an
+# oracle rewrite AND a grep of every `--next-action` value against the phase
+# roster; only the first was built. This section adds the second, plus the
+# quoting assertion issues 2/3 showed the suite had no equivalent of either.
+# ---------------------------------------------------------------------------
+
+# Two terminal `next_action` markers that are documented NOT to parse against
+# `start <phase>` -- both fall through by design (Resume Step 1's extended
+# fallback bullet: "treat this tier as if it had returned nothing").
+TERMINAL_MARKERS = {"run complete", "run blocked"}
+
+_CALL_RE = re.compile(r"run_state\.py --(write|clear)\b.*?\|\| true", re.S)
+_NEXT_ACTION_RE = re.compile(r'--next-action "([^"]*)"')
+_QUOTED_FLAG_RE = {
+    flag: re.compile(rf'--{flag} "[^"]*"') for flag in ("project-root", "task", "artifact")
+}
+_BARE_FLAG_RE = {
+    flag: re.compile(rf"--{flag}\s+(?!\")\S") for flag in ("project-root", "task", "artifact")
+}
+
+
+def _call_blocks(text: str) -> list:
+    """Every `run_state.py --write ... || true` / `--clear ... || true`
+    call site, verbatim, in file order. Every real writer call in both
+    SKILL.md files ends with `|| true` (the fail-open convention) -- this is
+    what lets the non-greedy match bound each call without over-capturing
+    into the next one.
+    """
+    return [m.group(0) for m in _CALL_RE.finditer(text)]
+
+
+def _known_phase_roster() -> tuple:
+    supervisor = importlib.import_module("quoin.supervisor")
+    return supervisor.RESUMABLE_PHASES
+
+
+# ---------------------------------------------------------------------------
 # Slice helpers -- definitions restated once, matching T-08/T-12's own prose.
 # ---------------------------------------------------------------------------
 
@@ -188,6 +225,158 @@ def test_thorough_plan_writer_call_follows_the_ivg98_checkpoint():
     checkpoint_idx = text.index("thorough_plan_checkpoint.py")
     writer_idx = text.index("run_state.py --write --require-existing")
     assert checkpoint_idx < writer_idx
+
+
+GATE_SENTENCE_ARCHITECT = "spawn `/gate` as a subagent session (architecture gate"
+GATE_SENTENCE_IMPLEMENT = (
+    "run `/gate` inline (read `/gate/SKILL.md` from the same session and "
+    "execute the gate process directly — do not spawn a subagent)"
+)
+GATE_SENTENCE_REVIEW = "run `/gate` inline (Full level, post-review"
+END_OF_TASK_NEXT_ACTION = '--next-action "start end_of_task"'
+
+
+def test_boundary_write_follows_its_gate_sentence():
+    """review-3 MAJOR 1: a phase-boundary run-state write positioned BEFORE
+    the gate/verdict that determines it lets a plain `/run` resume skip the
+    gate -- and, on Phase 5, re-enter `end_of_task` after a
+    CHANGES_REQUESTED or BLOCKED review. Pin each write's offset strictly
+    after its gate sentence's offset within the same phase slice.
+    """
+    text = _text(RUN_SKILL)
+    slices = _phase_heading_slices(text)
+
+    architect_slice = slices["architect"]
+    gate_idx = architect_slice.index(GATE_SENTENCE_ARCHITECT)
+    write_idx = architect_slice.index(WRITE_CALL, gate_idx)
+    assert write_idx > gate_idx, "architect boundary write precedes its gate sentence"
+
+    implement_slice = slices["implement"]
+    gate_idx = implement_slice.index(GATE_SENTENCE_IMPLEMENT)
+    write_idx = implement_slice.index(WRITE_CALL, gate_idx)
+    assert write_idx > gate_idx, "implement boundary write precedes its gate sentence"
+
+    review_slice = slices["review"]
+    gate_idx = review_slice.index(GATE_SENTENCE_REVIEW)
+    write_idx = review_slice.index(END_OF_TASK_NEXT_ACTION, gate_idx)
+    assert write_idx > gate_idx, (
+        "review's 'start end_of_task' write precedes the post-review gate sentence"
+    )
+
+
+def test_review_next_action_is_verdict_conditional():
+    """The three review-verdict branches must each write a distinct,
+    verdict-appropriate `next_action` -- never a single unconditional write
+    made before the verdict is known (the exact defect review-3 MAJOR 1
+    reproduced against a plain `/run` resume).
+    """
+    text = _text(RUN_SKILL)
+    slices = _phase_heading_slices(text)
+    review_slice = slices["review"]
+
+    approved_idx = review_slice.index("**If APPROVED:**")
+    changes_idx = review_slice.index("**If CHANGES_REQUESTED:**")
+    blocked_idx = review_slice.index("**If BLOCKED:**")
+    checkpoint_d_idx = review_slice.index("**Checkpoint D**")
+    assert approved_idx < changes_idx < blocked_idx < checkpoint_d_idx
+
+    approved_block = review_slice[approved_idx:changes_idx]
+    changes_block = review_slice[changes_idx:blocked_idx]
+    blocked_block = review_slice[blocked_idx:checkpoint_d_idx]
+
+    assert END_OF_TASK_NEXT_ACTION in approved_block
+    assert '--next-action "start implement"' in changes_block
+    assert END_OF_TASK_NEXT_ACTION in changes_block  # the "accept" sub-option
+    assert '--next-action "run blocked"' in blocked_block
+    assert END_OF_TASK_NEXT_ACTION not in blocked_block
+    assert '--next-action "start implement"' not in blocked_block
+
+
+def test_next_action_roster_census():
+    """review-3 MAJOR 5 / round-2 MAJOR 4's missing second guard: every
+    `--next-action "..."` value written anywhere in either SKILL.md must
+    parse as `start <phase>` against the known-phase roster, or be one of
+    the two documented terminal markers. Reverting `/thorough_plan` to
+    `--next-action "start round {N+1}"` (review-3 issue 5, mutation v) now
+    fails here -- `round` is not a phase name and the whole value never
+    matches `start <phase>` against the roster either.
+    """
+    roster = _known_phase_roster()
+    blocks = _call_blocks(_text(RUN_SKILL)) + _call_blocks(_text(THOROUGH_PLAN_SKILL))
+    checked = 0
+    for block in blocks:
+        for value in _NEXT_ACTION_RE.findall(block):
+            checked += 1
+            if value in TERMINAL_MARKERS:
+                continue
+            assert value.startswith("start "), (
+                f"--next-action value {value!r} is neither 'start <phase>' "
+                f"nor a documented terminal marker:\n{block}"
+            )
+            phase = value[len("start ") :]
+            assert phase in roster, (
+                f"--next-action names unknown phase {phase!r} (not in "
+                f"RESUMABLE_PHASES):\n{block}"
+            )
+    # Sanity: the census must actually have examined call sites, not
+    # vacuously passed because the regex matched nothing.
+    assert checked >= 15, f"expected >=15 --next-action call sites, found {checked}"
+
+
+def test_every_writer_call_site_quotes_its_path_flags():
+    """review-3 MAJOR 5 / issues 2 and 3: no test asserted a `run_state.py`
+    call site quotes `--project-root`, `--task`, or `--artifact`, which is
+    why the two quoting defects shipped green through two rounds. Every
+    `--write`/`--clear` call site that carries one of these three flags must
+    quote its value.
+    """
+    blocks = _call_blocks(_text(RUN_SKILL)) + _call_blocks(_text(THOROUGH_PLAN_SKILL))
+    assert blocks, "no run_state.py --write/--clear call sites found"
+    for block in blocks:
+        for flag, bare_re in _BARE_FLAG_RE.items():
+            assert not bare_re.search(block), (
+                f"--{flag} is unquoted in call site:\n{block}"
+            )
+        for flag, quoted_re in _QUOTED_FLAG_RE.items():
+            if f"--{flag}" in block:
+                assert quoted_re.search(block), (
+                    f"--{flag} present but not in quoted 'flag \"value\"' form:\n{block}"
+                )
+
+
+def test_resume_fallthrough_sentence_is_pinned_verbatim():
+    """review-3 MAJOR 5's second half: pin the reader's fall-through
+    sentence verbatim alongside the four existing invariant pins, so
+    deleting it (mutation vi) fails this test directly rather than only
+    behaviourally.
+    """
+    text = _text(RUN_SKILL)
+    assert (
+        'treat this tier as if it had returned nothing and fall through' in text
+    ), "Resume Step 1's fall-through sentence is missing or reworded"
+
+
+def test_step1_prose_roster_matches_supervisor_roster():
+    """review-3 MINOR 14: Step 1's phase roster is hand-copied into prose
+    (the 'known phase names' parenthetical) and duplicated again as a local
+    `RESUMABLE_PHASES` tuple in test_run_state_resume_precedence.py.
+    Nothing previously asserted the two stay in step. Parse the prose
+    roster and pin it against `quoin.supervisor.RESUMABLE_PHASES`, the
+    single source of truth both copies are meant to mirror.
+    """
+    text = _text(RUN_SKILL)
+    m = re.search(
+        r"known phase names \((.*?)\), parse the phase name out of it",
+        text,
+        re.S,
+    )
+    assert m, "could not find the 'known phase names' roster sentence in Step 1"
+    prose_roster = tuple(re.findall(r"`([a-z_]+)`", m.group(1)))
+    roster = _known_phase_roster()
+    assert prose_roster == roster, (
+        f"Step 1's prose roster {prose_roster} has drifted from "
+        f"quoin.supervisor.RESUMABLE_PHASES {roster}"
+    )
 
 
 def test_no_writer_call_uses_literal_tilde_claude():
