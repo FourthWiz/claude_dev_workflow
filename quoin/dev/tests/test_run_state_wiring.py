@@ -20,9 +20,10 @@ THOROUGH_PLAN_SKILL = (
 
 WRITE_CALL = "run_state.py --write"
 CLEAR_CALL = "run_state.py --clear"
-# The escalation rewind sets `phase` to the last phase actually completed
-# before the forced re-entry (fast_path_triage), never to the re-entry
-# target (architect) itself -- see the "Field invariant" paragraph in
+# The escalation rewind sets `phase` to the last phase whose output survives
+# the escalation (fast_path_triage, since the rewind deletes the architect /
+# thorough_plan / implement sentinels), never to the re-entry target
+# (architect) itself -- see the "Field invariant" paragraph in
 # run/SKILL.md's Resume Step 1.
 ESCALATION_REWIND = "--phase fast_path_triage --phase-index 1"
 REWIND_PHRASE = "rewind the run-state record"

@@ -1200,22 +1200,32 @@ directory) for `<task-name>`:
   at the first sub-phase lacking its own completion sentinel, rather than
   restarting the whole phase from scratch.
 - **Field invariant (stated once here, applies to every read of this record anywhere in this
-  file):** `phase` always names the LAST COMPLETED phase — every boundary write sets it to the
-  phase that just finished (e.g. `--phase discover --next-action "start enrich"` means discover
-  is done and enrich is next), and every escalation rewind sets it to the last phase actually
-  completed before the forced re-entry (`fast_path_triage`), never to the re-entry target itself.
-  `next_action` always names what to start next, in the fixed format `start <phase>`. A reader
-  that needs "which phase to resume at" reads `next_action`, never `phase` — `phase` alone is
-  ambiguous between "resume here" and "this already ran," and `phase_index` is informational only
-  (it is not injective — several phases share an index — so it never decides anything by itself).
+  file):** `phase`'s meaning is keyed on `at_stage_boundary` — two cases, not one. At
+  `at_stage_boundary: true`, `phase` names the LAST COMPLETED phase — every boundary write sets
+  it to the phase that just finished (e.g. `--phase discover --next-action "start enrich"` means
+  discover is done and enrich is next), and every escalation rewind sets it to the last phase
+  whose output survives the escalation (`fast_path_triage`, since the rewind deletes the
+  architect / thorough_plan / implement sentinels), never to the re-entry target itself. At
+  `at_stage_boundary: false`, `phase` names the phase IN FLIGHT — see the
+  within-sub-phase re-entry rule below for the one writer that uses this case. `next_action`
+  always names what to start next, in the fixed format `start <phase>`. A reader that needs
+  "which phase to resume at" reads `next_action`, never `phase` — `phase` alone is ambiguous
+  between "resume here" and "this already ran," and `phase_index` is informational only (it is
+  not injective — several phases share an index — so it never decides anything by itself).
 - If NO `autonomous-progress-{task}/` directory exists for the task (a resume that
   predates the sentinel contract, or a non-autonomous run that never wrote one), check for
   a fresh active run-state record next: `run_state.py --read --project-root "$PROJECT_ROOT"
   --task "{task}" --max-age-days ${QUOIN_RUN_STATE_STALE_DAYS:-1} --fields active,next_action`. If
-  that returns `active=true` with a non-empty `next_action`, parse the phase name out of it
-  (format `start <phase>`) and resume there — this is what makes a plain (non-autonomous) `/run`,
-  which writes no `.done` sentinels, first-class resumable too. Only when this read ALSO returns
-  nothing does the plan fall back to the pre-T-09 behavior:
+  that returns `active=true` with a non-empty `next_action` matching the format `start <phase>`
+  where `<phase>` is one of the known phase names (`discover`, `enrich`, `specify`,
+  `fast_path_triage`, `architect`, `thorough_plan`, `implement`, `review`, `end_of_task` — the same
+  roster the `--phase` writers above use), parse the phase name out of it and resume there — this is
+  what makes a plain (non-autonomous) `/run`, which writes no `.done` sentinels, first-class
+  resumable too. If `next_action` is non-empty but does NOT match that format (e.g. a terminal
+  marker like `run complete`, or any future value whose detail lives in `subphase`/`step` instead),
+  treat this tier as if it had returned nothing and fall through. Only when this read ALSO returns
+  nothing, or returns a `next_action` that fails to parse against the known-phase roster, does the
+  plan fall back to the pre-T-09 behavior:
   1. Read `.workflow_artifacts/memory/sessions/<latest>-<task-name>.md` to find the last completed phase.
   2. Identify the next phase.
 
@@ -1249,9 +1259,12 @@ returned, it refines — never overrides — the sentinel-derived answer, across
 
 Re-enter at `step` only when the record is fresh (the read above returned something at
 all), `active: true`, agrees with the selected phase and sub-phase by string equality, AND
-carries `at_stage_boundary: false`; otherwise restart the sub-phase as today. A record whose
-`schema` exceeds the one this step knows is treated as ABSENT and Resume falls to the next
-tier.
+carries `at_stage_boundary: false`; otherwise restart the sub-phase as today. This requirement is
+exactly the `at_stage_boundary: false` case of the Field invariant above — `phase` names the
+phase IN FLIGHT there, which is what makes the string-equality comparison against the
+Step-1-selected phase meaningful instead of comparing against a phase that already finished. A
+record whose `schema` exceeds the one this step knows is treated as ABSENT and Resume falls to the
+next tier.
 
 **Step 2 — announce and proceed.** Tell the user: "Resuming `<task-name>` from
 Phase N (`<phase-name>`). Phases 1–M already completed." Start from the next

@@ -117,15 +117,23 @@ def _resolve_phase(sentinel_done_phases, record):
 
     `sentinel_done_phases` is `None` when no `autonomous-progress-{task}/`
     directory exists at all; otherwise it is the set of phases whose
-    `.done` sentinel is present.
+    `.done` sentinel is present. When it is `None`, a fresh active record's
+    `next_action` decides instead -- NEVER `phase`, which names the last
+    completed phase (or, at `at_stage_boundary: false`, the phase in
+    flight) and is never the resume target. `next_action` only counts as a
+    decision when it matches the fixed format `start <phase>` against a
+    known phase name; anything else (a terminal marker, a value with no
+    parseable phase) is treated as no decision, same as an absent record.
     """
     if sentinel_done_phases is not None:
         for phase in RESUMABLE_PHASES:
             if phase not in sentinel_done_phases:
                 return phase
         return None
-    if record and record.get("active") == "true" and record.get("phase"):
-        return record["phase"]
+    if record and record.get("active") == "true":
+        m = re.match(r"^start (\S+)$", record.get("next_action") or "")
+        if m and m.group(1) in RESUMABLE_PHASES:
+            return m.group(1)
     return None
 
 
@@ -189,9 +197,36 @@ def test_tier1_progress_dir_present_sentinels_decide_phase():
 
 
 def test_tier1_no_progress_dir_fresh_record_decides_phase(tmp_path):
-    _write(tmp_path, "t1", phase="architect", phase_index=2, at_stage_boundary=True)
+    # `phase` (last completed) and `next_action` (what to start next)
+    # deliberately disagree here -- proves tier 1 reads `next_action`,
+    # never `phase`, matching the field invariant.
+    _write(
+        tmp_path,
+        "t1",
+        phase="architect",
+        phase_index=2,
+        at_stage_boundary=True,
+        next_action="start thorough_plan",
+    )
     record = _read(tmp_path, "t1")
-    assert _resolve_phase(None, record) == "architect"
+    assert _resolve_phase(None, record) == "thorough_plan"
+
+
+def test_tier1_no_progress_dir_unparseable_next_action_is_no_decision(tmp_path):
+    # A `next_action` that does not match `start <known-phase>` (e.g. a
+    # terminal marker, or a value whose phase detail lives in
+    # `subphase`/`step` instead) must NOT be misread as a phase name --
+    # this is the exact regression class of round-2 issue 1.
+    _write(
+        tmp_path,
+        "t1b",
+        phase="end_of_task",
+        phase_index=6,
+        at_stage_boundary=True,
+        next_action="run complete",
+    )
+    record = _read(tmp_path, "t1b")
+    assert _resolve_phase(None, record) is None
 
 
 def test_tier1_no_progress_dir_no_record_falls_back_to_session_state(tmp_path):
@@ -402,6 +437,20 @@ def test_step_1b_read_call_passes_max_age_days():
     body = sl[sl.index("**Step 1b (") :]
     assert "run_state.py --read" in body
     assert "--max-age-days" in body
+
+
+def test_step_1_prose_carries_verbatim_tier1_invariant_pins():
+    """Round-2 issue 4: the tier-1 fallback (`_resolve_phase` above, used
+    when no `autonomous-progress-{task}/` directory exists) reads
+    `next_action`, never `phase`. That contract lives in Step 1's Field
+    invariant bullet and its extended fallback bullet -- both BEFORE
+    Step 1b, so they are out of `test_step_1b_prose_carries_verbatim_invariant_pins`'s
+    scope. Pin them here so a revert of the tier-1 fix (re-keying the
+    fallback on `phase`) fails this harness too, not just the behavioural
+    `_resolve_phase` tests above."""
+    sl = _resume_slice()
+    assert "names the LAST COMPLETED phase" in sl
+    assert "--fields active,next_action" in sl
 
 
 def test_step_1b_prose_carries_verbatim_invariant_pins():

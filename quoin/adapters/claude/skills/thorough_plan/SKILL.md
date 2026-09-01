@@ -568,7 +568,7 @@ python3 __QUOIN_HOME__/scripts/run_state.py --write --require-existing \
   --project-root {root} --task {task} --session-id "$_TPCKPT_SID" \
   --phase thorough_plan --phase-index 3 --subphase "round-{N}-{plan|critic|revise}" \
   --step "round {N} {phase} returned" --at-stage-boundary false \
-  --next-action "start round {N+1}" --artifact {task_dir}/current-plan.md || true
+  --next-action "start thorough_plan" --artifact {task_dir}/current-plan.md || true
 ```
 
 **`## Current stage` ownership note:** The orchestrator file is authoritative for the round/phase token
