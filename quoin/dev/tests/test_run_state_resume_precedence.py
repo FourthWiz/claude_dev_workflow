@@ -1,0 +1,387 @@
+"""IVG-258 T-12: resume-precedence tests for the D-02 four-tier contract.
+
+Behavioural against `run_state.py` -- fixtures build real records via
+subprocess and pin every mtime with explicit `os.utime` -- plus a
+documented-contract check of Resume Step 1b's own text.
+
+The four-tier decision algorithm itself lives in `run/SKILL.md` prose (an
+LLM instruction followed at `/run` resume time, not executable code) --
+there is no production Python function to import for it. The `_resolve_*`
+helpers below are a literal, test-only transcription of that documented
+algorithm, kept ONLY as an executable oracle so the contract can be
+regression-tested against real `run_state.py` output; they are not shipped
+anywhere and must never be imported by production code.
+"""
+from __future__ import annotations
+
+import os
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+SCRIPT = REPO_ROOT / "quoin" / "core" / "scripts" / "run_state.py"
+RUN_SKILL = REPO_ROOT / "quoin" / "adapters" / "claude" / "skills" / "run" / "SKILL.md"
+
+PY = sys.executable
+
+RESUMABLE_PHASES = (
+    "discover",
+    "enrich",
+    "specify",
+    "fast_path_triage",
+    "architect",
+    "thorough_plan",
+    "implement",
+    "review",
+    "end_of_task",
+)
+
+ALL_FIELDS = (
+    "schema,active,phase,phase_index,subphase,step,at_stage_boundary,"
+    "next_action,notes_path,resume_command,updated_at"
+)
+
+
+def _run(args):
+    return subprocess.run(
+        [PY, str(SCRIPT)] + args, capture_output=True, text=True, timeout=30
+    )
+
+
+def _write(root, task, **kwargs):
+    args = ["--write", "--project-root", str(root), "--task", task]
+    for key, value in kwargs.items():
+        flag = "--" + key.replace("_", "-")
+        if key == "require_existing":
+            if value:
+                args.append(flag)
+            continue
+        if isinstance(value, list):
+            for v in value:
+                args += [flag, v]
+        elif isinstance(value, bool):
+            args += [flag, "true" if value else "false"]
+        else:
+            args += [flag, str(value)]
+    return _run(args)
+
+
+def _clear(root, task):
+    return _run(["--clear", "--project-root", str(root), "--task", task])
+
+
+def _read(root, task, max_age_days=None, fields=ALL_FIELDS):
+    args = ["--read", "--project-root", str(root), "--task", task, "--fields", fields]
+    if max_age_days is not None:
+        args += ["--max-age-days", str(max_age_days)]
+    result = _run(args)
+    out = {}
+    for line in result.stdout.splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            out[k] = v
+    return out
+
+
+def _record_path(root, task) -> Path:
+    return Path(root) / ".workflow_artifacts" / "memory" / f"run-state-{task}.json"
+
+
+# ---------------------------------------------------------------------------
+# Test-only oracle -- see module docstring.
+# ---------------------------------------------------------------------------
+
+
+def _resolve_phase(sentinel_done_phases, record):
+    """Tier 1: which phase.
+
+    `sentinel_done_phases` is `None` when no `autonomous-progress-{task}/`
+    directory exists at all; otherwise it is the set of phases whose
+    `.done` sentinel is present.
+    """
+    if sentinel_done_phases is not None:
+        for phase in RESUMABLE_PHASES:
+            if phase not in sentinel_done_phases:
+                return phase
+        return None
+    if record and record.get("active") == "true" and record.get("phase"):
+        return record["phase"]
+    return None
+
+
+def _resolve_subphase(candidate_subphases_in_order, done_subphases):
+    """Tier 2: which sub-phase. Sentinels ALWAYS decide -- the record is
+    never consulted here."""
+    for subphase in candidate_subphases_in_order:
+        if subphase not in done_subphases:
+            return subphase
+    return None
+
+
+def _resolve_step(selected_subphase, record):
+    """Tier 3: where inside the first incomplete sub-phase.
+
+    Re-entry requires STRING EQUALITY against the tier-2 selection, an
+    active record, and `at_stage_boundary: false`.
+    """
+    if not record:
+        return None
+    if record.get("subphase") != selected_subphase:
+        return None
+    if record.get("active") != "true":
+        return None
+    if record.get("at_stage_boundary") != "false":
+        return None
+    return record.get("step")
+
+
+def _resolve_next_action(record):
+    """Tier 4: what to do next -- `next_action`/`notes_path` are the ONLY
+    source."""
+    if not record:
+        return None, None
+    return record.get("next_action"), record.get("notes_path")
+
+
+def _resume_slice() -> str:
+    text = RUN_SKILL.read_text(encoding="utf-8")
+    heading = re.search(r"^## Resume$", text, re.M)
+    assert heading, "run/SKILL.md must have a '## Resume' heading"
+    start = heading.start()
+    rest = text[heading.end() :]
+    m = re.search(r"\n## [A-Z]", rest)
+    end = heading.end() + (m.start() if m else len(rest))
+    return text[start:end]
+
+
+# ---------------------------------------------------------------------------
+# Tier 1 -- which phase
+# ---------------------------------------------------------------------------
+
+
+def test_tier1_progress_dir_present_sentinels_decide_phase():
+    sl = _resume_slice()
+    assert "never re-run it" in sl
+    assert "A phase whose `{phase}.done` sentinel EXISTS is finished" in sl
+    # Behavioural: even when a record disagrees, the sentinel roster wins.
+    done = {"discover", "enrich"}
+    assert _resolve_phase(done, {"active": "true", "phase": "review"}) == "specify"
+
+
+def test_tier1_no_progress_dir_fresh_record_decides_phase(tmp_path):
+    _write(tmp_path, "t1", phase="architect", phase_index=2, at_stage_boundary=True)
+    record = _read(tmp_path, "t1")
+    assert _resolve_phase(None, record) == "architect"
+
+
+def test_tier1_no_progress_dir_no_record_falls_back_to_session_state(tmp_path):
+    record = _read(tmp_path, "ghost")
+    assert record == {}
+    assert _resolve_phase(None, record) is None
+
+
+def test_no_record_falls_to_session_state_prose(tmp_path):
+    record = _read(tmp_path, "ghost2", fields=ALL_FIELDS)
+    assert record == {}
+
+
+# ---------------------------------------------------------------------------
+# Tier 2 -- which sub-phase
+# ---------------------------------------------------------------------------
+
+
+def test_tier2_subphase_sentinels_win_over_record(tmp_path):
+    _write(tmp_path, "t2", phase="implement", subphase="batch-1", at_stage_boundary=False)
+    record = _read(tmp_path, "t2")
+    # Sentinels say batch-1 is done and batch-2 is not -> tier 2 selects
+    # batch-2 regardless of the record's own (stale) claim of batch-1.
+    selected = _resolve_subphase(["batch-1", "batch-2"], done_subphases={"batch-1"})
+    assert selected == "batch-2"
+    assert record["subphase"] == "batch-1"
+
+
+# ---------------------------------------------------------------------------
+# Tier 3 -- where inside the first incomplete sub-phase
+# ---------------------------------------------------------------------------
+
+
+def test_tier3_subphase_with_existing_done_sentinel_is_discarded(tmp_path):
+    _write(tmp_path, "t3", subphase="batch-1", step="stale", at_stage_boundary=False)
+    record = _read(tmp_path, "t3")
+    selected = _resolve_subphase(["batch-1", "batch-2"], done_subphases={"batch-1"})
+    assert _resolve_step(selected, record) is None
+
+
+def test_tier3_subphase_equal_to_first_incomplete_subphase_is_obeyed(tmp_path):
+    _write(tmp_path, "t4", subphase="batch-2", step="editing file X", at_stage_boundary=False)
+    record = _read(tmp_path, "t4")
+    selected = _resolve_subphase(["batch-1", "batch-2"], done_subphases={"batch-1"})
+    assert _resolve_step(selected, record) == "editing file X"
+
+
+def test_tier3_subphase_naming_an_unknown_subphase_is_discarded(tmp_path):
+    _write(tmp_path, "t5", subphase="batch-99", step="ghost step", at_stage_boundary=False)
+    record = _read(tmp_path, "t5")
+    selected = _resolve_subphase(["batch-1", "batch-2"], done_subphases={"batch-1"})
+    assert _resolve_step(selected, record) is None
+
+
+def test_tier3_comparison_is_string_equality_not_ordering(tmp_path):
+    _write(tmp_path, "t6", subphase="batch-10", step="should apply", at_stage_boundary=False)
+    record = _read(tmp_path, "t6")
+    # batch-10 IS the tier-2 selection here -> string-equal, obeyed.
+    selected = _resolve_subphase(["batch-3", "batch-10"], done_subphases={"batch-3"})
+    assert selected == "batch-10"
+    assert _resolve_step(selected, record) == "should apply"
+    # Flip which sub-phase is finished: batch-3 is now selected, and the
+    # SAME record naming "batch-10" is discarded -- proving equality, not
+    # a numeric/lexical rank, decides ("batch-10" is not "ahead of"
+    # "batch-3" in any computed sense; it is simply a different string).
+    selected2 = _resolve_subphase(["batch-3", "batch-10"], done_subphases={"batch-10"})
+    assert selected2 == "batch-3"
+    assert _resolve_step(selected2, record) is None
+
+
+# ---------------------------------------------------------------------------
+# Tier 4 -- what to do next
+# ---------------------------------------------------------------------------
+
+
+def test_tier4_next_action_and_notes_path_are_the_only_source(tmp_path):
+    _write(tmp_path, "t7", next_action="start review", artifact="/x/current-plan.md")
+    record = _read(tmp_path, "t7")
+    next_action, notes_path = _resolve_next_action(record)
+    assert next_action == "start review"
+    assert notes_path == record.get("notes_path")
+
+
+def test_tier4_tolerates_a_missing_notes_path(tmp_path):
+    _write(tmp_path, "t8", next_action="start review", at_stage_boundary=True)
+    record = _read(tmp_path, "t8")
+    notes_file = Path(record["notes_path"])
+    assert not notes_file.exists()
+    next_action, notes_path = _resolve_next_action(record)
+    assert next_action == "start review"
+    assert notes_path == record["notes_path"]
+
+
+# ---------------------------------------------------------------------------
+# Cross-tier guards
+# ---------------------------------------------------------------------------
+
+
+def test_at_stage_boundary_true_record_does_not_trigger_reentry(tmp_path):
+    _write(tmp_path, "t9", subphase="batch-1", step="x", at_stage_boundary=True)
+    record = _read(tmp_path, "t9")
+    assert _resolve_step("batch-1", record) is None
+
+
+def test_stale_record_outside_freshness_window_is_ignored(tmp_path):
+    _write(tmp_path, "t10", step="x")
+    path = _record_path(tmp_path, "t10")
+    old = time.time() - (3 * 86400)
+    os.utime(path, (old, old))
+    record = _read(tmp_path, "t10", max_age_days=1)
+    assert record == {}
+
+
+def test_standalone_thorough_plan_creates_no_record(tmp_path):
+    result = _write(tmp_path, "t11", require_existing=True, step="round 1")
+    assert result.returncode == 0
+    assert not _record_path(tmp_path, "t11").exists()
+    memory_dir = tmp_path / ".workflow_artifacts" / "memory"
+    assert not memory_dir.exists() or not any(memory_dir.iterdir())
+
+
+def test_standalone_thorough_plan_after_a_completed_run_leaves_the_record_inactive(tmp_path):
+    _write(tmp_path, "t12", phase="end_of_task", step="run finished")
+    _clear(tmp_path, "t12")
+    path = _record_path(tmp_path, "t12")
+    before = _read(tmp_path, "t12")
+    before_mtime = path.stat().st_mtime
+    _write(
+        tmp_path,
+        "t12",
+        require_existing=True,
+        subphase="round-1-plan",
+        step="round 1 plan returned",
+    )
+    after = _read(tmp_path, "t12")
+    after_mtime = path.stat().st_mtime
+    assert after["active"] == before["active"] == "false"
+    assert after["phase"] == before["phase"] == "end_of_task"
+    assert after_mtime == before_mtime
+
+
+def test_round_boundary_write_updates_an_existing_record(tmp_path):
+    _write(
+        tmp_path,
+        "t13",
+        phase="thorough_plan",
+        phase_index=3,
+        subphase="round-1-plan",
+        step="round 1 plan returned",
+    )
+    _write(
+        tmp_path,
+        "t13",
+        require_existing=True,
+        subphase="round-2-critic",
+        step="round 2 critic returned",
+    )
+    record = _read(tmp_path, "t13")
+    assert record["subphase"] == "round-2-critic"
+    assert record["step"] == "round 2 critic returned"
+    assert record["phase_index"] == "3"
+
+
+def test_inactive_record_is_ignored(tmp_path):
+    _write(tmp_path, "t14", step="x")
+    _clear(tmp_path, "t14")
+    record = _read(tmp_path, "t14")
+    assert record["active"] == "false"
+    assert _resolve_phase(None, record) is None
+
+
+def test_schema_forward_record_falls_to_next_tier(tmp_path):
+    _write(tmp_path, "t15", step="x")
+    path = _record_path(tmp_path, "t15")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace('"schema": 1', '"schema": 2'),
+        encoding="utf-8",
+    )
+    record = _read(tmp_path, "t15")
+    assert record == {}
+    assert _resolve_phase(None, record) is None
+
+
+# ---------------------------------------------------------------------------
+# Step 1b documented-contract checks
+# ---------------------------------------------------------------------------
+
+
+def test_step_1b_documented_between_step_1_and_step_2():
+    sl = _resume_slice()
+    step1 = sl.index("**Step 1 (")
+    step1b = sl.index("**Step 1b (")
+    step2 = sl.index("**Step 2 —")
+    assert step1 < step1b < step2
+
+
+def test_step_1b_documents_all_four_tiers():
+    sl = _resume_slice()
+    body = sl[sl.index("**Step 1b (") :]
+    assert "which phase" in body
+    assert "which sub-phase" in body
+    assert "where inside the first incomplete sub-phase" in body
+    assert "what to do next" in body
+
+
+def test_step_1b_read_call_passes_max_age_days():
+    sl = _resume_slice()
+    body = sl[sl.index("**Step 1b (") :]
+    assert "run_state.py --read" in body
+    assert "--max-age-days" in body
