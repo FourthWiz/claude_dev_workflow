@@ -579,6 +579,15 @@ _ENVELOPE_CLOSE_MARKER = "[/quoin-handoff]"
 # later minor-version envelope still resolves.
 _ENVELOPE_DISPATCH_OPEN_RE = re.compile(r"\[quoin-handoff/[^\]\n]*\sdispatch\]")
 _ENVELOPE_SKILL_FIELD_RE = re.compile(r"^\s*skill:\s*(\S+)\s*$", re.MULTILINE)
+# Direction-anchored version capture (T-02): applied to dispatch_text and
+# return_text SEPARATELY, never to the same text with the same pattern. A
+# single record can legitimately carry a dispatch marker of one version and
+# a return marker of another (e.g. run/SKILL.md appends the full 1.0 return
+# template to every spawn prompt, so dispatch_text itself can contain both
+# a versioned dispatch marker and a 1.0 return marker) — direction anchoring
+# is what keeps the two from being conflated.
+_ENVELOPE_DISPATCH_VERSION_RE = re.compile(r"\[quoin-handoff/(\d+)\.(\d+)\s+dispatch\]")
+_ENVELOPE_RETURN_VERSION_RE = re.compile(r"\[quoin-handoff/(\d+)\.(\d+)\s+return\]")
 
 
 def envelope_partition(records):
@@ -591,22 +600,50 @@ def envelope_partition(records):
     affects detection. Only run-owned records (per the legacy predicate)
     contribute to `per_phase` — this mirrors the corpus-wide per-phase
     counters `capture_corpus()` already reports.
+
+    Also reports `dispatch_version`/`return_version` per record (T-02):
+    `"{major}.{minor}"` when that direction's marker is present AND the
+    direction-anchored regex matches, `None` when the direction's marker is
+    absent OR present but unparseable (a major-only or malformed marker) —
+    conflating "no marker" and "unparseable marker" into one bucket is a
+    deliberate tradeoff. `per_dispatch_version`/`per_return_version` bucket
+    ALL records (the same population `dispatch_envelope_count`/
+    `return_envelope_count` use, not the run_owned-gated `per_phase`
+    population); each bucket is `{"n": <count>}` only.
     """
     per_record = []
     dispatch_count = 0
     return_count = 0
     per_phase = {}
+    per_dispatch_version = {}
+    per_return_version = {}
     for r in records:
-        has_dispatch = _ENVELOPE_MARKER_PREFIX in (r.get("dispatch_text") or "")
-        has_return = _ENVELOPE_MARKER_PREFIX in (r.get("return_text") or "")
+        dispatch_text = r.get("dispatch_text") or ""
+        return_text = r.get("return_text") or ""
+        has_dispatch = _ENVELOPE_MARKER_PREFIX in dispatch_text
+        has_return = _ENVELOPE_MARKER_PREFIX in return_text
         if has_dispatch:
             dispatch_count += 1
         if has_return:
             return_count += 1
+        dispatch_version_match = _ENVELOPE_DISPATCH_VERSION_RE.search(dispatch_text)
+        return_version_match = _ENVELOPE_RETURN_VERSION_RE.search(return_text)
+        dispatch_version = (
+            f"{dispatch_version_match.group(1)}.{dispatch_version_match.group(2)}"
+            if has_dispatch and dispatch_version_match else None
+        )
+        return_version = (
+            f"{return_version_match.group(1)}.{return_version_match.group(2)}"
+            if has_return and return_version_match else None
+        )
+        per_dispatch_version.setdefault(dispatch_version, {"n": 0})["n"] += 1
+        per_return_version.setdefault(return_version, {"n": 0})["n"] += 1
         per_record.append({
             "path": r.get("path"),
             "dispatch_envelope": has_dispatch,
             "return_envelope": has_return,
+            "dispatch_version": dispatch_version,
+            "return_version": return_version,
         })
         if r.get("run_owned"):
             bucket = per_phase.setdefault(
@@ -622,6 +659,8 @@ def envelope_partition(records):
         "dispatch_envelope_count": dispatch_count,
         "return_envelope_count": return_count,
         "per_phase": per_phase,
+        "per_dispatch_version": per_dispatch_version,
+        "per_return_version": per_return_version,
         "per_record": per_record,
     }
 
@@ -1535,7 +1574,9 @@ def _build_arg_parser():
     parser.add_argument(
         "--contract-read-partition", action="store_true",
         help="Print the count and fraction of run-owned (legacy-predicate) spawns whose "
-             "own transcript shows a Read of handoff-format.md (MAJ-2).",
+             "own transcript shows a Read of handoff-format.md (the core), and separately "
+             "of handoff-format-reference.md (the reference) (MAJ-2). Each file is measured "
+             "via its own explicit single-element-tuple call, never a combined default.",
     )
     return parser
 
@@ -1611,6 +1652,10 @@ def main(argv=None):
             print(f"envelope_partition_phase={phase} n={counts['n']} "
                   f"dispatch_envelope={counts['dispatch_envelope']} "
                   f"return_envelope={counts['return_envelope']}")
+        for version, counts in sorted(ep["per_dispatch_version"].items(), key=lambda kv: str(kv[0])):
+            print(f"envelope_partition_dispatch_version={version} n={counts['n']}")
+        for version, counts in sorted(ep["per_return_version"].items(), key=lambda kv: str(kv[0])):
+            print(f"envelope_partition_return_version={version} n={counts['n']}")
     if args.envelope_phase_partition:
         envelope_run_owned = [
             r for r in corpus["records"]
@@ -1619,9 +1664,12 @@ def main(argv=None):
         print(f"envelope_phase_run_owned={len(envelope_run_owned)} "
               f"(legacy run_owned={corpus['run_owned']} for comparison)")
     if args.contract_read_partition:
-        crp = contract_read_partition(run_owned)
-        print(f"contract_read_partition: n={crp['n']} hits={crp['hits']} "
-              f"fraction={crp['fraction']}")
+        crp_core = contract_read_partition(run_owned, ("handoff-format.md",))
+        print(f"contract_read_partition_core: n={crp_core['n']} hits={crp_core['hits']} "
+              f"fraction={crp_core['fraction']}")
+        crp_reference = contract_read_partition(run_owned, ("handoff-format-reference.md",))
+        print(f"contract_read_partition_reference: n={crp_reference['n']} "
+              f"hits={crp_reference['hits']} fraction={crp_reference['fraction']}")
     return 0
 
 

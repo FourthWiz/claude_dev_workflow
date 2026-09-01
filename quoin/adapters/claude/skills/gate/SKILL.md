@@ -491,7 +491,7 @@ the SOLE detector here (there is no AUQ to backstop). If autonomous mode is NOT 
 and stripped at bootstrap into `_INTERACTIVE=false` — `/run` injects it onto non-autonomous
 phase/gate subagent spawns), then a human cannot approve this STOP: FAIL CLOSED — run
 `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill gate --site gate-approval --reason "human-approval gate cannot reach a human in a non-interactive context" --resume-hint "re-run /gate interactively, or run under --autonomous"`,
-echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP. This block stays the final message on this path, and the phase emits no envelope here, even when the dispatch carried `return: envelope`. Do NOT auto-approve.
+echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP — it emits no envelope here even under `return: envelope`. Do NOT auto-approve.
 The pre-existing FAIL branch already fails closed (returns the verdict, never
 auto-approves) — do not weaken it. Rule doc: `__QUOIN_HOME__/memory/decision-gate-guard.md`.
 

@@ -24,6 +24,7 @@ def test_runtime_portability_docs_exist():
         "quoin/core/workflow/skills.json",
         "quoin/core/workflow/skills.md",
         "quoin/core/workflow/handoff-format.md",
+        "quoin/core/workflow/handoff-format-reference.md",
         "quoin/adapters/README.md",
         "quoin/adapters/claude/README.md",
         "quoin/adapters/claude/models.md",
@@ -189,6 +190,41 @@ def test_codex_handoff_and_core_spec_cross_reference():
     # both files must also state the distinction, not just the path
     assert "session continuation" in codex_handoff
     assert "session continuation" in core_spec
+
+
+def test_handoff_format_core_and_reference_cross_reference():
+    """The handoff-format core file and its checkable-rules reference file
+    name each other, so a reader following either one finds the other.
+
+    Both pointers use the `__QUOIN_HOME__`-substituted spelling (D-10), not
+    a repo-root-relative one: a deployed child resolves the pointer from
+    the deploy root, and the repo-root spelling the codex/core citation
+    test above uses would not resolve there. The repo source's own
+    core/workflow/ directory has the same layout as the deploy root's, so
+    substituting `__QUOIN_HOME__` with `str(REPO_ROOT / "quoin")` mirrors
+    `installer.substitute_quoin_home`'s semantics without a real install.
+    """
+    core_spec = read_rel("quoin/core/workflow/handoff-format.md")
+    reference_spec = read_rel("quoin/core/workflow/handoff-format-reference.md")
+    quoin_home = str(REPO_ROOT / "quoin")
+
+    core_match = re.search(
+        r"`__QUOIN_HOME__(/core/workflow/handoff-format-reference\.md)`", core_spec
+    )
+    assert core_match, (
+        "handoff-format.md must cite handoff-format-reference.md by a "
+        "backticked __QUOIN_HOME__-substituted path"
+    )
+    assert Path(quoin_home + core_match.group(1)).is_file()
+
+    reference_match = re.search(
+        r"`__QUOIN_HOME__(/core/workflow/handoff-format\.md)`", reference_spec
+    )
+    assert reference_match, (
+        "handoff-format-reference.md must cite handoff-format.md by a "
+        "backticked __QUOIN_HOME__-substituted path"
+    )
+    assert Path(quoin_home + reference_match.group(1)).is_file()
 
 
 def test_skill_manifest_matches_current_claude_frontmatter():

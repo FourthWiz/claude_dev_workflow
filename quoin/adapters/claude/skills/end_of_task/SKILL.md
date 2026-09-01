@@ -250,7 +250,7 @@ The guard's exit-code contract is UNCHANGED (still exit 1 only on `OVER`, exit
 3. **`[no-interactive]` / non-interactive (and NOT `_AUTONOMOUS`)** → FAIL CLOSED: a human
    cannot pick a session-age option in a background context, so run
    `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill end_of_task --site session-age --reason "session over the age cap; proceed/checkpoint/abort decision could not be surfaced" --resume-hint "re-run /end_of_task interactively, or prefix [no-session-age-guard]"`,
-   echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP. This block stays the final message on this path, and the phase emits no envelope here, even when the dispatch carried `return: envelope`.
+   echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP — it emits no envelope here even under `return: envelope`.
 4. **else (interactive)** → present an `AskUserQuestion` 3-option list (IVG-146 UX):
    - **Proceed in this session** — continue `/end_of_task` now despite the age (override).
    - **Checkpoint and finish in a fresh session (recommended)** — run `/checkpoint`, then STOP
@@ -404,7 +404,7 @@ project root):
    e.g. an Agent subagent, where it is not provisioned — or returns no usable answer),
    FAIL CLOSED — do NOT proceed on a default and do NOT stall: run
    `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill end_of_task --site garbage-files --reason "working-tree cleanup decision could not be surfaced" --resume-hint "re-run /end_of_task interactively, or pass --autonomous"`,
-   echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP. This block stays the final message on this path, and the phase emits no envelope here, even when the dispatch carried `return: envelope`.
+   echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP — it emits no envelope here even under `return: envelope`.
    Rule doc: `__QUOIN_HOME__/memory/decision-gate-guard.md`.
 
 4. **If nothing found** — print one line and continue:
@@ -454,7 +454,7 @@ Run `git status`. If there are uncommitted changes:
   false (`[no-interactive]` set, or `AskUserQuestion` unavailable/suppressed), FAIL CLOSED —
   the commit/abort decision must never default silently: run
   `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill end_of_task --site commit-decision --reason "uncommitted-changes commit decision could not be surfaced" --resume-hint "re-run /end_of_task interactively, or pass --autonomous"`,
-  echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP. This block stays the final message on this path, and the phase emits no envelope here, even when the dispatch carried `return: envelope`. Rule doc:
+  echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP — it emits no envelope here even under `return: envelope`. Rule doc:
   `__QUOIN_HOME__/memory/decision-gate-guard.md`.
 - If **Commit**: collect a conventional commit message inline.
 - If **Abort**: STOP. Tell the user: "Stash manually then re-invoke /end_of_task."
@@ -512,7 +512,7 @@ line: `[quoin: autonomous — archiving task folder to finalized/]`.
 (`[no-interactive]` set, or `AskUserQuestion` unavailable/suppressed), FAIL CLOSED — do not
 default the archive decision: run
 `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill end_of_task --site archive-type --reason "archive-type decision could not be surfaced" --resume-hint "re-run /end_of_task interactively, or pass --autonomous"`,
-echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP. This block stays the final message on this path, and the phase emits no envelope here, even when the dispatch carried `return: envelope`. Rule doc:
+echo its `gate-result: NEEDS-DECISION` block as the final message, and STOP — it emits no envelope here even under `return: envelope`. Rule doc:
 `__QUOIN_HOME__/memory/decision-gate-guard.md`.
 
 Capture as `archive_type`: `"feature"` (fully complete) or `"none"` (more work planned — do not archive).

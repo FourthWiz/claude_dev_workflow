@@ -423,8 +423,8 @@ def test_token_cross_check_empty_input_does_not_raise():
 # ---------------------------------------------------------------------------
 def test_iter_transcripts_requires_home_param(fixtures_home):
     paths = list(hm.iter_transcripts(fixtures_home))
-    # 14 cases (a)-(n) + sid-joint's subagent transcript + 9 T-02 env-a..i cases
-    assert len(paths) == 24
+    # 14 cases (a)-(n) + sid-joint's subagent transcript + 10 T-02 env-a..j cases
+    assert len(paths) == 25
     assert all(
         p.name.startswith("agent-case-") or p.name == "agent-joint.jsonl"
         or p.name.startswith("agent-env-")
@@ -1398,6 +1398,83 @@ def test_env_phase_no_marker_returns_none():
 
 def test_env_phase_open_without_close_returns_none():
     assert hm.envelope_phase("[quoin-handoff/1.0 dispatch]\nskill: implement\n") is None
+
+
+# ---------------------------------------------------------------------------
+# T-02: dispatch_version/return_version partition + split core/reference
+# contract-read partition. Two tests, not one, because one population
+# cannot serve both claims (corpus-wide reconciliation vs. single-record
+# anti-conflation attribution).
+# ---------------------------------------------------------------------------
+
+
+def test_corpus_wide_reconciliation_dispatch_and_return_version_partition(fixtures_home, capsys):
+    exit_code = hm.main([
+        "--home", str(fixtures_home),
+        "--envelope-partition",
+        "--contract-read-partition",
+    ])
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+
+    assert any(line.startswith("contract_read_partition_core:") for line in lines)
+    assert any(line.startswith("contract_read_partition_reference:") for line in lines)
+
+    ep_line = next(line for line in lines if line.startswith("envelope_partition: "))
+    n_total = int(re.search(r"\bn=(\d+)", ep_line).group(1))
+
+    dispatch_lines = [line for line in lines if line.startswith("envelope_partition_dispatch_version=")]
+    return_lines = [line for line in lines if line.startswith("envelope_partition_return_version=")]
+    assert dispatch_lines
+    assert return_lines
+
+    def _bucket_n_sum(bucket_lines):
+        return sum(int(re.search(r"\bn=(\d+)", line).group(1)) for line in bucket_lines)
+
+    assert _bucket_n_sum(dispatch_lines) == n_total
+    assert _bucket_n_sum(return_lines) == n_total
+
+
+def test_env_j_dispatch_version_never_conflates_appended_return_template():
+    # dispatch_text carries a 1.1 dispatch envelope FOLLOWED BY an appended
+    # COMPLETE 1.0 return template (the shape run/SKILL.md's spawn-prompt
+    # append behavior produces) — return_text carries a SEPARATE, independent
+    # 1.0 return envelope (the child's own reply). Built directly in memory,
+    # never written to a transcript file or committed as a fixture, so
+    # test_iter_transcripts_requires_home_param's corpus count is untouched.
+    dispatch_text = (
+        "[quoin-handoff/1.1 dispatch]\n"
+        "skill: implement\n"
+        "task: env-j-inmemory\n"
+        "task_dir: /tmp/env-j-inmemory\n"
+        "project_root: /tmp\n"
+        "return: envelope\n"
+        "[/quoin-handoff]\n"
+        "\n"
+        "[quoin-handoff/1.0 return]\n"
+        "status: COMPLETE\n"
+        "artifact: /tmp/env-j-inmemory/current-plan.md\n"
+        "verdict: PASS\n"
+        "summary: appended trailing return template, never the spawn's own reply\n"
+        "[/quoin-handoff]\n"
+    )
+    return_text = (
+        "[quoin-handoff/1.0 return]\n"
+        "status: COMPLETE\n"
+        "artifact: /tmp/env-j-inmemory/current-plan.md\n"
+        "verdict: PASS\n"
+        "summary: the spawn's own separate reply\n"
+        "[/quoin-handoff]\n"
+    )
+    record = {"path": "in-memory-env-j", "dispatch_text": dispatch_text, "return_text": return_text}
+    ep = hm.envelope_partition([record])
+    # The 1.0 return template embedded inside dispatch_text contributes
+    # NOTHING to per_dispatch_version's 1.0 bucket.
+    assert ep["per_dispatch_version"] == {"1.1": {"n": 1}}
+    # The record's own separate return envelope is scored correctly on the
+    # return side.
+    assert ep["per_return_version"] == {"1.0": {"n": 1}}
 
 
 # Mutation proof, run and recorded — applied once each directly against

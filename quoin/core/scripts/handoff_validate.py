@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """handoff_validate.py — canonical validator for the inter-agent handoff envelope.
 
-Validates a payload against the rules named quoin/core/workflow/handoff-format.md
+Validates a payload against the rules named quoin/core/workflow/handoff-format-reference.md
 (H-01..H-21). Portable core: stdlib-only, no imports from quoin/scripts/ (the
 adapter layer) or from any third-party package.
 
@@ -25,7 +25,7 @@ from pathlib import Path
 _MAX_VALUE_BYTES = 600
 _MAX_ENVELOPE_BYTES = 1024
 _SUPPORTED_MAJOR = 1
-_SUPPORTED_MINORS = frozenset({0})
+_SUPPORTED_MINORS = frozenset({0, 1})
 
 # Deliberate copy of context_bundle.py's SENTINEL_TOKENS (D-19): core cannot
 # import the adapter-layer script, so the list is duplicated and a parity
@@ -59,7 +59,14 @@ _KEY_TOKEN_RE = re.compile(r"^([a-z_][a-z0-9_]*)(?:\[(\d+)\])?$")
 _STATUS_ENUM = ("COMPLETE", "PARTIAL", "NEEDS-DECISION", "BLOCKED")
 _VERDICT_ENUM = ("PASS", "REVISE", "APPROVED", "CHANGES_REQUESTED", "BLOCKED")
 
-_DISPATCH_REQUIRED = ("skill", "task", "task_dir", "project_root", "return")
+# Version-keyed (D-03: additive recognition, not a global relaxation) — minor
+# 1 drops project_root from the required set; task_dir stays required under
+# both. An unrecognised minor falls back to the highest recognised minor's
+# tuple (see check_h_05), so H-03 (WARN, non-gating) never masks H-05.
+_DISPATCH_REQUIRED = {
+    0: ("skill", "task", "task_dir", "project_root", "return"),
+    1: ("skill", "task", "task_dir", "return"),
+}
 _DISPATCH_ORDER = (
     "skill", "task", "task_dir", "project_root", "profile", "inputs",
     "return", "spec", "bundle",
@@ -440,10 +447,11 @@ def _field_value(parsed: dict, base_key: str) -> str | None:
     return None
 
 
-def check_h_05(direction_kw: str, parsed: dict, status_ok: bool, messages: list[str]) -> None:
+def check_h_05(direction_kw: str, parsed: dict, status_ok: bool, minor: int, messages: list[str]) -> None:
     present = set(parsed["first_seen"].keys())
     if direction_kw == "dispatch":
-        missing = [k for k in _DISPATCH_REQUIRED if k not in present]
+        required = _DISPATCH_REQUIRED.get(minor, _DISPATCH_REQUIRED[max(_DISPATCH_REQUIRED)])
+        missing = [k for k in required if k not in present]
         if missing:
             messages.append(f"FAIL H-05: dispatch payload missing required field(s): {missing}")
         return
@@ -527,7 +535,7 @@ def validate(text: str, direction_arg: str | None) -> list[str]:
         check_h_14(parsed, known, messages)
         check_h_16(parsed, order, messages)
         status_ok = check_h_06_h_07(direction_kw, parsed, messages)
-        check_h_05(direction_kw, parsed, status_ok, messages)
+        check_h_05(direction_kw, parsed, status_ok, minor, messages)
         check_h_17(parsed, list_keys, messages)
     else:
         # Direction-independent rules still run; no list-valued key is known,
@@ -540,15 +548,12 @@ def validate(text: str, direction_arg: str | None) -> list[str]:
 # ── Embedded self-test fixtures (D-24 — never a file on disk) ───────────────
 
 _SELF_TEST_DISPATCH = """[no-redispatch] [autonomous] [quoin-onbehalf]
-[quoin-handoff/1.0 dispatch]
+[quoin-handoff/1.1 dispatch]
 skill: architect
 task: agent-handoff-format
-task_dir: .workflow_artifacts/agent-handoff-format/
-project_root: /abs/path/to/project
-profile: Large
+task_dir: /abs/path/to/project/.workflow_artifacts/agent-handoff-format/
 inputs: spec.md | enriched-prompt.md | memory/repos-inventory.md
 return: envelope
-spec: __QUOIN_HOME__/core/workflow/handoff-format.md
 [/quoin-handoff]
 <task-specific prose, unchanged>
 """
