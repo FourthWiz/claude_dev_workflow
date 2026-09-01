@@ -22,9 +22,10 @@ shift
 # (`-mtime -$((STALE_DAYS + 1))`, e.g. `QUOIN_RUN_STATE_STALE_DAYS='q[$(...)]'`
 # under a bash `/bin/sh`). Reject anything that is not a plain non-negative
 # integer and fall back to the documented default of 1.
-case "${QUOIN_RUN_STATE_STALE_DAYS:-1}" in
+RAW_STALE_DAYS="${QUOIN_RUN_STATE_STALE_DAYS:-1}"
+case "$RAW_STALE_DAYS" in
     ''|*[!0-9]*) STALE_DAYS=1 ;;
-    *) STALE_DAYS="$QUOIN_RUN_STATE_STALE_DAYS" ;;
+    *) STALE_DAYS="$RAW_STALE_DAYS" ;;
 esac
 
 [ -n "$MEMORY_DIR" ] || exit 0

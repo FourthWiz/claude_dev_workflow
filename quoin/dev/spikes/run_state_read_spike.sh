@@ -1,16 +1,19 @@
 #!/bin/sh
-# Fixture builder / timer / correctness harness for run_state_read.sh (T-02).
+# Fixture builder / timer / correctness harness for run_state_read.sh (T-02,
+# retimed post-review-1 rework -- see spike-run-state-read.md "Rework" section).
 # Not committed as part of the reader contract -- invokes the reader as a
 # subprocess and never sources it, per D-60.
 #
-# Usage: run_state_read_spike.sh [--iterations N]
+# Usage: run_state_read_spike.sh [--iterations N] [--sibling-count N]
 
 set -e
 
 ITERATIONS=20
+SIBLING_COUNT=200
 while [ $# -gt 0 ]; do
     case "$1" in
         --iterations) ITERATIONS="$2"; shift 2 ;;
+        --sibling-count) SIBLING_COUNT="$2"; shift 2 ;;
         *) echo "unknown arg: $1" >&2; exit 2 ;;
     esac
 done
@@ -18,6 +21,12 @@ done
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 READER="$SCRIPT_DIR/run_state_read.sh"
 FAIL=0
+
+# Production key set exactly as requested by Resume Step 1b in run/SKILL.md
+# -- the T-02 evidence originally timed 6 keys against a harness reproduction
+# while Step 1b as shipped requests eleven (review-1.md issue 20); use the
+# real set here so the recorded numbers describe the read that ships.
+PROD_KEYS="schema active phase phase_index subphase step at_stage_boundary next_action notes_path resume_command updated_at"
 
 # --- record writer -----------------------------------------------------
 # Hand-rolled, matching the on-disk shape T-03 freezes: one key per line,
@@ -57,97 +66,92 @@ check() {
 }
 
 # =========================================================================
-# Main 48-file fixture
+# Fixture: one target-task record plus SIBLING_COUNT decoy records for
+# OTHER tasks (some active, some not, some schema-forward). Since the
+# reworked reader addresses run-state-$TASK.json directly (no directory
+# scan -- review-1.md issues 6/9), none of these siblings should be
+# touched at all, regardless of count.
 # =========================================================================
 MEMDIR=$(mktemp -d)
 NOW_TS=$(date +%Y%m%d%H%M.%S)
 
 i=1
-while [ "$i" -le 40 ]; do
+while [ "$i" -le "$SIBLING_COUNT" ]; do
     f="$MEMDIR/run-state-decoy-$i.json"
-    write_record "$f" "decoy-$i" "false" 1
-    touch -t "$(date -v-30d +%Y%m%d%H%M.%S 2>/dev/null || date -d '30 days ago' +%Y%m%d%H%M.%S)" "$f"
-    i=$((i + 1))
-done
-
-i=1
-while [ "$i" -le 5 ]; do
-    f="$MEMDIR/run-state-stale-$i.json"
-    write_record "$f" "stale-$i" "true" 1
-    touch -t "$(date -v-3d +%Y%m%d%H%M.%S 2>/dev/null || date -d '3 days ago' +%Y%m%d%H%M.%S)" "$f"
+    case $((i % 3)) in
+        0) write_record "$f" "decoy-$i" "false" 1 ;;
+        1) write_record "$f" "decoy-$i" "true" 1 ;;
+        *) write_record "$f" "decoy-$i" "true" 2 ;;
+    esac
     i=$((i + 1))
 done
 
 TARGET="$MEMDIR/run-state-target-task.json"
 write_record "$TARGET" "target-task" "true" 1
 
-SCHEMA2="$MEMDIR/run-state-schema2-task.json"
-write_record "$SCHEMA2" "schema2-task" "true" 2
-
 NOTES="$MEMDIR/run-notes-target-task.md"
 echo "## notes" > "$NOTES"
 
 FILE_COUNT=$(find "$MEMDIR" -maxdepth 1 -type f | wc -l | tr -d ' ')
-echo "fixture file count: $FILE_COUNT (expect 48: 40 decoy + 5 stale-active + 1 target + 1 schema-2 + 1 run-notes)"
+echo "fixture file count: $FILE_COUNT (expect $((SIBLING_COUNT + 2)): $SIBLING_COUNT decoy + 1 target + 1 run-notes)"
 
 # =========================================================================
-# Correctness (a): target newest -> reader selects the target record;
-# skips all 40 decoys and all 5 stale-active records.
+# Correctness (a): task-scoped read of the target record ignores every
+# decoy for another task, regardless of decoy count or freshness -- the
+# decoys are never even opened, since the reader addresses the target
+# file by name.
 # =========================================================================
-touch "$TARGET"
-touch -t "$(date -v-1S +%Y%m%d%H%M.%S 2>/dev/null || date -d '1 second ago' +%Y%m%d%H%M.%S)" "$SCHEMA2"
-
-got=$(sh "$READER" "$MEMDIR" resume_command)
-check "correctness (a): target newest selects target" "$got" "resume_command=/run --resume target-task"
-
-# =========================================================================
-# Correctness (b): schema-2 newest -> reader still selects the target
-# (schema-forward is SKIPPED, not an abort of the scan).
-# =========================================================================
-touch "$SCHEMA2"
-touch -t "$(date -v-1S +%Y%m%d%H%M.%S 2>/dev/null || date -d '1 second ago' +%Y%m%d%H%M.%S)" "$TARGET"
-
-got=$(sh "$READER" "$MEMDIR" resume_command)
-check "correctness (b): schema-2 newest still selects target (skip not abort)" "$got" "resume_command=/run --resume target-task"
-
-# restore target as newest for the timing run below
-touch "$TARGET"
+got=$(sh "$READER" "$MEMDIR" target-task resume_command)
+check "correctness (a): task-scoped read selects the addressed task" "$got" "resume_command=/run --resume target-task"
 
 # =========================================================================
-# Correctness (c): schema-2 as the ONLY active candidate -> empty stdout,
-# exit 0. Build an isolated fixture: everything else inactive.
+# Correctness (b): a schema-forward record for the SAME task is treated as
+# absent -- empty stdout, exit 0 (whole-record absence, falls through to
+# the next precedence tier). Isolated fixture: the addressed task's own
+# record is schema-forward.
 # =========================================================================
-ONLYDIR=$(mktemp -d)
-write_record "$ONLYDIR/run-state-schema2-only.json" "schema2-only" "true" 2
-write_record "$ONLYDIR/run-state-inactive-1.json" "inactive-1" "false" 1
-write_record "$ONLYDIR/run-state-inactive-2.json" "inactive-2" "false" 1
-
-out=$(sh "$READER" "$ONLYDIR" resume_command)
+SCHEMA2DIR=$(mktemp -d)
+write_record "$SCHEMA2DIR/run-state-schema2-task.json" "schema2-task" "true" 2
+out=$(sh "$READER" "$SCHEMA2DIR" schema2-task resume_command)
 rc=$?
 if [ -z "$out" ] && [ "$rc" -eq 0 ]; then
-    echo "PASS: correctness (c): schema-2-only candidate yields empty stdout, exit 0"
+    echo "PASS: correctness (b): schema-forward record for the addressed task yields empty stdout, exit 0"
+else
+    echo "FAIL: correctness (b) -- got [$out] rc=$rc"
+    FAIL=1
+fi
+rm -f "$SCHEMA2DIR"/*.json
+rmdir "$SCHEMA2DIR" 2>/dev/null || true
+
+# =========================================================================
+# Correctness (c): an unaddressed task (no record on disk for it at all)
+# yields empty stdout, exit 0.
+# =========================================================================
+out=$(sh "$READER" "$MEMDIR" no-such-task resume_command)
+rc=$?
+if [ -z "$out" ] && [ "$rc" -eq 0 ]; then
+    echo "PASS: correctness (c): unaddressed task yields empty stdout, exit 0"
 else
     echo "FAIL: correctness (c) -- got [$out] rc=$rc"
     FAIL=1
 fi
-rm -rf "$ONLYDIR"
 
 # =========================================================================
 # Correctness (d): one key=value line per requested key, in requested
-# order, from a single read (design property: the reader's step 4 does
-# exactly one `cat "$best"` into a shell variable before any extraction;
-# verified here observably via multi-key ordering/values).
+# order, from a single read (design property: the reader's step 3 does
+# exactly one `cat "$best"` into a shell variable before extracting all
+# requested keys in a single subsequent `awk` pass -- no per-key re-open,
+# and no per-key re-stream of the file's content either).
 # =========================================================================
-out=$(sh "$READER" "$MEMDIR" phase active step)
+out=$(sh "$READER" "$MEMDIR" target-task phase active step)
 expected="phase=implement
 active=true
 step="
 check "correctness (d): multi-key order and values from single read" "$out" "$expected"
 
 # =========================================================================
-# Window probes: 12h / 30h / 40h single-record fixtures in separate dirs.
-# Record PASS (selected) / SKIP (not selected) per probe under the default
-# STALE_DAYS=1 gate (find -mtime -2, "age < 48h" on this find binary).
+# Window probes (12h / 30h / 40h), default STALE_DAYS=1 -- unchanged from
+# the original spike; per-file mtime, independent of directory scanning.
 # =========================================================================
 FIND_VERSION=$(find --version 2>&1 | head -1 || echo "(no --version support)")
 
@@ -158,13 +162,14 @@ probe() {
     write_record "$f" "probe-$hours" "true" 1
     ts=$(date -v-"${hours}"H +%Y%m%d%H%M.%S 2>/dev/null || date -d "$hours hours ago" +%Y%m%d%H%M.%S)
     touch -t "$ts" "$f"
-    out=$(sh "$READER" "$d" resume_command)
+    out=$(sh "$READER" "$d" "probe-$hours" resume_command)
     if [ -n "$out" ]; then
         echo "WINDOW $hours h: PASS (selected)"
     else
         echo "WINDOW $hours h: SKIP (not selected)"
     fi
-    rm -rf "$d"
+    rm -f "$d"/*.json
+    rmdir "$d" 2>/dev/null || true
 }
 
 probe 12
@@ -172,14 +177,18 @@ probe 30
 probe 40
 
 # =========================================================================
-# Timing: N iterations of a full read over the 48-file fixture.
+# Timing (a): N iterations of a full read of the target record, with
+# SIBLING_COUNT unrelated records sharing the directory -- proves the
+# reworked reader's cost is independent of sibling-file count (issue 9's
+# fix), using the eleven production keys Resume Step 1b actually requests
+# (issue 20 -- the original evidence timed six).
 # =========================================================================
 touch "$TARGET"
 i=0
 TIMES_FILE=$(mktemp)
 while [ "$i" -lt "$ITERATIONS" ]; do
     start=$(date +%s%N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1e9))')
-    sh "$READER" "$MEMDIR" schema active phase step notes_path updated_at > /dev/null
+    sh "$READER" "$MEMDIR" target-task $PROD_KEYS > /dev/null
     end=$(date +%s%N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1e9))')
     ms=$(( (end - start) / 1000000 ))
     echo "$ms" >> "$TIMES_FILE"
@@ -190,7 +199,7 @@ sorted=$(sort -n "$TIMES_FILE")
 median=$(printf '%s\n' "$sorted" | awk '{a[NR]=$1} END{n=NR; if(n%2==1) print a[(n+1)/2]; else print int((a[n/2]+a[n/2+1])/2)}')
 worst=$(printf '%s\n' "$sorted" | tail -1)
 
-echo "timings (ms): $(tr '\n' ' ' < "$TIMES_FILE")"
+echo "timings with $SIBLING_COUNT siblings, 11 production keys (ms): $(tr '\n' ' ' < "$TIMES_FILE")"
 echo "median_ms=$median worst_ms=$worst"
 
 if [ "$median" -le 250 ]; then
@@ -207,9 +216,37 @@ else
     FAIL=1
 fi
 
+rm -f "$TIMES_FILE"
+
+# =========================================================================
+# Timing (b): the same eleven-key read with ZERO siblings in the directory
+# -- shows the sibling-independence claim above is not an artifact of an
+# already-tiny baseline.
+# =========================================================================
+LONEDIR=$(mktemp -d)
+LONETARGET="$LONEDIR/run-state-target-task.json"
+write_record "$LONETARGET" "target-task" "true" 1
+i=0
+TIMES_FILE2=$(mktemp)
+while [ "$i" -lt "$ITERATIONS" ]; do
+    start=$(date +%s%N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1e9))')
+    sh "$READER" "$LONEDIR" target-task $PROD_KEYS > /dev/null
+    end=$(date +%s%N 2>/dev/null || python3 -c 'import time; print(int(time.time()*1e9))')
+    ms=$(( (end - start) / 1000000 ))
+    echo "$ms" >> "$TIMES_FILE2"
+    i=$((i + 1))
+done
+sorted2=$(sort -n "$TIMES_FILE2")
+median2=$(printf '%s\n' "$sorted2" | awk '{a[NR]=$1} END{n=NR; if(n%2==1) print a[(n+1)/2]; else print int((a[n/2]+a[n/2+1])/2)}')
+worst2=$(printf '%s\n' "$sorted2" | tail -1)
+echo "timings with 0 siblings, 11 production keys (ms): $(tr '\n' ' ' < "$TIMES_FILE2")"
+echo "median_ms=$median2 worst_ms=$worst2"
+rm -f "$TIMES_FILE2" "$LONETARGET"
+rmdir "$LONEDIR" 2>/dev/null || true
+
 echo "find --version: $FIND_VERSION"
 
-rm -rf "$MEMDIR" "$TIMES_FILE"
+rm -f "$MEMDIR"/*.json "$MEMDIR"/*.md
 
 if [ "$FAIL" -eq 0 ]; then
     echo "SPIKE RESULT: PASS"

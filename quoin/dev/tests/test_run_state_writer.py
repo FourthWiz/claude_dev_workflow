@@ -487,3 +487,21 @@ def test_reader_stale_days_injection_does_not_execute(tmp_path):
     got = _read_reader(memory_dir, "alpha", "step", env={"QUOIN_RUN_STATE_STALE_DAYS": hostile})
     assert not marker.exists()
     assert got.get("_stderr", "") == "" or "PWNED" not in got["_stderr"]
+
+
+def test_reader_default_stale_days_still_selects_a_record_backdated_30_hours(tmp_path):
+    """With QUOIN_RUN_STATE_STALE_DAYS unset, the reader's default freshness
+    window must remain the documented `-mtime -2` (< 48h) pre-filter -- a
+    30h-old record is well inside that window and must still be selected.
+    Regression guard for a real bug caught only by the sh-level spike
+    harness's window probes: the numeric-validation rewrite's un-defaulted
+    `$QUOIN_RUN_STATE_STALE_DAYS` reference in the fallback branch silently
+    collapsed the window to `-mtime -1` (< 24h) whenever the env var was
+    unset, which every other test here was too fast (sub-second) to notice.
+    """
+    _write(tmp_path, "old30h", step="x")
+    path = _record_path(tmp_path, "old30h")
+    thirty_hours_ago = time.time() - (30 * 3600)
+    os.utime(path, (thirty_hours_ago, thirty_hours_ago))
+    got = _read_reader(_memory_dir(tmp_path), "old30h", "step")
+    assert got.get("step") == "x"
