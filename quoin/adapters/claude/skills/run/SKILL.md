@@ -1214,8 +1214,9 @@ directory) for `<task-name>`:
   not injective — several phases share an index — so it never decides anything by itself).
 - If NO `autonomous-progress-{task}/` directory exists for the task (a resume that
   predates the sentinel contract, or a non-autonomous run that never wrote one), check for
-  a fresh active run-state record next: `run_state.py --read --project-root "$PROJECT_ROOT"
-  --task "{task}" --max-age-days ${QUOIN_RUN_STATE_STALE_DAYS:-1} --fields active,next_action`. If
+  a fresh active run-state record next: `python3 __QUOIN_HOME__/scripts/run_state.py --read
+  --project-root "$PROJECT_ROOT" --task "{task}" --max-age-days ${QUOIN_RUN_STATE_STALE_DAYS:-1}
+  --fields active,next_action || true`. If
   that returns `active=true` with a non-empty `next_action` matching the format `start <phase>`
   where `<phase>` is one of the known phase names (`discover`, `enrich`, `specify`,
   `fast_path_triage`, `architect`, `thorough_plan`, `implement`, `review`, `end_of_task` — the same
