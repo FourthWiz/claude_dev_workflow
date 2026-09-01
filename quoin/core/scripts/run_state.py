@@ -100,7 +100,14 @@ def _sanitize(value) -> str:
     value. Applied once, before the value reaches either consumer (the JSON
     record and the notes-file block) -- a second application (inside
     _render() at serialization time) is a no-op, since every substitution
-    and the truncation marker itself are idempotent under re-sanitization."""
+    and the truncation marker itself are idempotent under re-sanitization.
+    The truncation budget is reserved BELOW _MAX_FIELD_BYTES (not applied
+    to it) so the marker's own bytes never push the total over the cap --
+    otherwise a 4-byte UTF-8 character starting three bytes before the cut
+    decodes as a dangling continuation the marker then follows, and the two
+    consumers (record vs. notes block, which apply this function a
+    different number of times before render) can diverge on that exact
+    boundary."""
     if value is None:
         return ""
     text = str(value)
@@ -109,7 +116,8 @@ def _sanitize(value) -> str:
     text = _SPACE_RUN_RE.sub(" ", text).strip()
     encoded = text.encode("utf-8")
     if len(encoded) > _MAX_FIELD_BYTES:
-        text = encoded[:_MAX_FIELD_BYTES].decode("utf-8", errors="ignore") + _TRUNCATION_MARKER
+        budget = _MAX_FIELD_BYTES - len(_TRUNCATION_MARKER.encode("utf-8"))
+        text = encoded[:budget].decode("utf-8", errors="ignore") + _TRUNCATION_MARKER
     return text
 
 
@@ -196,15 +204,33 @@ def _append_notes(notes_path: Path, block: str, max_bytes: int) -> None:
     """Append ``block`` to ``notes_path``, rotating to a bounded two-file
     footprint (T-04) when the existing file is already over budget. Best
     effort — a notes-write failure is warned and swallowed; it must never
-    abort a run-state write that has already landed."""
+    abort a run-state write that has already landed.
+
+    Symlink-safe like the JSON record write: a plain ``open(path, "a")``
+    follows a symlink and writes through it wherever it points, unlike
+    ``_atomic_write_record``'s ``os.replace``, which always replaces the
+    link itself. Refuse up front if ``notes_path`` is already a symlink,
+    and open with ``O_NOFOLLOW`` so a link swapped in between the check and
+    the open (TOCTOU) still fails closed instead of writing through it."""
     try:
+        if notes_path.is_symlink():
+            print(
+                f"[run_state] WARNING: notes append refused, {notes_path} is a symlink",
+                file=sys.stderr,
+            )
+            return
         current_size = notes_path.stat().st_size if notes_path.exists() else 0
         if current_size > max_bytes:
             rotated = Path(str(notes_path) + ".1")
             if rotated.exists():
                 rotated.unlink()
             notes_path.rename(rotated)
-        with open(notes_path, "a", encoding="utf-8") as fh:
+        fd = os.open(
+            str(notes_path),
+            os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW,
+            0o644,
+        )
+        with os.fdopen(fd, "a", encoding="utf-8") as fh:
             fh.write(block)
     except OSError as exc:
         print(
@@ -310,7 +336,12 @@ def _do_write(args) -> int:
     next_action = _sanitize(next_action)
     artifacts = [_sanitize(a) for a in artifacts]
 
-    resume_command = _strip_autonomous(resume_command)
+    # Sanitize BEFORE stripping `--autonomous`, not after: `_AUTONOMOUS_TOKEN_RE`'s
+    # `\S` lookbehind/lookahead does not match a C0 control byte, so an
+    # embedded C0 byte inside the token defeats the strip; sanitizing first
+    # turns that byte into a space, breaking the token apart before the
+    # strip ever runs, so there is nothing left to reconstitute afterward.
+    resume_command = _strip_autonomous(_sanitize(resume_command))
     updated_at = datetime.now(tz=timezone.utc).isoformat()
 
     record = {

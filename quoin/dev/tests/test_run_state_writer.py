@@ -381,6 +381,19 @@ def test_resume_command_never_carries_autonomous_flag(tmp_path):
     assert "--autonomous" not in record["resume_command"]
 
 
+def test_resume_command_c0_byte_does_not_reconstitute_autonomous_flag(tmp_path):
+    """A C0 control byte immediately adjacent to `--autonomous` defeats the
+    strip regex's `\\S`-based word-boundary lookaround (a C0 byte is not
+    whitespace), so the raw token survives `_strip_autonomous` unstripped.
+    Sanitizing must run BEFORE the strip, not after, or the later sanitize
+    pass (which turns the C0 byte into a space) re-forms a clean,
+    whitespace-bounded `--autonomous` token in the stored record."""
+    hostile = "/run --resume t20b --autonomous\x01"
+    _write(tmp_path, "t20b", resume_command=hostile)
+    record = _load(tmp_path, "t20b")
+    assert "--autonomous" not in record["resume_command"]
+
+
 def test_notes_appended_only_when_not_at_stage_boundary(tmp_path):
     _write(tmp_path, "t21", at_stage_boundary=True, step="x")
     notes = _memory_dir(tmp_path) / "run-notes-t21.md"
@@ -404,6 +417,27 @@ def test_notes_rotation_leaves_exactly_two_files(tmp_path):
     memory_dir = _memory_dir(tmp_path)
     notes_files = sorted(p.name for p in memory_dir.glob(f"run-notes-{task}.md*"))
     assert notes_files == [f"run-notes-{task}.md", f"run-notes-{task}.md.1"]
+
+
+def test_notes_append_refuses_to_follow_a_symlink(tmp_path):
+    """`notes_path` (`run-notes-{task}.md`) can be replaced by a symlink
+    pointing anywhere on disk; a plain `open(path, "a")` follows it and
+    writes the notes block through the link. The write must refuse instead
+    -- the JSON record write is already symlink-safe via `os.replace`,
+    which always replaces the link itself rather than writing through it."""
+    memory_dir = _memory_dir(tmp_path)
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    outside_target = tmp_path / "outside-target.md"
+    outside_target.write_text("", encoding="utf-8")
+    (memory_dir / "run-notes-t25sym.md").symlink_to(outside_target)
+
+    result = _write(tmp_path, "t25sym", at_stage_boundary=False, step="x")
+    assert result.returncode == 0
+    # The record write must still succeed even though the notes append was
+    # refused -- notes are best-effort and must never abort the record.
+    assert _record_path(tmp_path, "t25sym").exists()
+    assert outside_target.read_text(encoding="utf-8") == ""
+    assert (memory_dir / "run-notes-t25sym.md").is_symlink()
 
 
 def test_notes_file_rejects_a_forged_entry(tmp_path):
@@ -435,6 +469,24 @@ def test_sanitized_field_is_truncated_with_a_marker(tmp_path):
     record = _load(tmp_path, "t24")
     assert len(record["next_action"].encode("utf-8")) < 4200
     assert record["next_action"].endswith("[truncated]")
+
+
+def test_sanitize_idempotent_at_the_4093_byte_utf8_boundary():
+    """A 4-byte UTF-8 character starting at byte offset 4093 leaves exactly
+    three of its bytes inside the pre-fix truncation window, decoding as a
+    dangling continuation the marker then follows -- the one split position
+    (of all `_MAX_FIELD_BYTES`-adjacent positions) where the pre-fix
+    `_sanitize` was not a fixed point. Reserving the marker's own bytes out
+    of the truncation budget makes every position idempotent."""
+    sys.path.insert(0, str(REPO_ROOT / "quoin" / "core" / "scripts"))
+    import run_state  # noqa: E402
+
+    value = "a" * 4093 + "\U0001F600" + "b" * 300
+    once = run_state._sanitize(value)
+    twice = run_state._sanitize(once)
+    assert once == twice
+    assert len(once.encode("utf-8")) <= 4096
+    assert len(twice.encode("utf-8")) <= 4096
 
 
 def test_malformed_stale_days_env_does_not_crash_read_write_or_clear(tmp_path):
@@ -505,3 +557,20 @@ def test_reader_default_stale_days_still_selects_a_record_backdated_30_hours(tmp
     os.utime(path, (thirty_hours_ago, thirty_hours_ago))
     got = _read_reader(_memory_dir(tmp_path), "old30h", "step")
     assert got.get("step") == "x"
+
+
+@pytest.mark.parametrize("stale_days", ["08", "010", "0"])
+def test_reader_stale_days_leading_zero_does_not_misparse_as_octal(tmp_path, stale_days):
+    """A `QUOIN_RUN_STATE_STALE_DAYS` value with a leading zero passes the
+    character-class validation (all digits) but is not valid octal --
+    `$((08 + 1))` errors under bash/dash and `$((010 + 1))` silently reads
+    as 9 (base-8 10 = 8, +1). The reader must strip leading zeros before
+    the value reaches arithmetic expansion so it is read as decimal."""
+    _write(tmp_path, "octal", step="x")
+    got = _read_reader(
+        _memory_dir(tmp_path), "octal", "step",
+        env={"QUOIN_RUN_STATE_STALE_DAYS": stale_days},
+    )
+    assert got.get("step") == "x"
+    assert "Illegal number" not in got.get("_stderr", "")
+    assert "too great for base" not in got.get("_stderr", "")

@@ -27,6 +27,12 @@ case "$RAW_STALE_DAYS" in
     ''|*[!0-9]*) STALE_DAYS=1 ;;
     *) STALE_DAYS="$RAW_STALE_DAYS" ;;
 esac
+# The character class above accepts a value like "08", which is a valid
+# non-negative integer in decimal but not in the octal `$(( ))` treats a
+# leading-zero literal as -- bash errors ("value too great for base") and
+# dash silently misreads it ("010" as 8). Strip leading zeros (keeping a
+# lone "0") before it reaches arithmetic expansion below.
+STALE_DAYS=$(printf '%s' "$STALE_DAYS" | sed 's/^0*\([0-9]\)/\1/')
 
 [ -n "$MEMORY_DIR" ] || exit 0
 [ -d "$MEMORY_DIR" ] || exit 0
