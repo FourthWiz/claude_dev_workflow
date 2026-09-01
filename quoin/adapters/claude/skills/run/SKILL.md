@@ -256,6 +256,8 @@ Under `AUTONOMOUS`, the completion of each of the 9 resumable phases below is re
 - **Marker:** `autonomous-run-{task}.marker`, written once at autonomous-span entry (Setup, right after `AUTONOMOUS` is set) — the read/re-establish-on-resume side of this contract is Stage-2 groundwork, documented alongside the later "Resume" section.
 - **Done sentinel:** `autonomous-done-{task}.md`, written by `end_of_task` LAST, after its other terminal side effects, outside the archived folder — same rationale as the halt-sentinel.
 
+Alongside the marker and the `.done` directory above sits a third record: `run-state-{task}.json`, at `.workflow_artifacts/memory/run-state-{task}.json`. Unlike the sentinels above, it is written UNCONDITIONALLY — in both autonomous and interactive mode — because it is what makes a plain (non-autonomous) `/run` session resumable too, not only a supervised autonomous one. `/run` is its sole creator; every other writer, including a standalone `/thorough_plan` round boundary, only refines an existing record and never mints a new one. It carries no autonomy field of its own — autonomy stays scoped to the `autonomous-run-{task}.marker` above — and its companion is an append-only notes file, `run-notes-{task}.md`. It never overrides a `.done` sentinel: sentinels remain the authoritative source for which phases and sub-phases finished, and the record only adds finer-grained resume detail on top of them.
+
 ## Phase sequence
 
 ```
