@@ -21,11 +21,14 @@ Serialization
 --------------
 Hand-rolled, one key per line, fixed field order (see ``_FIELD_ORDER``), valid
 JSON. The output alphabet is escape-free by construction: every free-text
-value is sanitized (quote/backslash/control-byte substitution) before
-serialization and the file is written with ``ensure_ascii=False``, so the
-companion POSIX-`sh` reader (``quoin/dev/spikes/run_state_read.sh``) — which
-does no JSON unescaping — never meets a byte it cannot extract with a plain
-`sed` strip.
+value is sanitized (quote/backslash/control-byte substitution, then a
+length cap) ONCE in ``_do_write`` before either consumer sees it -- the
+record and its companion ``run-notes-{task}.md`` block share the same
+sanitized value, so an embedded newline can forge a line in neither. The
+record is written with ``ensure_ascii=False``, so the companion POSIX-`sh`
+reader (``quoin/dev/spikes/run_state_read.sh``) — which does no JSON
+unescaping — never meets a byte it cannot extract with a plain `sed`/`awk`
+strip.
 
 Concurrency
 -----------
@@ -53,6 +56,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 SCHEMA_VERSION = 1
 
@@ -84,15 +88,28 @@ _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 _SPACE_RUN_RE = re.compile(r" {2,}")
 _AUTONOMOUS_TOKEN_RE = re.compile(r"(?<!\S)--autonomous(?!\S)")
 
+# Per-field cap so one oversized value cannot blow the notes-rotation budget
+# or multiply the record size past a small, predictable bound (both consumers
+# read the SAME sanitized-and-truncated value -- see _do_write).
+_MAX_FIELD_BYTES = 4096
+_TRUNCATION_MARKER = "…[truncated]"
+
 
 def _sanitize(value) -> str:
-    """Escape-free normalization for a single free-text value."""
+    """Escape-free, length-bounded normalization for a single free-text
+    value. Applied once, before the value reaches either consumer (the JSON
+    record and the notes-file block) -- a second application (inside
+    _render() at serialization time) is a no-op, since every substitution
+    and the truncation marker itself are idempotent under re-sanitization."""
     if value is None:
         return ""
     text = str(value)
     text = text.replace('"', "'").replace("\\", "/")
     text = _CONTROL_RE.sub(" ", text)
     text = _SPACE_RUN_RE.sub(" ", text).strip()
+    encoded = text.encode("utf-8")
+    if len(encoded) > _MAX_FIELD_BYTES:
+        text = encoded[:_MAX_FIELD_BYTES].decode("utf-8", errors="ignore") + _TRUNCATION_MARKER
     return text
 
 
@@ -213,6 +230,20 @@ def _parse_bool(text: str) -> bool:
     return str(text).strip().lower() == "true"
 
 
+def _stale_days_default() -> int:
+    """Resolve QUOIN_RUN_STATE_STALE_DAYS for the `--max-age-days` default,
+    without ever raising. This runs at parser-construction time in main(),
+    OUTSIDE the try/except that wraps parse_args()/dispatch below -- a bare
+    ``int(os.environ.get(...))`` there let a malformed knob raise before
+    that try was ever reached, contradicting this module's fail-open
+    contract for all three modes (--read, --write, --clear alike)."""
+    raw = os.environ.get("QUOIN_RUN_STATE_STALE_DAYS", "1")
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 1
+
+
 def _record_path(memory_dir: Path, task: str) -> Path:
     return memory_dir / f"run-state-{task}.json"
 
@@ -230,7 +261,7 @@ def _do_write(args) -> int:
             # cleared (active: false) — do nothing at all (D-58).
             return 0
 
-        def pick(field, cli_value, default=""):
+        def pick(field: str, cli_value, default: Any = "") -> Any:
             if cli_value is not None:
                 return cli_value
             return existing.get(field, default)
@@ -265,6 +296,19 @@ def _do_write(args) -> int:
         resume_command = args.resume_command if args.resume_command is not None else f"/run --resume {args.task}"
         active = True
         wrote = True
+
+    # Sanitize once, here, before either consumer of these values -- the
+    # JSON record and the notes-file block -- is built. Previously only
+    # _render() (JSON-serialization time) sanitized, so the record was clean
+    # but _notes_block() below received the raw value: an embedded newline
+    # forged extra `## `/`- ` lines in a file Resume Step 1b treats as a
+    # resume input (issue 4). _sanitize is idempotent, so _render()'s own
+    # sanitize pass over these same values is a no-op.
+    phase = _sanitize(phase)
+    subphase = _sanitize(subphase)
+    step = _sanitize(step)
+    next_action = _sanitize(next_action)
+    artifacts = [_sanitize(a) for a in artifacts]
 
     resume_command = _strip_autonomous(resume_command)
     updated_at = datetime.now(tz=timezone.utc).isoformat()
@@ -385,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fields", default="")
     parser.add_argument(
         "--max-age-days",
-        default=int(os.environ.get("QUOIN_RUN_STATE_STALE_DAYS", "1")),
+        default=_stale_days_default(),
         type=int,
         dest="max_age_days",
     )

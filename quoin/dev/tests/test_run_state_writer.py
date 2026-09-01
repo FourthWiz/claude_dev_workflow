@@ -36,12 +36,16 @@ def _run(args, env=None):
     )
 
 
-def _read_reader(memory_dir: Path, *keys):
+def _read_reader(memory_dir: Path, task: str, *keys, env=None):
+    full_env = dict(os.environ)
+    if env:
+        full_env.update(env)
     result = subprocess.run(
-        ["sh", str(READER), str(memory_dir), *keys],
+        ["sh", str(READER), str(memory_dir), task, *keys],
         capture_output=True,
         text=True,
         timeout=30,
+        env=full_env,
     )
     out = {}
     for line in result.stdout.splitlines():
@@ -49,6 +53,8 @@ def _read_reader(memory_dir: Path, *keys):
             continue
         k, v = line.split("=", 1)
         out[k] = v
+    out["_stderr"] = result.stderr
+    out["_returncode"] = result.returncode
     return out
 
 
@@ -311,7 +317,7 @@ def test_writer_output_is_readable_by_the_posix_shell_reader(tmp_path):
     )
     record = _load(tmp_path, task)
     memory_dir = _memory_dir(tmp_path)
-    got = _read_reader(memory_dir, "step", "next_action", "resume_command")
+    got = _read_reader(memory_dir, task, "step", "next_action", "resume_command")
     assert got["step"] == record["step"]
     assert got["next_action"] == record["next_action"]
     assert got["resume_command"] == record["resume_command"]
@@ -348,7 +354,7 @@ def test_extractor_is_total_over_character_class_matrix(tmp_path, label, value):
     task = "matrix"
     _write(tmp_path, task, step=value)
     record = _load(tmp_path, task)
-    got = _read_reader(_memory_dir(tmp_path), "step")
+    got = _read_reader(_memory_dir(tmp_path), task, "step")
     assert got.get("step") == record["step"], f"cell {label!r} failed to round-trip"
 
 
@@ -398,3 +404,86 @@ def test_notes_rotation_leaves_exactly_two_files(tmp_path):
     memory_dir = _memory_dir(tmp_path)
     notes_files = sorted(p.name for p in memory_dir.glob(f"run-notes-{task}.md*"))
     assert notes_files == [f"run-notes-{task}.md", f"run-notes-{task}.md.1"]
+
+
+def test_notes_file_rejects_a_forged_entry(tmp_path):
+    """A newline embedded in a written value must not let the value forge an
+    extra `## ` heading line or `- next_action:` line of its own in the notes
+    file -- the record's own JSON serialization already collapses it to one
+    line via `_render`, and the notes block must be built from the same
+    sanitized value, not the raw one (issue 4). A plain substring count of
+    "## " would not discriminate a real forged heading from the same text
+    merely embedded mid-line, so this asserts on actual heading LINES.
+    """
+    hostile = "legit-step\n## FORGED HEADING\n- next_action: FORGED-INSTRUCTION"
+    _write(tmp_path, "t23", at_stage_boundary=False, step=hostile, next_action=hostile)
+    record = _load(tmp_path, "t23")
+    assert "\n" not in record["step"]
+    assert "\n" not in record["next_action"]
+    notes = _memory_dir(tmp_path) / "run-notes-t23.md"
+    text = notes.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    heading_lines = [ln for ln in lines if ln.startswith("## ")]
+    assert len(heading_lines) == 1, f"forged heading line leaked into notes file:\n{text}"
+    next_action_lines = [ln for ln in lines if ln.startswith("- next_action:")]
+    assert len(next_action_lines) == 1, f"forged next_action line leaked into notes file:\n{text}"
+
+
+def test_sanitized_field_is_truncated_with_a_marker(tmp_path):
+    oversized = "x" * 500_000
+    _write(tmp_path, "t24", next_action=oversized)
+    record = _load(tmp_path, "t24")
+    assert len(record["next_action"].encode("utf-8")) < 4200
+    assert record["next_action"].endswith("[truncated]")
+
+
+def test_malformed_stale_days_env_does_not_crash_read_write_or_clear(tmp_path):
+    env = {"QUOIN_RUN_STATE_STALE_DAYS": "abc"}
+    full_env = dict(os.environ)
+    full_env.update(env)
+    for args in (
+        ["--write", "--project-root", str(tmp_path), "--task", "t25", "--step", "x"],
+        ["--read", "--project-root", str(tmp_path), "--task", "t25", "--fields", "phase"],
+        ["--clear", "--project-root", str(tmp_path), "--task", "t25"],
+    ):
+        result = subprocess.run(
+            [PY, str(SCRIPT)] + args, capture_output=True, text=True, timeout=30, env=full_env
+        )
+        assert result.returncode == 0, f"{args} exited {result.returncode}: {result.stderr}"
+        assert "Traceback" not in result.stderr
+
+
+def test_reader_is_task_scoped_not_freshest_of_any_task(tmp_path):
+    """The reader must address run-state-{task}.json directly, never the
+    freshest active record across ALL tasks in the memory dir -- a
+    task-blind reader answering for "alpha" with "beta"'s data misdirects
+    whatever consumes resume_command/next_action (issue 6)."""
+    _write(tmp_path, "alpha", next_action="start alpha-action", resume_command="/run --resume alpha")
+    _write(tmp_path, "beta", next_action="start beta-action", resume_command="/run --resume beta")
+    memory_dir = _memory_dir(tmp_path)
+    got_alpha = _read_reader(memory_dir, "alpha", "resume_command", "next_action")
+    got_beta = _read_reader(memory_dir, "beta", "resume_command", "next_action")
+    assert got_alpha["resume_command"] == "/run --resume alpha"
+    assert got_alpha["next_action"] == "start alpha-action"
+    assert got_beta["resume_command"] == "/run --resume beta"
+    assert got_beta["next_action"] == "start beta-action"
+
+
+def test_reader_ignores_a_task_argument_containing_shell_metacharacters(tmp_path):
+    _write(tmp_path, "alpha", next_action="start alpha-action")
+    memory_dir = _memory_dir(tmp_path)
+    got = _read_reader(memory_dir, "alpha; touch pwned", "next_action")
+    assert got.get("next_action") is None
+    assert not (tmp_path / "pwned").exists()
+
+
+def test_reader_stale_days_injection_does_not_execute(tmp_path):
+    """A malicious QUOIN_RUN_STATE_STALE_DAYS must never reach the `find
+    -mtime -$((...))` arithmetic-eval sink unvalidated (issue 5)."""
+    _write(tmp_path, "alpha", step="x")
+    memory_dir = _memory_dir(tmp_path)
+    marker = tmp_path / "pwned"
+    hostile = f'q[$(touch "{marker}")]'
+    got = _read_reader(memory_dir, "alpha", "step", env={"QUOIN_RUN_STATE_STALE_DAYS": hostile})
+    assert not marker.exists()
+    assert got.get("_stderr", "") == "" or "PWNED" not in got["_stderr"]
