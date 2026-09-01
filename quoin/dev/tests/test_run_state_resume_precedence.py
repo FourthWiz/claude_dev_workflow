@@ -1,6 +1,6 @@
 """IVG-258 T-12: reader-contract harness for the D-02 four-tier resume
-algorithm (relabeled from "resume-precedence tests" per review-1.md issue 8
--- the original name overstated what this module actually guards).
+algorithm (relabeled from "resume-precedence tests" -- the original name
+overstated what this module actually guards).
 
 The four-tier decision algorithm itself lives in `run/SKILL.md` prose (an
 LLM instruction followed at `/run` resume time, not executable code) --

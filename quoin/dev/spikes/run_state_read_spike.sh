@@ -4,6 +4,13 @@
 # Not committed as part of the reader contract -- invokes the reader as a
 # subprocess and never sources it, per D-60.
 #
+# Deliberately unrouted in affected_tests.py's _DOCS_TO_TESTS: this is a
+# standalone, manually-invoked timing/fixture harness, not a pytest fixture
+# or anything another test file imports or shells out to -- nothing in the
+# suite references it, so an edit here has no test to select and correctly
+# falls into the "ignored" bucket (unlike run_state_read.sh itself, which IS
+# routed because test_run_state_writer.py round-trips against its bytes).
+#
 # Usage: run_state_read_spike.sh [--iterations N] [--sibling-count N]
 
 set -e
@@ -23,9 +30,9 @@ READER="$SCRIPT_DIR/run_state_read.sh"
 FAIL=0
 
 # Production key set exactly as requested by Resume Step 1b in run/SKILL.md
-# -- the T-02 evidence originally timed 6 keys against a harness reproduction
-# while Step 1b as shipped requests eleven (review-1.md issue 20); use the
-# real set here so the recorded numbers describe the read that ships.
+# -- earlier evidence timed 6 keys against a harness reproduction while
+# Step 1b as shipped requests eleven; use the real set here so the
+# recorded numbers describe the read that ships.
 PROD_KEYS="schema active phase phase_index subphase step at_stage_boundary next_action notes_path resume_command updated_at"
 
 # --- record writer -----------------------------------------------------
@@ -69,7 +76,7 @@ check() {
 # Fixture: one target-task record plus SIBLING_COUNT decoy records for
 # OTHER tasks (some active, some not, some schema-forward). Since the
 # reworked reader addresses run-state-$TASK.json directly (no directory
-# scan -- review-1.md issues 6/9), none of these siblings should be
+# scan), none of these siblings should be
 # touched at all, regardless of count.
 # =========================================================================
 MEMDIR=$(mktemp -d)
