@@ -647,6 +647,38 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/core/skills/run.md",
         "quoin/dev/tests/test_run_core_autonomous.py",
     ),
+    # IVG-258 T-14: run-state wiring landed across three SKILL.md files.
+    # cleanup/SKILL.md carried ZERO rows before this stage -- an edit there
+    # selected no test at all -- and run/SKILL.md and thorough_plan/SKILL.md's
+    # existing rows do not reach the new run-state wiring/precedence guards.
+    (
+        "quoin/adapters/claude/skills/cleanup/SKILL.md",
+        "quoin/dev/tests/test_cleanup_runstate_sweep.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/cleanup/SKILL.md",
+        "quoin/dev/tests/test_cleanup_sentinels.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/cleanup/SKILL.md",
+        "quoin/dev/tests/test_cleanup_skill_structure.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/cleanup/SKILL.md",
+        "quoin/dev/tests/test_sentinel_family_parity.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_run_state_wiring.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_run_state_resume_precedence.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/thorough_plan/SKILL.md",
+        "quoin/dev/tests/test_run_state_wiring.py",
+    ),
 )
 
 # SKILL.md coverage residual gap (review-1.md MAJOR 2, documented-acceptance branch):
