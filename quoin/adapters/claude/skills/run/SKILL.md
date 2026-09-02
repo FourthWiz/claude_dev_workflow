@@ -1537,28 +1537,27 @@ the threshold values themselves live in `hooks/_lib.sh`'s
   95% block — the orchestrator self-invokes a checkpoint save and writes a
   `checkpoint-defer-{sid}` marker so the mid-phase advisory in the 70–95%
   band does not re-prompt for a checkpoint the orchestrator already took.
-- **Catch the block JSON if it fires anyway.** If utilization still
-  reaches the block threshold (`BLOCK_BPS`, 95%), the hook returns a
-  `"decision": "block"` response, and the in-flight prompt is already
-  saved to `pending-prompt-{sid}.txt` by the hook itself. The
-  orchestrator's block-catch logic MUST key on the `"decision"` and
-  `"block"` tokens (not a byte-exact no-space literal — the live response
-  uses spaces after each colon) so it recognizes the block regardless of
-  incidental JSON formatting. On a caught block, the orchestrator stops
-  cleanly; an external supervisor (if one is driving this span) relaunches
-  a fresh session with `/run --resume --autonomous <task-name>`, which
-  re-reads the prompt from `pending-prompt-{sid}.txt` and the
-  marker/sentinel contract to resume exactly where it left off.
+- **There is no block to catch — the band is a pure advisory.** At and
+  above `BLOCK_BPS` (95%) the prompt hook returns `additionalContext`
+  plus a `systemMessage` and the prompt continues in the same turn; it
+  never returns a `"decision": "block"` response on any path. The prompt
+  is still appended to `pending-prompt-{sid}.txt`, so the audit trail and
+  `/checkpoint --restore` CASE B are unchanged. The orchestrator therefore
+  has no stop signal to key on here: it reads the advisory as context,
+  finishes the stage it is in, and lets platform compaction be the
+  backstop. Any block-catch logic keyed on the `"decision"` / `"block"`
+  tokens is dead and must not be reintroduced.
 - **Hooks fail open; the orchestrator never assumes otherwise.** The
-  compaction hook never blocks by design — it only ever allows. If a block
-  is not observable in a given dispatch shape, the orchestrator relies on
-  automatic compaction plus a supervisor's cross-phase relaunch instead of
-  waiting on a block signal that may never arrive.
+  compaction hook never blocks by design — it only ever allows, and no
+  hook in the set emits a stop signal on any path. The orchestrator
+  relies on automatic compaction plus a supervisor's cross-phase relaunch
+  unconditionally, never on a block signal it might be handed.
 - **Hard constraint.** Autonomous mode NEVER writes to any file under
   `hooks/`, and NEVER modifies or lowers a `QUOIN_*_BPS` constant or any
   other hook threshold — anywhere, under any condition. The cooperation
   described above is entirely additive branches in this document; it adds
-  no new hook script and changes no existing one.
+  no new hook script. Hook scripts change only through ordinary quoin
+  development, never from this mode.
 
 ## Gate boundaries reference
 
