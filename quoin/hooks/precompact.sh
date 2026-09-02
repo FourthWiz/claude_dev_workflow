@@ -3,12 +3,14 @@
 # Deployed to ~/.claude/hooks/ by bash install.sh
 #
 # Contract: fires on PreCompact event (auto compaction only — manual /compact
-# is passed through). Saves checkpoint state. ALWAYS allows compaction (never
-# blocks). If skill pidfiles are active: allows with no sentinel write (workflow
-# continues uninterrupted). If no pidfiles (direct conversation): writes
-# pending-restore sentinel AND allows (non-blocking; sessionstart.sh surfaces
-# the restore banner on next session start).
-# Fail-OPEN: any error → exit 0, no output (compaction proceeds unblocked).
+# is passed through). ALWAYS allows compaction (never blocks). Three-row
+# behavior: (1) a fresh active run-state record for this session → checkpoint
+# saved, no pending-restore sentinel (the run resumes via its own record);
+# (2) skill pidfiles active → checkpoint saved, no sentinel (workflow
+# continues uninterrupted); (3) neither → nothing written, unless
+# QUOIN_PRECOMPACT_NORUN_CHECKPOINT=1 restores the checkpoint-plus-sentinel
+# for a plain conversation (sessionstart.sh then surfaces the restore banner).
+# Fail-OPEN: any error → exit 0 (compaction proceeds unblocked).
 #
 # Shebang assertion: head -1 ... | grep -qE '^#!/bin/sh( |$)'
 # No-args form RECOMMENDED for fail-OPEN hooks (set -e would break fail-OPEN).
@@ -61,12 +63,43 @@ fi
 MEMORY_DIR="${cwd}/.workflow_artifacts/memory"
 pending_restore_file="${MEMORY_DIR}/pending-restore-${session_id}.txt"
 
+# STEP 1c: Session-scoped run-state read (three-row truth-table input).
+# Placed after MEMORY_DIR is assigned and before the sentinel pre-check so
+# the run-aware steps also run on the early-skip path — a session with a
+# voluntary checkpoint sentinel is still live and about to compact.
+run_state_file=$(run_state_select "$MEMORY_DIR" "$session_id" 2>/dev/null) || run_state_file=""
+run_active=0
+rs_task=""; rs_phase=""; rs_subphase=""; rs_step=""
+rs_at_stage_boundary=""; rs_next_action=""; rs_notes_path=""
+if [ -n "$run_state_file" ]; then
+  run_active=1
+  # Bind record fields without eval: the record's values are sanitized for
+  # quotes, backslashes and control bytes but NOT for shell metacharacters,
+  # so they must never pass through eval or an unquoted expansion. The
+  # here-doc keeps the read loop in the current shell (a pipe would lose
+  # every assignment in a subshell); the case allow-list drops any
+  # unexpected key instead of binding it.
+  while IFS='=' read -r _rsk _rsv; do
+    case "$_rsk" in
+      task) rs_task=$_rsv ;;
+      phase) rs_phase=$_rsv ;;
+      subphase) rs_subphase=$_rsv ;;
+      step) rs_step=$_rsv ;;
+      at_stage_boundary) rs_at_stage_boundary=$_rsv ;;
+      next_action) rs_next_action=$_rsv ;;
+      notes_path) rs_notes_path=$_rsv ;;
+    esac
+  done <<RSEOF
+$(run_state_fields "$run_state_file" task phase subphase step at_stage_boundary next_action notes_path)
+RSEOF
+fi
+
 # Pre-initialize pidfile_info to "none" so STEP 4 branching is safe in the early-skip path.
 # The early-skip path (sentinel already exists) skips the else block entirely, so pidfile
-# detection inside the else block never runs — pidfile_info stays "none" → block.
-# This is the intentional conservative behavior: if the user ran /checkpoint manually,
-# they are managing the session themselves. The else block overwrites this "none" if
-# pidfiles are found in the full checkpoint path.
+# detection inside the else block never runs — pidfile_info stays "none". This is the
+# intentional conservative behavior: if the user ran /checkpoint manually, they are
+# managing the session themselves. The else block overwrites this "none" if pidfiles
+# are found.
 pidfile_info="none"
 
 # STEP 2: Save checkpoint state (paths-not-content rule)
@@ -76,15 +109,9 @@ if [ -f "$pending_restore_file" ]; then
   printf '[quoin-precompact] INFO: pending-restore sentinel already exists (voluntary /checkpoint was run earlier in this session); skipping checkpoint write to avoid orphaned -precompact.md file\n' >&2
 else
 
-CHECKPOINT_DIR="${cwd}/.workflow_artifacts/memory/checkpoints"
-mkdir -p "$CHECKPOINT_DIR" 2>/dev/null || {
-  printf '[quoin-precompact] WARNING: cannot create checkpoint dir; falling back fail-OPEN\n' >&2
-  exit 0
-}
-
-checkpoint_date=$(date -u +%Y-%m-%d 2>/dev/null) || checkpoint_date="unknown-date"
-
-# Determine active task name from session-state filenames (best-effort)
+# Determine active task name from session-state filenames (best-effort).
+# Hoisted above the checkpoint-write gate: pidfile presence is one of the
+# gate's inputs, so it must be known before deciding whether to write.
 session_state_dir="${cwd}/.workflow_artifacts/memory/sessions"
 active_task="unknown-task"
 latest_session=""
@@ -104,6 +131,19 @@ if ls "$session_state_dir"/*.pidfile.lock > /dev/null 2>&1; then
   pidfile_info=$(ls "$session_state_dir"/*.pidfile.lock 2>/dev/null | xargs -I{} basename {} 2>/dev/null | tr '\n' ' ' | sed 's/ $//')
   [ -z "$pidfile_info" ] && pidfile_info="none"
 fi
+
+# Checkpoint-write gate (three-row truth table): rows 1 and 2 (active run
+# for this session, or skill pidfiles present) write the checkpoint; row 3
+# (plain conversation) writes nothing unless the opt-in knob is set.
+if [ "$run_active" = "1" ] || [ "$pidfile_info" != "none" ] || [ "${PRECOMPACT_NORUN_CHECKPOINT:-0}" = "1" ]; then
+
+CHECKPOINT_DIR="${cwd}/.workflow_artifacts/memory/checkpoints"
+mkdir -p "$CHECKPOINT_DIR" 2>/dev/null || {
+  printf '[quoin-precompact] WARNING: cannot create checkpoint dir; falling back fail-OPEN\n' >&2
+  exit 0
+}
+
+checkpoint_date=$(date -u +%Y-%m-%d 2>/dev/null) || checkpoint_date="unknown-date"
 
 # Determine current git branch (best-effort)
 current_branch="unknown"
@@ -252,39 +292,34 @@ if [ ! -f "$checkpoint_file" ]; then
   exit 0
 fi
 
+fi  # end: checkpoint-write gate
+
 fi  # end: if [ ! -f "$pending_restore_file" ]
 
-# STEP 4: Branch on pidfile presence
-# If skills are running (pidfiles present): allow compact — workflow must continue.
-# If no pidfiles (direct conversation): write pending-restore sentinel AND allow —
-#   sessionstart.sh surfaces the restore banner on next session start.
-# NOTE: when the pending_restore_file already exists (early-skip path at the top), pidfile_info
-# stays "none" because the pidfile-collection block was skipped. The decision always falls
-# through to the allow-with-sentinel path — intentional behavior: the existing sentinel is
-# preserved (guard: checkpoint_file is unset in early-skip path, so no overwrite occurs).
+# STEP 4: Always allow. Stderr names the row that fired; the pending-restore
+# sentinel is written ONLY on the no-run/no-pidfile row when
+# QUOIN_PRECOMPACT_NORUN_CHECKPOINT=1 opted back in, and only when this
+# invocation actually wrote a checkpoint — on the early-skip path
+# checkpoint_file stays unset, so the existing sentinel is never overwritten.
 #
 # KNOWN LIMITATION: stale pidfiles
 # The pidfile liveness check is NOT performed. If a skill crashed without releasing its
-# .pidfile.lock file, pidfile_info will be non-"none" and the hook will emit "allow" without
-# writing a sentinel. Rationale: liveness checking (kill -0 <pid>) requires parsing the PID
-# from the filename, a POSIX loop, and fragile format coupling. The crash-without-cleanup
-# failure mode is rare and bounded — the checkpoint saved in STEP 2 is always available
-# for recovery. To clean up after a crash: rm .workflow_artifacts/memory/sessions/*.pidfile.lock
-if [ "$pidfile_info" != "none" ]; then
-  printf '[quoin-precompact] INFO: skills running (%s); allowing auto-compact; checkpoint saved at %s\n' "$pidfile_info" "${checkpoint_file:-unknown}" >&2
-  printf '{"decision": "allow"}\n'
+# .pidfile.lock file, pidfile_info will be non-"none" and the hook keeps writing a
+# checkpoint with no sentinel. Rationale: liveness checking (kill -0 <pid>) requires
+# parsing the PID from the filename, a POSIX loop, and fragile format coupling. The
+# crash-without-cleanup failure mode is rare and bounded. To clean up after a crash:
+# rm .workflow_artifacts/memory/sessions/*.pidfile.lock
+if [ "$run_active" = "1" ]; then
+  printf '[quoin-precompact] INFO: active run detected (task: %s); allowing auto-compaction; checkpoint saved at %s\n' "${rs_task:-unknown}" "${checkpoint_file:-none (early-skip)}" >&2
+elif [ "$pidfile_info" != "none" ]; then
+  printf '[quoin-precompact] INFO: skills running (%s); allowing auto-compaction; checkpoint saved at %s\n' "$pidfile_info" "${checkpoint_file:-unknown}" >&2
+elif [ "${PRECOMPACT_NORUN_CHECKPOINT:-0}" = "1" ] && [ -n "${checkpoint_file:-}" ]; then
+  mkdir -p "$MEMORY_DIR" 2>/dev/null || true
+  printf '%s\n' "$checkpoint_file" > "$pending_restore_file" 2>/dev/null || {
+    printf '[quoin-precompact] WARNING: cannot write pending-restore sentinel; sessionstart hook cannot surface restore banner\n' >&2
+  }
+  printf '[quoin-precompact] INFO: no active run-state record and no pidfiles; QUOIN_PRECOMPACT_NORUN_CHECKPOINT=1 set — checkpoint saved at %s; pending-restore sentinel written\n' "$checkpoint_file" >&2
 else
-  # Non-blocking path: no active skills detected (direct conversation mode).
-  # STEP 3 (direct-conversation path only): Write pending-restore sentinel.
-  # Guard: [ -n "$checkpoint_file" ] ensures we only write in the full checkpoint path,
-  # not the early-skip path where checkpoint_file is unset and the existing sentinel
-  # is already correct — no need to overwrite it.
-  if [ -n "$checkpoint_file" ]; then
-    mkdir -p "$MEMORY_DIR" 2>/dev/null || true
-    printf '%s\n' "$checkpoint_file" > "$pending_restore_file" 2>/dev/null || {
-      printf '[quoin-precompact] WARNING: cannot write pending-restore sentinel; sessionstart hook cannot surface restore banner\n' >&2
-    }
-  fi
-  printf '[quoin-precompact] INFO: no active pidfiles → allowing auto-compaction (direct conversation mode); checkpoint saved at %s; pending-restore sentinel written\n' "${checkpoint_file:-unknown}" >&2
-  printf '{"decision": "allow"}\n'
+  printf '[quoin-precompact] INFO: no active run-state record and no pidfiles; allowing auto-compaction; nothing written (set QUOIN_PRECOMPACT_NORUN_CHECKPOINT=1 to restore the no-run checkpoint and sentinel)\n' >&2
 fi
+printf '{"decision": "allow"}\n'
