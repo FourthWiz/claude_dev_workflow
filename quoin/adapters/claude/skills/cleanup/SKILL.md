@@ -167,7 +167,7 @@ Use `--dry-run` first to preview what would be trashed without making any moves.
 **Step 4. Sentinel sweep:** For each of the 9 hardcoded families listed in `## Hardcoded sentinel allow-list`, find candidates under `MEMORY_DIR` at depth 1:
 ```sh
 find "$MEMORY_DIR" -maxdepth 1 -name '<family-glob>' \
-  -mtime +${QUOIN_CLEANUP_SENTINEL_WINDOW:-1} -print0
+  -mtime "+${QUOIN_CLEANUP_SENTINEL_WINDOW:-1}" -print0
 ```
 For each candidate file:
 - **UUID check FIRST (before any age check):** SKIP if the filename suffix matches `-<current_uuid>.txt`. This is the current/freshest session's sentinel — invariant, protected regardless of age.
@@ -177,7 +177,7 @@ For each candidate file:
 **Step 5. Checkpoint sweep:** Find checkpoint files older than `QUOIN_CLEANUP_CKPT_WINDOW` (default 30 days):
 ```sh
 find "${MEMORY_DIR}/checkpoints" -maxdepth 1 -name '*.md' ! -name '*.tmp' \
-  -mtime +${QUOIN_CLEANUP_CKPT_WINDOW:-30} -print0
+  -mtime "+${QUOIN_CLEANUP_CKPT_WINDOW:-30}" -print0
 ```
 For each candidate: `trash_move "<path>" "$MEMORY_DIR"`.
 (No UUID protection needed: the 30d age window already excludes the just-written checkpoint and any same-day or recent checkpoints.)
@@ -185,12 +185,31 @@ For each candidate: `trash_move "<path>" "$MEMORY_DIR"`.
 **Step 5b. Session temp-file sweep (IVG-137 T-06, data hygiene).** Crashed Class-A-writer leftovers: the session-state atomic-write mechanism (`implement`/`end_of_day`/etc.) composes a body to `<session-path>.body.tmp`, validates it, then atomically renames to `<session-path>`. A process that crashes or is interrupted mid-write leaves the `.body.tmp` (or a bare `.tmp`) file behind. These are NOT selected by any real reader (`select_unprocessed_sessions.py`'s `file_pattern` is anchored `\.md$`, so `.body.tmp`/`.tmp` files are already excluded from selection today) but they pollute manual `ls`/`grep end_of_day_due: yes` inspection of `sessions/`. Find candidates:
 ```sh
 find "${MEMORY_DIR}/sessions" -maxdepth 1 \( -name '*.body.tmp' -o -name '*.tmp' \) \
-  -mtime +${QUOIN_CLEANUP_SENTINEL_WINDOW:-1} -print0
+  -mtime "+${QUOIN_CLEANUP_SENTINEL_WINDOW:-1}" -print0
 ```
 Reuses the same `QUOIN_CLEANUP_SENTINEL_WINDOW` (default 1 day) age threshold as the sentinel sweep — a legitimate write completes (write → validate → rename) in well under a second, so any survivor older than the window is a crash artifact, never an in-flight write. For each candidate: `trash_move "<path>" "$MEMORY_DIR"`. **Never** matches a real `*.md` session file (the glob is `*.body.tmp` / `*.tmp` only) — no UUID protection needed since these files have no "current session" concept (a session's own live write is always fresher than the age window).
 
+**Step 5c. Run-state sweep (IVG-258 T-13, task-keyed resumability records).** Two globs,
+two windows: the record/notes pair swept on the same 30-day window as checkpoints, and
+abandoned writer scratch files swept on the shorter sentinel window (a `.tmp` file older
+than a few days can never be an in-flight write):
+```sh
+find "$MEMORY_DIR" -maxdepth 1 \
+  \( -name 'run-state-*.json' -o -name 'run-notes-*.md' -o -name 'run-notes-*.md.1' \) \
+  -mtime "+${QUOIN_CLEANUP_RUNSTATE_WINDOW:-30}" -print0
+find "$MEMORY_DIR" -maxdepth 1 -name 'run-state-*.json.*.tmp' \
+  -mtime "+${QUOIN_CLEANUP_SENTINEL_WINDOW:-1}" -print0
+```
+For each candidate: `trash_move "<path>" "$MEMORY_DIR"`. Age-only — no UUID protection and
+no `active` guard: the record and its notes file are swept INDEPENDENTLY of each other and
+of whatever `active` says, so a record kept alive by ongoing boundary writes may outlive
+notes that stopped being appended, and vice versa. That is deliberate — pairing them would
+require reading the record to sweep it, which this age-only design forbids. The consequence
+is that a swept record's `notes_path` may point at a file that no longer resolves; every
+reader already tolerates that (T-04, T-11 tier 4).
+
 **Step 6. Emit summary:**
-- If any files were trashed: `[cleanup] trashed <S> sentinel(s) -> .workflow_artifacts/memory/, <T> session temp-file(s) -> .workflow_artifacts/memory/sessions/, <C> checkpoint(s) -> .workflow_artifacts/memory/checkpoints/ (recover via: mv .workflow_artifacts/memory/trash/<date>/<file> <original-dir>)`. NOTE: do NOT say "recoverable via /sleep --restore" — `/sleep --restore` only searches `forgotten/` text entries, not `trash/` files.
+- If any files were trashed: `[cleanup] trashed <S> sentinel(s) -> .workflow_artifacts/memory/, <T> session temp-file(s) -> .workflow_artifacts/memory/sessions/, <C> checkpoint(s) -> .workflow_artifacts/memory/checkpoints/, <R> run-state file(s) -> .workflow_artifacts/memory/ (recover via: mv .workflow_artifacts/memory/trash/<date>/<file> <original-dir>)`. NOTE: do NOT say "recoverable via /sleep --restore" — `/sleep --restore` only searches `forgotten/` text entries, not `trash/` files.
 - If zero files trashed: `[cleanup] nothing stale to clean`.
 
 If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-write — the spawning orchestrator records this row on your behalf (D-1). Strip `[quoin-onbehalf]` at bootstrap step 0 (per-spawn, non-inherited — do not propagate to children).
@@ -206,7 +225,7 @@ If your incoming prompt contains `[quoin-onbehalf]`: SKIP this cost-ledger self-
 When `/cleanup --dry-run` is invoked:
 
 1. Run steps 1–3 (resolve MEMORY_DIR, source helpers, acquire UUID).
-2. Run the sentinel, session temp-file, and checkpoint enumeration (steps 4–5b `find` commands) but make NO trash-moves.
+2. Run the sentinel, session temp-file, checkpoint, and run-state enumeration (steps 4–5c `find` commands) but make NO trash-moves.
 3. Print the would-trash list:
    ```
    [cleanup --dry-run] would trash:
@@ -217,6 +236,9 @@ When `/cleanup --dry-run` is invoked:
        - <path>
        ...
      CHECKPOINTS (<C>):
+       - <path>
+       ...
+     RUN STATE (<R>):
        - <path>
        ...
    ```
@@ -243,7 +265,7 @@ These families are enumerated literally in the sentinel sweep. No user-supplied 
 
 Canonical machine-readable source: `hooks/_lib.sh:sentinel_globs()` — sessionstart.sh consumes that; this list and sleep/SKILL.md's list MUST stay byte-identical (drift-guarded by test_sentinel_family_parity.py).
 
-`/cleanup` NEVER targets `lessons-learned.md`, `forgotten/`, or any source file — only the 9 sentinel families above and `checkpoints/*.md` under `.workflow_artifacts/memory/`.
+`/cleanup` NEVER targets `lessons-learned.md`, `forgotten/`, or any source file — only the 9 sentinel families above, `checkpoints/*.md`, and the task-keyed `run-state-*.json` / `run-notes-*.md` pair, under `.workflow_artifacts/memory/`.
 
 ## Relationship to /sleep --purge --sentinels
 
@@ -257,11 +279,15 @@ Canonical machine-readable source: `hooks/_lib.sh:sentinel_globs()` — sessions
 | Auto-fire | yes (from `/checkpoint` Step 1.47, default-on) | no (requires explicit invocation) |
 | Recovery | `mv .workflow_artifacts/memory/trash/<date>/<file> .workflow_artifacts/memory/` | not recoverable |
 
+The task-keyed `run-state-*.json` / `run-notes-*.md` pair (IVG-258 T-13) is `/cleanup`-only:
+it is not a sentinel family, does not appear in `sentinel_globs()`, and `/sleep --purge
+--sentinels` never reclaims it.
+
 Use `/cleanup` for routine session hygiene (auto-fires from `/checkpoint`, recoverable).
 Use `/sleep --purge --sentinels --older-than Nd` for explicit permanent purge of files you are sure you no longer need.
 
 ## Write-target / delete-target restriction
 
-**/cleanup ONLY trash-moves files under `.workflow_artifacts/memory/` matching the 9 sentinel families listed above, `sessions/*.body.tmp` / `sessions/*.tmp` (IVG-137 T-06), or `checkpoints/*.md`; it never touches `lessons-learned.md`, `forgotten/`, or any real `*.md` session file.**
+**/cleanup ONLY trash-moves files under `.workflow_artifacts/memory/` matching the 9 sentinel families listed above, `sessions/*.body.tmp` / `sessions/*.tmp` (IVG-137 T-06), `checkpoints/*.md`, or the task-keyed `run-state-*.json` / `run-notes-*.md` pair (IVG-258 T-13); it never touches `lessons-learned.md`, `forgotten/`, or any real `*.md` session file.**
 
 Any other trash-move or write is a bug.

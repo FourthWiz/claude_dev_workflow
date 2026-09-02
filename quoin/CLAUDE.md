@@ -425,5 +425,6 @@ The workflow uses several distinct memory layers, each with a different lifecycl
 | `daily/<date>.md` | rendered daily briefing | `/end_of_day` |
 | `weekly/<iso-week>.md` | rendered weekly review | `/weekly_review` |
 | `forgotten/<date>.md` | soft-forget archive | `/sleep` |
+| `run-state-<task>.json` + `run-notes-<task>.md`[`.1`] | task-keyed resume record (`phase`/`next_action`/`step`) + its append-only notes log | `/run` (sole creator) + `/thorough_plan` (refines only) |
 
 **Hard boundary:** `/sleep` writes ONLY to `lessons-learned.md` and `forgotten/<date>.md`. Enforced by `test_sleep_write_boundary.py`. `trash/` directory is outside `/sleep --purge` scope (gap-seven narrowed: 8 live `*.txt` sentinel families under `memory/` are now covered via `/sleep --purge --sentinels`; `trash/<date>/` remains the residual gap). Directory tree + `forgotten/<date>.md` entry-format + `> Source:` restore anchor: `__QUOIN_HOME__/memory/lifecycle-guide.md`.

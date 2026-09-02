@@ -256,6 +256,8 @@ Under `AUTONOMOUS`, the completion of each of the 9 resumable phases below is re
 - **Marker:** `autonomous-run-{task}.marker`, written once at autonomous-span entry (Setup, right after `AUTONOMOUS` is set) — the read/re-establish-on-resume side of this contract is Stage-2 groundwork, documented alongside the later "Resume" section.
 - **Done sentinel:** `autonomous-done-{task}.md`, written by `end_of_task` LAST, after its other terminal side effects, outside the archived folder — same rationale as the halt-sentinel.
 
+Alongside the marker and the `.done` directory above sits a third record: `run-state-{task}.json`, at `.workflow_artifacts/memory/run-state-{task}.json`. Unlike the sentinels above, it is written UNCONDITIONALLY — in both autonomous and interactive mode — because it is what makes a plain (non-autonomous) `/run` session resumable too, not only a supervised autonomous one. `/run` is its sole creator; every other writer, including a standalone `/thorough_plan` round boundary, only refines an existing record and never mints a new one. It carries no autonomy field of its own — autonomy stays scoped to the `autonomous-run-{task}.marker` above — and its companion is an append-only notes file, `run-notes-{task}.md`. It never overrides a `.done` sentinel: sentinels remain the authoritative source for which phases and sub-phases finished, and the record only adds finer-grained resume detail on top of them.
+
 ## Phase sequence
 
 ```
@@ -487,6 +489,17 @@ Unless `QUOIN_INLINE_COST_CAPTURE=0`, the on-behalf write per "On-behalf cost ca
 
 Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/discover.done` (atomic write — T-05/T-10 write-site map) — the T-09 resume-reader depends on this file's presence to know Phase 1 finished.
 
+Independent of `AUTONOMOUS` — this write is unconditional in both interactive and autonomous mode, including when Phase 1 itself was skipped (the discovery-freshness check above), so a plain (non-autonomous) `/run` session gets the same phase-boundary resumability record:
+
+```
+python3 __QUOIN_HOME__/scripts/run_state.py --write \
+  --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
+  --phase "discover" --phase-index 1 --subphase "" --step "" \
+  --at-stage-boundary true --route "{route}" --profile "{profile}" \
+  --next-action "start enrich" --artifact "{task_dir}/current-plan.md" || true
+```
+
+
 ## Phase 1.4 — Enrich (default-on prompt)
 
 On entry, PROMPT via `AskUserQuestion`: "Run prompt enrichment on this task, or skip?"
@@ -503,6 +516,17 @@ Emit the dispatch envelope (above), skill: `enrich`, `return: envelope`.
 Unless `QUOIN_INLINE_COST_CAPTURE=0`, the on-behalf write per "On-behalf cost capture" above (phase=enrich, model=opus) runs FIRST. Either way (on-behalf write above, or under opt-out the child's own self-write), THEN verify the cost ledger has a new entry for the `enrich` phase. If still not present, append a best-effort entry: `unknown-enrich-<timestamp> | <date> | enrich | opus | task | /run subagent (on-behalf write failed, if capture was ON — else no UUID recorded)` (mirrors the Phase 1/Phase 1.5 best-effort append pattern).
 
 Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/enrich.done` (atomic write — T-05/T-10 write-site map) — including when enrich was skipped via the AskUserQuestion prompt above (a skipped phase still counts as reaching this point in the pipeline; resume must not re-offer the prompt).
+
+Independent of `AUTONOMOUS` — this write is unconditional in both interactive and autonomous mode, including when enrich itself was skipped, so a plain (non-autonomous) `/run` session gets the same phase-boundary resumability record:
+
+```
+python3 __QUOIN_HOME__/scripts/run_state.py --write \
+  --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
+  --phase "enrich" --phase-index 1 --subphase "" --step "" \
+  --at-stage-boundary true --route "{route}" --profile "{profile}" \
+  --next-action "start specify" --artifact "{task_dir}/current-plan.md" || true
+```
+
 
 **No `/gate` spawn after enrich** — proceed straight to Phase 1.5 (Q-1: enrich is a lightweight upstream sharpening pass, not a phase boundary that needs a quality gate).
 
@@ -522,6 +546,31 @@ Unless `QUOIN_INLINE_COST_CAPTURE=0`, the on-behalf write per "On-behalf cost ca
 After specify completes, spawn `/gate` as a subagent session (spec→architect boundary — subagent dispatch, mirrors the post-architect gate at Phase 2; audit-log persistence mandatory). Unless `QUOIN_INLINE_COST_CAPTURE=0`, this gate spawn also follows "On-behalf cost capture" above (phase=gate, model=sonnet); the gate spawn has no SEPARATE verify/append fallback documented for it (round 1 finding, still true) — but the on-behalf write's own F-02 post-check, embedded in the shared bash block above, covers this spawn too: an on-behalf write failure still lands a labeled `(on-behalf write failed)` fallback row here, so this is no longer a silent zero-row path.
 
 Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/specify.done` (atomic write — T-05/T-10 write-site map), including when specify was skipped by its own skip condition.
+
+**If specify was skipped** (Small profile, or `spec.md` already exists — no gate runs on this
+branch): independent of `AUTONOMOUS`, write the phase-boundary record immediately, unconditional
+across interactive and autonomous mode:
+
+```
+python3 __QUOIN_HOME__/scripts/run_state.py --write \
+  --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
+  --phase "specify" --phase-index 1 --subphase "" --step "" \
+  --at-stage-boundary true --route "{route}" --profile "{profile}" \
+  --next-action "start fast_path_triage" --artifact "{task_dir}/current-plan.md" || true
+```
+
+**If specify ran:** only once the gate result is known, and only on a PASS — never before, and
+never at all on a FAIL ("Gates are blocking" below applies) — independent of `AUTONOMOUS`, write
+the same phase-boundary record, so a plain (non-autonomous) `/run` session gets the same
+resumability record:
+
+```
+python3 __QUOIN_HOME__/scripts/run_state.py --write \
+  --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
+  --phase "specify" --phase-index 1 --subphase "" --step "" \
+  --at-stage-boundary true --route "{route}" --profile "{profile}" \
+  --next-action "start fast_path_triage" --artifact "{task_dir}/current-plan.md" || true
+```
 
 **Checkpoint A0:**
 ```
@@ -734,13 +783,35 @@ Under `AUTONOMOUS`, once evaluated (both modes), also write the phase's completi
 `autonomous-progress-{task}/fast_path_triage.done` (atomic write — T-05/T-10 write-site map). A
 plain (non-autonomous) run never writes this file, in either mode.
 
+Independent of `AUTONOMOUS` — this write is unconditional in both interactive and autonomous mode, so a plain (non-autonomous) `/run` session gets the same phase-boundary resumability record:
+
+```
+python3 __QUOIN_HOME__/scripts/run_state.py --write \
+  --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
+  --phase "fast_path_triage" --phase-index 1 --subphase "" --step "" \
+  --at-stage-boundary true --route "{route}" --profile "{profile}" \
+  --next-action "start architect" --artifact "{task_dir}/current-plan.md" || true
+```
+
+
 ## Phase 2 — Architect (conditional)
 
 **Skip condition:** Task profile is Small, OR the fast route was taken at Phase 1.6 (`route=fast`).
 
 - **If Small:** tell the user "Small task — skipping /architect, proceeding directly to planning."
-- **If fast route:** tell the user "Fast route — skipping /architect, dispatching /implement directly against the routing stub."
-- **If running:** spawn `/architect` as a subagent session, passing the task description, paths to discovery output files (`repos-inventory.md`, `architecture-overview.md`, `dependencies-map.md`), and the path to `<task-root>/spec.md` if it exists (read-if-exists).
+  There is no gate to wait for on this branch (none runs), so write the phase-boundary record
+  immediately, unconditional on `AUTONOMOUS`:
+  ```
+  python3 __QUOIN_HOME__/scripts/run_state.py --write \
+    --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
+    --phase "architect" --phase-index 2 --subphase "" --step "" \
+    --at-stage-boundary true --route "{route}" --profile "{profile}" \
+    --next-action "start thorough_plan" --artifact "{task_dir}/current-plan.md" || true
+  ```
+- **If fast route:** tell the user "Fast route — skipping /architect, dispatching /implement directly against the routing stub." Same immediate write as the Small branch above (no gate on this
+  branch either).
+- **If running:** spawn `/architect` as a subagent session, passing the task description, paths to discovery output files (`repos-inventory.md`, `architecture-overview.md`, `dependencies-map.md`), and the path to `<task-root>/spec.md` if it exists (read-if-exists). The rest of this section —
+  through the gate-conditional write below — applies only to this branch.
   - **Note:** `/architect` now includes a Phase 4 critic loop (max 2 rounds default, 4 in strict mode); expect 1-2 additional `critic` phase rows in the cost ledger per round. If Phase 4 triggers the cost-guard confirmation (pre-round-2), the architect subagent will pause for user input — watch for the prompt `[critic round 2 starting — ~$10-30 estimated based on body size]` in the subagent output.
 
 Emit the dispatch envelope (above), skill: `architect`, `return: envelope`.
@@ -752,6 +823,11 @@ Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progr
 After architect completes, spawn `/gate` as a subagent session (architecture gate — subagent dispatch required for audit-log persistence). No ``[quoin-bundle]`` block is emitted at this gate: the gate reads only the artifact's `## For human` block (729 B-scale), so the corrected expected-delta census (review round 1) shows a bundle here is net-negative — the consumer was descoped.
 
 Unless `QUOIN_INLINE_COST_CAPTURE=0`, this gate spawn also follows "On-behalf cost capture" above (phase=gate, model=sonnet); the gate spawn has no SEPARATE verify/append fallback documented for it (round 1 finding, still true) — but the on-behalf write's own F-02 post-check, embedded in the shared bash block above, covers this spawn too: an on-behalf write failure still lands a labeled `(on-behalf write failed)` fallback row here, so this is no longer a silent zero-row path.
+
+**Only once the gate result is known, and only on a PASS** — never before, and never at all on a FAIL
+(the flow does not proceed past a failed gate per "Gates are blocking" below) — present Checkpoint A.
+The phase-boundary write itself is deferred one step further, to the point where Checkpoint A
+resolves to continue (see immediately below the checkpoint), never here:
 
 **Checkpoint A:**
 ```
@@ -769,6 +845,24 @@ Gate: PASSED / FAILED
 Continue to planning? (yes / no / show architecture)
 ```
 
+Once Checkpoint A resolves to continue — the user answers `yes`/`y`/`continue`/`go`, or under
+`AUTONOMOUS` the checkpoint auto-resolves because the gate already PASSED (see `## Checkpoint
+interaction protocol`) — independent of `AUTONOMOUS`, write the phase-boundary record, so a plain
+(non-autonomous) `/run` session gets the same resumability record. Never on `no`, and never before
+this point: a session lost between the gate PASS and the checkpoint answer, or a user who answers
+`no`, must not leave `next_action: start thorough_plan` on disk for a continuation that was never
+confirmed:
+
+```
+python3 __QUOIN_HOME__/scripts/run_state.py --write \
+  --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
+  --phase "architect" --phase-index 2 --subphase "" --step "" \
+  --at-stage-boundary true --route "{route}" --profile "{profile}" \
+  --next-action "start thorough_plan" --artifact "{task_dir}/current-plan.md" || true
+```
+
+Only then proceed to Phase 3.
+
 ## Phase 3 — Thorough Plan
 
 **Skip condition:** the fast route was taken at Phase 1.6 (`route=fast`). The fast route already
@@ -784,13 +878,31 @@ dispatched to `/implement` directly.
   - Path to `spec.md` (if it exists)
   - Repo paths
 
-`/thorough_plan` handles its own internal plan→critic→revise loop and runs its own post-plan smoke gate.
+`/thorough_plan` handles its own internal plan→critic→revise loop and runs its own post-plan smoke
+gate, returning `verdict: PASS` (converged) or `verdict: REVISE` (max_rounds hit without
+convergence) in its return envelope — read it before writing the phase-boundary record below.
 
 Emit the dispatch envelope (above), skill: `thorough_plan`, `return: envelope`.
 
 After the phase, unless `QUOIN_INLINE_COST_CAPTURE=0`, the on-behalf write per "On-behalf cost capture" above (phase=thorough-plan, model=opus) runs FIRST for the `thorough-plan` row — the plan/critic/revise/enrich rows are thorough_plan's OWN on-behalf writes, per its own on-behalf mechanism, independent of this one. Either way, THEN verify the cost ledger has new entries for `thorough-plan`, `plan`, `critic`, and (if applicable) `revise` phases. If any are still missing, append best-effort entries with `unknown-<phase>-<timestamp>`.
 
 Under `AUTONOMOUS`, also write the phase's completion sentinel `autonomous-progress-{task}/thorough_plan.done` (atomic write — T-05/T-10 write-site map), including when thorough_plan was skipped for the fast route.
+
+**On the fast route** (thorough_plan skipped — no gate runs on this branch): independent of
+`AUTONOMOUS`, write the phase-boundary record immediately. Checkpoint A1 already confirmed
+continuation to implement, and Checkpoint B never fires on this route (see Phase 4's cross-reference
+below), so there is no later checkpoint to defer this write to:
+
+```
+python3 __QUOIN_HOME__/scripts/run_state.py --write \
+  --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
+  --phase "thorough_plan" --phase-index 3 --subphase "" --step "" \
+  --at-stage-boundary true --route "{route}" --profile "{profile}" \
+  --next-action "start implement" --artifact "{task_dir}/current-plan.md" || true
+```
+
+**If running:** only once the returned verdict is `PASS` — never on `REVISE` (the loop did not
+converge; "Gates are blocking" below applies) — present Checkpoint B:
 
 **Checkpoint B:**
 ```
@@ -805,6 +917,24 @@ Summary:
 
 Continue to implementation? (yes / no / show plan)
 ```
+
+Once Checkpoint B resolves to continue — the user answers `yes`/`y`/`continue`/`go`, or under
+`AUTONOMOUS` the checkpoint auto-resolves because the smoke gate already returned `PASS` (see
+`## Checkpoint interaction protocol`) — independent of `AUTONOMOUS`, write the phase-boundary
+record, so a plain (non-autonomous) `/run` session gets the same resumability record. Never on
+`no`, and never before this point: a session lost between the verdict resolving and the checkpoint
+answer, or a user who answers `no`, must not leave `next_action: start implement` on disk for a
+plan whose continuation was never confirmed:
+
+```
+python3 __QUOIN_HOME__/scripts/run_state.py --write \
+  --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
+  --phase "thorough_plan" --phase-index 3 --subphase "" --step "" \
+  --at-stage-boundary true --route "{route}" --profile "{profile}" \
+  --next-action "start implement" --artifact "{task_dir}/current-plan.md" || true
+```
+
+Only then proceed to Phase 4.
 
 ## Formulation quality bar (autonomous)
 
@@ -897,7 +1027,16 @@ implement with no plan to dispatch against):
    completion sentinels are gone. Same provenance condition as step 3: this delete applies ONLY
    when the file carries `provenance: fast-path-triage`; if step 3 no-opped because the marker was
    absent (a real critic-reviewed plan), this step no-ops too — never delete it.
-6. re-enter at the architect phase.
+6. rewind the run-state record so a resumed session re-enters at architect, not wherever
+   the run actually halted:
+   ```
+   python3 __QUOIN_HOME__/scripts/run_state.py --write \
+     --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
+     --phase fast_path_triage --phase-index 1 --subphase "" --step "" \
+     --at-stage-boundary true --route full --profile "{profile}" \
+     --next-action "start architect" || true
+   ```
+7. re-enter at the architect phase.
 
 Completed implementation work is preserved. On the full path this option does not exist; the
 existing "fix" / "stop" choice above is unchanged.
@@ -905,6 +1044,22 @@ existing "fix" / "stop" choice above is unchanged.
 Under `AUTONOMOUS`: auto-select "fix" and retry once (retry cap = 1 automatic retry). If the gate still fails after that one retry, this is Hard-stop #2 (Gate FAIL after the retry cap) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop. Never fall back to a silent proceed, and never ask. **On a fast-route run, this same escalation option ALSO routes through the existing NEEDS-DECISION return path** (`needs-decision-{task}.md`), writing it in addition to the halt-sentinel already written above — never instead of it — rather than a silent auto-select — no seventh hard-stop, same NEEDS-DECISION mechanism used elsewhere under `[autonomous]`. **Writer, named:** this NEEDS-DECISION sentinel is not written by a spawned subagent here — the `/run` orchestrator itself, inline, invokes the shared guard directly: `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill run --site fast-route-escalation-checkpoint-c --reason "<gate-failure summary>" --resume-hint "re-run /run --resume <task-name>"`, echoes its `gate-result: NEEDS-DECISION` block, and stops — so an autonomous fast run hitting this branch always leaves a terminal signal on disk, never a silent stall. Once escalation's atomic unit above (route flip, sentinel/stub cleanup) has been performed, this is the durable record of WHY the run stopped and WHERE to resume it.
 
 If the user says "show changes": run `git diff --stat` and display, then re-ask.
+
+**Once the gate has PASSED** — on the first attempt, or after the fix/retry loop above resolves
+to a pass — and the run is continuing to review (never on the fast-route escalation branch above,
+which writes its own `fast_path_triage` rewind instead): independent of `AUTONOMOUS`, this write is
+unconditional across interactive and autonomous mode, so a plain (non-autonomous) `/run` session
+gets the same phase-boundary resumability record. Writing only here — after the gate result is
+known, never before it — means a crash between the implement dispatch and this point can never
+leave `next_action: start review` on disk for a gate that in fact FAILED or is still retrying:
+
+```
+python3 __QUOIN_HOME__/scripts/run_state.py --write \
+  --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
+  --phase "implement" --phase-index 4 --subphase "" --step "" \
+  --at-stage-boundary true --route "{route}" --profile "{profile}" \
+  --next-action "start review" --artifact "{task_dir}/current-plan.md" || true
+```
 
 ## Phase 5 — Review
 
@@ -926,11 +1081,38 @@ Unless `QUOIN_INLINE_COST_CAPTURE=0`, the on-behalf write per "On-behalf cost ca
 
 Under `AUTONOMOUS`, once Checkpoint D confirms (APPROVED or accepted, gate passed), also write the phase's completion sentinel `autonomous-progress-{task}/review.done` (atomic write — T-05/T-10 write-site map).
 
-**If APPROVED:** run `/gate` inline (Full level, post-review — read `/gate/SKILL.md` from the same session and execute the gate process directly). Step 5 audit-log persistence applies in inline mode per the gate skill's existing rule. Proceed to Checkpoint D.
+Independent of `AUTONOMOUS`, the phase-boundary run-state write for Phase 5 is verdict-conditional
+and never fires before the verdict is known — writing an unconditional `next_action: start
+end_of_task` here, before the verdict is read, is what let a plain `/run` resume skip the gate and
+re-enter `end_of_task` after a CHANGES_REQUESTED or BLOCKED review. Each verdict branch below writes
+its own value, at the point where that branch's outcome is final:
+
+**If APPROVED:** run `/gate` inline (Full level, post-review — read `/gate/SKILL.md` from the same
+session and execute the gate process directly). Step 5 audit-log persistence applies in inline mode
+per the gate skill's existing rule. Once — and only once — that gate PASSES, proceed to Checkpoint D
+(the phase-boundary write itself is deferred to the point where Checkpoint D resolves to continue —
+see below the checkpoint, never here). If the post-review gate instead FAILS, do not proceed to
+Checkpoint D — "Gates are blocking" below applies.
 
 **If CHANGES_REQUESTED:** present the issues to the user. Offer:
-1. **"fix"** → spawn `/implement` again with the review issues as the spec (on the fast route, same model-opus / leading-`[no-redispatch]` dispatch as the primary Phase 4 spawn above). Re-dispatch inherits the dispatch envelope (above), unchanged. After fix-implement completes, re-run the post-implementation gate inline (same level as before; audit-log persistence per `/gate/SKILL.md`). Then re-spawn `/review`. Cap at 3 review rounds to prevent infinite cycling.
-2. **"accept"** → treat as approved despite requested changes. Log this decision in session state. Proceed to Checkpoint D.
+1. **"fix"** → before spawning `/implement` again, write the resume record naming implement as the
+   next step (this is the fix for the plain-`/run` resume gap — the record now names the phase this
+   branch is about to actually dispatch, not the phase the review request as a whole eventually
+   reaches):
+   ```
+   python3 __QUOIN_HOME__/scripts/run_state.py --write \
+     --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
+     --phase "review" --phase-index 5 --subphase "" --step "" \
+     --at-stage-boundary true --route "{route}" --profile "{profile}" \
+     --next-action "start implement" --artifact "{task_dir}/current-plan.md" || true
+   ```
+   Then spawn `/implement` again with the review issues as the spec (on the fast route, same model-opus / leading-`[no-redispatch]` dispatch as the primary Phase 4 spawn above). Re-dispatch
+   inherits the dispatch envelope (above), unchanged. After fix-implement completes, re-run the post-implementation gate inline (same level as before; audit-log persistence per
+   `/gate/SKILL.md`). Then re-spawn `/review`. Cap at 3 review rounds to prevent infinite cycling.
+2. **"accept"** → treat as approved despite requested changes. Log this decision in session state.
+   Proceed to Checkpoint D — accepting is the same terminal outcome as an approved verdict for
+   resume purposes, so it reaches the same deferred write below the checkpoint as the APPROVED
+   branch above.
 
 **(fast route only)** after the 3-round CHANGES_REQUESTED cap, a third option, "escalate to full",
 is also offered here — the same atomic unit as the Checkpoint C escalation above, same crash-safe
@@ -948,12 +1130,40 @@ wrote it once Checkpoint C confirmed), unlike at the Checkpoint C site above, so
 here too, or a resumed escalated run would skip re-implementation entirely and jump straight into
 re-reviewing the untouched fast-route code; optionally delete the stripped stub outright now that
 the sentinels are gone (provenance-marked stubs only — same condition as Checkpoint C step 5);
-re-enter at the architect phase. Completed
+THEN rewind the run-state record so a resumed session re-enters at architect, not wherever
+the run actually halted:
+
+```
+python3 __QUOIN_HOME__/scripts/run_state.py --write \
+  --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
+  --phase fast_path_triage --phase-index 1 --subphase "" --step "" \
+  --at-stage-boundary true --route full --profile "{profile}" \
+  --next-action "start architect" || true
+```
+
+Only THEN re-enter at the architect phase. Completed
 implementation work is preserved. On the full path this option does not exist.
 
 Under `AUTONOMOUS`: auto-select "fix" at each round — never auto-select "accept". If still CHANGES_REQUESTED after the 3-round cap, this is Hard-stop #3 (Review CHANGES_REQUESTED after 3 rounds) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop. **On a fast-route run, offer "escalate to full" as a third option alongside this halt — same mechanism as the Checkpoint C escalation above**, performed per the atomic unit above; under `[autonomous]` this ALSO routes through the same NEEDS-DECISION return path, writing it in addition to the halt-sentinel already written above — never instead of it — rather than a silent auto-select — named writer (same shared guard as Checkpoint C): `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill run --site fast-route-escalation-changes-requested --reason "<3-round CHANGES_REQUESTED summary>" --resume-hint "re-run /run --resume <task-name>"`. On the full path this branch is unchanged — still a bare halt.
 
-**If BLOCKED:** present the blocking issues. **STOP.** Do not offer to continue. Tell the user: "Review found blocking issues. The workflow cannot continue until these are resolved. Artifacts are preserved at `.workflow_artifacts/<task-name>/`." **(fast route only)** this bare stop is the full-path behavior; on the fast route, "escalate to full" is offered alongside it instead — the same atomic unit as the Checkpoint C escalation above, same crash-safe order (in-session `route` flip to `full`; rewrite `triage-decision.md`; strip the stub's `Review shape:` and `Route:` lines per the same provenance-conditioned rule — no outright delete yet; THEN DELETE `autonomous-progress-{task}/architect.done`, `autonomous-progress-{task}/thorough_plan.done`, AND `autonomous-progress-{task}/implement.done` plus any `implement.*.done` sub-sentinels, since it already exists at this site too; optionally delete the stripped stub outright once the sentinels are gone (provenance-marked stubs only — same condition as Checkpoint C step 5); re-enter at the architect phase). Completed implementation work is preserved.
+**If BLOCKED:** present the blocking issues. **STOP.** Do not offer to continue. Before stopping,
+write a non-parsing `next_action` marker — never `start end_of_task` and never `start review` (the
+review just ran and its result was BLOCKED, not something to re-enter): a plain `/run --resume`
+that reads this record back sees a `next_action` that fails to match the `start <phase>` format
+(mirroring the `run complete` terminal marker) and correctly falls through to the pre-T-09
+session-state read rather than resuming into a phase this verdict never cleared:
+```
+python3 __QUOIN_HOME__/scripts/run_state.py --write \
+  --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
+  --phase "review" --phase-index 5 --subphase "" --step "" \
+  --at-stage-boundary true --route "{route}" --profile "{profile}" \
+  --next-action "run blocked" --artifact "{task_dir}/current-plan.md" || true
+```
+(On the fast-route escalation choice below, this marker is immediately superseded by that branch's
+own `fast_path_triage` rewind — write it here regardless, since the user may choose the bare stop
+instead of escalating.) Tell the user: "Review found blocking
+issues. The workflow cannot continue until these are resolved. Artifacts are preserved at
+`.workflow_artifacts/<task-name>/`." **(fast route only)** this bare stop is the full-path behavior; on the fast route, "escalate to full" is offered alongside it instead — the same atomic unit as the Checkpoint C escalation above, same crash-safe order (in-session `route` flip to `full`; rewrite `triage-decision.md`; strip the stub's `Review shape:` and `Route:` lines per the same provenance-conditioned rule — no outright delete yet; THEN DELETE `autonomous-progress-{task}/architect.done`, `autonomous-progress-{task}/thorough_plan.done`, AND `autonomous-progress-{task}/implement.done` plus any `implement.*.done` sub-sentinels, since it already exists at this site too; optionally delete the stripped stub outright once the sentinels are gone (provenance-marked stubs only — same condition as Checkpoint C step 5); then rewind the run-state record so a resumed session re-enters at architect, not wherever the run actually halted: `python3 __QUOIN_HOME__/scripts/run_state.py --write --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" --phase fast_path_triage --phase-index 1 --subphase "" --step "" --at-stage-boundary true --route full --profile "{profile}" --next-action "start architect" || true`; only then re-enter at the architect phase). Completed implementation work is preserved.
 
 Under `AUTONOMOUS`: this is Hard-stop #1 (Review BLOCKED) — write the halt-sentinel per "## Autonomous hard stops" before exit, then stop (no `AskUserQuestion`, no silent proceed). **On a fast-route run, offer escalation rather than a bare stop — same mechanism as the Checkpoint C escalation above**, performed per the atomic unit above; under `[autonomous]` this ALSO routes through the NEEDS-DECISION return path, writing it in addition to the halt-sentinel already written above — never instead of it: the halt-sentinel is what the Stage-2 supervisor reads, and a supervised autonomous fast run hitting review BLOCKED always terminates for a human rather than relaunching unattended into the full path — named writer (same shared guard as Checkpoint C): `python3 __QUOIN_HOME__/scripts/decision_gate_guard.py fail-closed --task <task-name> --skill run --site fast-route-escalation-blocked --reason "<BLOCKED summary>" --resume-hint "re-run /run --resume <task-name>"`. On the full path this branch is unchanged — still a bare stop, since the full path never skipped the phases escalation would recover.
 
@@ -971,6 +1181,25 @@ Summary:
 Finalize and push? (yes / no / show review)
 ```
 
+Once Checkpoint D resolves to continue — the user answers `yes`/`y`/`continue`/`go` (reached only
+after an APPROVED verdict with the gate PASSED, or an "accept" of a CHANGES_REQUESTED review), or
+under `AUTONOMOUS` the checkpoint auto-resolves because that same condition already held — write
+the phase-boundary record. Never before this point, and never on `no`: a session lost between the
+verdict/gate resolving and the checkpoint answer, or a user who answers `no`, must not leave
+`next_action: start end_of_task` on disk — that gap is what let a lost session or a declined
+checkpoint resume straight into Phase 6's commit-push-archive on a confirmation that was never
+actually given:
+
+```
+python3 __QUOIN_HOME__/scripts/run_state.py --write \
+  --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
+  --phase "review" --phase-index 5 --subphase "" --step "" \
+  --at-stage-boundary true --route "{route}" --profile "{profile}" \
+  --next-action "start end_of_task" --artifact "{task_dir}/current-plan.md" || true
+```
+
+Only then proceed to Phase 6.
+
 ## Phase 6 — End of Task
 
 Spawn `/end_of_task` as a subagent session. Because the user invoked `/run` and confirmed at Checkpoint D, the `/run` exception in `end_of_task/SKILL.md` applies. All 8 steps run as normal (pre-flight, commit, push, lessons, session state, cost aggregation, archive, report).
@@ -984,6 +1213,17 @@ Commit and PR text composed under `/run` follows the same clean-authored-content
 **F-09 (known ordering gap, accepted):** this on-behalf `end-of-task` row is appended AFTER the `/end_of_task` subagent returns — but Step 6.4 (cost aggregation) inside that subagent already reads the ledger before this row exists. `/run`'s own final cost report therefore systematically undercounts by exactly one phase (the `end-of-task` row itself) under default-ON. This is pre-existing (was true under opt-in too) and now the default; not fixed this round — note it explicitly in the Checkpoint D / completion report rather than silently under-reporting.
 
 Under `AUTONOMOUS`, once `/end_of_task` returns successfully, also write the phase's completion sentinel `autonomous-progress-{task}/end_of_task.done` (atomic write — T-05/T-10 write-site map). This is a separate sentinel from `end_of_task`'s own terminal `autonomous-done-{task}.md` (T-11) — this one records phase-level progress consistent with the other 8 phases; the done-sentinel is the overall supervisor-loop terminal signal.
+
+Independent of `AUTONOMOUS` — these two writes are unconditional in both interactive and autonomous mode. First the boundary write, THEN the clear — in that exact order, because `--clear` sets `active: false` and a `--write` after it would resurrect the record as active:
+```
+python3 __QUOIN_HOME__/scripts/run_state.py --write \
+  --project-root "$PROJECT_ROOT" --task "{task}" --session-id "$CLAUDE_CODE_SESSION_ID" \
+  --phase "end_of_task" --phase-index 6 --subphase "" --step "" \
+  --at-stage-boundary true --route "{route}" --profile "{profile}" \
+  --next-action "run complete" --artifact "{task_dir}/current-plan.md" || true
+python3 __QUOIN_HOME__/scripts/run_state.py --clear --project-root "$PROJECT_ROOT" --task "{task}" || true
+```
+
 
 ### end_of_task failure recovery (inline finish)
 
@@ -1066,6 +1306,24 @@ Step 0b naturally falls through to `triage-decision.md`, which escalation also
 rewrites with the flipped route — a run that escalated and was then
 interrupted resumes as `full`, not `fast`.
 
+**Step 0c — validate the staleness knob before either run-state read below.** Both
+reads in Step 1 and Step 1b pass `QUOIN_RUN_STATE_STALE_DAYS` as `--max-age-days`.
+Reject anything that is not a plain non-negative integer and fall back to the
+documented default of 1 — mirroring the frozen shell reader's own guard at
+`run_state_read.sh:26-36` (that reader interpolates the same knob into a `find
+-mtime` arithmetic expansion, an injection sink `run_state.py`'s own
+`--max-age-days` argparse type does not share, but the guard is duplicated here
+anyway so the knob is validated the same way at every read site):
+```bash
+_RAW_STALE_DAYS="${QUOIN_RUN_STATE_STALE_DAYS:-1}"
+case "$_RAW_STALE_DAYS" in
+  ''|*[!0-9]*) _RUN_STATE_STALE_DAYS=1 ;;
+  *) _RUN_STATE_STALE_DAYS="$_RAW_STALE_DAYS" ;;
+esac
+```
+Use `"$_RUN_STATE_STALE_DAYS"` (quoted) in place of the raw `${QUOIN_RUN_STATE_STALE_DAYS:-1}`
+expansion at both call sites below.
+
 **Step 1 (T-09) — determine the next phase from completion sentinels, never from
 session-state prose alone, when the sentinel contract is present.** Read
 `.workflow_artifacts/memory/autonomous-progress-{task}/` (the T-05/T-10 write-site
@@ -1078,11 +1336,89 @@ directory) for `<task-name>`:
   long `implement` phase that checkpointed partial task batches), resume that phase
   at the first sub-phase lacking its own completion sentinel, rather than
   restarting the whole phase from scratch.
+- **Field invariant (stated once here, applies to every read of this record anywhere in this
+  file):** `phase`'s meaning is keyed on `at_stage_boundary` — two cases, not one. At
+  `at_stage_boundary: true`, `phase` names the LAST COMPLETED phase — every boundary write sets
+  it to the phase that just finished (e.g. `--phase discover --next-action "start enrich"` means
+  discover is done and enrich is next), and every escalation rewind sets it to the last phase
+  whose output survives the escalation (`fast_path_triage`, since the rewind deletes the
+  architect / thorough_plan / implement sentinels), never to the re-entry target itself. At
+  `at_stage_boundary: false`, `phase` names the phase IN FLIGHT — see the
+  within-sub-phase re-entry rule below for the one writer that uses this case. `next_action`
+  names what to start next, in the fixed format `start <phase>`, for every writer except two
+  documented terminal markers that deliberately do NOT parse against that format — `run
+  complete` (Phase 6's final write, before `--clear`) and `run blocked` (the Phase 5 BLOCKED
+  write) — both of which a reader treats as "returned nothing" and falls through past, per the
+  extended fallback bullet below. A reader that needs "which phase to resume at" reads
+  `next_action`, never `phase` — `phase` alone is ambiguous between "resume here" and "this
+  already ran," and `phase_index` is informational only (it is not injective — several phases
+  share an index — so it never decides anything by itself).
 - If NO `autonomous-progress-{task}/` directory exists for the task (a resume that
-  predates the sentinel contract, or a non-autonomous run that never wrote one),
-  fall back to the pre-T-09 behavior:
+  predates the sentinel contract, or a non-autonomous run that never wrote one), check for
+  a fresh active run-state record next: `python3 __QUOIN_HOME__/scripts/run_state.py --read
+  --project-root "$PROJECT_ROOT" --task "{task}" --max-age-days "$_RUN_STATE_STALE_DAYS"
+  --fields active,next_action || true`. If
+  that returns `active=true` with a non-empty `next_action` matching the format `start <phase>`
+  where `<phase>` is one of the known phase names (`discover`, `enrich`, `specify`,
+  `fast_path_triage`, `architect`, `thorough_plan`, `implement`, `review`, `end_of_task` — the same
+  roster the `--phase` writers above use), parse the phase name out of it and resume there — this is
+  what makes a plain (non-autonomous) `/run`, which writes no `.done` sentinels, first-class
+  resumable too. If `next_action` is non-empty but does NOT match that format (e.g. a terminal
+  marker like `run complete`, or any future value whose detail lives in `subphase`/`step` instead),
+  treat this tier as if it had returned nothing and fall through. Only when this read ALSO returns
+  nothing, or returns a `next_action` that fails to parse against the known-phase roster, does the
+  plan fall back to the pre-T-09 behavior:
   1. Read `.workflow_artifacts/memory/sessions/<latest>-<task-name>.md` to find the last completed phase.
   2. Identify the next phase.
+
+**Step 1b (`D-53`) — within-sub-phase re-entry.** Read the run-state record once:
+```
+python3 __QUOIN_HOME__/scripts/run_state.py --read \
+  --project-root "$PROJECT_ROOT" --task "{task}" \
+  --max-age-days "$_RUN_STATE_STALE_DAYS" \
+  --fields schema,active,phase,phase_index,subphase,step,at_stage_boundary,next_action,notes_path,resume_command,updated_at
+```
+Empty stdout means no usable record — absent, unreadable, schema-forward, or older than the
+freshness window — and Resume proceeds to Step 2 exactly as today. When a record IS
+returned, it refines — never overrides — the sentinel-derived answer, across four tiers:
+
+1. **which phase** — `{phase}.done` sentinels decide first (Step 1 above); when no
+   `autonomous-progress-{task}/` directory exists, a fresh active record's `next_action`
+   decides instead (Step 1's extended fallback bullet and field invariant above — never
+   `phase`, which names the last completed phase, not the resume target); only when both
+   of those are absent does the pre-T-09 session-state prose apply.
+2. **which sub-phase** — `{phase}.{subphase}.done` sentinels decide exactly as Step 1 does
+   today. The record NEVER overrides them.
+3. **where inside the first incomplete sub-phase** — the record's `step`, and only there.
+   Sub-phase comparison is STRING EQUALITY against the sub-phase Step 1 selected — the
+   first sub-phase with no `.done` sentinel. A `subphase` naming a sub-phase whose `.done`
+   already EXISTS is DISCARDED, not obeyed; so is a `subphase` naming anything else — except
+   in the no-sub-phase-sentinel case below, where there is no tier-2 selection for it to be
+   compared against in the first place. There is no ordering over sub-phase identifiers —
+   arbitrary names (e.g. `batch-3`, `round-2-critic`) are permitted and neither ranked nor
+   compared numerically.
+   **No-sub-phase-sentinel case:** when the selected phase has NO `{phase}.{subphase}.done`
+   sentinels written for it at all — distinct from "every one of them is done" — tier 2 has
+   no candidate set to select from, and tier 3 accepts the record's own `subphase` directly
+   rather than comparing it against an empty selection (the `active`/`at_stage_boundary:
+   false` requirements below still apply unchanged). This is the path that exercises tier 3
+   in production today: `/thorough_plan`'s round-boundary write is the sole writer of a
+   non-empty `subphase` anywhere in the tree, and no phase writes `thorough_plan.round-N-*.done`
+   sentinels, so `thorough_plan`'s tier-2 candidate set is always empty.
+4. **what to do next** — the record's `next_action` and `notes_path`. A `notes_path` naming
+   a file that does not exist means "no notes", never an error or a reason to discard the
+   record.
+
+Re-enter at `step` only when the record is fresh (the read above returned something at
+all), `active: true`, agrees with the selected phase by string equality and agrees with the
+selected sub-phase by string equality (or, in the no-sub-phase-sentinel case above, is accepted
+directly since there is no tier-2 selection to compare against), AND
+carries `at_stage_boundary: false`; otherwise restart the sub-phase as today. This requirement is
+exactly the `at_stage_boundary: false` case of the Field invariant above — `phase` names the
+phase IN FLIGHT there, which is what makes the string-equality comparison against the
+Step-1-selected phase meaningful instead of comparing against a phase that already finished. A
+record whose `schema` exceeds the one this step knows is treated as ABSENT and Resume falls to the
+next tier.
 
 **Step 2 — announce and proceed.** Tell the user: "Resuming `<task-name>` from
 Phase N (`<phase-name>`). Phases 1–M already completed." Start from the next

@@ -647,6 +647,47 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/core/skills/run.md",
         "quoin/dev/tests/test_run_core_autonomous.py",
     ),
+    # IVG-258 T-14: run-state wiring landed across three SKILL.md files.
+    # cleanup/SKILL.md carried ZERO rows before this stage -- an edit there
+    # selected no test at all -- and run/SKILL.md and thorough_plan/SKILL.md's
+    # existing rows do not reach the new run-state wiring/precedence guards.
+    (
+        "quoin/adapters/claude/skills/cleanup/SKILL.md",
+        "quoin/dev/tests/test_cleanup_runstate_sweep.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/cleanup/SKILL.md",
+        "quoin/dev/tests/test_cleanup_sentinels.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/cleanup/SKILL.md",
+        "quoin/dev/tests/test_cleanup_skill_structure.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/cleanup/SKILL.md",
+        "quoin/dev/tests/test_sentinel_family_parity.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_run_state_wiring.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/run/SKILL.md",
+        "quoin/dev/tests/test_run_state_resume_precedence.py",
+    ),
+    (
+        "quoin/adapters/claude/skills/thorough_plan/SKILL.md",
+        "quoin/dev/tests/test_run_state_wiring.py",
+    ),
+    # The frozen POSIX-sh reader body lives outside quoin/dev/tests/ (it is a
+    # spike file, not a .py source file), so an edit to its bytes alone was
+    # NOT selectable by the generic .py-mtime rule and fell through to the
+    # "ignored" bucket, though test_run_state_writer.py round-trips against
+    # these exact bytes via the writer-to-reader interop tests.
+    (
+        "quoin/dev/spikes/run_state_read.sh",
+        "quoin/dev/tests/test_run_state_writer.py",
+    ),
 )
 
 # SKILL.md coverage residual gap (review-1.md MAJOR 2, documented-acceptance branch):

@@ -557,6 +557,20 @@ then:
 No new `[no-interactive]` sentinel parsing is added for this
 non-blocking check (it never prompts).
 
+**Round-boundary run-state refresh (third call in this boundary block, AFTER the
+`thorough_plan_checkpoint.py` invocation and the budget guard above).** `/thorough_plan`
+is a first-class standalone entry point, not only a `/run` subagent, so this call carries
+`--require-existing`: it refines a record `/run` already created and is a silent no-op
+(no file, no directory, no notes append) when there is none — a standalone `/thorough_plan`
+run therefore leaves no run-state trace of its own:
+```bash
+python3 __QUOIN_HOME__/scripts/run_state.py --write --require-existing \
+  --project-root "{root}" --task "{task}" --session-id "$_TPCKPT_SID" \
+  --phase thorough_plan --phase-index 3 --subphase "round-{N}-{plan|critic|revise}" \
+  --step "round {N} {phase} returned" --at-stage-boundary false \
+  --next-action "start thorough_plan" --artifact "{task_dir}/current-plan.md" || true
+```
+
 **`## Current stage` ownership note:** The orchestrator file is authoritative for the round/phase token
 but is NOT a reliable B3 Tier-4 fallback: in the kill-during-subagent window, B3 Tier-4 reads the
 freshest `sessions/*.md` by mtime, which is the subagent's file. Recovery: re-invoke

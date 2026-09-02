@@ -100,8 +100,14 @@ Directory tree and `forgotten/<date>.md` entry format:
 │   └── <date>.md      ← one file per day /sleep ran with forgets
 ├── trash/             ← recoverable delete archive (sentinel trash-moves land here)
 │   └── <YYYY-MM-DD>/  ←   dated subdirs, one per trash day
+├── run-state-<task>.json   ← task-keyed resume record (/run writes, /thorough_plan refines)
+├── run-notes-<task>.md[.1] ← its append-only notes log, rotated at QUOIN_RUN_NOTES_MAX_BYTES
 └── lessons-learned.md ← long-term institutional memory
 ```
+
+`run-state-<task>.json` and its `run-notes-<task>.md` companion are swept by `/cleanup`'s
+Step 5c on a 30-day age window (`QUOIN_CLEANUP_RUNSTATE_WINDOW`), same as checkpoints —
+no UUID protection, independent of `active`.
 
 Note: `trash/` accumulates sentinel files moved by `trash_move()` (in `_lib.sh`) instead of hard-deleted. The `/sleep --purge --older-than 90d` scope does not yet include `trash/` — this is a known gap (R-7); a follow-up task will extend `/sleep --purge` to cover `trash/`.
 
