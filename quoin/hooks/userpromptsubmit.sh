@@ -241,9 +241,8 @@ else
   if [ "$cmd" = "/checkpoint" ] && [ "$arg2" = "--purge" ]; then
     _purge_note=" NOTE: /checkpoint --purge is destructive and is no longer refused at high context — re-read what it will delete before continuing."
   fi
-  _msg=$(printf '[quoin-context] context at %d.%s%% — finish the current stage, prefer subagents for heavy reads, and consider /checkpoint plus a fresh session. Your prompt was also appended to pending-prompt-%s.txt.%s' \
+  _msg=$(printf '[quoin-context] context at %d.%s%% — finish the current stage, prefer subagents for heavy reads, and consider /checkpoint plus a fresh session. Your prompt was also appended to pending-prompt-%s.txt (prompt text only — no checkpoint was written).%s' \
     "$pct_int" "$pct_dec" "$session_id" "$_purge_note")
-  printf '{"systemMessage": "%s", "hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": "%s"}}\n' \
-    "$_msg" "$_msg"
+  jq -nc --arg m "$_msg" '{systemMessage: $m, hookSpecificOutput: {hookEventName: "UserPromptSubmit", additionalContext: $m}}'
   exit 0
 fi
