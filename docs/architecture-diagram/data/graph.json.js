@@ -51,7 +51,7 @@ window.__GRAPH__ = {
       "type": "hook",
       "layer": "claude-adapter",
       "summary": "UserPromptSubmit · SessionStart · SessionEnd · PreCompact · PostCompact · _lib.sh — Event-driven automation deployed to ~/.claude/hooks/.",
-      "details_md": "## Hook System\n\nBash scripts that fire on Claude Code lifecycle events:\n\n- **userpromptsubmit.sh** — context-utilization advisory/block; writes §0' pollution score\n- **sessionstart.sh** — surfaces pending-restore banner; checks end_of_day_due flag\n- **sessionend.sh** — signals end-of-day reminder (non-blocking banner)\n- **precompact.sh** — intercepts auto-compact; saves precompact checkpoint\n- **postcompact.sh** — writes compact-happened sentinel\n- **_lib.sh** — shared helpers: read_constants, compute_utilization, trash_move, pidfile ops\n\nAll hooks **fail-OPEN** (exit 0 on any error). Tunable via `QUOIN_*` env vars."
+      "details_md": "## Hook System\n\nBash scripts that fire on Claude Code lifecycle events:\n\n- **userpromptsubmit.sh** — context-utilization advisory (never blocks); writes §0' pollution score\n- **sessionstart.sh** — surfaces pending-restore banner; checks end_of_day_due flag\n- **sessionend.sh** — signals end-of-day reminder (non-blocking banner)\n- **precompact.sh** — intercepts auto-compact; saves precompact checkpoint\n- **postcompact.sh** — writes compact-happened sentinel\n- **_lib.sh** — shared helpers: read_constants, compute_utilization, trash_move, pidfile ops\n\nAll hooks **fail-OPEN** (exit 0 on any error). Tunable via `QUOIN_*` env vars."
     },
     {
       "id": "g-dispatch",

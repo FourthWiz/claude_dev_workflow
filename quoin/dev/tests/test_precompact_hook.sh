@@ -248,6 +248,79 @@ fi
 rm -f "$pending_restore_h"
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
 
+# ─── (h2) precompact A3 guard is NOT armed by a continued session (IVG-258) ───
+# The high-context prompt hook no longer seeds pending-restore-*.txt, so a
+# session that only ever hit the (now-advisory) high-context band must NOT
+# have the A3 early-skip fire on its next precompact.
+
+UPS_HOOK="$SCRIPT_DIR/../../hooks/userpromptsubmit.sh"
+TRANSCRIPT_97="$FIXTURES_DIR/transcript_97pct.jsonl"
+if [ ! -f "$TRANSCRIPT_97" ]; then
+  sh "$SCRIPT_DIR/build_hook_fixtures.sh" >/dev/null 2>&1 || true
+fi
+[ -f "$TRANSCRIPT_97" ] || { printf 'SKIP: transcript_97pct.jsonl unavailable\n' >&2; }
+
+make_ups_stdin() {
+  local prompt="$1"
+  local transcript="$2"
+  local session_id="$3"
+  local cwd="${4:-$TMPDIR_TEST}"
+  printf '{"prompt":"%s","transcript_path":"%s","session_id":"%s","cwd":"%s"}' \
+    "$prompt" "$transcript" "$session_id" "$cwd"
+}
+
+# (h2-neg) — the S-2 case: three high-context UPS fires seed no sentinel, so
+# the A3 early-skip does not fire on the following precompact.
+touch "$TMPDIR_TEST/.workflow_artifacts/memory/sessions/implement-24680.pidfile.lock"
+stdin=$(make_ups_stdin 'do some work' "$TRANSCRIPT_97" 'sess-cont' "$TMPDIR_TEST")
+i=0; while [ "$i" -lt 3 ]; do
+  printf '%s' "$stdin" | sh "$UPS_HOOK" >/dev/null 2>&1 || true
+  i=$((i + 1))
+done
+if [ ! -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-cont.txt" ]; then
+  ok "(h2-neg) three high-context UPS fires → no pending-restore-sess-cont.txt sentinel"
+else
+  fail "(h2-neg) three high-context UPS fires → unexpected pending-restore-sess-cont.txt sentinel"
+fi
+
+stdin_h2neg=$(make_stdin "auto" "sess-cont")
+out_h2neg=$(printf '%s' "$stdin_h2neg" | sh "$HOOK" 2>/dev/null)
+if printf '%s' "$out_h2neg" | grep -q '"allow"' 2>/dev/null; then
+  ok "(h2-neg) precompact after continued session → allow"
+else
+  fail "(h2-neg) precompact after continued session → expected allow, got: $out_h2neg"
+fi
+if [ "$(ls "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*-precompact.md 2>/dev/null | wc -l | awk '{print $1}')" -eq 1 ]; then
+  ok "(h2-neg) precompact after continued session → -precompact.md checkpoint WAS written (A3 did not fire)"
+else
+  fail "(h2-neg) precompact after continued session → expected exactly one -precompact.md checkpoint"
+fi
+
+# Reset between arms — mandatory, not deferred to the end of the block.
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*-precompact.md 2>/dev/null || true
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-cont.txt" 2>/dev/null || true
+
+# (h2-pos) — positive control: a pre-planted sentinel DOES arm the A3 early-skip.
+printf '/some/prior/checkpoint.md\n' > "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-cont-armed.txt"
+stdin_h2pos=$(make_stdin "auto" "sess-cont-armed")
+out_h2pos=$(printf '%s' "$stdin_h2pos" | sh "$HOOK" 2>/dev/null)
+if printf '%s' "$out_h2pos" | grep -q '"allow"' 2>/dev/null; then
+  ok "(h2-pos) precompact with pre-planted sentinel → allow"
+else
+  fail "(h2-pos) precompact with pre-planted sentinel → expected allow, got: $out_h2pos"
+fi
+if [ "$(ls "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*-precompact.md 2>/dev/null | wc -l | awk '{print $1}')" -eq 0 ]; then
+  ok "(h2-pos) precompact with pre-planted sentinel → zero -precompact.md checkpoints (A3 DID fire)"
+else
+  fail "(h2-pos) precompact with pre-planted sentinel → unexpected -precompact.md checkpoint written"
+fi
+
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/sessions/implement-24680.pidfile.lock"
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-cont.txt" 2>/dev/null || true
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-cont-armed.txt" 2>/dev/null || true
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*-precompact.md 2>/dev/null || true
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-cont.txt" 2>/dev/null || true
+
 # ─── (i) STOP_BPS default structural assertion ────────────────────────────────
 
 LIB="$SCRIPT_DIR/../../hooks/_lib.sh"

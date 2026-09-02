@@ -262,8 +262,8 @@ If AFTER_COMPACT_FLAG_PRESENT is true:
 If AFTER_COMPACT_FLAG_PRESENT is false (flag absent):
   - Proceed to Step 1.4.
 
-Note: The exemption for /checkpoint from BLOCK_BPS context blocking is at
-userpromptsubmit.sh lines 71-82. The --after-compact flag is retained for backward-compat
+Note: /checkpoint is exempt from the high-context advisory at userpromptsubmit.sh:117-134; the band no longer
+blocks, and --purge reaches the advisory, not a refusal. The --after-compact flag is retained for backward-compat
 only; compact-already-ran detection is now automatic via the dual-sentinel check in Step 1.4.
 
 ### Step 1.4: Compact-already-ran skip check
@@ -320,7 +320,7 @@ if [ -z "$util_bps" ] || ! printf '%d' "$util_bps" >/dev/null 2>&1; then
   util_bps=0   # fail-safe: fall through to Step 1.5 (no crash)
 fi
 ```
-The hook forced-save (userpromptsubmit.sh STEP C2) is the independent backstop when both util-read and the normal skill save path are unavailable.
+The panic path's own skeleton save (Step 1.45 items 1-6 below) is the independent backstop when both util-read and the normal skill save path are unavailable; precompact.sh still covers the pidfile and direct-conversation cases — there is no longer a prompt-hook forced save.
 
 **If `util_bps >= PANIC_BPS`:** Skip ALL of: Step 1 deep gathering, mid-agent check, AskUserQuestion mode selection. Write a minimal skeleton checkpoint and pending-restore sentinel using only cheap operations:
 
@@ -328,7 +328,7 @@ The hook forced-save (userpromptsubmit.sh STEP C2) is the independent backstop w
 2. **Task:** filename-derived from newest `${_PROJECT_ROOT}/.workflow_artifacts/memory/sessions/*.md` (strip `YYYY-MM-DD-` date prefix, strip `.md` suffix).
 3. **Branch:** `git -C "${_PROJECT_ROOT}" rev-parse --abbrev-ref HEAD` (|| `unknown`).
 4. **In-flight paths:** `find "${_PROJECT_ROOT}/.workflow_artifacts" -name current-plan.md -exec ls -t {} + 2>/dev/null | head -1` (same for `architecture.md`).
-5. Write skeleton checkpoint to `${_PROJECT_ROOT}/.workflow_artifacts/memory/checkpoints/<YYYY-MM-DD>T<HHMM>-<task>.md` (standard timestamped form). Use the same section set as the STEP C2 hook skeleton: `## Status`, `## Current stage`, `## Active task`, `## Branch`, `## Session ID`, `## Saved at`, `## In-flight artifacts`, `## Restore hint`.
+5. Write skeleton checkpoint to `${_PROJECT_ROOT}/.workflow_artifacts/memory/checkpoints/<YYYY-MM-DD>T<HHMM>-<task>.md` (standard timestamped form), with these section headings inline verbatim: `## Status`, `## Current stage`, `## Active task`, `## Branch`, `## Session ID`, `## Saved at`, `## In-flight artifacts`, `## Restore hint`.
 6. Write `${_PROJECT_ROOT}/.workflow_artifacts/memory/pending-restore-<sid>.txt` containing the skeleton path on line 1.
 7. Append cost-ledger row: `<uuid> | <date> | checkpoint | sonnet | task | "save (panic mode)" | 0`
 8. Release pidfile: `pidfile_release checkpoint`
@@ -1085,7 +1085,7 @@ This is the common path: user saved proactively, started fresh session, runs --r
 Skip step 4 entirely. Surface ONLY the task-state restore from step 2/3.
 Proceed directly to step 5 (sentinel cleanup — pending-restore only).
 
-**CASE B — `pending-prompt-${session_id}.txt` exists for the current session (block-recovery flow):**
+**CASE B — `pending-prompt-${session_id}.txt` exists for the current session (high-context capture flow):**
 
 Read the file. Detect format by checking for `=== BLOCKED PROMPT [...]` headers:
 
@@ -1101,23 +1101,23 @@ Read the file. Detect format by checking for `=== BLOCKED PROMPT [...]` headers:
 - **Multi-entry format (one or more `=== BLOCKED PROMPT [<timestamp>] ===` headers):**
   Parse all entries. Each entry is the text between one header line and the next header line (or end of file), with leading/trailing blank lines trimmed. Any text appearing before the first `=== BLOCKED PROMPT` header (e.g., legacy preamble from a migration-on-append) is treated as an implicit first entry with timestamp `legacy`.
 
-  **Non-replayable detection:** if a header line contains the substring `[non-replayable:`, tag that entry as `non-replayable`. Example header: `=== BLOCKED PROMPT [2026-05-30T14:22:00Z] [non-replayable:task-notification] ===`. Non-replayable entries are background agent completions (task-notifications) that were blocked by the hook — they are preserved for audit purposes but excluded from `all` replay. A user who explicitly selects a non-replayable entry by number can still replay it.
+  **Non-replayable detection:** if a header line contains the substring `[non-replayable:`, tag that entry as `non-replayable`. Example header: `=== BLOCKED PROMPT [2026-05-30T14:22:00Z] [non-replayable:task-notification] ===`. Non-replayable entries are background agent completions (task-notifications) that were captured by the prompt hook under high context — they are preserved for audit purposes but excluded from `all` replay. A user who explicitly selects a non-replayable entry by number can still replay it.
 
   Surface a numbered list:
   ```
-  <N> blocked prompt(s) were saved while context was overloaded:
+  <N> prompt(s) were captured under high context and already ran once:
     1. [<timestamp_1>] <first 80 chars of prompt_1>...
     2. [<timestamp_2>] [non-replayable] <first 80 chars of prompt_2>...
     ...
-  Replay which? [all / 1 / 2 / 1,3 / edit 1 / none]
+  Replay which? [none / all / 1 / 2 / 1,3 / edit 1] (default: none — replaying re-executes them)
   (Note: 'all' skips non-replayable entries; select by number to replay them individually.)
   ```
 
-  - `all`: emit all REPLAYABLE entries in chronological order (oldest first, separated by a blank line). **Skip** entries tagged `non-replayable` — they are background notifications, not user prompts.
-  - A single number (e.g. `2`): emit only that entry (even if tagged `non-replayable` — explicit user selection overrides the tag).
-  - Comma-separated numbers (e.g. `1,3`): emit those entries in ascending order.
+  - `none` or `n` (default): trash-move the file without replaying any entry — safe, since every entry already ran once.
+  - `all`: **re-executes** all REPLAYABLE entries in chronological order (oldest first, separated by a blank line). **Skip** entries tagged `non-replayable` — they are background notifications, not user prompts.
+  - A single number (e.g. `2`): **re-executes** only that entry (even if tagged `non-replayable` — explicit user selection overrides the tag).
+  - Comma-separated numbers (e.g. `1,3`): **re-executes** those entries in ascending order.
   - `edit N`: surface entry N in full, invite the user to paste an edited version before submitting. Wait for the user to provide the edited text, then emit that instead of the stored entry.
-  - `none` or `n`: trash-move the file without replaying any entry.
   - Invalid input: re-prompt once; on second invalid input, treat as `none`.
 
   After replaying the selected prompts, proceed to Step 5 (sentinel cleanup).

@@ -8,11 +8,11 @@ The SessionStart hook writes a sentinel file at `$TMPDIR/quoin-s4-eod-banner-<YY
 
 ## Fail-OPEN / non-aborting deploy contract
 
-Every hook exits 0 on any error (no abort). If jq is absent, hooks fail-OPEN silently (zero protection — see jq soft-required dependency below). The `userpromptsubmit.sh` block JSON is only emitted AFTER the pending-prompt file is successfully written; if the write fails, the hook exits 0 (passthrough).
+Every hook exits 0 on any error (no abort). If jq is absent, hooks fail-OPEN silently (zero protection — see jq soft-required dependency below). The `userpromptsubmit.sh` high-context advisory is only emitted AFTER the pending-prompt file is successfully written; if the write fails, the hook exits 0 (passthrough).
 
 ## Exact-token exempt-list for `userpromptsubmit.sh`
 
-The hook splits the prompt on whitespace (after stripping ALL leading whitespace including newlines and carriage returns) and matches the FIRST token verbatim. Exempt commands (the hook exits 0 immediately without threshold check): `/checkpoint`, `/compact`, `/clear`, `/help`. These are exact string matches — not regex. `/checkpointfoo` and `/checkpoint--restore` are NOT exempt (different tokens). **Destructive-subcommand exception:** `/checkpoint --purge` is the ONE documented carve-out from the exempt-list — it is treated as NON-exempt despite the `/checkpoint` first-token match, and the hook falls through to threshold logic. The rationale: `/checkpoint --purge` should NOT be runnable under ≥95% context pressure (likely-mistaken at high utilization). All other `/checkpoint` subcommands (`--restore`, no-arg) remain exempt.
+The hook splits the prompt on whitespace (after stripping ALL leading whitespace including newlines and carriage returns) and matches the FIRST token verbatim. Exempt commands (the hook exits 0 immediately without threshold check): `/checkpoint`, `/compact`, `/clear`, `/help`. These are exact string matches — not regex. `/checkpointfoo` and `/checkpoint--restore` are NOT exempt (different tokens). **Destructive-subcommand exception:** `/checkpoint --purge` is the ONE documented carve-out from the exempt-list — it is treated as NON-exempt despite the `/checkpoint` first-token match, and the hook falls through to threshold logic. Since `IVG-258 D-06` the fall-through ends in the high-context advisory rather than a refusal: the advisory adds a clause naming `--purge` as destructive, and the command still runs. The carve-out is kept so that clause is reached at all. All other `/checkpoint` subcommands (`--restore`, no-arg) remain exempt.
 
 ## STDIN capture pattern
 
@@ -50,7 +50,7 @@ Hook scripts read these values at runtime via `${QUOIN_*:-default}` parameter ex
 | `BYTES_PER_TOKEN_CONSTANT` | `8.0` | `QUOIN_BYTES_PER_TOKEN` | Bytes per token for byte-count utilization estimate (V-03 calibrated) |
 | `EFFECTIVE_CONTEXT_LIMIT` | `150000` | `QUOIN_EFFECTIVE_CONTEXT_LIMIT` | Effective token limit used as 100% denominator |
 | `STOP_THRESHOLD_BPS` | `7000` | `QUOIN_STOP_BPS` | Advisory threshold in basis-points (7000 = 70.00%) |
-| `BLOCK_THRESHOLD_BPS` | `9500` | `QUOIN_BLOCK_BPS` | Block threshold in basis-points (9500 = 95.00%) |
+| `BLOCK_THRESHOLD_BPS` | `9500` | `QUOIN_BLOCK_BPS` | High-context advisory threshold in basis-points (9500 = 95.00%) |
 | `STALE_SENTINEL_DAYS` | `7` | `QUOIN_STALE_SENTINEL_DAYS` | Days after which pending-prompt-*.txt / pending-restore-*.txt are swept; long-lived sessions may extend to 14+ |
 | `POLLUTION_THRESHOLD` | `5000` | `QUOIN_POLLUTION_THRESHOLD` | Score threshold for pollution dispatch (score = transcript_kB + weighted tool-use count); 5000 ≈ 5MB transcript or ~1MB + heavy tool use |
 | `SUBPROCESS_TIMEOUT` | `30` | `QUOIN_SUBPROCESS_TIMEOUT` | Seconds bounding `git worktree add` in `worktreecreate.sh` (and short git subprocesses in the core scripts); ~2× the observed Drive baseline. Fail-OPEN if the `timeout` binary is absent |

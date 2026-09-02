@@ -4,7 +4,7 @@
 
 | Event | Matcher | Script | Timeout | Contract |
 |-------|---------|--------|---------|----------|
-| UserPromptSubmit | `*` | `userpromptsubmit.sh` | 5s | Context utilization check; advisory or block |
+| UserPromptSubmit | `*` | `userpromptsubmit.sh` | 5s | Context utilization check; advisory only — never blocks a prompt |
 | PreCompact | `auto` | `precompact.sh` | 10s | Last-resort save; ALWAYS allows auto-compaction; writes pending-restore sentinel for direct-conversation case (no active pidfiles); sessionstart.sh surfaces the restore banner on next session start |
 | PostCompact | `auto` | `postcompact.sh` | 5s | Writes `postcompact-reset-${session_id}.txt` sentinel; `userpromptsubmit.sh` STEP 0.5 consumes it to confirm compaction occurred and trash-moves the sentinel |
 | SessionStart | `startup` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) |

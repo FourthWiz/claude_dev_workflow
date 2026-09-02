@@ -52,6 +52,27 @@ EXPECTED_CONSTANTS = {
     "QUOIN_PANIC_BPS": "10000",
 }
 
+# Pinned ten-name roster of every `${QUOIN_*:-...}` env-var override read by
+# read_constants() — a superset of EXPECTED_CONSTANTS above (which only pins
+# the six BPS/threshold-shaped defaults). Used by
+# test_read_constants_env_var_roster_unchanged() to catch an added or
+# removed constant via set-equality, not just a value change on an
+# already-known name.
+READ_CONSTANTS_ENV_VAR_ROSTER = frozenset(
+    {
+        "QUOIN_BYTES_PER_TOKEN",
+        "QUOIN_EFFECTIVE_CONTEXT_LIMIT",
+        "QUOIN_STOP_BPS",
+        "QUOIN_BLOCK_BPS",
+        "QUOIN_STALE_SENTINEL_DAYS",
+        "QUOIN_SESSIONSTART_SWEEP_DAYS",
+        "QUOIN_COMPACT_FIRST_BPS",
+        "QUOIN_PANIC_BPS",
+        "QUOIN_DISCOVERY_STALE_DAYS",
+        "QUOIN_SERENA_STALE_DAYS",
+    }
+)
+
 
 @pytest.fixture(scope="module")
 def lib_sh_text() -> str:
@@ -112,6 +133,36 @@ def test_bps_threshold_constants_unchanged(lib_sh_text: str) -> None:
         )
 
 
+def test_read_constants_env_var_roster_unchanged(lib_sh_text: str) -> None:
+    """Set-equality guard: assert the exact set of `${QUOIN_*:-...}` env-var
+    override names inside read_constants() equals the pinned ten-name roster
+    below. This is strictly stronger than the `_BPS`/`BPS`/`threshold`
+    substring tokens dropped from the git-diff corroboration test's
+    forbidden-token regex (see the comment on that test explaining why those
+    tokens were dropped): a substring test on the diff cannot catch an
+    *added* threshold constant or override (e.g. a hypothetical
+    `QUOIN_SUPPRESS_ADVISORY`) because appending a new variable to the
+    export line still passes a substring check. Set-equality does catch it —
+    any name added to or removed from read_constants() fails this test
+    immediately, and it does not false-positive on comments (only the
+    `${QUOIN_*:-...}` parameter-expansion shape is matched, not free text)."""
+    # Isolate the read_constants() function body so a `${QUOIN_*:-...}`
+    # reference elsewhere in the file (outside this function) is not folded
+    # into the roster by accident.
+    func_match = re.search(
+        r"read_constants\(\)\s*\{(.*?)\n\}", lib_sh_text, re.DOTALL
+    )
+    assert func_match, "read_constants() function body not found in hooks/_lib.sh"
+    func_body = func_match.group(1)
+    found_names = set(re.findall(r"\$\{(QUOIN_[A-Z_]+):-", func_body))
+    expected_names = set(READ_CONSTANTS_ENV_VAR_ROSTER)
+    assert found_names == expected_names, (
+        f"read_constants() env-var roster changed: found {sorted(found_names)}, "
+        f"expected {sorted(expected_names)} — a threshold constant was added, "
+        "removed, or renamed without updating this guard"
+    )
+
+
 def test_read_constants_function_present_and_unmodified_shape(lib_sh_text: str) -> None:
     """The read_constants() function itself still exists with its documented
     export line — a coarse structural check that the function wasn't
@@ -168,12 +219,14 @@ def test_hooks_dir_untouched_git_diff_if_available() -> None:
     S-04 opt-in workspace heartbeat block in sessionstart.sh) are allowed. What
     is NOT allowed is any added hook line that reintroduces the very machinery
     this guard exists to keep out: autonomous/unattended-run gating, approval
-    bypasses, advisory silencing, or a change to the context-utilization
-    threshold constants. We reject a BROAD forbidden-token set rather than only
-    the literal word "autonomous", so equivalent gating logic phrased without
-    that word (e.g. an `UNATTENDED` env gate or a `_BPS` threshold override) is
-    still caught here. Skips (does not fail) when git or a base ref is
-    unavailable — the content-check tests above are the primary,
+    bypasses, or advisory silencing. We reject a BROAD forbidden-token set
+    rather than only the literal word "autonomous", so equivalent gating logic
+    phrased without that word (e.g. an `UNATTENDED` env gate) is still caught
+    here. Context-utilization threshold constants are guarded separately by
+    the two literal-pin tests (test_bps_threshold_constants_unchanged() above
+    and test_lib_thresholds_unchanged.py), which assert the live values rather
+    than merely the absence of the token. Skips (does not fail) when git or a
+    base ref is unavailable — the content-check tests above are the primary,
     environment-independent guard."""
     import subprocess
 
@@ -208,8 +261,16 @@ def test_hooks_dir_untouched_git_diff_if_available() -> None:
         # the S-04 heartbeat), reject any ADDED line matching a broad forbidden-
         # token set — so equivalent logic phrased without the literal word
         # "autonomous" is still caught.
+        # IVG-258 S-2: the `_BPS`/`BPS`/`threshold` alternatives are dropped. They are
+        # genuinely subsumed by the four literal pins in
+        # test_bps_threshold_constants_unchanged() above and by
+        # test_lib_thresholds_unchanged.py, both of which assert the LIVE VALUES rather
+        # than merely the absence of the token. Keeping them here would make every
+        # legitimate hook edit that so much as NAMES a threshold in a comment fail this
+        # guard. `approv` and `silence` are KEPT: nothing else in the suite guards their
+        # intent.
         _FORBIDDEN = re.compile(
-            r"autonomous|unattend|approv|silence|_BPS\b|\bBPS\b|threshold",
+            r"autonomous|unattend|approv|silence",
             re.IGNORECASE,
         )
         added_forbidden = [
