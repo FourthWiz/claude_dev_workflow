@@ -55,7 +55,9 @@ read_constants() {
     PANIC_BPS=${QUOIN_PANIC_BPS:-10000}
     DISCOVERY_STALE_DAYS=${QUOIN_DISCOVERY_STALE_DAYS:-7}
     SERENA_STALE_DAYS=${QUOIN_SERENA_STALE_DAYS:-30}
-    export BPT LIMIT STOP_BPS BLOCK_BPS STALE_DAYS SESSIONSTART_SWEEP_DAYS COMPACT_FIRST_BPS PANIC_BPS DISCOVERY_STALE_DAYS SERENA_STALE_DAYS
+    RUN_STATE_STALE_DAYS=${QUOIN_RUN_STATE_STALE_DAYS:-1}
+    PRECOMPACT_NORUN_CHECKPOINT=${QUOIN_PRECOMPACT_NORUN_CHECKPOINT:-0}
+    export BPT LIMIT STOP_BPS BLOCK_BPS STALE_DAYS SESSIONSTART_SWEEP_DAYS COMPACT_FIRST_BPS PANIC_BPS DISCOVERY_STALE_DAYS SERENA_STALE_DAYS RUN_STATE_STALE_DAYS PRECOMPACT_NORUN_CHECKPOINT
 }
 
 # compute_utilization <transcript_path> — returns a basis-point INTEGER (0..10000)
@@ -316,4 +318,113 @@ resolve_project_root() {
     # Pass 3: fall back to start (today's behavior; NEVER $HOME, NEVER /).
     printf '%s\n' "$_rpr_start"
     return 0
+}
+
+# run_state_fields <file> <key>... — extract requested keys from a run-state
+# JSON record as "key=value" lines, one per requested key, in request order
+# (an absent key emits "key=" with an empty value). Single awk pass over one
+# read of the file. The record writer's sanitization guarantees the file
+# contains no backslash byte at all ('"' -> "'", '\' -> '/', C0/DEL -> space),
+# so this extractor never meets an escape sequence and does no unescaping.
+# The structural trailing comma is stripped BEFORE the quotes: the closing
+# quote is what distinguishes a structural comma from a comma that is the
+# last character of the value itself. Degrades to empty output on any
+# failure (fail-OPEN).
+run_state_fields() {
+    _rsf_file="$1"
+    shift
+    [ -n "$_rsf_file" ] || return 0
+    [ -f "$_rsf_file" ] || return 0
+    _rsf_snapshot=$(cat "$_rsf_file" 2>/dev/null)
+    [ -n "$_rsf_snapshot" ] || return 0
+    printf '%s\n' "$_rsf_snapshot" | awk -v keys="$*" '
+    BEGIN {
+        n = split(keys, order, " ")
+    }
+    {
+        line = $0
+        if (!match(line, /^[ \t]*"[^"]*"/)) next
+        key = substr(line, RSTART, RLENGTH)
+        gsub(/^[ \t]*"/, "", key)
+        gsub(/"$/, "", key)
+        rest = substr(line, RSTART + RLENGTH)
+        sub(/^: */, "", rest)
+        sub(/,$/, "", rest)
+        sub(/^"/, "", rest)
+        sub(/"$/, "", rest)
+        val[key] = rest
+    }
+    END {
+        for (i = 1; i <= n; i++) {
+            k = order[i]
+            printf "%s=%s\n", k, (k in val ? val[k] : "")
+        }
+    }
+    '
+}
+
+# run_state_select <memory_dir> <session_id> — echo the path of the freshest
+# eligible run-state-*.json record whose own session_id field equals the
+# second argument; echo nothing when no record matches. Eligibility: regular
+# file, fresher than RUN_STATE_STALE_DAYS (day-granular, deliberately
+# over-inclusive — the exact gate lives with the record writer), the
+# writer's serialized "active": true line, schema <= 1, and exact
+# session_id string equality. A record written by a different session is
+# skipped outright — there is no freshest-active fallback, because falling
+# back would attribute this session's compaction to another session's run.
+run_state_select() {
+    _rss_dir="$1"
+    _rss_sid="$2"
+    [ -n "$_rss_dir" ] || return 0
+    [ -d "$_rss_dir" ] || return 0
+    # Numeric-validate the staleness knob before it reaches arithmetic
+    # expansion or a find predicate (an unvalidated value is an
+    # arithmetic-eval injection sink under a bash /bin/sh), then strip
+    # leading zeros so a value like "010" cannot be misread as octal.
+    _rss_raw="${RUN_STATE_STALE_DAYS:-${QUOIN_RUN_STATE_STALE_DAYS:-1}}"
+    case "$_rss_raw" in
+        ''|*[!0-9]*) _rss_days=1 ;;
+        *) _rss_days="$_rss_raw" ;;
+    esac
+    while true; do
+        case "$_rss_days" in
+            0?*) _rss_days="${_rss_days#0}" ;;
+            *) break ;;
+        esac
+    done
+    # NOTE: -exec ls -t {} + can split into several ls invocations on a very
+    # large directory, yielding per-batch rather than global mtime order —
+    # harmless at realistic record counts (same latent trait as the
+    # checkpoint sweeps elsewhere in the hooks).
+    find "$_rss_dir" -maxdepth 1 -type f -name 'run-state-*.json' \
+        -mtime -$((_rss_days + 1)) -exec ls -t {} + 2>/dev/null \
+    | while IFS= read -r _rss_cand; do
+        [ -f "$_rss_cand" ] || continue
+        # Byte-exact match for the writer's serialized bool line; a
+        # hand-rolled record without the space would not match, by design.
+        grep -q '"active": true' "$_rss_cand" 2>/dev/null || continue
+        # One extractor pass per candidate covers both gate fields.
+        _rss_kv=$(run_state_fields "$_rss_cand" schema session_id)
+        [ -n "$_rss_kv" ] || continue
+        _rss_schema_line=""
+        _rss_sid_line=""
+        {
+            IFS= read -r _rss_schema_line
+            IFS= read -r _rss_sid_line
+        } <<RSSEOF
+$_rss_kv
+RSSEOF
+        _rss_schema="${_rss_schema_line#schema=}"
+        case "$_rss_schema" in
+            ''|*[!0-9]*) continue ;;
+        esac
+        [ "$_rss_schema" -le 1 ] || continue
+        # Plain string equality against the record's stored (sanitized)
+        # session_id — no grep, no pattern semantics, no metacharacter
+        # hazard. A raw id containing a quote or backslash cannot equal
+        # its own sanitized stored form, so it falls to the no-match path.
+        [ "$_rss_sid_line" = "session_id=$_rss_sid" ] || continue
+        printf '%s\n' "$_rss_cand"
+        break
+    done
 }

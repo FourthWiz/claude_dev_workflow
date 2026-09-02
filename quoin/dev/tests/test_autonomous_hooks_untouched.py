@@ -52,7 +52,7 @@ EXPECTED_CONSTANTS = {
     "QUOIN_PANIC_BPS": "10000",
 }
 
-# Pinned ten-name roster of every `${QUOIN_*:-...}` env-var override read by
+# Pinned twelve-name roster of every `${QUOIN_*:-...}` env-var override read by
 # read_constants() — a superset of EXPECTED_CONSTANTS above (which only pins
 # the six BPS/threshold-shaped defaults). Used by
 # test_read_constants_env_var_roster_unchanged() to catch an added or
@@ -70,6 +70,8 @@ READ_CONSTANTS_ENV_VAR_ROSTER = frozenset(
         "QUOIN_PANIC_BPS",
         "QUOIN_DISCOVERY_STALE_DAYS",
         "QUOIN_SERENA_STALE_DAYS",
+        "QUOIN_RUN_STATE_STALE_DAYS",
+        "QUOIN_PRECOMPACT_NORUN_CHECKPOINT",
     }
 )
 
@@ -135,7 +137,7 @@ def test_bps_threshold_constants_unchanged(lib_sh_text: str) -> None:
 
 def test_read_constants_env_var_roster_unchanged(lib_sh_text: str) -> None:
     """Set-equality guard: assert the exact set of `${QUOIN_*:-...}` env-var
-    override names inside read_constants() equals the pinned ten-name roster
+    override names inside read_constants() equals the pinned twelve-name roster
     below. This is strictly stronger than the `_BPS`/`BPS`/`threshold`
     substring tokens dropped from the git-diff corroboration test's
     forbidden-token regex (see the comment on that test explaining why those
