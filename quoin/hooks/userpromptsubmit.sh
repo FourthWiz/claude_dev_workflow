@@ -3,7 +3,7 @@
 # Deployed to ~/.claude/hooks/ by bash install.sh
 #
 # Contract: reads transcript_path, prompt, session_id, cwd from stdin JSON.
-# Checks context utilization; emits advisory at STOP_BPS or block at BLOCK_BPS.
+# Checks context utilization; emits an advisory at STOP_BPS and at BLOCK_BPS.
 # Fail-OPEN: any error → exit 0, no output.
 #
 # Shebang assertion: head -1 ... | grep -qE '^#!/bin/sh( |$)'
@@ -123,7 +123,7 @@ case "$cmd" in
     case "$arg2" in
       --purge)
         # NOT exempt — destructive subcommand falls through to threshold logic
-        # (Q-01 RESOLVED option (b): /checkpoint --purge blocked at >=95% utilization)
+        # (IVG-258: --purge reaches the high-context advisory, which names the risk)
         ;;
       *)
         # All other /checkpoint subcommands exempt (no-arg, --restore, future args)
@@ -178,9 +178,9 @@ elif [ "$util" -ge "$STOP_BPS" ] && [ "$util" -lt "$BLOCK_BPS" ]; then
     "$pct_int" "$pct_dec"
   exit 0
 else
-  # Branch (3): block range (>= BLOCK_BPS)
-  # Error-ordering invariant: block JSON emitted ONLY AFTER pending-prompt file is written.
-  # If any step fails, exit 0 (fail-OPEN — do NOT lose the user's prompt).
+  # Branch (3): high-context range (>= BLOCK_BPS)
+  # Advisory-ordering invariant: the advisory is emitted ONLY AFTER the
+  # pending-prompt file is written; if any step fails, exit 0 (fail-OPEN).
 
   # STEP A: Re-parse session_id (may already have prompt from STEP 0)
   session_id=$(printf '%s' "$STDIN" | jq -r '.session_id // empty' 2>/dev/null) || exit 0
@@ -229,67 +229,21 @@ else
     } >> "$pending_prompt_file" 2>/dev/null || exit 0
   fi
 
-  # STEP C2: Hook forced minimal save (T-02) — write skeleton checkpoint + pending-restore sentinel.
-  # Pure bash; fail-OPEN: failures here do NOT prevent STEP D block JSON emission.
-  # Error-ordering invariant preserved: STEP C2 is strictly between STEP C and STEP D.
-  # Atomic writes: skeleton and sentinel both written via tmp+mv (mirrors precompact.sh:216-221).
-  # PID suffix ($$) in skeleton filename prevents same-minute filename collision under
-  # parallel block fires (same session_id, concurrent task-notifications).
-  # A3 guard: if pending-restore-${session_id}.txt already exists, skip the skeleton write
-  # to preserve the higher-quality anchor from a prior voluntary or precompact save.
-  _blocksave_ok=0
-  _pr_file="${cwd}/.workflow_artifacts/memory/pending-restore-${session_id}.txt"
-  if [ -f "$_pr_file" ]; then
-    _blocksave_ok=1  # A3 guard: valid sentinel already exists; preserve it
-  else
-    _cp_dir="${cwd}/.workflow_artifacts/memory/checkpoints"
-    if mkdir -p "$_cp_dir" 2>/dev/null; then
-      _now=$(date -u +%Y-%m-%dT%H%M 2>/dev/null) || _now="0000-00-00T0000"
-      _date=$(printf '%s' "$_now" | cut -dT -f1)
-      _hhmm=$(printf '%s' "$_now" | cut -dT -f2)
-      _ts_iso=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _ts_iso="unknown"
-      _ss_dir="${cwd}/.workflow_artifacts/memory/sessions"
-      _latest_ss=$(ls -t "$_ss_dir"/*.md 2>/dev/null | head -1)
-      _task="unknown-task"
-      [ -n "$_latest_ss" ] && _task=$(basename "$_latest_ss" .md | sed 's/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-//')
-      _branch="unknown"
-      command -v git >/dev/null 2>&1 && _b=$(git -C "$cwd" rev-parse --abbrev-ref HEAD 2>/dev/null) && _branch="$_b"
-      _plan=$(find "${cwd}/.workflow_artifacts" -name current-plan.md -exec ls -t {} + 2>/dev/null | head -1)
-      _arch=$(find "${cwd}/.workflow_artifacts" -name architecture.md -exec ls -t {} + 2>/dev/null | head -1)
-      _cp_file="${_cp_dir}/${_date}T${_hhmm}-$$-${_task}-blocksave.md"
-      _cp_tmp="${_cp_file}.tmp"
-      {
-        printf '## Status\nblock-hook forced save (context overflow)\n\n'
-        printf '## Current stage\n(unknown - forced save)\n\n'
-        printf '## Active task\n%s\n\n' "$_task"
-        printf '## Branch\n%s\n\n' "$_branch"
-        printf '## Session ID\n%s\n\n' "$session_id"
-        printf '## Saved at\n%s\n\n' "$_ts_iso"
-        printf '## In-flight artifacts\n- current-plan.md: %s\n- architecture.md: %s\n- session-state: %s\n\n' \
-          "${_plan:-(none found)}" "${_arch:-(none found)}" "${_latest_ss:-(none found)}"
-        printf '## Restore hint\nRun /checkpoint --restore in a fresh session to resume task %s from branch %s.\n' \
-          "$_task" "$_branch"
-      } > "$_cp_tmp" 2>/dev/null && mv "$_cp_tmp" "$_cp_file" 2>/dev/null && {
-        printf '%s\n' "$_cp_file" > "${_pr_file}.tmp" 2>/dev/null \
-          && mv "${_pr_file}.tmp" "$_pr_file" 2>/dev/null \
-          && _blocksave_ok=1
-      }
-      [ "$_blocksave_ok" -eq 1 ] || printf '[quoin-ups] WARNING: block-path skeleton save failed; pending-prompt still saved\n' >&2
-    fi
-  fi
-  # fall through to STEP D regardless of _blocksave_ok — NEVER exit 0 before STEP D
-
-  # STEP D: Emit block JSON (only reaches here if STEP C succeeded)
-  # Message reflects actual saved state (_blocksave_ok=1: fresh skeleton+sentinel written;
-  # _blocksave_ok=0: pre-existing sentinel or skeleton save failed but prompt is saved).
+  # STEP D: Emit the advisory (only reaches here if STEP C succeeded).
+  # Advisory-ordering invariant (was: error-ordering invariant): the advisory
+  # names pending-prompt-{sid}.txt, so it is emitted ONLY AFTER that append
+  # succeeded. If the append failed, STEP C already exited 0 with no stdout —
+  # the prompt still reaches the model in the same turn.
+  # This branch NEVER emits a block-shaped JSON response on any path (IVG-258).
   pct_int=$((util / 100))
   pct_dec=$(printf '%02d' $((util % 100)))
-  if [ "$_blocksave_ok" -eq 1 ]; then
-    _restore_note="restore state saved (checkpoint + pending-restore sentinel)"
-  else
-    _restore_note="restore state is available (if a prior save exists)"
+  _purge_note=""
+  if [ "$cmd" = "/checkpoint" ] && [ "$arg2" = "--purge" ]; then
+    _purge_note=" NOTE: /checkpoint --purge is destructive and is no longer refused at high context — re-read what it will delete before continuing."
   fi
-  printf '{"decision": "block", "reason": "context at %d.%s%% — your prompt was saved to pending-prompt-%s.txt; %s; run /checkpoint --restore in a fresh session"}\n' \
-    "$pct_int" "$pct_dec" "$session_id" "$_restore_note"
+  _msg=$(printf '[quoin-context] context at %d.%s%% — finish the current stage, prefer subagents for heavy reads, and consider /checkpoint plus a fresh session. Your prompt was also appended to pending-prompt-%s.txt.%s' \
+    "$pct_int" "$pct_dec" "$session_id" "$_purge_note")
+  printf '{"systemMessage": "%s", "hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": "%s"}}\n' \
+    "$_msg" "$_msg"
   exit 0
 fi

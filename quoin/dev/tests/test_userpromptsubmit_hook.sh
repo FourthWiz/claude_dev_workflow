@@ -144,14 +144,27 @@ else
 fi
 
 # (g) /checkpoint--restore (no space) → NOT exempt
-# With 97% fixture → should block
-stdin=$(make_stdin '/checkpoint--restore' "$TRANSCRIPT_97" "sess-g" "$TMPDIR_TEST")
-out=$(run_hook "$stdin")
-if printf '%s' "$out" | grep -q '"decision": *"block"' 2>/dev/null || \
-   printf '%s' "$out" | jq -e '.decision == "block"' > /dev/null 2>/dev/null; then
-  ok "(g) /checkpoint--restore (no space) with 97% fixture → NOT exempt, blocked"
+# With 97% fixture → advisory only (no decision/block), and the write is proven
+if out=$(printf '%s' "$(make_stdin '/checkpoint--restore' "$TRANSCRIPT_97" "sess-g" "$TMPDIR_TEST")" | sh "$HOOK" 2>/dev/null); then rc=0; else rc=$?; fi
+if [ -z "$(printf '%s' "$out" | grep -o '"decision"')" ]; then
+  ok "(g) /checkpoint--restore (no space) with 97% fixture → NOT exempt, no decision key"
 else
-  fail "(g) /checkpoint--restore (no space) → expected block, got: $out"
+  fail "(g) /checkpoint--restore (no space) → unexpected decision key, got: $out"
+fi
+if printf '%s' "$out" | grep -q 'additionalContext' 2>/dev/null; then
+  ok "(g) /checkpoint--restore (no space) with 97% fixture → additionalContext present"
+else
+  fail "(g) /checkpoint--restore (no space) → expected additionalContext, got: $out"
+fi
+if [ -z "$(printf '%s' "$out" | grep -o -- '--purge')" ]; then
+  ok "(g) /checkpoint--restore (no space) with 97% fixture → no --purge note (negative control)"
+else
+  fail "(g) /checkpoint--restore (no space) → unexpected --purge note, got: $out"
+fi
+if [ -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-g.txt" ]; then
+  ok "(g) /checkpoint--restore (no space) with 97% fixture → pending-prompt-sess-g.txt exists"
+else
+  fail "(g) /checkpoint--restore (no space) → pending-prompt-sess-g.txt NOT written"
 fi
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-g.txt"
 
@@ -193,28 +206,44 @@ else
   fail "(k) all-whitespace prompt → unexpected output: $out"
 fi
 
-# (l) /checkpoint --purge → NOT exempt (destructive subcommand carve-out, Q-01 RESOLVED)
-# With 97% fixture → should produce block JSON
+# (l) /checkpoint --purge → NOT exempt (destructive subcommand carve-out)
+# With 97% fixture → advisory names the --purge risk (IVG-258 R-15)
 stdin=$(make_stdin '/checkpoint --purge' "$TRANSCRIPT_97" "sess-l" "$TMPDIR_TEST")
 out=$(run_hook "$stdin")
-if printf '%s' "$out" | grep -q '"decision"' 2>/dev/null; then
-  if printf '%s' "$out" | grep -q '"block"' 2>/dev/null; then
-    ok "(l) /checkpoint --purge with 97% fixture → NOT exempt, produces block JSON"
-  else
-    fail "(l) /checkpoint --purge with 97% fixture → got decision but not block: $out"
-  fi
+if [ -z "$(printf '%s' "$out" | grep -o '"decision"')" ]; then
+  ok "(l) /checkpoint --purge with 97% fixture → NOT exempt, no decision key"
 else
-  fail "(l) /checkpoint --purge with 97% fixture → expected block JSON, got: $out"
+  fail "(l) /checkpoint --purge with 97% fixture → unexpected decision key: $out"
+fi
+if printf '%s' "$out" | grep -q 'additionalContext' 2>/dev/null; then
+  ok "(l) /checkpoint --purge with 97% fixture → additionalContext present"
+else
+  fail "(l) /checkpoint --purge with 97% fixture → expected additionalContext, got: $out"
+fi
+if printf '%s' "$out" | grep -q '/checkpoint --purge is destructive' 2>/dev/null; then
+  ok "(l) /checkpoint --purge with 97% fixture → advisory names the --purge risk"
+else
+  fail "(l) /checkpoint --purge with 97% fixture → missing --purge risk note: $out"
 fi
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-l.txt"
 
 # (l2) /checkpoint    --purge (multi-space) → also NOT exempt
 stdin=$(make_stdin '/checkpoint    --purge' "$TRANSCRIPT_97" "sess-l2" "$TMPDIR_TEST")
 out=$(run_hook "$stdin")
-if printf '%s' "$out" | grep -q '"block"' 2>/dev/null; then
-  ok "(l2) '/checkpoint    --purge' multi-space → NOT exempt, blocked"
+if [ -z "$(printf '%s' "$out" | grep -o '"decision"')" ]; then
+  ok "(l2) '/checkpoint    --purge' multi-space → NOT exempt, no decision key"
 else
-  fail "(l2) '/checkpoint    --purge' multi-space → expected block: $out"
+  fail "(l2) '/checkpoint    --purge' multi-space → unexpected decision key: $out"
+fi
+if printf '%s' "$out" | grep -q 'additionalContext' 2>/dev/null; then
+  ok "(l2) '/checkpoint    --purge' multi-space → additionalContext present"
+else
+  fail "(l2) '/checkpoint    --purge' multi-space → expected additionalContext: $out"
+fi
+if printf '%s' "$out" | grep -q '/checkpoint --purge is destructive' 2>/dev/null; then
+  ok "(l2) '/checkpoint    --purge' multi-space → advisory names the --purge risk"
+else
+  fail "(l2) '/checkpoint    --purge' multi-space → missing --purge risk note: $out"
 fi
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-l2.txt"
 
@@ -262,15 +291,29 @@ else
   fail "branch(2): 88% fixture → expected advisory JSON, got: $out"
 fi
 
-# Branch (3): block — 97% fixture (bps=9700 >= 9500 BLOCK_BPS)
+# Branch (3): high-context — 97% fixture (bps=9700 >= 9500 BLOCK_BPS) — advisory, never block
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-block.txt"
 stdin=$(make_stdin 'do some work' "$TRANSCRIPT_97" "sess-block" "$TMPDIR_TEST")
-out=$(run_hook "$stdin")
-if printf '%s' "$out" | grep -q '"decision"' 2>/dev/null && \
-   printf '%s' "$out" | grep -q '"block"' 2>/dev/null; then
-  ok "branch(3): 97% fixture → block JSON"
+if out=$(printf '%s' "$stdin" | sh "$HOOK" 2>/dev/null); then rc=0; else rc=$?; fi
+if [ "$rc" -eq 0 ]; then
+  ok "branch(3): 97% fixture → hook exits 0"
 else
-  fail "branch(3): 97% fixture → expected block JSON, got: $out"
+  fail "branch(3): 97% fixture → hook exited $rc"
+fi
+if [ -z "$(printf '%s' "$out" | grep -o '"decision"')" ]; then
+  ok "branch(3): 97% fixture → no decision key (never blocks)"
+else
+  fail "branch(3): 97% fixture → unexpected decision key, got: $out"
+fi
+if printf '%s' "$out" | grep -q 'additionalContext' 2>/dev/null; then
+  ok "branch(3): 97% fixture → additionalContext present"
+else
+  fail "branch(3): 97% fixture → expected additionalContext, got: $out"
+fi
+if printf '%s' "$out" | grep -q '97\.' 2>/dev/null; then
+  ok "branch(3): 97% fixture → 97.xx% present in message"
+else
+  fail "branch(3): 97% fixture → missing 97. in message: $out"
 fi
 # Verify pending-prompt file was written
 if [ -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-block.txt" ]; then
@@ -280,7 +323,80 @@ else
 fi
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-block.txt"
 
-# ─── Error-ordering invariant ─────────────────────────────────────────────────
+# ─── (r1) acceptance criterion 3: at and above BLOCK_BPS, never block ─────────
+# Branch-(3)-only discriminator: branch (3) writes pending-prompt-*.txt on every
+# fire; branch (2) does not (measured: at 9700 the file appears, at 9701 it does
+# not — driven against the same 97% fixture).
+for _r1_case in "sess-r1-eq:9700" "sess-r1-gt:9500"; do
+  _r1_sid="${_r1_case%%:*}"
+  _r1_bps="${_r1_case##*:}"
+  rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-${_r1_sid}.txt"
+  stdin_r1=$(make_stdin 'do some work' "$TRANSCRIPT_97" "$_r1_sid" "$TMPDIR_TEST")
+  if out_r1=$(printf '%s' "$stdin_r1" | QUOIN_BLOCK_BPS="$_r1_bps" sh "$HOOK" 2>/dev/null); then rc_r1=0; else rc_r1=$?; fi
+  if [ "$rc_r1" -eq 0 ]; then
+    ok "(r1 $_r1_sid): QUOIN_BLOCK_BPS=$_r1_bps → hook exits 0"
+  else
+    fail "(r1 $_r1_sid): QUOIN_BLOCK_BPS=$_r1_bps → hook exited $rc_r1"
+  fi
+  if [ -z "$(printf '%s' "$out_r1" | grep -ow 'decision')" ]; then
+    ok "(r1 $_r1_sid): QUOIN_BLOCK_BPS=$_r1_bps → no bare 'decision' token"
+  else
+    fail "(r1 $_r1_sid): QUOIN_BLOCK_BPS=$_r1_bps → unexpected 'decision' token: $out_r1"
+  fi
+  if [ -z "$(printf '%s' "$out_r1" | grep -ow 'block')" ]; then
+    ok "(r1 $_r1_sid): QUOIN_BLOCK_BPS=$_r1_bps → no bare 'block' token"
+  else
+    fail "(r1 $_r1_sid): QUOIN_BLOCK_BPS=$_r1_bps → unexpected 'block' token: $out_r1"
+  fi
+  if printf '%s' "$out_r1" | grep -q 'additionalContext' 2>/dev/null; then
+    ok "(r1 $_r1_sid): QUOIN_BLOCK_BPS=$_r1_bps → additionalContext present"
+  else
+    fail "(r1 $_r1_sid): QUOIN_BLOCK_BPS=$_r1_bps → missing additionalContext: $out_r1"
+  fi
+  if [ "$(printf '%s\n' "$out_r1" | wc -l | awk '{print $1}')" -eq 1 ]; then
+    ok "(r1 $_r1_sid): QUOIN_BLOCK_BPS=$_r1_bps → stdout is exactly one line"
+  else
+    fail "(r1 $_r1_sid): QUOIN_BLOCK_BPS=$_r1_bps → stdout is not exactly one line: $out_r1"
+  fi
+  if printf '%s' "$out_r1" | jq -e 'type == "object"' > /dev/null 2>&1; then
+    ok "(r1 $_r1_sid): QUOIN_BLOCK_BPS=$_r1_bps → stdout parses as one JSON object"
+  else
+    fail "(r1 $_r1_sid): QUOIN_BLOCK_BPS=$_r1_bps → stdout does not parse as JSON object: $out_r1"
+  fi
+  if [ -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-${_r1_sid}.txt" ]; then
+    ok "(r1 $_r1_sid): QUOIN_BLOCK_BPS=$_r1_bps → pending-prompt-${_r1_sid}.txt exists (branch-3 discriminator)"
+  else
+    fail "(r1 $_r1_sid): QUOIN_BLOCK_BPS=$_r1_bps → pending-prompt-${_r1_sid}.txt NOT written"
+  fi
+  rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-${_r1_sid}.txt"
+done
+
+# ─── (r2) three fires, one session, no new artefacts ──────────────────────────
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-tri.txt"
+stdin_tri=$(make_stdin 'do some work' "$TRANSCRIPT_97" "sess-tri" "$TMPDIR_TEST")
+_i=0
+while [ "$_i" -lt 3 ]; do
+  printf '%s' "$stdin_tri" | sh "$HOOK" > /dev/null 2>&1 || true
+  _i=$((_i + 1))
+done
+if [ -z "$(ls "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*blocksave.md 2>/dev/null)" ]; then
+  ok "(r2) three fires → no blocksave.md checkpoint written"
+else
+  fail "(r2) three fires → unexpected blocksave.md checkpoint present"
+fi
+if [ "$(ls "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-"*.txt 2>/dev/null | wc -l | awk '{print $1}')" -eq 0 ]; then
+  ok "(r2) three fires → zero pending-restore-*.txt sentinels"
+else
+  fail "(r2) three fires → unexpected pending-restore-*.txt sentinel present"
+fi
+if [ "$(grep -c '^=== BLOCKED PROMPT' "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-tri.txt" || true)" -eq 3 ]; then
+  ok "(r2) three fires → pending-prompt-sess-tri.txt has exactly 3 headered entries"
+else
+  fail "(r2) three fires → pending-prompt-sess-tri.txt header count is not 3"
+fi
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-tri.txt"
+
+# ─── Advisory-ordering invariant ──────────────────────────────────────────────
 
 # Make the memory directory read-only so the pending-prompt write fails
 chmod 555 "$TMPDIR_TEST/.workflow_artifacts/memory" 2>/dev/null || true
@@ -289,10 +405,10 @@ out=$(run_hook "$stdin")
 # Restore permissions
 chmod 755 "$TMPDIR_TEST/.workflow_artifacts/memory" 2>/dev/null || true
 
-if [ -z "$out" ] || ! printf '%s' "$out" | grep -q '"decision"' 2>/dev/null; then
-  ok "error-ordering invariant: block JSON NOT emitted when pending-prompt write fails"
+if [ -z "$out" ]; then
+  ok "advisory-ordering invariant: stdout wholly empty when pending-prompt write fails"
 else
-  fail "error-ordering invariant: block JSON emitted even though pending-prompt write failed: $out"
+  fail "advisory-ordering invariant: stdout emitted even though pending-prompt write failed: $out"
 fi
 
 # ─── Concurrent-fire test (CRIT-3) ───────────────────────────────────────────
@@ -335,6 +451,17 @@ else
   fail "concurrent-fire: pending-prompt-sess-bbb.txt not written"
 fi
 
+if [ ! -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-aaa.txt" ]; then
+  ok "concurrent-fire: no pending-restore-sess-aaa.txt sentinel created"
+else
+  fail "concurrent-fire: unexpected pending-restore-sess-aaa.txt sentinel"
+fi
+if [ ! -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-restore-sess-bbb.txt" ]; then
+  ok "concurrent-fire: no pending-restore-sess-bbb.txt sentinel created"
+else
+  fail "concurrent-fire: unexpected pending-restore-sess-bbb.txt sentinel"
+fi
+
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-aaa.txt"
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-bbb.txt"
 
@@ -355,11 +482,16 @@ fi
 # ─── session_id missing → fail-OPEN (no block) ───────────────────────────────
 
 stdin_raw='{"prompt":"do some work","transcript_path":"'"$TRANSCRIPT_97"'","cwd":"'"$TMPDIR_TEST"'"}'
-out=$(printf '%s' "$stdin_raw" | sh "$HOOK" 2>/dev/null)
-if [ -z "$out" ] || ! printf '%s' "$out" | grep -q '"block"' 2>/dev/null; then
-  ok "session_id missing → fail-OPEN (no block JSON emitted)"
+if out=$(printf '%s' "$stdin_raw" | sh "$HOOK" 2>/dev/null); then rc=0; else rc=$?; fi
+if [ "$rc" -eq 0 ]; then
+  ok "session_id missing → fail-OPEN (exits 0)"
 else
-  fail "session_id missing → block JSON emitted despite missing session_id: $out"
+  fail "session_id missing → exited $rc"
+fi
+if [ -z "$out" ]; then
+  ok "session_id missing → fail-OPEN (stdout wholly empty)"
+else
+  fail "session_id missing → unexpected stdout despite missing session_id: $out"
 fi
 
 # ─── (p) PostCompact sentinel present → consumed (trash-moved) ───────────────
@@ -532,6 +664,70 @@ fi
 TODAY_T06=$(date -u +%Y-%m-%d 2>/dev/null) || TODAY_T06=$(date +%Y-%m-%d)
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/trash/$TODAY_T06/checkpoint-defer-${SID_G}.txt" 2>/dev/null || true
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/trash/$TODAY_T06/postcompact-reset-${SID_G}.txt" 2>/dev/null || true
+
+# ─── (r3-r6) acceptance criterion 7: fail-OPEN fixtures ──────────────────────
+
+# (r3) malformed stdin
+if out=$(printf '%s' 'not json at all {{{' | sh "$HOOK" 2>/dev/null); then rc=0; else rc=$?; fi
+if [ "$rc" -eq 0 ]; then
+  ok "(r3) malformed stdin → hook exits 0"
+else
+  fail "(r3) malformed stdin → hook exited $rc"
+fi
+if [ -z "$out" ]; then
+  ok "(r3) malformed stdin → stdout wholly empty"
+else
+  fail "(r3) malformed stdin → unexpected stdout: $out"
+fi
+
+# (r4) absent jq — shadow it on PATH (jq lives beside awk/sed/find/python3, so
+# PATH cannot be pruned)
+mkdir -p "$TMPDIR_TEST/nojq"
+printf '#!/bin/sh\nexit 127\n' > "$TMPDIR_TEST/nojq/jq"
+chmod +x "$TMPDIR_TEST/nojq/jq"
+stdin_r4=$(make_stdin 'do some work' "$TRANSCRIPT_97" "sess-r4" "$TMPDIR_TEST")
+if out=$(printf '%s' "$stdin_r4" | PATH="$TMPDIR_TEST/nojq:$PATH" sh "$HOOK" 2>/dev/null); then rc=0; else rc=$?; fi
+if [ "$rc" -eq 0 ]; then
+  ok "(r4) absent jq → hook exits 0"
+else
+  fail "(r4) absent jq → hook exited $rc"
+fi
+if [ -z "$out" ]; then
+  ok "(r4) absent jq → stdout wholly empty"
+else
+  fail "(r4) absent jq → unexpected stdout: $out"
+fi
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-r4.txt"
+
+# (r5) unreadable transcript
+UNREADABLE_TRANSCRIPT="$TMPDIR_TEST/unreadable.jsonl"
+printf '{}\n' > "$UNREADABLE_TRANSCRIPT"
+chmod 000 "$UNREADABLE_TRANSCRIPT" 2>/dev/null || true
+if [ "$(id -u)" -eq 0 ]; then
+  ok "(r5) unreadable transcript → skipped (running as root, chmod 000 does not deny reads)"
+else
+  stdin_r5=$(make_stdin 'do some work' "$UNREADABLE_TRANSCRIPT" "sess-r5" "$TMPDIR_TEST")
+  if out=$(printf '%s' "$stdin_r5" | sh "$HOOK" 2>/dev/null); then rc=0; else rc=$?; fi
+  if [ "$rc" -eq 0 ]; then
+    ok "(r5) unreadable transcript → hook exits 0"
+  else
+    fail "(r5) unreadable transcript → hook exited $rc"
+  fi
+  if [ -z "$out" ]; then
+    ok "(r5) unreadable transcript → stdout wholly empty"
+  else
+    fail "(r5) unreadable transcript → unexpected stdout: $out"
+  fi
+fi
+chmod 644 "$UNREADABLE_TRANSCRIPT" 2>/dev/null || true
+rm -f "$UNREADABLE_TRANSCRIPT"
+
+# (r7) terminal-free
+if [ "$(grep -c '/dev/tty' "$HOOK" || true)" -eq 0 ]; then
+  ok "(r7) hook never reads from /dev/tty"
+else
+  fail "(r7) hook references /dev/tty"
+fi
 
 # ─── Summary ──────────────────────────────────────────────────────────────────
 
