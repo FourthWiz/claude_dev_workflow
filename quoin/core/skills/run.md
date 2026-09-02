@@ -237,6 +237,19 @@ back one level whenever the next-more-specific answer is absent or stale.
 An entry whose age exceeds an adapter-defined freshness window is treated
 as absent, never as a decision.
 
+A reader determines what to resume from `next_action`, never from `phase`
+— `phase` names the last-completed phase (or, in the sub-phase case, the
+phase currently in flight), never the resume target, so keying resume
+logic on it conflates "already ran" with "run next." Two values of
+`next_action` are documented terminal markers that deliberately do not
+parse against the phase-name format at all: one for run completion
+(written immediately before the record is cleared) and one for a
+blocking verdict that must not be silently resumed past. A reader that
+meets either marker, or any other `next_action` value it cannot parse
+against a known phase name, treats the record as if it had returned
+nothing and falls through to the next resumability source in the tier
+order above, rather than misreading a marker as a phase to resume into.
+
 Because this record is the ONLY resumability source on a plain run, an
 adapter implementing it MUST write it only once the outcome it records is
 actually known — never before the gate or verdict that determines what
