@@ -127,6 +127,46 @@ fi
   } >> "$rs_notes_path" 2>/dev/null
 ) 2>/dev/null || true
 
+# STEP 1e: Telemetry — the "pre" half of a compaction event, appended on
+# every row (a plain-conversation compaction is still a data point for
+# compaction frequency; run fields are empty strings when no run is
+# active). The sink lives under telemetry/ so the depth-1 sentinel sweeps
+# never see it. Best-effort: a telemetry failure never changes the
+# decision or the exit code. Rotation is deliberately not handled here.
+(
+  _tel_dir="${MEMORY_DIR}/telemetry"
+  _tel_sink="${_tel_dir}/compaction-events.jsonl"
+  mkdir -p "$_tel_dir" 2>/dev/null || exit 0
+  # Probe the session id through the same jq encoder that builds the line,
+  # so the sequence count matches the escaped form as it actually appears
+  # in the sink — a raw id containing a quote or backslash never matches
+  # its own escaped form, and a fixed-string grep avoids regex semantics.
+  _tel_esc=$(jq -nc --arg s "$session_id" '$s' 2>/dev/null) || exit 0
+  _tel_seq=0
+  if [ -f "$_tel_sink" ]; then
+    _tel_seq=$(grep -F "\"session_id\":$_tel_esc" "$_tel_sink" 2>/dev/null | grep -cF '"half":"pre"' 2>/dev/null) || _tel_seq=0
+    case "$_tel_seq" in ''|*[!0-9]*) _tel_seq=0 ;; esac
+  fi
+  _tel_bytes=""
+  _tel_est=""
+  if [ -n "$transcript_path" ] && [ -r "$transcript_path" ]; then
+    _tel_bytes=$(wc -c < "$transcript_path" 2>/dev/null | awk '{print $1}') || _tel_bytes=""
+    if [ -n "$_tel_bytes" ]; then
+      _tel_est=$(awk -v b="$_tel_bytes" -v bpt="${BPT:-8.0}" 'BEGIN{ printf "%d", b / bpt }' 2>/dev/null) || _tel_est=""
+    fi
+  fi
+  _tel_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _tel_ts=$(date +%Y-%m-%dT%H:%M:%SZ)
+  jq -nc --arg half "pre" --arg sid "$session_id" --arg seq "$_tel_seq" \
+    --arg ts "$_tel_ts" --arg bb "$_tel_bytes" --arg etb "$_tel_est" \
+    --arg task "$rs_task" --arg phase "$rs_phase" --arg subphase "$rs_subphase" \
+    --arg step "$rs_step" \
+    '{half: $half, session_id: $sid, event_seq: ($seq|tonumber), ts: $ts,
+      bytes_before: (if $bb == "" then "" else ($bb|tonumber) end),
+      est_tokens_before: (if $etb == "" then "" else ($etb|tonumber) end),
+      task: $task, phase: $phase, subphase: $subphase, step: $step}' \
+    >> "$_tel_sink" 2>/dev/null || exit 0
+) 2>/dev/null || true
+
 # Pre-initialize pidfile_info to "none" so STEP 4 branching is safe in the early-skip path.
 # The early-skip path (sentinel already exists) skips the else block entirely, so pidfile
 # detection inside the else block never runs — pidfile_info stays "none". This is the
