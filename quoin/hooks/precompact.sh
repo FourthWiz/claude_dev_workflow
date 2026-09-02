@@ -94,6 +94,39 @@ $(run_state_fields "$run_state_file" task phase subphase step at_stage_boundary 
 RSEOF
 fi
 
+# STEP 1d: Run-notes append (mid-stage row only) — one block per
+# auto-compaction while an active run for this session sits between stage
+# boundaries, mirroring the record writer's own notes-block shape plus a
+# provenance line. Best-effort: the whole step is a subshell and a notes
+# failure never changes the decision or the exit code. No rotation here —
+# rotation stays with the record's Python writer.
+(
+  [ "$run_active" = "1" ] || exit 0
+  [ "$rs_at_stage_boundary" = "false" ] || exit 0
+  # Containment before any append: notes_path comes from the record and is
+  # derived from the WRITER's project root, so nothing constrains it to this
+  # hook's own memory dir. Reject traversal first — a POSIX case pattern
+  # lets * match /, so the prefix allow-list alone would pass a path that
+  # escapes through .. segments — then require the writer's own
+  # run-notes-<task>.md naming convention directly under MEMORY_DIR.
+  case "$rs_notes_path" in *..*) rs_notes_path="" ;; esac
+  case "$rs_notes_path" in "$MEMORY_DIR"/run-notes-*.md) ;; *) rs_notes_path="" ;; esac
+  [ -n "$rs_notes_path" ] || exit 0
+  # Best-effort symlink refusal: the record's Python writer refuses a
+  # symlink AND opens with O_NOFOLLOW, closing the check-to-write race;
+  # this shell check followed by >> reopens that window. Accepted for a
+  # bounded hook append — this is NOT parity with the Python writer.
+  [ ! -L "$rs_notes_path" ] || exit 0
+  _rn_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _rn_ts=$(date +%Y-%m-%dT%H:%M:%SZ)
+  {
+    printf '## %s — %s/%s\n' "$_rn_ts" "$rs_phase" "$rs_subphase"
+    printf -- '- step: %s\n' "$rs_step"
+    printf -- '- next_action: %s\n' "$rs_next_action"
+    printf -- '- source: precompact hook (compaction imminent)\n'
+    printf '\n'
+  } >> "$rs_notes_path" 2>/dev/null
+) 2>/dev/null || true
+
 # Pre-initialize pidfile_info to "none" so STEP 4 branching is safe in the early-skip path.
 # The early-skip path (sentinel already exists) skips the else block entirely, so pidfile
 # detection inside the else block never runs — pidfile_info stays "none". This is the
