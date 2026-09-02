@@ -1085,7 +1085,7 @@ This is the common path: user saved proactively, started fresh session, runs --r
 Skip step 4 entirely. Surface ONLY the task-state restore from step 2/3.
 Proceed directly to step 5 (sentinel cleanup — pending-restore only).
 
-**CASE B — `pending-prompt-${session_id}.txt` exists for the current session (block-recovery flow):**
+**CASE B — `pending-prompt-${session_id}.txt` exists for the current session (high-context capture flow):**
 
 Read the file. Detect format by checking for `=== BLOCKED PROMPT [...]` headers:
 
@@ -1105,19 +1105,19 @@ Read the file. Detect format by checking for `=== BLOCKED PROMPT [...]` headers:
 
   Surface a numbered list:
   ```
-  <N> blocked prompt(s) were saved while context was overloaded:
+  <N> prompt(s) were captured under high context and already ran once:
     1. [<timestamp_1>] <first 80 chars of prompt_1>...
     2. [<timestamp_2>] [non-replayable] <first 80 chars of prompt_2>...
     ...
-  Replay which? [all / 1 / 2 / 1,3 / edit 1 / none]
+  Replay which? [none / all / 1 / 2 / 1,3 / edit 1] (default: none — replaying re-executes them)
   (Note: 'all' skips non-replayable entries; select by number to replay them individually.)
   ```
 
-  - `all`: emit all REPLAYABLE entries in chronological order (oldest first, separated by a blank line). **Skip** entries tagged `non-replayable` — they are background notifications, not user prompts.
-  - A single number (e.g. `2`): emit only that entry (even if tagged `non-replayable` — explicit user selection overrides the tag).
-  - Comma-separated numbers (e.g. `1,3`): emit those entries in ascending order.
+  - `none` or `n` (default): trash-move the file without replaying any entry — safe, since every entry already ran once.
+  - `all`: **re-executes** all REPLAYABLE entries in chronological order (oldest first, separated by a blank line). **Skip** entries tagged `non-replayable` — they are background notifications, not user prompts.
+  - A single number (e.g. `2`): **re-executes** only that entry (even if tagged `non-replayable` — explicit user selection overrides the tag).
+  - Comma-separated numbers (e.g. `1,3`): **re-executes** those entries in ascending order.
   - `edit N`: surface entry N in full, invite the user to paste an edited version before submitting. Wait for the user to provide the edited text, then emit that instead of the stored entry.
-  - `none` or `n`: trash-move the file without replaying any entry.
   - Invalid input: re-prompt once; on second invalid input, treat as `none`.
 
   After replaying the selected prompts, proceed to Step 5 (sentinel cleanup).

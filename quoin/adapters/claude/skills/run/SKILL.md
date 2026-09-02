@@ -1534,15 +1534,17 @@ the threshold values themselves live in `hooks/_lib.sh`'s
 
 - **Self-checkpoint before the advisory band.** At `COMPACT_FIRST_BPS`
   (90% utilization) — BEFORE the 70–95% advisory band and well before the
-  95% block — the orchestrator self-invokes a checkpoint save and writes a
+  95% high-context band — the orchestrator self-invokes a checkpoint save and writes a
   `checkpoint-defer-{sid}` marker so the mid-phase advisory in the 70–95%
   band does not re-prompt for a checkpoint the orchestrator already took.
 - **There is no block to catch — the band is a pure advisory.** At and
   above `BLOCK_BPS` (95%) the prompt hook returns `additionalContext`
   plus a `systemMessage` and the prompt continues in the same turn; it
   never returns a `"decision": "block"` response on any path. The prompt
-  is still appended to `pending-prompt-{sid}.txt`, so the audit trail and
-  `/checkpoint --restore` CASE B are unchanged. The orchestrator therefore
+  is still appended to `pending-prompt-{sid}.txt`, so the on-disk audit trail is
+  unchanged; `/checkpoint --restore` CASE B's *presentation* of that trail was
+  corrected (review-1.md issue 2) to say the entries already ran rather than
+  calling them blocked. The orchestrator therefore
   has no stop signal to key on here: it reads the advisory as context,
   finishes the stage it is in, and lets platform compaction be the
   backstop. Any block-catch logic keyed on the `"decision"` / `"block"`
