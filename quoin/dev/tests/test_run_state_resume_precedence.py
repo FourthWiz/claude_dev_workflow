@@ -64,7 +64,7 @@ ALL_FIELDS = (
 
 
 def test_local_roster_matches_supervisor_roster():
-    """review-3 MINOR 14: this module's own `RESUMABLE_PHASES` duplicate
+    """This module's own `RESUMABLE_PHASES` duplicate
     (used only to drive the `_resolve_*` test-only oracle above) must stay
     in step with `quoin.supervisor.RESUMABLE_PHASES`, the single source of
     truth -- test_run_state_wiring.py pins the SKILL.md prose copy against
@@ -298,7 +298,7 @@ def test_tier2_subphase_sentinels_win_over_record(tmp_path):
 
 
 def test_tier3_no_sub_phase_sentinels_accepts_the_record_subphase_directly(tmp_path):
-    """The real production pair (review-3 MAJOR 4): `/thorough_plan`'s
+    """The real production pair: `/thorough_plan`'s
     round-boundary write is the sole writer of a non-empty `subphase`
     anywhere in the tree, and no phase writes `thorough_plan.round-N-*.done`
     sentinels -- so `thorough_plan`'s tier-2 candidate set is always empty.
@@ -530,7 +530,7 @@ def test_step_1b_prose_carries_verbatim_invariant_pins():
     assert "STRING EQUALITY" in body
     assert "at_stage_boundary: false" in body
     assert "is DISCARDED, not obeyed" in body
-    # review-3 MAJOR 4: the no-sub-phase-sentinel case must be stated, not
+    # The no-sub-phase-sentinel case must be stated, not
     # left implicit -- without it, tier 3's only production writer
     # (`/thorough_plan`'s round boundary) can never re-enter, since its
     # phase has no known sub-phase sentinel names to string-equal against.

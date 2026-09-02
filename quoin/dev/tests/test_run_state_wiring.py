@@ -35,10 +35,11 @@ def _text(path: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Call-site census (review-3 MAJOR 5) -- round 2 specified two guards, an
-# oracle rewrite AND a grep of every `--next-action` value against the phase
-# roster; only the first was built. This section adds the second, plus the
-# quoting assertion issues 2/3 showed the suite had no equivalent of either.
+# Call-site census -- an oracle rewrite alone does not catch a
+# `--next-action` value that never matches a known phase name, or a
+# call-site quoting regression; this section adds a live grep of every
+# such value against the phase roster, plus a quoting assertion over every
+# writer call site.
 # ---------------------------------------------------------------------------
 
 # Two terminal `next_action` markers that are documented NOT to parse against
@@ -237,11 +238,26 @@ END_OF_TASK_NEXT_ACTION = '--next-action "start end_of_task"'
 
 
 def test_boundary_write_follows_its_gate_sentence():
-    """review-3 MAJOR 1: a phase-boundary run-state write positioned BEFORE
-    the gate/verdict that determines it lets a plain `/run` resume skip the
-    gate -- and, on Phase 5, re-enter `end_of_task` after a
-    CHANGES_REQUESTED or BLOCKED review. Pin each write's offset strictly
-    after its gate sentence's offset within the same phase slice.
+    """A phase-boundary run-state write positioned BEFORE the gate/verdict
+    that determines it lets a plain `/run` resume skip the gate -- and, on
+    Phase 5, re-enter `end_of_task` after a CHANGES_REQUESTED or BLOCKED
+    review. Pin each write's offset strictly after its gate sentence's
+    offset within the same phase slice.
+
+    Both offsets are computed from position 0 of the slice, never chained
+    from the gate offset -- `slice.index(X, gate_idx)` only ever finds a
+    match AT OR AFTER `gate_idx` by construction, which makes `write_idx >
+    gate_idx` true whenever *any* matching call sits later in the slice,
+    including one that is not the write under test (the implement slice's
+    fast-route escalation rewind sits between its gate and its real
+    boundary write and shares the generic `WRITE_CALL` substring; the
+    review slice's "accept" branch write shares `END_OF_TASK_NEXT_ACTION`
+    with the APPROVED branch's own write). Locating each write by its own
+    unique `--next-action` value from position 0 avoids both: a value that
+    is unique within its slice can only be found at the real write's
+    offset, so a mutation that moves that write earlier is caught as a
+    genuine `write_idx < gate_idx` failure instead of being masked by a
+    different call site satisfying the assertion.
     """
     text = _text(RUN_SKILL)
     slices = _phase_heading_slices(text)
@@ -253,22 +269,26 @@ def test_boundary_write_follows_its_gate_sentence():
 
     implement_slice = slices["implement"]
     gate_idx = implement_slice.index(GATE_SENTENCE_IMPLEMENT)
-    write_idx = implement_slice.index(WRITE_CALL, gate_idx)
+    write_idx = implement_slice.index('--next-action "start review"')
     assert write_idx > gate_idx, "implement boundary write precedes its gate sentence"
 
     review_slice = slices["review"]
     gate_idx = review_slice.index(GATE_SENTENCE_REVIEW)
-    write_idx = review_slice.index(END_OF_TASK_NEXT_ACTION, gate_idx)
+    write_idx = review_slice.index(END_OF_TASK_NEXT_ACTION)
     assert write_idx > gate_idx, (
         "review's 'start end_of_task' write precedes the post-review gate sentence"
     )
 
 
 def test_review_next_action_is_verdict_conditional():
-    """The three review-verdict branches must each write a distinct,
+    """The review-verdict branches must each write a distinct,
     verdict-appropriate `next_action` -- never a single unconditional write
-    made before the verdict is known (the exact defect review-3 MAJOR 1
-    reproduced against a plain `/run` resume).
+    made before the verdict is known. The APPROVED and "accept" branches
+    both resolve through Checkpoint D, so their write is deferred past the
+    checkpoint rather than each carrying its own copy: a session lost
+    between the verdict/gate resolving and the checkpoint answer, or a
+    user who answers `no`, must not leave `next_action: start end_of_task`
+    on disk for a continuation nobody confirmed.
     """
     text = _text(RUN_SKILL)
     slices = _phase_heading_slices(text)
@@ -283,23 +303,31 @@ def test_review_next_action_is_verdict_conditional():
     approved_block = review_slice[approved_idx:changes_idx]
     changes_block = review_slice[changes_idx:blocked_idx]
     blocked_block = review_slice[blocked_idx:checkpoint_d_idx]
+    post_checkpoint_d_block = review_slice[checkpoint_d_idx:]
 
-    assert END_OF_TASK_NEXT_ACTION in approved_block
-    assert '--next-action "start implement"' in changes_block
-    assert END_OF_TASK_NEXT_ACTION in changes_block  # the "accept" sub-option
-    assert '--next-action "run blocked"' in blocked_block
+    # Neither pre-Checkpoint-D branch claims `end_of_task` is next -- that
+    # write is deferred until Checkpoint D itself resolves to continue.
+    assert END_OF_TASK_NEXT_ACTION not in approved_block
+    assert END_OF_TASK_NEXT_ACTION not in changes_block
     assert END_OF_TASK_NEXT_ACTION not in blocked_block
+    assert '--next-action "start implement"' in changes_block
+    assert '--next-action "run blocked"' in blocked_block
     assert '--next-action "start implement"' not in blocked_block
+
+    # The APPROVED-or-accepted write fires exactly once, after Checkpoint D
+    # resolves to continue -- never before either path's precondition (an
+    # APPROVED verdict with the gate PASSED, or an "accept" decision) has
+    # actually been confirmed.
+    assert post_checkpoint_d_block.count(END_OF_TASK_NEXT_ACTION) == 1
 
 
 def test_next_action_roster_census():
-    """review-3 MAJOR 5 / round-2 MAJOR 4's missing second guard: every
-    `--next-action "..."` value written anywhere in either SKILL.md must
-    parse as `start <phase>` against the known-phase roster, or be one of
-    the two documented terminal markers. Reverting `/thorough_plan` to
-    `--next-action "start round {N+1}"` (review-3 issue 5, mutation v) now
-    fails here -- `round` is not a phase name and the whole value never
-    matches `start <phase>` against the roster either.
+    """Every `--next-action "..."` value written anywhere in either
+    SKILL.md must parse as `start <phase>` against the known-phase roster,
+    or be one of the two documented terminal markers. Reverting
+    `/thorough_plan` to `--next-action "start round {N+1}"` fails here --
+    `round` is not a phase name and the whole value never matches
+    `start <phase>` against the roster either.
     """
     roster = _known_phase_roster()
     blocks = _call_blocks(_text(RUN_SKILL)) + _call_blocks(_text(THOROUGH_PLAN_SKILL))
@@ -324,11 +352,10 @@ def test_next_action_roster_census():
 
 
 def test_every_writer_call_site_quotes_its_path_flags():
-    """review-3 MAJOR 5 / issues 2 and 3: no test asserted a `run_state.py`
-    call site quotes `--project-root`, `--task`, or `--artifact`, which is
-    why the two quoting defects shipped green through two rounds. Every
-    `--write`/`--clear` call site that carries one of these three flags must
-    quote its value.
+    """A `run_state.py` call site that leaves `--project-root`, `--task`,
+    or `--artifact` unquoted breaks on any project path containing a
+    space. Every `--write`/`--clear` call site that carries one of these
+    three flags must quote its value.
     """
     blocks = _call_blocks(_text(RUN_SKILL)) + _call_blocks(_text(THOROUGH_PLAN_SKILL))
     assert blocks, "no run_state.py --write/--clear call sites found"
@@ -345,10 +372,9 @@ def test_every_writer_call_site_quotes_its_path_flags():
 
 
 def test_resume_fallthrough_sentence_is_pinned_verbatim():
-    """review-3 MAJOR 5's second half: pin the reader's fall-through
-    sentence verbatim alongside the four existing invariant pins, so
-    deleting it (mutation vi) fails this test directly rather than only
-    behaviourally.
+    """Pin the reader's fall-through sentence verbatim alongside the four
+    existing invariant pins, so deleting it fails this test directly
+    rather than only behaviourally.
     """
     text = _text(RUN_SKILL)
     assert (
@@ -357,7 +383,7 @@ def test_resume_fallthrough_sentence_is_pinned_verbatim():
 
 
 def test_step1_prose_roster_matches_supervisor_roster():
-    """review-3 MINOR 14: Step 1's phase roster is hand-copied into prose
+    """Step 1's phase roster is hand-copied into prose
     (the 'known phase names' parenthetical) and duplicated again as a local
     `RESUMABLE_PHASES` tuple in test_run_state_resume_precedence.py.
     Nothing previously asserted the two stay in step. Parse the prose
