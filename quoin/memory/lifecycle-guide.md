@@ -107,7 +107,12 @@ Directory tree and `forgotten/<date>.md` entry format:
 
 `run-state-<task>.json` and its `run-notes-<task>.md` companion are swept by `/cleanup`'s
 Step 5c on a 30-day age window (`QUOIN_CLEANUP_RUNSTATE_WINDOW`), same as checkpoints —
-no UUID protection, independent of `active`.
+no UUID protection, independent of `active`. `run-notes-<task>.md` also has a
+second appender: `precompact.sh` adds one block per auto-compaction while a fresh active
+record for the compacting session says `at_stage_boundary: false` — including on the
+early-skip path where a voluntary checkpoint sentinel already exists. The hook never
+rewrites the JSON record and never rotates the notes file (rotation stays with the
+record's Python writer).
 
 Note: `trash/` accumulates sentinel files moved by `trash_move()` (in `_lib.sh`) instead of hard-deleted. The `/sleep --purge --older-than 90d` scope does not yet include `trash/` — this is a known gap (R-7); a follow-up task will extend `/sleep --purge` to cover `trash/`.
 
