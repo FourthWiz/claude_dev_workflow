@@ -57,7 +57,7 @@ assumed.
 
 | # | Glob (byte-identical) | Writer | Reader / consumer | Deleter | Window / lifetime |
 |---|---|---|---|---|---|
-| 1 | `pending-restore-*.txt` | `/checkpoint` save mode, Step 3 (restore sub-mode only) `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:511-518]`; also written by `precompact.sh` non-blocking path `[src: quoin/hooks/precompact.sh:284]`; also by `thorough_plan_checkpoint.py::_write_sentinel` `[src: quoin/core/scripts/thorough_plan_checkpoint.py:190]`. Since `IVG-258 D-05` the `userpromptsubmit.sh` high-context branch is NOT a writer of this family: a high-context prompt no longer seeds the sentinel, so `sessionstart.sh` STEP 3a/4 shows no restore banner for that path; `precompact.sh` and voluntary `/checkpoint` remain the seeding paths. | `/checkpoint --restore` picker Tier 1 fast path and Tier 3 full enumeration `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:706, 806]`; `sessionstart.sh` STEP 3a/4 banner `[src: quoin/hooks/sessionstart.sh:160-183]` | `/checkpoint --restore` Step 5 on successful restore `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:1155-1185]`; age-based sweep in `/cleanup` / `sessionstart.sh` STEP 2 `[src: quoin/hooks/sessionstart.sh:120-148]` | Picker enumeration window `QUOIN_RESTORE_SENTINEL_WINDOW` (default 7d) `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:713]`; cleanup sweep `QUOIN_CLEANUP_SENTINEL_WINDOW` (default 1d) `[src: quoin/hooks/_lib.sh (referenced value) / quoin/adapters/claude/skills/checkpoint/SKILL.md:313]` |
+| 1 | `pending-restore-*.txt` | `/checkpoint` save mode, Step 3 (restore sub-mode only) `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:511-518]`; also written by `precompact.sh`, but only on its no-run/no-pidfile row and only under `QUOIN_PRECOMPACT_NORUN_CHECKPOINT=1` (default 0 — since `IVG-258 S-3` a plain conversation writes no sentinel; an active run or skill pidfiles never write this family) `[src: quoin/hooks/precompact.sh:391]`; also by `thorough_plan_checkpoint.py::_write_sentinel` `[src: quoin/core/scripts/thorough_plan_checkpoint.py:190]`. Since `IVG-258 D-05` the `userpromptsubmit.sh` high-context branch is NOT a writer of this family: a high-context prompt no longer seeds the sentinel, so `sessionstart.sh` STEP 3a/4 shows no restore banner for that path; voluntary `/checkpoint` remains a seeding path; since `IVG-258 S-3`, `precompact.sh` seeds it only under `QUOIN_PRECOMPACT_NORUN_CHECKPOINT=1`. | `/checkpoint --restore` picker Tier 1 fast path and Tier 3 full enumeration `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:706, 806]`; `sessionstart.sh` STEP 3a/4 banner `[src: quoin/hooks/sessionstart.sh:160-183]` | `/checkpoint --restore` Step 5 on successful restore `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:1155-1185]`; age-based sweep in `/cleanup` / `sessionstart.sh` STEP 2 `[src: quoin/hooks/sessionstart.sh:120-148]` | Picker enumeration window `QUOIN_RESTORE_SENTINEL_WINDOW` (default 7d) `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:713]`; cleanup sweep `QUOIN_CLEANUP_SENTINEL_WINDOW` (default 1d) `[src: quoin/hooks/_lib.sh (referenced value) / quoin/adapters/claude/skills/checkpoint/SKILL.md:313]` |
 | 2 | `pending-prompt-*.txt` | `userpromptsubmit.sh` STEP C, high-context advisory branch `[src: quoin/hooks/userpromptsubmit.sh:200-230]` | `/checkpoint --restore` Step 4 (CASE A/B/C) `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:1096-1153]`; also Tier 2 cross-reference in the picker `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:710-753]`. **Behaviour delta (review-1.md issue 3, round 2):** since `IVG-258 D-05` this family is written without a paired `pending-restore-{sid}.txt` (row 1's Writer cell — the writer that used to pair them, `userpromptsubmit.sh` STEP C2, was removed). `checkpoint_picker.py`'s Tier 2 fast path (`_tier2_scan`, `[src: quoin/core/scripts/checkpoint_picker.py:283-291]`) requires that pairing to anchor; a high-context session now has no paired sentinel, so Tier 2 finds no anchor and the picker degrades to Tier 3 full enumeration for that session — a graceful degrade, not breakage, but a genuine loss of Tier 2's only automatic producer. Also unchanged since D-05: `QUOIN_EFFECTIVE_CONTEXT_LIMIT` (default 150000, `[src: quoin/hooks/_lib.sh:49]`) is a toolkit-chosen denominator, not the model's real context window, so this family can now be the *only* durable trace of a high-context session that dies before platform auto-compaction ever fires — see `findings-s2.md` deltas 2-3 for the full analysis. | `/checkpoint --restore` Step 5 (trash-move on CASE B `y`/`n`, or CASE C `delete`) `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:1155-1159]` | Tier-2 enumeration window `QUOIN_RESTORE_SENTINEL_WINDOW` (default 7d), same knob as row 1 `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:713]` |
 | 3 | `compact-happened-*.txt` | `postcompact.sh` `[src: quoin/hooks/postcompact.sh:42-44]` | `/checkpoint` save-mode Step 1.4 dual-sentinel skip check `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:224-241]`; restore-mode Step 1.5 same-session detection `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:1015-1023]` | Not explicitly trash-moved by name in any file read for this spec; `userpromptsubmit.sh` STEP 0.5 explicitly comments that it is "Preserved (intentionally NOT moved here): compact-happened-${_ups_sid}.txt (read by /checkpoint Step 1.4)" `[src: quoin/hooks/userpromptsubmit.sh:47]`. As one of the 9 families it is still in scope for the generic age-based `/cleanup` / `sessionstart.sh` sweep `[src: quoin/hooks/sessionstart.sh:120-148]` | Age-based sweep only: `SESSIONSTART_SWEEP_DAYS` (default 1d, when session_id known) or `STALE_DAYS`/`QUOIN_STALE_SENTINEL_DAYS` (default 7d, fallback) `[src: quoin/hooks/_lib.sh:52-53]` |
 | 4 | `mid-agent-handoff-*.txt` | `/checkpoint` save mode Step 4c `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:588-609]` | `sessionstart.sh` STEP 3c banner `[src: quoin/hooks/sessionstart.sh:171-172, 199-204]` | No explicit read-then-delete found; relies on the age-based `sentinel_globs()` sweep in `sessionstart.sh` STEP 2 `[src: quoin/hooks/sessionstart.sh:120-148]` | Same age-based sweep as row 3 |
@@ -190,7 +190,7 @@ Two independent scripts/skills write into `.workflow_artifacts/memory/checkpoint
    `<YYYY-MM-DD>T<HHMM>-<task-name>.md` (voluntary save)
    `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:446-448]`, or
    `<YYYY-MM-DD>-<active_task>-precompact.md` (precompact hook save)
-   `[src: quoin/hooks/precompact.sh:161]`, or a panic-mode skeleton using the same
+   `[src: quoin/hooks/precompact.sh:274]`, or a panic-mode skeleton using the same
    timestamped shape as the voluntary form
    `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:269]`.
 2. **`thorough_plan_checkpoint.py`** — writes a single fixed filename per session:
@@ -453,15 +453,21 @@ So: **neither sentinel alone triggers the skip** — only their conjunction does
 **`precompact.sh`/`postcompact.sh` sentinel roles:**
 - `precompact.sh` fires on the `PreCompact` hook event, but only for **auto** triggers — a
   `manual` trigger (`/compact` typed by the user) passes through immediately with no sentinel
-  activity `[src: quoin/hooks/precompact.sh:26-29]`. For auto triggers, if a
+  activity `[src: quoin/hooks/precompact.sh:29-31]`. For auto triggers, if a
   `pending-restore-${session_id}.txt` already exists (a voluntary `/checkpoint` ran earlier
   this session), the hook **skips** writing its own `-precompact.md` checkpoint entirely, to
-  avoid creating an orphaned duplicate `[src: quoin/hooks/precompact.sh:75-77]`. Otherwise it
-  writes a full `-precompact.md` checkpoint, and then, only if **no** skill pidfiles are
-  active (direct-conversation mode), writes the `pending-restore-${session_id}.txt` sentinel
-  pointing at that file `[src: quoin/hooks/precompact.sh:273-289]`. If pidfiles ARE active,
-  it allows the compaction with no new sentinel — "workflow must continue"
-  `[src: quoin/hooks/precompact.sh:257-259]`.
+  avoid creating an orphaned duplicate `[src: quoin/hooks/precompact.sh:181-182]`. Otherwise the
+  checkpoint write is gated on a three-row truth table (`IVG-258 S-3`), branched after the
+  write `[src: quoin/hooks/precompact.sh:385]`:
+
+  | Row | Condition | `-precompact.md` checkpoint | `pending-restore-${session_id}.txt` |
+  |---|---|---|---|
+  | 1 | fresh active `run-state-*.json` record whose `session_id` matches this session | written | not written — the run resumes via its own record |
+  | 2 | skill pidfiles present (no matching record) | written | not written — workflow must continue |
+  | 3 | neither (plain conversation) | not written | not written; `QUOIN_PRECOMPACT_NORUN_CHECKPOINT=1` restores checkpoint + sentinel `[src: quoin/hooks/precompact.sh:389-394]` |
+
+  The row-3 sentinel (knob on) points at the checkpoint the same invocation wrote
+  `[src: quoin/hooks/precompact.sh:391]`; rows 1 and 2 never write this family.
 - `postcompact.sh` fires after compaction completes and has **no decision control** — it
   writes two side-effect sentinels unconditionally (given a valid `session_id`):
   `postcompact-reset-${session_id}.txt` (transient, consumed on next prompt by
