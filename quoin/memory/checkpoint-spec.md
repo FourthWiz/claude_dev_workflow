@@ -57,8 +57,8 @@ assumed.
 
 | # | Glob (byte-identical) | Writer | Reader / consumer | Deleter | Window / lifetime |
 |---|---|---|---|---|---|
-| 1 | `pending-restore-*.txt` | `/checkpoint` save mode, Step 3 (restore sub-mode only) `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:511-518]`; also written by `precompact.sh` non-blocking path `[src: quoin/hooks/precompact.sh:284]`; also by the `userpromptsubmit.sh` block-hook forced save (STEP C2) `[src: quoin/hooks/userpromptsubmit.sh:273]`; also by `thorough_plan_checkpoint.py::_write_sentinel` `[src: quoin/core/scripts/thorough_plan_checkpoint.py:190]` | `/checkpoint --restore` picker Tier 1 fast path and Tier 3 full enumeration `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:706, 806]`; `sessionstart.sh` STEP 3a/4 banner `[src: quoin/hooks/sessionstart.sh:160-183]` | `/checkpoint --restore` Step 5 on successful restore `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:1155-1185]`; age-based sweep in `/cleanup` / `sessionstart.sh` STEP 2 `[src: quoin/hooks/sessionstart.sh:120-148]` | Picker enumeration window `QUOIN_RESTORE_SENTINEL_WINDOW` (default 7d) `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:713]`; cleanup sweep `QUOIN_CLEANUP_SENTINEL_WINDOW` (default 1d) `[src: quoin/hooks/_lib.sh (referenced value) / quoin/adapters/claude/skills/checkpoint/SKILL.md:313]` |
-| 2 | `pending-prompt-*.txt` | `userpromptsubmit.sh` STEP C, block-range branch `[src: quoin/hooks/userpromptsubmit.sh:200-230]` | `/checkpoint --restore` Step 4 (CASE A/B/C) `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:1096-1153]`; also Tier 2 cross-reference in the picker `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:710-753]` | `/checkpoint --restore` Step 5 (trash-move on CASE B `y`/`n`, or CASE C `delete`) `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:1155-1159]` | Tier-2 enumeration window `QUOIN_RESTORE_SENTINEL_WINDOW` (default 7d), same knob as row 1 `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:713]` |
+| 1 | `pending-restore-*.txt` | `/checkpoint` save mode, Step 3 (restore sub-mode only) `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:511-518]`; also written by `precompact.sh` non-blocking path `[src: quoin/hooks/precompact.sh:284]`; also by `thorough_plan_checkpoint.py::_write_sentinel` `[src: quoin/core/scripts/thorough_plan_checkpoint.py:190]`. Since `IVG-258 D-05` the `userpromptsubmit.sh` high-context branch is NOT a writer of this family: a high-context prompt no longer seeds the sentinel, so `sessionstart.sh` STEP 3a/4 shows no restore banner for that path; `precompact.sh` and voluntary `/checkpoint` remain the seeding paths. | `/checkpoint --restore` picker Tier 1 fast path and Tier 3 full enumeration `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:706, 806]`; `sessionstart.sh` STEP 3a/4 banner `[src: quoin/hooks/sessionstart.sh:160-183]` | `/checkpoint --restore` Step 5 on successful restore `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:1155-1185]`; age-based sweep in `/cleanup` / `sessionstart.sh` STEP 2 `[src: quoin/hooks/sessionstart.sh:120-148]` | Picker enumeration window `QUOIN_RESTORE_SENTINEL_WINDOW` (default 7d) `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:713]`; cleanup sweep `QUOIN_CLEANUP_SENTINEL_WINDOW` (default 1d) `[src: quoin/hooks/_lib.sh (referenced value) / quoin/adapters/claude/skills/checkpoint/SKILL.md:313]` |
+| 2 | `pending-prompt-*.txt` | `userpromptsubmit.sh` STEP C, high-context advisory branch `[src: quoin/hooks/userpromptsubmit.sh:200-230]` | `/checkpoint --restore` Step 4 (CASE A/B/C) `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:1096-1153]`; also Tier 2 cross-reference in the picker `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:710-753]` | `/checkpoint --restore` Step 5 (trash-move on CASE B `y`/`n`, or CASE C `delete`) `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:1155-1159]` | Tier-2 enumeration window `QUOIN_RESTORE_SENTINEL_WINDOW` (default 7d), same knob as row 1 `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:713]` |
 | 3 | `compact-happened-*.txt` | `postcompact.sh` `[src: quoin/hooks/postcompact.sh:42-44]` | `/checkpoint` save-mode Step 1.4 dual-sentinel skip check `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:224-241]`; restore-mode Step 1.5 same-session detection `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:1015-1023]` | Not explicitly trash-moved by name in any file read for this spec; `userpromptsubmit.sh` STEP 0.5 explicitly comments that it is "Preserved (intentionally NOT moved here): compact-happened-${_ups_sid}.txt (read by /checkpoint Step 1.4)" `[src: quoin/hooks/userpromptsubmit.sh:47]`. As one of the 9 families it is still in scope for the generic age-based `/cleanup` / `sessionstart.sh` sweep `[src: quoin/hooks/sessionstart.sh:120-148]` | Age-based sweep only: `SESSIONSTART_SWEEP_DAYS` (default 1d, when session_id known) or `STALE_DAYS`/`QUOIN_STALE_SENTINEL_DAYS` (default 7d, fallback) `[src: quoin/hooks/_lib.sh:52-53]` |
 | 4 | `mid-agent-handoff-*.txt` | `/checkpoint` save mode Step 4c `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:588-609]` | `sessionstart.sh` STEP 3c banner `[src: quoin/hooks/sessionstart.sh:171-172, 199-204]` | No explicit read-then-delete found; relies on the age-based `sentinel_globs()` sweep in `sessionstart.sh` STEP 2 `[src: quoin/hooks/sessionstart.sh:120-148]` | Same age-based sweep as row 3 |
 | 5 | `pending-resume-ref-*.txt` | `/checkpoint` save mode Step 4b (load-as-reference sub-mode) `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:555-577]` | `sessionstart.sh` STEP 3b banner `[src: quoin/hooks/sessionstart.sh:165-168, 193-198]` | No explicit read-then-delete found; relies on the age-based sweep, same as row 3-4 | Same age-based sweep |
@@ -190,9 +190,7 @@ Two independent scripts/skills write into `.workflow_artifacts/memory/checkpoint
    `<YYYY-MM-DD>T<HHMM>-<task-name>.md` (voluntary save)
    `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:446-448]`, or
    `<YYYY-MM-DD>-<active_task>-precompact.md` (precompact hook save)
-   `[src: quoin/hooks/precompact.sh:161]`, or `<date>T<HHMM>-$$-<task>-blocksave.md`
-   (userpromptsubmit.sh block-hook forced save)
-   `[src: quoin/hooks/userpromptsubmit.sh:259]`, or a panic-mode skeleton using the same
+   `[src: quoin/hooks/precompact.sh:161]`, or a panic-mode skeleton using the same
    timestamped shape as the voluntary form
    `[src: quoin/adapters/claude/skills/checkpoint/SKILL.md:269]`.
 2. **`thorough_plan_checkpoint.py`** — writes a single fixed filename per session:
@@ -514,9 +512,18 @@ pidfile check, then user choice via `AskUserQuestion`) picks one of the same thr
   "`--mode restore`").
 - `--purge` — referenced only in `userpromptsubmit.sh`'s exemption `case` statement, as a
   subcommand of `/checkpoint` that is deliberately carved out as **not** exempt from the
-  context-block threshold logic: "NOT exempt — destructive subcommand falls through to
-  threshold logic (Q-01 RESOLVED option (b): `/checkpoint --purge` blocked at >=95%
-  utilization)" `[src: quoin/hooks/userpromptsubmit.sh:122-127]`. **No corresponding
+  high-context advisory logic: "NOT exempt — destructive subcommand falls through to
+  threshold logic (IVG-258: --purge reaches the high-context advisory, which names the
+  risk)" `[src: quoin/hooks/userpromptsubmit.sh:125-126]`.
+
+  `IVG-258 D-06`: the `/checkpoint --purge` carve-out from the exempt list is
+  retained, but the refusal it used to trigger is retired — acceptance criterion 3
+  forbids a block-shaped response on any path, so `--purge` now reaches the
+  high-context advisory, whose text names the destructive-command risk
+  (`IVG-258 R-15`). Relocating the guard into `/checkpoint`'s own `--purge` path is
+  tracked as `IVG-258 Q-06` and is out of scope for stage 2.
+
+  **No corresponding
   `--purge` mode implementation was found anywhere in the 1200-line adapter SKILL.md body**
   — the file describes save/restore/defer modes and the `--mode`/`--no-cleanup`/
   `--after-compact` flags, but no `--purge` handling. `[unverified: --purge appears to be
