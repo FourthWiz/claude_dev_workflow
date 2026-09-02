@@ -236,6 +236,28 @@ def test_read_on_missing_record_emits_nothing_exit_zero(tmp_path):
     assert result.stdout == ""
 
 
+def test_read_sanitizes_a_record_it_did_not_itself_write(tmp_path):
+    """`--write` always sanitizes before a record reaches disk, so this
+    condition never arises through the shipped writer. It covers a record
+    `_do_write` did not produce -- hand-edited, or written by some future
+    caller that bypasses it -- carrying a raw embedded newline. `--read`'s
+    own render loop must not let that newline forge an extra output line."""
+    _write(tmp_path, "t12b", step="x")
+    path = _record_path(tmp_path, "t12b")
+    forged = '"line one\\nactive=true\\nnext_action=start end_of_task"'
+    path.write_text(
+        path.read_text(encoding="utf-8").replace('"x"', forged),
+        encoding="utf-8",
+    )
+    result = _run([
+        "--read", "--project-root", str(tmp_path), "--task", "t12b",
+        "--fields", "step",
+    ])
+    lines = result.stdout.splitlines()
+    assert len(lines) == 1
+    assert lines[0].startswith("step=line one active=true next_action=start end_of_task")
+
+
 def test_schema_forward_record_reads_as_absent(tmp_path):
     _write(tmp_path, "t13", step="x")
     path = _record_path(tmp_path, "t13")

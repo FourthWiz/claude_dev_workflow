@@ -24,7 +24,12 @@ JSON. The output alphabet is escape-free by construction: every free-text
 value is sanitized (quote/backslash/control-byte substitution, then a
 length cap) ONCE in ``_do_write`` before either consumer sees it -- the
 record and its companion ``run-notes-{task}.md`` block share the same
-sanitized value, so an embedded newline can forge a line in neither. The
+sanitized value, so an embedded newline can forge a line in neither. This
+describes ``_do_write``'s two consumers specifically; ``--read``'s own
+render loop applies the same ``_sanitize`` pass independently (see
+``_do_read``), so a record this module did not itself write — hand-edited,
+or produced by some future caller that bypasses ``_do_write`` — cannot
+forge an extra line on the read side either. The
 record is written with ``ensure_ascii=False``, so the companion POSIX-`sh`
 reader (``quoin/dev/spikes/run_state_read.sh``) — which does no JSON
 unescaping — never meets a byte it cannot extract with a plain `sed`/`awk`
@@ -417,9 +422,14 @@ def _do_read(args) -> int:
         if isinstance(value, bool):
             rendered = "true" if value else "false"
         elif isinstance(value, list):
-            rendered = ",".join(str(v) for v in value)
+            rendered = ",".join(_sanitize(v) for v in value)
         else:
-            rendered = "" if value is None else str(value)
+            # Sanitize even a record this module did not itself write --
+            # _sanitize is idempotent, so this is a no-op for a value
+            # _do_write already sanitized, and it strips any embedded
+            # newline/control byte a hand-edited or otherwise-produced
+            # record might carry, so it cannot forge an extra output line.
+            rendered = "" if value is None else _sanitize(value)
         lines.append(f"{field}={rendered}")
     if lines:
         print("\n".join(lines))
