@@ -168,12 +168,14 @@ def test_hooks_dir_untouched_git_diff_if_available() -> None:
     S-04 opt-in workspace heartbeat block in sessionstart.sh) are allowed. What
     is NOT allowed is any added hook line that reintroduces the very machinery
     this guard exists to keep out: autonomous/unattended-run gating, approval
-    bypasses, advisory silencing, or a change to the context-utilization
-    threshold constants. We reject a BROAD forbidden-token set rather than only
-    the literal word "autonomous", so equivalent gating logic phrased without
-    that word (e.g. an `UNATTENDED` env gate or a `_BPS` threshold override) is
-    still caught here. Skips (does not fail) when git or a base ref is
-    unavailable — the content-check tests above are the primary,
+    bypasses, or advisory silencing. We reject a BROAD forbidden-token set
+    rather than only the literal word "autonomous", so equivalent gating logic
+    phrased without that word (e.g. an `UNATTENDED` env gate) is still caught
+    here. Context-utilization threshold constants are guarded separately by
+    the two literal-pin tests (test_bps_threshold_constants_unchanged() above
+    and test_lib_thresholds_unchanged.py), which assert the live values rather
+    than merely the absence of the token. Skips (does not fail) when git or a
+    base ref is unavailable — the content-check tests above are the primary,
     environment-independent guard."""
     import subprocess
 
@@ -208,8 +210,16 @@ def test_hooks_dir_untouched_git_diff_if_available() -> None:
         # the S-04 heartbeat), reject any ADDED line matching a broad forbidden-
         # token set — so equivalent logic phrased without the literal word
         # "autonomous" is still caught.
+        # IVG-258 S-2: the `_BPS`/`BPS`/`threshold` alternatives are dropped. They are
+        # genuinely subsumed by the four literal pins in
+        # test_bps_threshold_constants_unchanged() above and by
+        # test_lib_thresholds_unchanged.py, both of which assert the LIVE VALUES rather
+        # than merely the absence of the token. Keeping them here would make every
+        # legitimate hook edit that so much as NAMES a threshold in a comment fail this
+        # guard. `approv` and `silence` are KEPT: nothing else in the suite guards their
+        # intent.
         _FORBIDDEN = re.compile(
-            r"autonomous|unattend|approv|silence|_BPS\b|\bBPS\b|threshold",
+            r"autonomous|unattend|approv|silence",
             re.IGNORECASE,
         )
         added_forbidden = [
