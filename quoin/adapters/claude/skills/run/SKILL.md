@@ -1577,8 +1577,9 @@ the threshold values themselves live in `hooks/_lib.sh`'s
   Called project-scoped (no `SESSION_ID` argument, matching `D-27`'s
   project-wide question for every consumer). `PROBE_INACTIVE` is the ONLY
   outcome that skips the save. `GUARD_UNAVAILABLE` — the guard is absent
-  (the helper did not source, or the resolved root is empty or has no
-  `.workflow_artifacts/memory` directory) — and `PROBE_ACTIVE` both mean
+  (the helper did not source, or the resolved root is empty, or its
+  `.workflow_artifacts/memory` directory is missing or unreadable) — and
+  `PROBE_ACTIVE` both mean
   the self-checkpoint fires exactly as it does today. This is the
   deliberate fail-safe direction (`D-28`): an undefined, unreachable, or
   unresolvable probe must never silently kill the 90% self-checkpoint,
