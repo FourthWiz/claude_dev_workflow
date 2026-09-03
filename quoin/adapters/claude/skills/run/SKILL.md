@@ -1556,9 +1556,52 @@ the threshold values themselves live in `hooks/_lib.sh`'s
 
 - **Self-checkpoint before the advisory band.** At `COMPACT_FIRST_BPS`
   (90% utilization) — BEFORE the 70–95% advisory band and well before the
-  95% high-context band — the orchestrator self-invokes a checkpoint save and writes a
-  `checkpoint-defer-{sid}` marker so the mid-phase advisory in the 70–95%
-  band does not re-prompt for a checkpoint the orchestrator already took.
+  95% high-context band — the orchestrator self-invokes a checkpoint save
+  UNLESS `run_state_probe` (`hooks/_lib.sh`) confirms no active run-state
+  record exists project-wide. The check:
+  ```sh
+  . __QUOIN_HOME__/hooks/_lib.sh 2>/dev/null || true
+  if ! command -v run_state_probe >/dev/null 2>&1; then
+    echo GUARD_UNAVAILABLE
+  else
+    _rs_root=$(resolve_project_root "$(pwd)")
+    if [ -z "$_rs_root" ] || [ ! -d "$_rs_root/.workflow_artifacts/memory" ]; then
+      echo GUARD_UNAVAILABLE
+    elif run_state_probe "$_rs_root/.workflow_artifacts/memory"; then
+      echo PROBE_ACTIVE
+    else
+      echo PROBE_INACTIVE
+    fi
+  fi
+  ```
+  Called project-scoped (no `SESSION_ID` argument, matching `D-27`'s
+  project-wide question for every consumer). `PROBE_INACTIVE` is the ONLY
+  outcome that skips the save. `GUARD_UNAVAILABLE` — the guard is absent
+  (the helper did not source, or the resolved root is empty or has no
+  `.workflow_artifacts/memory` directory) — and `PROBE_ACTIVE` both mean
+  the self-checkpoint fires exactly as it does today. This is the
+  deliberate fail-safe direction (`D-28`): an undefined, unreachable, or
+  unresolvable probe must never silently kill the 90% self-checkpoint,
+  because in autonomous mode that save is what carries state across a
+  context window — the opposite failure direction from `/checkpoint` Step
+  1.4, where "no information" safely means "fall back to a real save"
+  rather than "skip." When the save runs it writes a
+  `checkpoint-defer-{sid}` marker as before, so the mid-phase advisory in
+  the 70–95% band does not re-prompt for a checkpoint the orchestrator
+  already took; when the save is skipped, no `checkpoint-defer-{sid}`
+  marker is written — writing one after a skip would wrongly suppress the
+  70–95% advisory. This bullet does not distinguish a boundary-parked run
+  from an in-flight one (`D-26`): `/run` writes the record only at phase
+  boundaries and never mid-phase, so the probe will almost always answer
+  `PROBE_ACTIVE` and the self-checkpoint fires as it does today — the only
+  realistic skip window is the narrow one where `--clear` has already run
+  but the session continues past 90%. This bullet lives inside `## Hook
+  cooperation (autonomous)`, so the conditioning above does not reach an
+  interactive (non-autonomous) `/run` session — a scope narrowing worth
+  flagging for the `S-7` sweep, not an oversight. The pre-phase budget
+  block's item (4) (`:321-326`) is unchanged: it reuses this contract, and
+  `boundary_checkpoint.py` (deterministic, no model call) still always
+  runs on the over-budget path.
 - **There is no block to catch — the band is a pure advisory.** At and
   above `BLOCK_BPS` (95%) the prompt hook returns `additionalContext`
   plus a `systemMessage` and the prompt continues in the same turn; it
