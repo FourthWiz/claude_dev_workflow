@@ -44,6 +44,10 @@ sentinel_globs() {
 #   PANIC_BPS      — /checkpoint panic/degraded-save tier (default 10000 = 100.00%)
 #                    compute_utilization is unclamped so values >10000 are normal;
 #                    PANIC_BPS=10000 correctly fires for all true overflow (>=100%).
+#   DISCOVERY_STALE_DAYS — discovery-file staleness threshold in days (default 7)
+#   SERENA_STALE_DAYS — Serena re-onboarding staleness threshold in days (default 30)
+#   RUN_STATE_STALE_DAYS — run-state record freshness window in days (default 1)
+#   PRECOMPACT_NORUN_CHECKPOINT — opt-in no-run checkpoint+sentinel row (default 0)
 read_constants() {
     BPT=${QUOIN_BYTES_PER_TOKEN:-8.0}
     LIMIT=${QUOIN_EFFECTIVE_CONTEXT_LIMIT:-150000}
@@ -323,7 +327,10 @@ resolve_project_root() {
 # run_state_fields <file> <key>... — extract requested keys from a run-state
 # JSON record as "key=value" lines, one per requested key, in request order
 # (an absent key emits "key=" with an empty value). Single awk pass over one
-# read of the file. The record writer's sanitization guarantees the file
+# bounded read of the file (first 64 KiB — a record is a few hundred bytes,
+# so this is generous headroom while keeping an oversized, possibly hostile,
+# file from slurping into the hook's time budget). The record writer's
+# sanitization guarantees the file
 # contains no backslash byte at all ('"' -> "'", '\' -> '/', C0/DEL -> space),
 # so this extractor never meets an escape sequence and does no unescaping.
 # The structural trailing comma is stripped BEFORE the quotes: the closing
@@ -335,9 +342,8 @@ run_state_fields() {
     shift
     [ -n "$_rsf_file" ] || return 0
     [ -f "$_rsf_file" ] || return 0
-    _rsf_snapshot=$(cat "$_rsf_file" 2>/dev/null)
-    [ -n "$_rsf_snapshot" ] || return 0
-    printf '%s\n' "$_rsf_snapshot" | awk -v keys="$*" '
+    [ -s "$_rsf_file" ] || return 0
+    head -c 65536 "$_rsf_file" 2>/dev/null | awk -v keys="$*" '
     BEGIN {
         n = split(keys, order, " ")
     }

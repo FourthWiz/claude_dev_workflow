@@ -7,7 +7,8 @@
 # behavior: (1) a fresh active run-state record for this session → checkpoint
 # saved, no pending-restore sentinel (the run resumes via its own record);
 # (2) skill pidfiles active → checkpoint saved, no sentinel (workflow
-# continues uninterrupted); (3) neither → nothing written, unless
+# continues uninterrupted); (3) neither → no checkpoint and no sentinel
+# (the recent-sessions and telemetry appends still happen on every row), unless
 # QUOIN_PRECOMPACT_NORUN_CHECKPOINT=1 restores the checkpoint-plus-sentinel
 # for a plain conversation (sessionstart.sh then surfaces the restore banner).
 # Fail-OPEN: any error → exit 0 (compaction proceeds unblocked).
@@ -111,6 +112,11 @@ fi
   # run-notes-<task>.md naming convention directly under MEMORY_DIR.
   case "$rs_notes_path" in *..*) rs_notes_path="" ;; esac
   case "$rs_notes_path" in "$MEMORY_DIR"/run-notes-*.md) ;; *) rs_notes_path="" ;; esac
+  # Flatness check: the prefix pattern above still lets * match /, so a
+  # path routed through a subdirectory (e.g. a symlinked dir planted
+  # inside MEMORY_DIR) would pass it and escape through the link; after
+  # stripping the prefix, no separator may remain.
+  case "${rs_notes_path#"$MEMORY_DIR"/}" in */*) rs_notes_path="" ;; esac
   [ -n "$rs_notes_path" ] || exit 0
   # Best-effort symlink refusal: the record's Python writer refuses a
   # symlink AND opens with O_NOFOLLOW, closing the check-to-write race;
@@ -137,6 +143,12 @@ fi
   _tel_dir="${MEMORY_DIR}/telemetry"
   _tel_sink="${_tel_dir}/compaction-events.jsonl"
   mkdir -p "$_tel_dir" 2>/dev/null || exit 0
+  # Refuse a symlinked dir or sink before appending: mkdir -p succeeds
+  # through a symlinked directory, and >> would follow a planted link —
+  # mirrors the notes-path symlink refusal above (same bounded
+  # check-then-write caveat).
+  [ ! -L "$_tel_dir" ] || exit 0
+  [ ! -L "$_tel_sink" ] || exit 0
   # Probe the session id through the same jq encoder that builds the line,
   # so the sequence count matches the escaped form as it actually appears
   # in the sink — a raw id containing a quote or backslash never matches
@@ -160,9 +172,9 @@ fi
     --arg ts "$_tel_ts" --arg bb "$_tel_bytes" --arg etb "$_tel_est" \
     --arg task "$rs_task" --arg phase "$rs_phase" --arg subphase "$rs_subphase" \
     --arg step "$rs_step" \
-    '{half: $half, session_id: $sid, event_seq: ($seq|tonumber), ts: $ts,
-      bytes_before: (if $bb == "" then "" else ($bb|tonumber) end),
-      est_tokens_before: (if $etb == "" then "" else ($etb|tonumber) end),
+    '{v: 1, half: $half, session_id: $sid, event_seq: ($seq|tonumber), ts: $ts,
+      bytes_before: (if $bb == "" then null else ($bb|tonumber) end),
+      est_tokens_before: (if $etb == "" then null else ($etb|tonumber) end),
       task: $task, phase: $phase, subphase: $subphase, step: $step}' \
     >> "$_tel_sink" 2>/dev/null || exit 0
 ) 2>/dev/null || true
@@ -174,12 +186,14 @@ fi
 # managing the session themselves. The else block overwrites this "none" if pidfiles
 # are found.
 pidfile_info="none"
+early_skip=0
 
 # STEP 2: Save checkpoint state (paths-not-content rule)
 # Skip entirely if voluntary /checkpoint already ran this session — preserve the better sentinel
 # and avoid creating an orphaned -precompact.md file (A3 fix)
 if [ -f "$pending_restore_file" ]; then
   printf '[quoin-precompact] INFO: pending-restore sentinel already exists (voluntary /checkpoint was run earlier in this session); skipping checkpoint write to avoid orphaned -precompact.md file\n' >&2
+  early_skip=1
 else
 
 # Determine active task name from session-state filenames (best-effort).
@@ -385,13 +399,18 @@ fi  # end: if [ ! -f "$pending_restore_file" ]
 if [ "$run_active" = "1" ]; then
   printf '[quoin-precompact] INFO: active run detected (task: %s); allowing auto-compaction; checkpoint saved at %s\n' "${rs_task:-unknown}" "${checkpoint_file:-none (early-skip)}" >&2
 elif [ "$pidfile_info" != "none" ]; then
-  printf '[quoin-precompact] INFO: skills running (%s); allowing auto-compaction; checkpoint saved at %s\n' "$pidfile_info" "${checkpoint_file:-unknown}" >&2
+  printf '[quoin-precompact] INFO: skills running (%s); allowing auto-compaction; checkpoint saved at %s\n' "$pidfile_info" "${checkpoint_file:-none (early-skip)}" >&2
 elif [ "${PRECOMPACT_NORUN_CHECKPOINT:-0}" = "1" ] && [ -n "${checkpoint_file:-}" ]; then
   mkdir -p "$MEMORY_DIR" 2>/dev/null || true
   printf '%s\n' "$checkpoint_file" > "$pending_restore_file" 2>/dev/null || {
     printf '[quoin-precompact] WARNING: cannot write pending-restore sentinel; sessionstart hook cannot surface restore banner\n' >&2
   }
   printf '[quoin-precompact] INFO: no active run-state record and no pidfiles; QUOIN_PRECOMPACT_NORUN_CHECKPOINT=1 set — checkpoint saved at %s; pending-restore sentinel written\n' "$checkpoint_file" >&2
+elif [ "$early_skip" = "1" ]; then
+  # Voluntary checkpoint sentinel found earlier: nothing new was written,
+  # and pidfile collection never ran on this path, so claim neither — and
+  # do not suggest a knob that changes nothing here.
+  printf '[quoin-precompact] INFO: voluntary checkpoint sentinel already present; allowing auto-compaction; nothing new written (pidfile state not collected on this path)\n' >&2
 else
   printf '[quoin-precompact] INFO: no active run-state record and no pidfiles; allowing auto-compaction; nothing written (set QUOIN_PRECOMPACT_NORUN_CHECKPOINT=1 to restore the no-run checkpoint and sentinel)\n' >&2
 fi

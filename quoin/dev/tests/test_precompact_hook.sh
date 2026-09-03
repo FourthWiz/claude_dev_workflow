@@ -826,6 +826,25 @@ else
 fi
 rm -f "$MEM_DIR_TEST/run-state-sel-fresher.json"
 
+# scale: a full no-match scan over a 50-record directory stays far inside
+# the hook's 10 s budget — a generous-ceiling regression guard, not a
+# benchmark (records planted at a stage boundary → no notes files)
+_i=1
+while [ "$_i" -le 50 ]; do
+  python3 "$RUN_STATE" --write --project-root "$TMPDIR_TEST" --task "sel-scale-$_i" --session-id "sid-scale-$_i" --at-stage-boundary true >/dev/null 2>&1
+  _i=$((_i + 1))
+done
+SCALE_START=$(date +%s 2>/dev/null || printf '0')
+sel_scale=$(run_state_select "$MEM_DIR_TEST" sid-scale-nomatch)
+SCALE_END=$(date +%s 2>/dev/null || printf '0')
+SCALE_ELAPSED=$((SCALE_END - SCALE_START))
+if [ -z "$sel_scale" ] && [ "$SCALE_ELAPSED" -le 5 ]; then
+  ok "(T-01-scale) 50-record full scan returned empty in ${SCALE_ELAPSED}s (ceiling 5s)"
+else
+  fail "(T-01-scale) 50-record scan misbehaved (sel='$sel_scale' elapsed=${SCALE_ELAPSED}s)"
+fi
+rm -f "$MEM_DIR_TEST"/run-state-sel-scale-*.json
+
 # ─── T-05: three-row fixtures + recent-sessions per-row append ───────────────
 
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
@@ -1015,6 +1034,33 @@ fi
 rm -f "$MEM_DIR_TEST/run-state-notes-trv.json"
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
 
+# symlinked intermediate directory: a notes_path that matches the prefix
+# pattern (case lets * match /) but routes through a symlinked dir planted
+# inside MEMORY_DIR, escaping through the link. Planting edits one line of
+# a test-owned record — the same documented sed carve-out as the traversal
+# variant above.
+python3 "$RUN_STATE" --write --project-root "$TMPDIR_TEST" --task notes-esc --session-id sess-notes-esc --phase implement >/dev/null 2>&1
+rm -f "$MEM_DIR_TEST/run-notes-notes-esc.md"
+ESC_OUTSIDE="$TMPDIR_TEST/esc-outside"
+mkdir -p "$ESC_OUTSIDE"
+ln -s "$ESC_OUTSIDE" "$MEM_DIR_TEST/run-notes-esc"
+sed -i.bak 's|^  "notes_path": .*$|  "notes_path": "'"$MEM_DIR_TEST"'/run-notes-esc/target.md",|' "$MEM_DIR_TEST/run-state-notes-esc.json" && rm -f "$MEM_DIR_TEST/run-state-notes-esc.json.bak"
+if grep -q 'run-notes-esc/target\.md' "$MEM_DIR_TEST/run-state-notes-esc.json"; then
+  ok "(T-03-escdir-plant) symlinked-intermediate-dir notes_path precondition planted"
+else
+  fail "(T-03-escdir-plant) planting recipe failed to embed the symlinked-dir path"
+fi
+stdin=$(make_stdin "auto" "sess-notes-esc")
+out_esc=$(printf '%s' "$stdin" | sh "$HOOK" 2>/dev/null)
+if [ ! -f "$ESC_OUTSIDE/target.md" ] && [ "$out_esc" = '{"decision": "allow"}' ]; then
+  ok "(T-03-escdir) symlinked-intermediate-dir notes_path → nothing appended, allow emitted"
+else
+  fail "(T-03-escdir) symlinked-dir path was written through"
+fi
+rm -f "$MEM_DIR_TEST/run-state-notes-esc.json" "$MEM_DIR_TEST/run-notes-esc"
+rm -rf "$ESC_OUTSIDE"
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
+
 # well-formed notes_path outside this hook's memory dir: planted by writing
 # the record under a different project root, then moving the record file
 # (both real invocations / test-owned file operations)
@@ -1055,10 +1101,10 @@ if [ "$seq_second" = "$((seq_first + 1))" ]; then
 else
   fail "(T-04-seq) event_seq did not increment: $seq_first -> $seq_second"
 fi
-if grep -F '"session_id":"sess-tel-basic"' "$TEL_SINK" | tail -1 | jq -e . >/dev/null 2>&1; then
-  ok "(T-04-parse) telemetry line parses under jq -e"
+if grep -F '"session_id":"sess-tel-basic"' "$TEL_SINK" | tail -1 | jq -e '.v == 1' >/dev/null 2>&1; then
+  ok "(T-04-parse) telemetry line parses under jq -e and carries v: 1"
 else
-  fail "(T-04-parse) telemetry line does not parse"
+  fail "(T-04-parse) telemetry line does not parse or lacks v: 1"
 fi
 # no-run row → run fields are empty strings
 task_field=$(grep -F '"session_id":"sess-tel-basic"' "$TEL_SINK" | tail -1 | jq -r .task)
@@ -1093,8 +1139,8 @@ fi
 stdin_u=$(jq -nc --arg c "$TMPDIR_TEST" '{trigger:"auto", session_id:"sess-tel-unread", cwd:$c, transcript_path:"/nonexistent-transcript-path"}')
 out_u=$(printf '%s' "$stdin_u" | sh "$HOOK" 2>/dev/null)
 bb_u=$(grep -F '"session_id":"sess-tel-unread"' "$TEL_SINK" | tail -1 | jq -r .bytes_before)
-if [ "$out_u" = '{"decision": "allow"}' ] && [ "$bb_u" = "" ]; then
-  ok "(T-04-unread) unreadable transcript → empty bytes fields, line appended, allow emitted"
+if [ "$out_u" = '{"decision": "allow"}' ] && [ "$bb_u" = "null" ]; then
+  ok "(T-04-unread) unreadable transcript → null bytes fields, line appended, allow emitted"
 else
   fail "(T-04-unread) unreadable transcript mishandled (out=$out_u bytes=$bb_u)"
 fi
@@ -1108,6 +1154,37 @@ if [ -f "$TEL_SINK" ] && [ -z "$depth1_hit" ] && ! printf '%s' "$sweep_hits" | g
 else
   fail "(T-04-sweep) telemetry sink is visible to a depth-1 sweep"
 fi
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
+
+# symlinked telemetry dir: refused; nothing lands in the link target
+TEL_OUTSIDE="$TMPDIR_TEST/tel-outside"
+mkdir -p "$TEL_OUTSIDE"
+mv "$MEM_DIR_TEST/telemetry" "$TMPDIR_TEST/telemetry-real"
+ln -s "$TEL_OUTSIDE" "$MEM_DIR_TEST/telemetry"
+stdin=$(make_stdin "auto" "sess-tel-symdir")
+out_tsd=$(printf '%s' "$stdin" | sh "$HOOK" 2>/dev/null)
+if [ ! -f "$TEL_OUTSIDE/compaction-events.jsonl" ] && [ "$out_tsd" = '{"decision": "allow"}' ]; then
+  ok "(T-04-symdir) symlinked telemetry dir → no write-through, allow emitted"
+else
+  fail "(T-04-symdir) telemetry append followed a symlinked dir"
+fi
+rm -f "$MEM_DIR_TEST/telemetry"
+mv "$TMPDIR_TEST/telemetry-real" "$MEM_DIR_TEST/telemetry"
+rm -rf "$TEL_OUTSIDE"
+
+# symlinked sink file: refused; the link target stays untouched
+printf 'victim\n' > "$TMPDIR_TEST/tel-victim.jsonl"
+mv "$TEL_SINK" "$TMPDIR_TEST/tel-sink-real.jsonl"
+ln -s "$TMPDIR_TEST/tel-victim.jsonl" "$TEL_SINK"
+stdin=$(make_stdin "auto" "sess-tel-symfile")
+out_tsf=$(printf '%s' "$stdin" | sh "$HOOK" 2>/dev/null)
+if [ "$(cat "$TMPDIR_TEST/tel-victim.jsonl")" = "victim" ] && [ "$out_tsf" = '{"decision": "allow"}' ]; then
+  ok "(T-04-symfile) symlinked telemetry sink → no write-through, allow emitted"
+else
+  fail "(T-04-symfile) telemetry append followed a symlinked sink"
+fi
+rm -f "$TEL_SINK" "$TMPDIR_TEST/tel-victim.jsonl"
+mv "$TMPDIR_TEST/tel-sink-real.jsonl" "$TEL_SINK"
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
 
 # ─── T-06: fail-OPEN fixtures ────────────────────────────────────────────────
