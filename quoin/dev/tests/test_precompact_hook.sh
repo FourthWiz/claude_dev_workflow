@@ -1478,6 +1478,76 @@ else
   ok "(T-06-scan) no file in quoin/hooks/ mentions autonomous"
 fi
 
+# ─── T-07: rotation-hostile targets at ${_tel_sink}.1 ────────────────────────
+# The live sink already carries plenty of bytes from the fixtures above, so a
+# small QUOIN_TELEMETRY_MAX_BYTES forces rotation on the very next pre append.
+
+# symlink-to-directory at the rotation target: unlink(2) on a symlink path
+# never follows it, so the stale link is removed and rotation then proceeds
+# onto a fresh regular file — nothing is ever written through the link.
+ROT_SYMDIR_TARGET="$TMPDIR_TEST/rot-symdir-target"
+mkdir -p "$ROT_SYMDIR_TARGET"
+ln -s "$ROT_SYMDIR_TARGET" "${TEL_SINK}.1"
+stdin=$(make_stdin "auto" "sess-rot-symdir")
+out_rsd=$(printf '%s' "$stdin" | QUOIN_TELEMETRY_MAX_BYTES=1 sh "$HOOK" 2>/dev/null)
+if [ "$out_rsd" = '{"decision": "allow"}' ] && [ -z "$(ls -A "$ROT_SYMDIR_TARGET" 2>/dev/null)" ] && [ -f "${TEL_SINK}.1" ] && [ ! -L "${TEL_SINK}.1" ]; then
+  ok "(T-07-rot-symdir) symlink-to-directory at rotation target → link removed, rotation proceeds, nothing written through it"
+else
+  fail "(T-07-rot-symdir) rotation target symlink mishandled (out=$out_rsd)"
+fi
+rm -f "${TEL_SINK}.1"
+rm -rf "$ROT_SYMDIR_TARGET"
+
+# FIFO at the rotation target: refused outright (not a regular file); the
+# append that would have followed rotation is skipped entirely for this row,
+# and the hook must never block on it — run under the existing 5s watchdog.
+mkfifo "${TEL_SINK}.1"
+stdin=$(make_stdin "auto" "sess-rot-fifo")
+: > "$TMPDIR_TEST/rot-fifo-out.txt"
+( printf '%s' "$stdin" | QUOIN_TELEMETRY_MAX_BYTES=1 sh "$HOOK" > "$TMPDIR_TEST/rot-fifo-out.txt" 2>/dev/null ) &
+_rot_fifo_pid=$!
+_w=0
+while [ "$_w" -lt 50 ] && kill -0 "$_rot_fifo_pid" 2>/dev/null; do
+  sleep 0.1
+  _w=$((_w + 1))
+done
+if kill -0 "$_rot_fifo_pid" 2>/dev/null; then
+  kill "$_rot_fifo_pid" 2>/dev/null || true
+  wait "$_rot_fifo_pid" 2>/dev/null || true
+  fail "(T-07-rot-fifo) hook blocked on a FIFO rotation target (killed at 5s watchdog)"
+else
+  wait "$_rot_fifo_pid" 2>/dev/null || true
+  out_rfifo=$(cat "$TMPDIR_TEST/rot-fifo-out.txt")
+  if [ "$out_rfifo" = '{"decision": "allow"}' ] && [ -p "${TEL_SINK}.1" ]; then
+    ok "(T-07-rot-fifo) FIFO rotation target → refused, allow emitted without hanging, nothing written into it"
+  else
+    fail "(T-07-rot-fifo) unexpected outcome with FIFO rotation target (out=$out_rfifo)"
+  fi
+fi
+rm -f "${TEL_SINK}.1" "$TMPDIR_TEST/rot-fifo-out.txt"
+
+# plain directory at the rotation target: refused outright, same as the FIFO
+mkdir -p "${TEL_SINK}.1"
+stdin=$(make_stdin "auto" "sess-rot-dir")
+out_rdir=$(printf '%s' "$stdin" | QUOIN_TELEMETRY_MAX_BYTES=1 sh "$HOOK" 2>/dev/null)
+if [ "$out_rdir" = '{"decision": "allow"}' ] && [ -d "${TEL_SINK}.1" ] && [ -z "$(ls -A "${TEL_SINK}.1" 2>/dev/null)" ]; then
+  ok "(T-07-rot-dir) plain directory at rotation target → refused, allow emitted, directory left empty"
+else
+  fail "(T-07-rot-dir) rotation target directory mishandled (out=$out_rdir)"
+fi
+rm -rf "${TEL_SINK}.1"
+
+# unmatched pre: precompact.sh alone, no post half — hook exits 0 and the
+# sink still parses line-by-line under jq -e (T-04, D-06)
+stdin=$(make_stdin "auto" "sess-rot-unmatched-pre")
+rc_ump=0
+printf '%s' "$stdin" | sh "$HOOK" >/dev/null 2>&1 || rc_ump=$?
+if [ "$rc_ump" -eq 0 ] && jq -e . "$TEL_SINK" >/dev/null 2>&1; then
+  ok "(T-07-unmatched-pre) precompact-only pre → exit 0, sink still parses line-by-line"
+else
+  fail "(T-07-unmatched-pre) precompact-only pre mishandled (rc=$rc_ump)"
+fi
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 
 printf '\n'
