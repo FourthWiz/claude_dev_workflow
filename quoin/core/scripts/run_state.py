@@ -286,18 +286,56 @@ def _do_write(args) -> int:
 
     existing = _load_record(path) if path.exists() else None
 
+    # A probe-fallback id ("unknown"...) is never stored by ANY write path:
+    # storing it at creation would permanently anchor the record to an id
+    # the hook's exact-equality match can never fire on.
+    offered_sid = args.session_id or ""
+    if offered_sid.startswith("unknown"):
+        offered_sid = ""
+
     if args.require_existing:
         if existing is None or existing.get("active") is not True:
             # Absent, unreadable, unparseable, schema-forward, or already
             # cleared (active: false) — do nothing at all (D-58).
             return 0
 
+        if args.adopt_session and args.max_age_days > 0:
+            # Adoption honors the same freshness window the resume reads
+            # use: every write refreshes updated_at and the file mtime, so
+            # adopting a stale record would revive an entry the staleness
+            # gate treats as absent. Refuse instead — without touching the
+            # file — and the resume proceeds on its other tiers, exactly
+            # as for an absent record.
+            try:
+                age_seconds = (
+                    datetime.now(tz=timezone.utc).timestamp() - path.stat().st_mtime
+                )
+            except OSError:
+                return 0
+            if age_seconds > args.max_age_days * 86400:
+                return 0
+
         def pick(field: str, cli_value, default: Any = "") -> Any:
             if cli_value is not None:
                 return cli_value
             return existing.get(field, default)
 
-        session_id = pick("session_id", args.session_id)
+        # The stored session_id anchors the PreCompact hook's exact-equality
+        # match to the record's creator. A refresh usually runs in a
+        # different session (e.g. a planning subagent), so it must never
+        # migrate the id: once set it survives every refresh, and a probe
+        # fallback id ("unknown"...) is never stored. The one sanctioned
+        # migration is --adopt-session, used from the /run Resume entry
+        # point: after a resume the creator's session is dead, and without
+        # re-anchoring, the hook's match would never fire again for the
+        # whole resumed run.
+        existing_sid = existing.get("session_id", "") or ""
+        if args.adopt_session and offered_sid:
+            session_id = offered_sid
+        elif existing_sid:
+            session_id = existing_sid
+        else:
+            session_id = offered_sid
         phase = pick("phase", args.phase)
         phase_index = pick("phase_index", args.phase_index, 0)
         subphase = pick("subphase", args.subphase)
@@ -313,8 +351,13 @@ def _do_write(args) -> int:
             resume_command = existing.get("resume_command", f"/run --resume {args.task}")
         active = True
         wrote = True
+        progress_supplied = any(
+            v is not None
+            for v in (args.phase, args.phase_index, args.subphase, args.step,
+                      args.next_action, args.artifact)
+        )
     else:
-        session_id = args.session_id or ""
+        session_id = offered_sid
         phase = args.phase or ""
         phase_index = args.phase_index if args.phase_index is not None else 0
         subphase = args.subphase or ""
@@ -327,6 +370,7 @@ def _do_write(args) -> int:
         resume_command = args.resume_command if args.resume_command is not None else f"/run --resume {args.task}"
         active = True
         wrote = True
+        progress_supplied = True
 
     # Sanitize once, here, before either consumer of these values -- the
     # JSON record and the notes-file block -- is built. Previously only
@@ -340,6 +384,26 @@ def _do_write(args) -> int:
     step = _sanitize(step)
     next_action = _sanitize(next_action)
     artifacts = [_sanitize(a) for a in artifacts]
+
+    # Bound the artifacts list, newest kept: it serializes as a single line
+    # and is inherited across refreshes, so unbounded growth would push the
+    # later fields the PreCompact hook reads (next_action, notes_path) past
+    # the shell extractor's 64 KiB read ceiling. With every other string
+    # field capped at 4096 bytes, a 16 KiB artifacts line keeps the whole
+    # record comfortably inside that ceiling by construction.
+    _max_count = 64
+    _max_bytes = 16384
+    _kept: list = []
+    _total = 0
+    for _a in reversed(artifacts):
+        if len(_kept) >= _max_count:
+            break
+        _cost = len(_a.encode("utf-8")) + 4
+        if _kept and _total + _cost > _max_bytes:
+            break
+        _kept.append(_a)
+        _total += _cost
+    artifacts = list(reversed(_kept))
 
     # Sanitize BEFORE stripping `--autonomous`, not after: `_AUTONOMOUS_TOKEN_RE`'s
     # `\S` lookbehind/lookahead does not match a C0 control byte, so an
@@ -371,7 +435,11 @@ def _do_write(args) -> int:
     content = _serialize_record(record)
     _atomic_write_record(memory_dir, args.task, path, content)
 
-    if wrote and not at_stage_boundary:
+    # A write that carries no progress fields (e.g. the resume-entry
+    # adoption, which only re-anchors session_id) appends no notes block:
+    # the notes log records progress, and an inherited-only block would add
+    # a spurious no-op entry on every resume.
+    if wrote and not at_stage_boundary and progress_supplied:
         max_bytes = int(os.environ.get("QUOIN_RUN_NOTES_MAX_BYTES", "262144"))
         block = _notes_block(updated_at, phase, subphase, step, next_action, list(artifacts))
         _append_notes(notes_path, block, max_bytes)
@@ -465,6 +533,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--next-action", default=None, dest="next_action")
     parser.add_argument("--resume-command", default=None, dest="resume_command")
     parser.add_argument("--require-existing", action="store_true", dest="require_existing")
+    parser.add_argument("--adopt-session", action="store_true", dest="adopt_session")
 
     # --read options
     parser.add_argument("--fields", default="")

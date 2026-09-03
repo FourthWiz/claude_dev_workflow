@@ -5,7 +5,7 @@
 | Event | Matcher | Script | Timeout | Contract |
 |-------|---------|--------|---------|----------|
 | UserPromptSubmit | `*` | `userpromptsubmit.sh` | 5s | Context utilization check; advisory only — never blocks a prompt |
-| PreCompact | `auto` | `precompact.sh` | 10s | Last-resort save; ALWAYS allows auto-compaction; writes pending-restore sentinel for direct-conversation case (no active pidfiles); sessionstart.sh surfaces the restore banner on next session start |
+| PreCompact | `auto` | `precompact.sh` | 10s | ALWAYS allows auto-compaction; appends the STEP 1b `recent-sessions.md` record and a `telemetry/compaction-events.jsonl` pre-event on every row (a `.allow-compact` marker in cwd exits right after the recent-sessions append — telemetry and every later step are skipped); writes a deterministic checkpoint when a fresh active run-state record matches the session or skill pidfiles are present; a plain conversation (no run, no pidfiles) writes no checkpoint and no sentinel — the recent-sessions and telemetry appends still happen on every row; `QUOIN_PRECOMPACT_NORUN_CHECKPOINT=1` restores the checkpoint-plus-`pending-restore` sentinel for that case; `/continue_work` (fed by `recent-sessions.md`) is the recovery path when nothing is written |
 | PostCompact | `auto` | `postcompact.sh` | 5s | Writes `postcompact-reset-${session_id}.txt` sentinel; `userpromptsubmit.sh` STEP 0.5 consumes it to confirm compaction occurred and trash-moves the sentinel |
 | SessionStart | `startup` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) |
 | SessionStart | `resume` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) |
@@ -20,6 +20,8 @@ Hook-side tunable constants (defined in `_lib.sh:read_constants()` and exported 
 - `QUOIN_STALE_SENTINEL_DAYS` (pre-existing, default 7) — sentinel age threshold used by `sessionstart.sh` as the fallback sweep window when `session_id` is empty (defense-in-depth, per IVG-95 D-02). Also consumed by `/cleanup` and `/sleep --purge --sentinels`.
 - `QUOIN_SESSIONSTART_SWEEP_DAYS` (NEW IVG-95, default 1) — UUID-aware tight sweep window for `sessionstart.sh` STEP 2. When `session_id` is known, files older than this window AND not matching the current session's UUID are trash-moved. Also narrows the STEP 4 cross-session `pending-restore` restore-banner fallback window (intentional per IVG-95 D-08).
 - `QUOIN_SOD_SENTINEL_WARN` (NEW IVG-95, default 3) — `start_of_day` Step 1b sentinel-health check threshold. Emits a one-line advisory banner if the count of stale sentinels in `memory/` exceeds this value. Read-only — `start_of_day` never mutates files.
+- `QUOIN_PRECOMPACT_NORUN_CHECKPOINT` (NEW IVG-258 S-3, default 0) — opt-in: when 1, `precompact.sh` restores the deterministic checkpoint-plus-`pending-restore` sentinel for a plain conversation (no active run-state record, no skill pidfiles); when 0, that row writes nothing.
+- `QUOIN_RUN_STATE_STALE_DAYS` (pre-existing, default 1) — freshness window for `run-state-*.json` records, already documented for `/run` Step 0c's `--max-age-days` reads; IVG-258 S-3 adds a hook-side read site in `precompact.sh`'s run-state selection (day-granular, deliberately over-inclusive).
 
 Skill-side picker knobs (read inline in `checkpoint/SKILL.md`, NOT hook constants — do NOT add to `_lib.sh`):
 - `QUOIN_RESTORE_SENTINEL_WINDOW` (default 7 days) — mtime filter for pending-restore sentinel enumeration.
