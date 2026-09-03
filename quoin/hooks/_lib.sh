@@ -136,9 +136,12 @@ _run_state_validate_stale_days() {
     # alternative, ${var#"${var%%[!0]*}"}, retries the shortest-prefix
     # match at every length and goes quadratic, stalling for tens of
     # seconds on a 100k-zero knob. An all-zero value strips to empty and
-    # reads as 0.
+    # reads as 0. The stderr redirect keeps run_state_probe's never-emit
+    # contract when the sed itself fails (unresolvable on PATH, or an env
+    # too large to exec); the empty-result fallback below already absorbs
+    # the failed substitution.
     case "$_rvsd_days" in
-        0?*) _rvsd_days=$(printf '%s\n' "$_rvsd_days" | sed 's/^0*//') ;;
+        0?*) _rvsd_days=$(printf '%s\n' "$_rvsd_days" | sed 's/^0*//' 2>/dev/null) ;;
     esac
     [ -n "$_rvsd_days" ] || _rvsd_days=0
     case "$_rvsd_days" in

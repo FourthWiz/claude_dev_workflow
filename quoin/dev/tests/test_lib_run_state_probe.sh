@@ -378,6 +378,29 @@ CP_ERR=$(cat "$STDERR_CAP")
 assert_silent "(p)"
 rm -f "$REC"
 
+# ─── (q) strip stays silent when its sed cannot run at all ─────────────────
+# The zero-strip's sed is the one external command the strip itself forks;
+# run_state_probe promises to emit nothing on either stream even when that
+# fork fails. An unresolvable PATH makes the sed fail deterministically on
+# every shell — each other external on the probe's path carries its own
+# stderr redirect, so any byte captured here is the strip's leak. The
+# subshell keeps the PATH and knob assignments out of every later case.
+
+record "$REC" true 1 false
+set +e
+(
+  PATH="$TMPDIR_TEST/no-such-bin"
+  QUOIN_RUN_STATE_STALE_DAYS="014"
+  export PATH QUOIN_RUN_STATE_STALE_DAYS
+  run_state_probe "$MEMDIR"
+) >"$STDOUT_CAP" 2>"$STDERR_CAP"
+CP_RC=$?
+set -e
+CP_OUT=$(cat "$STDOUT_CAP")
+CP_ERR=$(cat "$STDERR_CAP")
+assert_silent "(q) sed-less PATH"
+rm -f "$REC"
+
 # ─── Summary ────────────────────────────────────────────────────────────────
 
 printf '\n'
