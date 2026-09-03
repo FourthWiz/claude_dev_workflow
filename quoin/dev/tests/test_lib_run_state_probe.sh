@@ -268,6 +268,67 @@ call_probe "$MEMDIR"
 assert_silent "(m)"
 rm -f "$GLOB_REC"
 
+# ─── (n) zero-padded knob does not stall ───────────────────────────────────
+# The strip loop that removes leading zeros ran once per leading-zero
+# character; a heavily zero-padded value (many zeros ahead of a small real
+# number) could turn a single call into a multi-second-to-minutes stall
+# before the strip loop was bounded. Ceiling is generous — a regression
+# guard, not a benchmark.
+
+record "$REC" true 1 false
+PADDED_KNOB=$(python3 -c "print('0' * 20000 + '1')")
+N_START=$(python3 -c 'import time; print(int(time.time()*1000))' 2>/dev/null || printf '0')
+set +e
+QUOIN_RUN_STATE_STALE_DAYS="$PADDED_KNOB" run_state_probe "$MEMDIR" >"$STDOUT_CAP" 2>"$STDERR_CAP"
+CP_RC=$?
+set -e
+N_END=$(python3 -c 'import time; print(int(time.time()*1000))' 2>/dev/null || printf '0')
+N_ELAPSED_MS=$((N_END - N_START))
+CP_OUT=$(cat "$STDOUT_CAP")
+CP_ERR=$(cat "$STDERR_CAP")
+if [ "$N_ELAPSED_MS" -le 2000 ] && { [ "$CP_RC" -eq 0 ] || [ "$CP_RC" -eq 1 ]; }; then
+  ok "(n) zero-padded knob resolves in ${N_ELAPSED_MS}ms without erroring (ceiling 2000ms)"
+else
+  fail "(n) zero-padded knob should resolve quickly without erroring (rc=$CP_RC elapsed=${N_ELAPSED_MS}ms)"
+fi
+assert_silent "(n)"
+
+# ─── (o) isolated hostile record ────────────────────────────────────────────
+# A coexisting good record can mask a hostile-record regression, since the
+# probe only needs ONE matching candidate to return 0 — these cases run
+# against the hostile record ALONE so a dropped redirect or a
+# locale-sensitive read cannot hide behind a neighboring good record's
+# silent success.
+
+rm -f "$MEMDIR"/run-state-*.json
+
+# (o1) overlong all-digit schema — must be rejected (rc=1) and silent; a
+# dropped `2>/dev/null` on the schema comparison would leak an "integer
+# expression expected" error here instead.
+record "$REC" true "99999999999999999999" false
+call_probe "$MEMDIR"
+[ "$CP_RC" -ne 0 ] && ok "(o1) isolated overlong-schema record -> 1" || fail "(o1) isolated overlong-schema record should return 1"
+assert_silent "(o1)"
+rm -f "$REC"
+
+# (o2) truncated-mid-multibyte-character record — a locale-aware awk's
+# character reader can fail on a byte cut mid-sequence; must stay silent
+# regardless of outcome.
+python3 -c "
+import sys
+data = (b'{\n  \"task\": \"hostile\",\n  \"active\": true,\n'
+        b'  \"schema\": 1,\n  \"note\": \"' + b'\xe2\x82' + b'\"\n}\n')
+open(sys.argv[1], 'wb').write(data)
+" "$REC"
+call_probe "$MEMDIR"
+if [ "$CP_RC" -eq 0 ] || [ "$CP_RC" -eq 1 ]; then
+  ok "(o2) isolated truncated-mid-multibyte record does not error (rc=$CP_RC)"
+else
+  fail "(o2) isolated truncated-mid-multibyte record produced an unexpected exit code ($CP_RC)"
+fi
+assert_silent "(o2)"
+rm -f "$REC"
+
 # ─── Summary ────────────────────────────────────────────────────────────────
 
 printf '\n'

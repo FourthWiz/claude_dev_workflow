@@ -126,11 +126,23 @@ _run_state_validate_stale_days() {
         ''|*[!0-9]*) _rvsd_days="$_rvsd_default" ;;
         *) _rvsd_days="$_rvsd_raw" ;;
     esac
-    while true; do
+    # Strip leading zeros (so e.g. "010" is never later misread as octal by
+    # $(( ))), bounded to at most 20 iterations regardless of input length:
+    # a plain oversized digit string (no leading zero) never enters this
+    # branch and costs nothing, but a zero-padded value — many leading
+    # zeros ahead of a small real number — would otherwise strip one
+    # character per iteration, turning an attacker-sized knob into an O(n)
+    # stall per call. No legitimate config zero-pads past 20 digits; a
+    # hostile value with more than that still reaches the post-strip
+    # length clamp below (still oversized after 20 strips), so the safe
+    # 36500 clamp still applies — only the strip cost itself is bounded.
+    _rvsd_strip_budget=20
+    while [ "$_rvsd_strip_budget" -gt 0 ]; do
         case "$_rvsd_days" in
             0?*) _rvsd_days="${_rvsd_days#0}" ;;
             *) break ;;
         esac
+        _rvsd_strip_budget=$((_rvsd_strip_budget - 1))
     done
     case "$_rvsd_days" in
         ?????*) _rvsd_days=36500 ;;
@@ -152,9 +164,9 @@ _run_state_validate_stale_days() {
 # does not read as inactive just because `/run` only refreshes the record
 # at phase boundaries and nothing touches its mtime mid-phase. Still bounded
 # (run-state-*.json is in no sweep family) and overridable via
-# RUN_STATE_STALE_DAYS / QUOIN_RUN_STATE_STALE_DAYS. A phase or pause that
-# outlives even the widened window is a residual, documented risk — see
-# run/SKILL.md's self-checkpoint bullet.
+# QUOIN_RUN_STATE_STALE_DAYS only — NOT RUN_STATE_STALE_DAYS; see below. A
+# phase or pause that outlives even the widened window is a residual,
+# documented risk — see run/SKILL.md's self-checkpoint bullet.
 #
 # Returns 1 on absence, an unreadable/missing MEMORY_DIR, or any error. Emits
 # nothing on stdout or stderr, ever — callers rely on the exit code alone.
@@ -190,48 +202,94 @@ run_state_probe() {
     [ "$_rsp_noglob_was_set" -eq 1 ] || set +f
     IFS="$_rsp_old_ifs"
 
+    [ "$#" -gt 0 ] || return 1
+
+    # Single awk pass over every candidate, instead of one run_state_fields
+    # (head|awk) invocation per candidate — the per-candidate fork cost
+    # (subshell + head + awk) is what the widened 14-day window turned into
+    # a measurable hot-path regression once a prompt has more than a
+    # handful of fresh-window candidates. Each candidate is still pre-capped
+    # to the same 64 KiB used elsewhere in this file, written to its own
+    # temp file and never read raw by awk — the bound is enforced by
+    # `head -c` before awk ever opens the file, so a pathological
+    # huge-single-line candidate still cannot make this pass proportional
+    # to its real size (the exact hazard the read cap exists for).
+    _rsp_tmpdir=$(mktemp -d 2>/dev/null) || _rsp_tmpdir="${TMPDIR:-/tmp}/quoin-rsp-$$"
+    mkdir -p "$_rsp_tmpdir" 2>/dev/null
+    [ -d "$_rsp_tmpdir" ] && [ -w "$_rsp_tmpdir" ] || return 1
+
+    _rsp_n=0
     for _rsp_candidate in "$@"; do
         [ -f "$_rsp_candidate" ] || continue
-        # One run_state_fields pass per candidate — the same 64 KiB-capped,
-        # line-anchored extractor run_state_select uses, aligning the two
-        # probes on both the read cap and the match shape: the old
-        # byte-coupled '"active": true' grep was a false NEGATIVE against a
-        # compact single-line record, and the old sed|tr -dc schema scan
-        # concatenated every digit on a matched line — a single-line record
-        # would have extracted garbage. run_state_fields's line-anchored key
-        # match has neither failure mode, and collapses three forks
-        # (grep/sed/tr) into one.
-        _rsp_kv=$(run_state_fields "$_rsp_candidate" active schema session_id)
-        [ -n "$_rsp_kv" ] || continue
-        _rsp_active_line="" _rsp_schema_line="" _rsp_sid_line=""
-        {
-            IFS= read -r _rsp_active_line
-            IFS= read -r _rsp_schema_line
-            IFS= read -r _rsp_sid_line
-        } <<RSPEOF
-$_rsp_kv
-RSPEOF
-        [ "$_rsp_active_line" = "active=true" ] || continue
-        _rsp_schema="${_rsp_schema_line#schema=}"
-        case "$_rsp_schema" in
-            ''|*[!0-9]*) continue ;;
-        esac
-        [ "$_rsp_schema" -le 1 ] || continue
-        # SESSION_ID is intentionally uncalled by every consumer as of this
-        # stage (D-27) — T-03, T-05, and T-07 all probe project-scoped. Kept
-        # for forward compatibility (covered by T-02 cases (j)/(k)); do not
-        # delete this branch as dead code. Plain string equality against the
-        # extracted field, matching run_state_select's own idiom: grep -F
-        # treats a newline-bearing pattern as a pattern LIST — any one line
-        # of a multi-line session id could fragment-match an unrelated line
-        # in the record, and a session id arriving from hook stdin JSON can
-        # legally contain '\n'.
-        if [ -n "$_rsp_sid" ]; then
-            _rsp_sid_val="${_rsp_sid_line#session_id=}"
-            [ "$_rsp_sid_val" = "$_rsp_sid" ] || continue
-        fi
-        return 0
+        _rsp_n=$((_rsp_n + 1))
+        head -c 65536 "$_rsp_candidate" 2>/dev/null > "$_rsp_tmpdir/$_rsp_n" 2>/dev/null
     done
+
+    if [ "$_rsp_n" -eq 0 ]; then
+        rm -rf "$_rsp_tmpdir" 2>/dev/null
+        return 1
+    fi
+
+    _rsp_i=1
+    set --
+    while [ "$_rsp_i" -le "$_rsp_n" ]; do
+        set -- "$@" "$_rsp_tmpdir/$_rsp_i"
+        _rsp_i=$((_rsp_i + 1))
+    done
+
+    # Same line-anchored key/value extraction as run_state_fields (kept
+    # byte-for-byte identical in shape so this does not become a second,
+    # divergent definition of "active"), but folded into one awk process
+    # that walks every capped temp file in turn: FNR==1 marks the start of
+    # a new candidate, so the PREVIOUS candidate's fields are complete and
+    # checked right there; the END block checks the last candidate, since
+    # no further FNR==1 transition follows it. First match wins and exits
+    # immediately, matching the old loop's first-match-wins order.
+    _rsp_match=$(LC_ALL=C awk -v want_sid="$_rsp_sid" '
+    function is_match() {
+        if (val["active"] != "true") return 0
+        s = val["schema"]
+        if (s == "" || s ~ /[^0-9]/) return 0
+        # Same 4+-digit reject as the shell-side schema guard elsewhere in
+        # this file — a legitimate schema is 0 or 1.
+        if (length(s) > 3) return 0
+        if (s + 0 > 1) return 0
+        # SESSION_ID is intentionally uncalled by every consumer as of this
+        # stage (D-27); kept for forward compatibility. Plain string
+        # equality — no pattern semantics — since a session id arriving
+        # from hook stdin JSON can legally contain a newline, and awk `==`
+        # never treats one operand as a pattern list the way grep -F would.
+        if (want_sid != "" && val["session_id"] != want_sid) return 0
+        return 1
+    }
+    FNR == 1 {
+        if (NR > 1 && is_match()) { print "MATCH"; found = 1; exit 0 }
+        delete val
+    }
+    {
+        line = $0
+        if (!match(line, /^[ \t]*"[^"]*"/)) next
+        key = substr(line, RSTART, RLENGTH)
+        gsub(/^[ \t]*"/, "", key)
+        gsub(/"$/, "", key)
+        rest = substr(line, RSTART + RLENGTH)
+        sub(/^: */, "", rest)
+        sub(/,$/, "", rest)
+        sub(/^"/, "", rest)
+        sub(/"$/, "", rest)
+        val[key] = rest
+    }
+    END {
+        # awk still runs END after an in-body `exit`, so guard on `found`
+        # to avoid re-checking (and re-printing a second "MATCH" for) the
+        # same already-reported candidate.
+        if (!found && is_match()) print "MATCH"
+    }
+    ' "$@" 2>/dev/null)
+
+    rm -rf "$_rsp_tmpdir" 2>/dev/null
+
+    [ "$_rsp_match" = "MATCH" ] && return 0
     return 1
 }
 
@@ -489,7 +547,13 @@ run_state_fields() {
     # (head -c is BSD/GNU-common but not POSIX-mandated; a head lacking -c
     # emits nothing here, so the pipeline degrades toward empty output —
     # the fail-OPEN direction for every consumer of this extractor.)
-    head -c 65536 "$_rsf_file" 2>/dev/null | awk -v keys="$*" '
+    # LC_ALL=C: a truncated-mid-multibyte-character or binary record can
+    # make a locale-aware awk's character reader fail on the byte cut
+    # above, leaking stderr and flipping the verdict by locale (a plain
+    # byte-oriented C-locale awk never trips on this). Trailing
+    # 2>/dev/null is a second, independent backstop for any other awk
+    # error on a hostile record — this extractor's contract is silence.
+    head -c 65536 "$_rsf_file" 2>/dev/null | LC_ALL=C awk -v keys="$*" '
     BEGIN {
         n = split(keys, order, " ")
     }
@@ -512,7 +576,7 @@ run_state_fields() {
             printf "%s=%s\n", k, (k in val ? val[k] : "")
         }
     }
-    '
+    ' 2>/dev/null
 }
 
 # run_state_select <memory_dir> <session_id> — echo the path of the freshest
@@ -568,8 +632,11 @@ RSSEOF
         _rss_schema="${_rss_schema_line#schema=}"
         case "$_rss_schema" in
             ''|*[!0-9]*) continue ;;
+            # See run_state_probe's twin guard: reject 4+ digit schemas
+            # before the arithmetic test below, not after.
+            ????*) continue ;;
         esac
-        [ "$_rss_schema" -le 1 ] || continue
+        [ "$_rss_schema" -le 1 ] 2>/dev/null || continue
         # Plain string equality against the record's stored (sanitized)
         # session_id — no grep, no pattern semantics, no metacharacter
         # hazard. A raw id containing a quote or backslash cannot equal
