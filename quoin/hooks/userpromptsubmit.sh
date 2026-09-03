@@ -173,8 +173,8 @@ elif [ "$util" -ge "$STOP_BPS" ] && [ "$util" -lt "$BLOCK_BPS" ]; then
   fi
   # Defer marker not set — emit advisory. The checkpoint guidance is
   # conditional on a fresh active run-state record existing project-wide
-  # (run_state_probe, project-scoped per D-27) — the advisory itself always
-  # fires; only the "run /checkpoint" wording is arm-conditional.
+  # (run_state_probe, project-scoped) — the advisory itself always fires;
+  # only the "run /checkpoint" wording is arm-conditional.
   pct_int=$((util / 100))
   pct_dec=$(printf '%02d' $((util % 100)))
   if run_state_probe "${_adv_cwd}/.workflow_artifacts/memory"; then
@@ -250,7 +250,7 @@ else
     _purge_note=" NOTE: /checkpoint --purge is destructive and is no longer refused at high context — re-read what it will delete before continuing."
   fi
   # Checkpoint mid-clause is arm-conditional on a fresh active run-state
-  # record existing project-wide (run_state_probe, project-scoped per D-27,
+  # record existing project-wide (run_state_probe, project-scoped,
   # matching branch (2) above).
   if run_state_probe "$cwd/.workflow_artifacts/memory"; then
     _cp_clause=" and consider /checkpoint plus a fresh session"
