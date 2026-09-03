@@ -927,17 +927,40 @@ else
 fi
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-s6.txt"
 
-# (s7) stale record (mtime forced 5 days back) → treated as absent (nudge
-# absent).
+# (s7) very stale record (mtime forced 30 days back) → treated as absent
+# (nudge absent). run_state_probe's default window was widened from ~2 days
+# to ~15 days — see (s7b) below for the scenario that motivated the
+# widening; 30 days is safely outside it either way.
 write_run_state "$RUN_STATE_FIXTURE" true false "irrelevant-sid"
-STALE_TS_S7=$(date -v-5d +%Y%m%d0000 2>/dev/null || date -d '5 days ago' +%Y%m%d0000)
+STALE_TS_S7=$(date -v-30d +%Y%m%d0000 2>/dev/null || date -d '30 days ago' +%Y%m%d0000)
 touch -t "$STALE_TS_S7" "$RUN_STATE_FIXTURE"
 stdin_s7=$(make_stdin 'do some work' "$TRANSCRIPT_88" "sess-s7" "$TMPDIR_TEST")
 out_s7=$(run_hook "$stdin_s7")
 if printf '%s' "$out_s7" | grep -q '/checkpoint' 2>/dev/null; then
-  fail "(s7) stale run-state record → unexpected /checkpoint mention (should read as absent): $out_s7"
+  fail "(s7) very stale (30d) run-state record → unexpected /checkpoint mention (should read as absent): $out_s7"
 else
-  ok "(s7) stale run-state record → treated as absent, no checkpoint nudge"
+  ok "(s7) very stale (30d) run-state record → treated as absent, no checkpoint nudge"
+fi
+rm -f "$RUN_STATE_FIXTURE"
+
+# (s7b) active-but-moderately-stale record still nudges: 5 days exceeds the
+# PRE-FIX ~2-day default window but sits well inside the widened default
+# (~15 days) — the exact "long /implement, or a run paused over a weekend"
+# scenario that motivated widening it: an outdated, active-but-stale record
+# used to silently read as no-run-in-progress even though the run was
+# genuinely still live. Reproduced through the real userpromptsubmit.sh
+# hook (which calls read_constants — the interaction that actually
+# surfaced the read_constants/RUN_STATE_STALE_DAYS collision fixed
+# alongside this widening), not just the probe unit directly.
+write_run_state "$RUN_STATE_FIXTURE" true false "irrelevant-sid"
+STALE_TS_S7B=$(date -v-5d +%Y%m%d0000 2>/dev/null || date -d '5 days ago' +%Y%m%d0000)
+touch -t "$STALE_TS_S7B" "$RUN_STATE_FIXTURE"
+stdin_s7b=$(make_stdin 'do some work' "$TRANSCRIPT_88" "sess-s7b" "$TMPDIR_TEST")
+out_s7b=$(run_hook "$stdin_s7b")
+if printf '%s' "$out_s7b" | grep -q 'consider running /checkpoint' 2>/dev/null; then
+  ok "(s7b) active record aged 5d still nudges under the widened default window"
+else
+  fail "(s7b) active record aged 5d should still nudge /checkpoint: $out_s7b"
 fi
 rm -f "$RUN_STATE_FIXTURE"
 

@@ -46,12 +46,16 @@ fail() {
 }
 
 make_stdin() {
+  # jq -nc --arg: jq owns all JSON escaping, so a TMPDIR containing '"' or
+  # '\' cannot produce malformed stdin the way unescaped printf
+  # interpolation could.
   prompt="$1"
   transcript="$2"
   session_id="$3"
   cwd="$4"
-  printf '{"prompt":"%s","transcript_path":"%s","session_id":"%s","cwd":"%s"}' \
-    "$prompt" "$transcript" "$session_id" "$cwd"
+  jq -nc --arg prompt "$prompt" --arg transcript "$transcript" \
+    --arg session_id "$session_id" --arg cwd "$cwd" \
+    '{prompt: $prompt, transcript_path: $transcript, session_id: $session_id, cwd: $cwd}'
 }
 
 run_hook() {
@@ -121,12 +125,46 @@ fi
 
 extract_probe_block() {
   # $1 = source file, $2 = start heading (literal), $3 = end heading (literal)
+  # A renamed/missing end heading used to let the slice silently run to
+  # EOF, and 0-or-2+ matching fenced blocks used to silently concatenate —
+  # both loud failures now (empty stdout + a stderr reason), caught by
+  # every caller's existing `[ -s ... ]` non-empty check.
   src="$1"; start_h="$2"; end_h="$3"
+
+  _epb_start_count=$(awk -v start="$start_h" 'index($0, start) == 1 { n++ } END { print n+0 }' "$src")
+  if [ "$_epb_start_count" -ne 1 ]; then
+    printf 'extract_probe_block: expected exactly 1 start heading %s in %s, found %s\n' \
+      "$start_h" "$src" "$_epb_start_count" >&2
+    return 1
+  fi
+
+  _epb_end_count=$(awk -v end="$end_h" 'index($0, end) == 1 { n++ } END { print n+0 }' "$src")
+  if [ "$_epb_end_count" -lt 1 ]; then
+    printf 'extract_probe_block: end heading %s not found in %s\n' "$end_h" "$src" >&2
+    return 1
+  fi
+
   awk -v start="$start_h" -v end="$end_h" '
     index($0, start) == 1 { insec = 1 }
     insec { print }
     insec && index($0, end) == 1 && NR > 1 { exit }
   ' "$src" > "$TMPDIR_TEST/_slice.tmp"
+
+  _epb_block_count=$(awk '
+    /^[ \t]*```sh$/ { capturing = 1; block = ""; next }
+    /^[ \t]*```$/ {
+      if (capturing && index(block, "command -v run_state_probe") > 0) { n++ }
+      capturing = 0; block = ""; next
+    }
+    capturing { block = block $0 "\n" }
+    END { print n+0 }
+  ' "$TMPDIR_TEST/_slice.tmp")
+  if [ "$_epb_block_count" -ne 1 ]; then
+    printf 'extract_probe_block: expected exactly 1 matching ```sh block between %s and %s, found %s\n' \
+      "$start_h" "$end_h" "$_epb_block_count" >&2
+    return 1
+  fi
+
   awk '
     /^[ \t]*```sh$/ { capturing = 1; block = ""; next }
     /^[ \t]*```$/ {
@@ -139,8 +177,14 @@ extract_probe_block() {
 
 # ═══ Case B — MAJ-1 inert-guard class (/checkpoint Step 1.4 sourcing) ═══════
 
+# The sed substitutes the RESOLVED LITERAL path — the same plain-text
+# replacement _copy_with_substitution performs at install time, no
+# shell-variable indirection — so a space in the deploy root (this
+# worktree's "My Drive" among them) exercises the same quoting the SKILL.md
+# source line itself now carries, instead of masking it behind a quoted
+# $REPO_ROOT reference the installer never produces.
 extract_probe_block "$CHECKPOINT_SKILL" "### Step 1.4:" "### Step 1.45:" \
-  | sed 's#__QUOIN_HOME__#"$REPO_ROOT/quoin"#' \
+  | sed "s#__QUOIN_HOME__#$REPO_ROOT/quoin#" \
   > "$TMPDIR_TEST/step14_block.sh"
 
 if [ -s "$TMPDIR_TEST/step14_block.sh" ]; then
@@ -168,8 +212,9 @@ fi
 
 # ═══ Case B2 — MAJ-1 round-4 unresolvable-root class (/run self-checkpoint) ═
 
+# Literal-path substitution, same rationale as Case B above.
 extract_probe_block "$RUN_SKILL" "## Hook cooperation (autonomous)" "## Gate boundaries reference" \
-  | sed 's#__QUOIN_HOME__#"$REPO_ROOT/quoin"#' \
+  | sed "s#__QUOIN_HOME__#$REPO_ROOT/quoin#" \
   > "$TMPDIR_TEST/run_hook_coop_block.sh"
 
 if [ -s "$TMPDIR_TEST/run_hook_coop_block.sh" ]; then
@@ -186,6 +231,31 @@ if [ "$out_b2pos" = "PROBE_ACTIVE" ]; then
   ok "Case B2: extracted run/SKILL.md block prints PROBE_ACTIVE against a real active record"
 else
   fail "Case B2: expected stdout exactly PROBE_ACTIVE, got: $out_b2pos"
+fi
+
+# ═══ Case C — PROBE_INACTIVE through both extracted blocks ═════════════════
+# PROBE_INACTIVE is the sole save-skipping outcome, and it was previously
+# covered only at the probe-unit level (test_lib_run_state_probe.sh case
+# (d)), never through the real extracted consumer blocks. Clear the fixture
+# record via the REAL writer's --clear path (never hand-edited JSON) so both
+# blocks see a genuinely inactive run.
+
+python3 "$REPO_ROOT/quoin/core/scripts/run_state.py" --clear \
+  --project-root "$TMPDIR_TEST" \
+  --task canary-probe > /dev/null
+
+out_c1=$(REPO_ROOT="$REPO_ROOT" _PROJECT_ROOT="$TMPDIR_TEST" sh "$TMPDIR_TEST/step14_block.sh")
+if [ "$out_c1" = "PROBE_INACTIVE" ]; then
+  ok "Case C.1: extracted checkpoint/SKILL.md block prints PROBE_INACTIVE once the record is cleared"
+else
+  fail "Case C.1: expected stdout exactly PROBE_INACTIVE, got: $out_c1"
+fi
+
+out_c2=$(cd "$TMPDIR_TEST" && REPO_ROOT="$REPO_ROOT" sh "$TMPDIR_TEST/run_hook_coop_block.sh")
+if [ "$out_c2" = "PROBE_INACTIVE" ]; then
+  ok "Case C.2: extracted run/SKILL.md block prints PROBE_INACTIVE once the record is cleared"
+else
+  fail "Case C.2: expected stdout exactly PROBE_INACTIVE, got: $out_c2"
 fi
 
 # ─── Silence check: none of the extracted blocks should ever emit anything
