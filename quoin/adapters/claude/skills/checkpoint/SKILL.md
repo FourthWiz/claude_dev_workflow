@@ -264,13 +264,14 @@ If AFTER_COMPACT_FLAG_PRESENT is false (flag absent):
 
 Note: /checkpoint is exempt from the high-context advisory at userpromptsubmit.sh:117-134; the band no longer
 blocks, and --purge reaches the advisory, not a refusal. The --after-compact flag is retained for backward-compat
-only; compact-already-ran detection is now automatic via the dual-sentinel check in Step 1.4.
+only; compact-already-ran detection is now automatic via the two-arm check in Step 1.4 (dual-sentinel, or a
+project-scoped no-active-run probe when the sentinel pair is incomplete).
 
 ### Step 1.4: Compact-already-ran skip check
 
 (Conditional: SKIP this step entirely if SELECTED_MODE was explicitly passed via `--mode` OR if AFTER_COMPACT_FLAG_PRESENT=true. Proceed to Step 1.5.)
 
-This step detects whether auto-compact already fired in this session AND wrote a precompact checkpoint. If so, the user's `/checkpoint` is redundant — the precompact hook already saved state.
+This step detects whether auto-compact already fired in this session AND wrote a precompact checkpoint, OR whether no active run is in flight to resume project-wide. If either holds, the user's `/checkpoint` is redundant.
 
 **Session-id acquisition:** same procedure as Step 1.1.
 
@@ -287,20 +288,35 @@ _sentinel="${_PROJECT_ROOT}/.workflow_artifacts/memory/compact-happened-${_sid}.
 _pending="${_PROJECT_ROOT}/.workflow_artifacts/memory/pending-restore-${_sid}.txt"
 ```
 
-**Dual-sentinel check:** BOTH `_sentinel` AND `_pending` must exist for the skip to fire.
-- `compact-happened-*` alone (manual `/compact`) does NOT skip — user wants a real save; fall through to Step 1.5.
-- `pending-restore-*` alone (no compact this session) does NOT skip — fall through to Step 1.5.
+**Two-arm check:** `_sentinel` must exist AND (`_pending` exists (Arm A) OR the helper is available and reports no active run project-wide (Arm B, no `SESSION_ID` argument — project-scoped, matching `T-03`'s calls, `D-27`)).
 
-If `[ -f "$_sentinel" ] && [ -f "$_pending" ]`:
-  - Read the checkpoint path from `_pending`:
-    `_cp_path=$(head -1 "$_pending" 2>/dev/null)`
-  - Inform user (verbatim):
-    `[checkpoint] Auto-compact already ran in this session; precompact.sh wrote a checkpoint automatically. No additional /checkpoint needed. Auto-written checkpoint: ${_cp_path}`
-  - Append cost-ledger row: `<uuid> | <date> | checkpoint | sonnet | task | "skip (compact-already-ran)" | 0`
-  - Release pidfile: `pidfile_release checkpoint`
-  - STOP (do NOT proceed to Steps 1–6).
+Run this block to determine which arm, if any, applies:
+```sh
+. __QUOIN_HOME__/hooks/_lib.sh 2>/dev/null || true
+if ! command -v run_state_probe >/dev/null 2>&1; then
+  echo GUARD_UNAVAILABLE
+elif run_state_probe "${_PROJECT_ROOT}/.workflow_artifacts/memory"; then
+  echo PROBE_ACTIVE
+else
+  echo PROBE_INACTIVE
+fi
+```
+`GUARD_UNAVAILABLE` → the new arm is inert; fall back to today's conjunction-only condition (`D-28`). `PROBE_ACTIVE` → an active run exists; do not enter the skip arm. `PROBE_INACTIVE` → Arm B applies (subject to `_pending` still being absent, per the two-arm condition above).
 
-Otherwise (sentinel absent, or only `compact-happened-*` present): proceed to Step 1.45.
+If `[ -f "$_sentinel" ]`:
+  - **Arm A** (`_pending` also exists) — unchanged from today, byte-for-byte:
+    - Read the checkpoint path from `_pending`:
+      `_cp_path=$(head -1 "$_pending" 2>/dev/null)`
+    - Inform user (verbatim):
+      `[checkpoint] Auto-compact already ran in this session; precompact.sh wrote a checkpoint automatically. No additional /checkpoint needed. Auto-written checkpoint: ${_cp_path}`
+  - **Arm B** (`_pending` absent, the block above printed `PROBE_INACTIVE`) — do NOT read `_pending`, do NOT compute `_cp_path`. Inform user (verbatim):
+    `[checkpoint] A compaction already ran in this session and no automatic checkpoint was written. None is needed — there is no run in flight to resume. Use /continue_work if you want the prior context back.`
+  - Either arm above then: append cost-ledger row: `<uuid> | <date> | checkpoint | sonnet | task | "skip (compact-already-ran)" | 0`; release pidfile: `pidfile_release checkpoint`; STOP (do NOT proceed to Steps 1–6).
+  - Otherwise (`_pending` absent AND the block above printed `GUARD_UNAVAILABLE` or `PROBE_ACTIVE`): neither arm applies — fall through to Step 1.45, exactly as today's conjunction-only condition would.
+
+Otherwise (`_sentinel` absent): fall through to Step 1.45 regardless of the block's output.
+- `compact-happened-*` alone with an active run (or an unavailable helper) still does NOT skip — fall through to Step 1.45.
+- `pending-restore-*` alone (no compact this session) still does NOT skip — fall through to Step 1.45.
 
 ### Step 1.45: Panic/degraded save check
 
