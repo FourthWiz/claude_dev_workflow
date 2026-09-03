@@ -758,6 +758,189 @@ fi
 chmod 644 "$UNREADABLE_TRANSCRIPT" 2>/dev/null || true
 rm -f "$UNREADABLE_TRANSCRIPT"
 
+# ─── T-04: checkpoint-nudge arm-conditional on run_state_probe (D-27) ─────────
+# All fixture project roots are $TMPDIR_TEST (see make_stdin's cwd default and
+# the TMPDIR_TEST setup above at :53-54) — resolve_project_root's outermost-
+# .workflow_artifacts pass returns TMPDIR_TEST itself, so the probe looks in
+# the same place these fixtures write to.
+
+RUN_STATE_FIXTURE="$TMPDIR_TEST/.workflow_artifacts/memory/run-state-s-fixture.json"
+
+# write_run_state PATH ACTIVE AT_STAGE_BOUNDARY [SESSION_ID]
+write_run_state() {
+  local path="$1"
+  local active="$2"
+  local boundary="$3"
+  local sid="${4:-}"
+  {
+    printf '{\n'
+    printf '  "task": "s-fixture",\n'
+    printf '  "active": %s,\n' "$active"
+    printf '  "schema": 1,\n'
+    printf '  "at_stage_boundary": %s' "$boundary"
+    if [ -n "$sid" ]; then
+      printf ',\n  "session_id": "%s"\n' "$sid"
+    else
+      printf '\n'
+    fi
+    printf '}\n'
+  } > "$path"
+}
+
+# (s1) 88%, no run-state → additionalContext present, contains 88., contains
+# /continue_work, does NOT contain /checkpoint.
+rm -f "$RUN_STATE_FIXTURE"
+stdin_s1=$(make_stdin 'do some work' "$TRANSCRIPT_88" "sess-s1" "$TMPDIR_TEST")
+out_s1=$(run_hook "$stdin_s1")
+if printf '%s' "$out_s1" | grep -q 'additionalContext' 2>/dev/null; then
+  ok "(s1) 88%, no run-state → additionalContext present"
+else
+  fail "(s1) 88%, no run-state → expected additionalContext, got: $out_s1"
+fi
+if printf '%s' "$out_s1" | grep -q '88\.' 2>/dev/null; then
+  ok "(s1) 88%, no run-state → message contains 88."
+else
+  fail "(s1) 88%, no run-state → missing 88. in message: $out_s1"
+fi
+if printf '%s' "$out_s1" | grep -q '/continue_work' 2>/dev/null; then
+  ok "(s1) 88%, no run-state → message contains /continue_work"
+else
+  fail "(s1) 88%, no run-state → missing /continue_work: $out_s1"
+fi
+if printf '%s' "$out_s1" | grep -q '/checkpoint' 2>/dev/null; then
+  fail "(s1) 88%, no run-state → unexpected /checkpoint mention: $out_s1"
+else
+  ok "(s1) 88%, no run-state → no /checkpoint mention"
+fi
+
+# (s2) 88% + fresh active:true / at_stage_boundary:false record, ANY session_id
+# (project-scoped as of D-27 — the fixture's own session id is irrelevant) →
+# message contains "consider running /checkpoint".
+write_run_state "$RUN_STATE_FIXTURE" true false "irrelevant-sid"
+stdin_s2=$(make_stdin 'do some work' "$TRANSCRIPT_88" "sess-s2" "$TMPDIR_TEST")
+out_s2=$(run_hook "$stdin_s2")
+if printf '%s' "$out_s2" | grep -q 'consider running /checkpoint' 2>/dev/null; then
+  ok "(s2) 88% + fresh active record → consider running /checkpoint"
+else
+  fail "(s2) 88% + fresh active record → expected checkpoint nudge, got: $out_s2"
+fi
+
+# (s3) 88% + fresh record, at_stage_boundary:true (a boundary-parked run) →
+# message STILL contains "consider running /checkpoint" (D-26 tradeoff).
+write_run_state "$RUN_STATE_FIXTURE" true true "irrelevant-sid"
+stdin_s3=$(make_stdin 'do some work' "$TRANSCRIPT_88" "sess-s3" "$TMPDIR_TEST")
+out_s3=$(run_hook "$stdin_s3")
+if printf '%s' "$out_s3" | grep -q 'consider running /checkpoint' 2>/dev/null; then
+  ok "(s3) 88% + boundary-parked active record → consider running /checkpoint"
+else
+  fail "(s3) 88% + boundary-parked active record → expected checkpoint nudge, got: $out_s3"
+fi
+
+# (s3b) 88% + fresh active:true record with a session id DIFFERENT from the
+# fixture's own session_id (simulating the record thorough_plan/SKILL.md:568
+# leaves behind mid-round) → message STILL contains "consider running
+# /checkpoint" (round-3 project-scoping regression guard, D-27/CRIT-1: a
+# reintroduction of session-scoping here must fail this case).
+write_run_state "$RUN_STATE_FIXTURE" true false "sid-other-party"
+stdin_s3b=$(make_stdin 'do some work' "$TRANSCRIPT_88" "sess-s3b" "$TMPDIR_TEST")
+out_s3b=$(run_hook "$stdin_s3b")
+if printf '%s' "$out_s3b" | grep -q 'consider running /checkpoint' 2>/dev/null; then
+  ok "(s3b) 88% + active record, DIFFERENT session_id → consider running /checkpoint (project-scoped)"
+else
+  fail "(s3b) 88% + active record, DIFFERENT session_id → expected checkpoint nudge (project-scoped, D-27), got: $out_s3b"
+fi
+
+# (s4) 97%, no run-state → additionalContext present, no "decision" and no
+# block anywhere in stdout, message still names pending-prompt-, no
+# /checkpoint nudge; pending-prompt file still written.
+rm -f "$RUN_STATE_FIXTURE"
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-s4.txt"
+stdin_s4=$(make_stdin 'do some work' "$TRANSCRIPT_97" "sess-s4" "$TMPDIR_TEST")
+out_s4=$(run_hook "$stdin_s4")
+if printf '%s' "$out_s4" | grep -q 'additionalContext' 2>/dev/null; then
+  ok "(s4) 97%, no run-state → additionalContext present"
+else
+  fail "(s4) 97%, no run-state → expected additionalContext, got: $out_s4"
+fi
+if [ -z "$(printf '%s' "$out_s4" | grep -ow 'decision')" ]; then
+  ok "(s4) 97%, no run-state → no bare 'decision' token"
+else
+  fail "(s4) 97%, no run-state → unexpected 'decision' token: $out_s4"
+fi
+if [ -z "$(printf '%s' "$out_s4" | grep -ow 'block')" ]; then
+  ok "(s4) 97%, no run-state → no bare 'block' token"
+else
+  fail "(s4) 97%, no run-state → unexpected 'block' token: $out_s4"
+fi
+if printf '%s' "$out_s4" | grep -q 'pending-prompt-' 2>/dev/null; then
+  ok "(s4) 97%, no run-state → message still names pending-prompt-"
+else
+  fail "(s4) 97%, no run-state → missing pending-prompt- mention: $out_s4"
+fi
+if printf '%s' "$out_s4" | grep -q '/checkpoint' 2>/dev/null; then
+  fail "(s4) 97%, no run-state → unexpected /checkpoint mention: $out_s4"
+else
+  ok "(s4) 97%, no run-state → no /checkpoint nudge"
+fi
+if [ -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-s4.txt" ]; then
+  ok "(s4) 97%, no run-state → pending-prompt-sess-s4.txt written"
+else
+  fail "(s4) 97%, no run-state → pending-prompt-sess-s4.txt NOT written"
+fi
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-s4.txt"
+
+# (s5) 97% + fresh active record with a session id DIFFERENT from the
+# fixture's own session_id (branch (3)'s counterpart to s3b, round-4 MAJ-3
+# regression guard) → /checkpoint nudge present (mid-clause reads "and
+# consider /checkpoint plus a fresh session"), "decision" still absent.
+write_run_state "$RUN_STATE_FIXTURE" true false "sid-other-party"
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-s5.txt"
+stdin_s5=$(make_stdin 'do some work' "$TRANSCRIPT_97" "sess-s5" "$TMPDIR_TEST")
+out_s5=$(run_hook "$stdin_s5")
+if printf '%s' "$out_s5" | grep -q 'and consider /checkpoint plus a fresh session' 2>/dev/null; then
+  ok "(s5) 97% + active record, DIFFERENT session_id → checkpoint nudge present (project-scoped)"
+else
+  fail "(s5) 97% + active record, DIFFERENT session_id → expected checkpoint nudge, got: $out_s5"
+fi
+if [ -z "$(printf '%s' "$out_s5" | grep -ow 'decision')" ]; then
+  ok "(s5) 97% + active record → no bare 'decision' token"
+else
+  fail "(s5) 97% + active record → unexpected 'decision' token: $out_s5"
+fi
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-s5.txt"
+
+# (s6) 97% + /checkpoint --purge + no run-state → the --purge risk note is
+# still present AND the nudge is absent (the two clauses are independent).
+rm -f "$RUN_STATE_FIXTURE"
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-s6.txt"
+stdin_s6=$(make_stdin '/checkpoint --purge' "$TRANSCRIPT_97" "sess-s6" "$TMPDIR_TEST")
+out_s6=$(run_hook "$stdin_s6")
+if printf '%s' "$out_s6" | grep -q 'is destructive and is no longer refused' 2>/dev/null; then
+  ok "(s6) 97% + --purge, no run-state → --purge risk note present"
+else
+  fail "(s6) 97% + --purge, no run-state → missing --purge risk note: $out_s6"
+fi
+if printf '%s' "$out_s6" | grep -q '/checkpoint plus a fresh session' 2>/dev/null; then
+  fail "(s6) 97% + --purge, no run-state → unexpected checkpoint nudge: $out_s6"
+else
+  ok "(s6) 97% + --purge, no run-state → checkpoint nudge absent (clauses independent)"
+fi
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/pending-prompt-sess-s6.txt"
+
+# (s7) stale record (mtime forced 5 days back) → treated as absent (nudge
+# absent).
+write_run_state "$RUN_STATE_FIXTURE" true false "irrelevant-sid"
+STALE_TS_S7=$(date -v-5d +%Y%m%d0000 2>/dev/null || date -d '5 days ago' +%Y%m%d0000)
+touch -t "$STALE_TS_S7" "$RUN_STATE_FIXTURE"
+stdin_s7=$(make_stdin 'do some work' "$TRANSCRIPT_88" "sess-s7" "$TMPDIR_TEST")
+out_s7=$(run_hook "$stdin_s7")
+if printf '%s' "$out_s7" | grep -q '/checkpoint' 2>/dev/null; then
+  fail "(s7) stale run-state record → unexpected /checkpoint mention (should read as absent): $out_s7"
+else
+  ok "(s7) stale run-state record → treated as absent, no checkpoint nudge"
+fi
+rm -f "$RUN_STATE_FIXTURE"
+
 # (r7) terminal-free
 if [ "$(grep -c '/dev/tty' "$HOOK" || true)" -eq 0 ]; then
   ok "(r7) hook never reads from /dev/tty"

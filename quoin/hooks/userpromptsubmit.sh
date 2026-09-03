@@ -171,11 +171,19 @@ elif [ "$util" -ge "$STOP_BPS" ] && [ "$util" -lt "$BLOCK_BPS" ]; then
     _adv_defer="${_adv_cwd}/.workflow_artifacts/memory/checkpoint-defer-${_adv_sid}.txt"
     [ -f "$_adv_defer" ] && exit 0
   fi
-  # Defer marker not set — emit advisory
+  # Defer marker not set — emit advisory. The checkpoint guidance is
+  # conditional on a fresh active run-state record existing project-wide
+  # (run_state_probe, project-scoped per D-27) — the advisory itself always
+  # fires; only the "run /checkpoint" wording is arm-conditional.
   pct_int=$((util / 100))
   pct_dec=$(printf '%02d' $((util % 100)))
-  printf '{"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": "context at %d.%s%% — consider running /checkpoint and starting a fresh session"}}\n' \
-    "$pct_int" "$pct_dec"
+  if run_state_probe "${_adv_cwd}/.workflow_artifacts/memory"; then
+    printf '{"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": "context at %d.%s%% — consider running /checkpoint and starting a fresh session"}}\n' \
+      "$pct_int" "$pct_dec"
+  else
+    printf '{"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": "context at %d.%s%% — start a fresh session when convenient; run /continue_work there to restore context. No checkpoint is needed: no active run in this project."}}\n' \
+      "$pct_int" "$pct_dec"
+  fi
   exit 0
 else
   # Branch (3): high-context range (>= BLOCK_BPS)
@@ -241,8 +249,16 @@ else
   if [ "$cmd" = "/checkpoint" ] && [ "$arg2" = "--purge" ]; then
     _purge_note=" NOTE: /checkpoint --purge is destructive and is no longer refused at high context — re-read what it will delete before continuing."
   fi
-  _msg=$(printf '[quoin-context] context at %d.%s%% — finish the current stage, prefer subagents for heavy reads, and consider /checkpoint plus a fresh session. Your prompt was also appended to pending-prompt-%s.txt (prompt text only — no checkpoint was written).%s' \
-    "$pct_int" "$pct_dec" "$session_id" "$_purge_note")
+  # Checkpoint mid-clause is arm-conditional on a fresh active run-state
+  # record existing project-wide (run_state_probe, project-scoped per D-27,
+  # matching branch (2) above).
+  if run_state_probe "$cwd/.workflow_artifacts/memory"; then
+    _cp_clause=" and consider /checkpoint plus a fresh session"
+  else
+    _cp_clause=" and start a fresh session (/continue_work restores context; no checkpoint is needed — no active run in this project)"
+  fi
+  _msg=$(printf '[quoin-context] context at %d.%s%% — finish the current stage, prefer subagents for heavy reads,%s. Your prompt was also appended to pending-prompt-%s.txt (prompt text only — no checkpoint was written).%s' \
+    "$pct_int" "$pct_dec" "$_cp_clause" "$session_id" "$_purge_note")
   jq -nc --arg m "$_msg" '{systemMessage: $m, hookSpecificOutput: {hookEventName: "UserPromptSubmit", additionalContext: $m}}'
   exit 0
 fi
