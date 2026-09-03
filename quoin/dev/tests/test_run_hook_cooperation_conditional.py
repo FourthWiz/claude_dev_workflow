@@ -105,7 +105,7 @@ def test_source_line_precedes_availability_guard(slice_text: str) -> None:
     bullet = _self_checkpoint_bullet(slice_text)
     lines = bullet.splitlines()
     source_idx = next(
-        (i for i, ln in enumerate(lines) if ". __QUOIN_HOME__/hooks/_lib.sh" in ln),
+        (i for i, ln in enumerate(lines) if '. "__QUOIN_HOME__/hooks/_lib.sh"' in ln),
         None,
     )
     guard_idx = next(

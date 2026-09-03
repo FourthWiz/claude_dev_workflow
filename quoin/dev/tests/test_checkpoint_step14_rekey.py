@@ -92,7 +92,7 @@ def test_slice_contains_availability_check(slice_text: str) -> None:
 def test_source_line_precedes_availability_guard(slice_text: str) -> None:
     lines = slice_text.splitlines()
     source_idx = next(
-        (i for i, ln in enumerate(lines) if ". __QUOIN_HOME__/hooks/_lib.sh" in ln),
+        (i for i, ln in enumerate(lines) if '. "__QUOIN_HOME__/hooks/_lib.sh"' in ln),
         None,
     )
     guard_idx = next(
@@ -122,7 +122,7 @@ def test_probe_block_contains_all_three_tokens(slice_text: str) -> None:
         assert token in block, f"probe block missing token literal {token!r}"
     # source line, guard, and probe call live together as ONE fenced block —
     # not split across multiple fenced blocks, and not left as bare prose.
-    assert ". __QUOIN_HOME__/hooks/_lib.sh" in block
+    assert '. "__QUOIN_HOME__/hooks/_lib.sh"' in block
 
 
 def test_no_revert_to_conjunction_only_condition(slice_text: str) -> None:

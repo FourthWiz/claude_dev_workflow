@@ -1560,7 +1560,7 @@ the threshold values themselves live in `hooks/_lib.sh`'s
   UNLESS `run_state_probe` (`hooks/_lib.sh`) confirms no active run-state
   record exists project-wide. The check:
   ```sh
-  . __QUOIN_HOME__/hooks/_lib.sh 2>/dev/null || true
+  . "__QUOIN_HOME__/hooks/_lib.sh" 2>/dev/null || true
   if ! command -v run_state_probe >/dev/null 2>&1; then
     echo GUARD_UNAVAILABLE
   else
@@ -1593,9 +1593,16 @@ the threshold values themselves live in `hooks/_lib.sh`'s
   70–95% advisory. This bullet does not distinguish a boundary-parked run
   from an in-flight one (`D-26`): `/run` writes the record only at phase
   boundaries and never mid-phase, so the probe will almost always answer
-  `PROBE_ACTIVE` and the self-checkpoint fires as it does today — the only
-  realistic skip window is the narrow one where `--clear` has already run
-  but the session continues past 90%. This bullet lives inside `## Hook
+  `PROBE_ACTIVE` and the self-checkpoint fires as it does today. There are
+  two realistic skip windows, not one: the narrow one where `--clear` has
+  already run but the session continues past 90%, and a second one where
+  the record is genuinely still active but has aged past `run_state_probe`'s
+  own staleness window — a phase that runs long, or a session paused and
+  resumed after that window elapses, reads as `PROBE_INACTIVE` even though
+  the run is live. The probe's default window is deliberately wider than
+  `run_state_select`'s (14 days vs. 1) specifically to keep this second
+  window rare in practice; `QUOIN_RUN_STATE_STALE_DAYS` raises it further
+  for an expected multi-week autonomous run. This bullet lives inside `## Hook
   cooperation (autonomous)`, so the conditioning above does not reach an
   interactive (non-autonomous) `/run` session — a scope narrowing worth
   flagging for the `S-7` sweep, not an oversight. The pre-phase budget

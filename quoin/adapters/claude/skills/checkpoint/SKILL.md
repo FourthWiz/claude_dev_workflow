@@ -292,8 +292,10 @@ _pending="${_PROJECT_ROOT}/.workflow_artifacts/memory/pending-restore-${_sid}.tx
 
 Run this block to determine which arm, if any, applies:
 ```sh
-. __QUOIN_HOME__/hooks/_lib.sh 2>/dev/null || true
+. "__QUOIN_HOME__/hooks/_lib.sh" 2>/dev/null || true
 if ! command -v run_state_probe >/dev/null 2>&1; then
+  echo GUARD_UNAVAILABLE
+elif [ -z "${_PROJECT_ROOT}" ] || [ ! -d "${_PROJECT_ROOT}/.workflow_artifacts/memory" ] || [ ! -r "${_PROJECT_ROOT}/.workflow_artifacts/memory" ]; then
   echo GUARD_UNAVAILABLE
 elif run_state_probe "${_PROJECT_ROOT}/.workflow_artifacts/memory"; then
   echo PROBE_ACTIVE
