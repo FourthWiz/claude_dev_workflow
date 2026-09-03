@@ -552,7 +552,8 @@ run_state_fields() {
     # above, leaking stderr and flipping the verdict by locale (a plain
     # byte-oriented C-locale awk never trips on this). Trailing
     # 2>/dev/null is a second, independent backstop for any other awk
-    # error on a hostile record — this extractor's contract is silence.
+    # error on a hostile record — this extractor never emits on either
+    # stream.
     head -c 65536 "$_rsf_file" 2>/dev/null | LC_ALL=C awk -v keys="$*" '
     BEGIN {
         n = split(keys, order, " ")
