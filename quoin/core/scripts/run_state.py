@@ -297,7 +297,18 @@ def _do_write(args) -> int:
                 return cli_value
             return existing.get(field, default)
 
-        session_id = pick("session_id", args.session_id)
+        # The stored session_id anchors the PreCompact hook's exact-equality
+        # match to the record's creator. A refresh usually runs in a
+        # different session (e.g. a planning subagent), so it must never
+        # migrate the id: once set it survives every refresh, and a probe
+        # fallback id ("unknown"...) is never stored.
+        existing_sid = existing.get("session_id", "") or ""
+        if existing_sid:
+            session_id = existing_sid
+        else:
+            session_id = args.session_id or ""
+            if session_id.startswith("unknown"):
+                session_id = ""
         phase = pick("phase", args.phase)
         phase_index = pick("phase_index", args.phase_index, 0)
         subphase = pick("subphase", args.subphase)

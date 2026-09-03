@@ -194,6 +194,22 @@ def test_require_existing_write_updates_an_existing_record(tmp_path):
     assert _load(tmp_path, "t9")["step"] == "second"
 
 
+def test_require_existing_write_preserves_the_creator_session_id(tmp_path):
+    _write(tmp_path, "t9b", session_id="sid-creator", step="first")
+    _write(tmp_path, "t9b", require_existing=True, session_id="sid-refresher", step="second")
+    after = _load(tmp_path, "t9b")
+    assert after["session_id"] == "sid-creator"
+    assert after["step"] == "second"
+
+
+def test_require_existing_write_never_stores_an_unknown_session_id(tmp_path):
+    _write(tmp_path, "t9c", step="first")  # creator stored no session id
+    _write(tmp_path, "t9c", require_existing=True, session_id="unknown", step="second")
+    assert _load(tmp_path, "t9c")["session_id"] == ""
+    _write(tmp_path, "t9c", require_existing=True, session_id="sid-real", step="third")
+    assert _load(tmp_path, "t9c")["session_id"] == "sid-real"
+
+
 def test_require_existing_write_does_not_reactivate_a_cleared_record(tmp_path):
     _write(tmp_path, "t10", step="first")
     _run(["--clear", "--project-root", str(tmp_path), "--task", "t10"])

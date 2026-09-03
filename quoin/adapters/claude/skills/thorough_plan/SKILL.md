@@ -562,10 +562,13 @@ non-blocking check (it never prompts).
 is a first-class standalone entry point, not only a `/run` subagent, so this call carries
 `--require-existing`: it refines a record `/run` already created and is a silent no-op
 (no file, no directory, no notes append) when there is none — a standalone `/thorough_plan`
-run therefore leaves no run-state trace of its own:
+run therefore leaves no run-state trace of its own. The call passes NO `--session-id`:
+the record keeps its creator's stored id (the writer preserves a non-empty stored id on
+refresh regardless), so the session that created the record still matches the PreCompact
+hook's exact-equality check while planning rounds run:
 ```bash
 python3 __QUOIN_HOME__/scripts/run_state.py --write --require-existing \
-  --project-root "{root}" --task "{task}" --session-id "$_TPCKPT_SID" \
+  --project-root "{root}" --task "{task}" \
   --phase thorough_plan --phase-index 3 --subphase "round-{N}-{plan|critic|revise}" \
   --step "round {N} {phase} returned" --at-stage-boundary false \
   --next-action "start thorough_plan" --artifact "{task_dir}/current-plan.md" || true
