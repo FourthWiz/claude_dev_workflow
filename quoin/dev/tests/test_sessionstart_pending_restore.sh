@@ -16,6 +16,7 @@ FAIL_MSGS=""
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$SCRIPT_DIR/../../hooks/sessionstart.sh"
 DEPLOYED_HOOK="$HOME/.claude/hooks/sessionstart.sh"
+RUN_STATE="$SCRIPT_DIR/../../core/scripts/run_state.py"
 
 ok() { PASS=$((PASS + 1)); printf 'ok  %s\n' "$1"; }
 fail() {
@@ -612,6 +613,305 @@ else
   ok "(m3) IVG-139 advisory/does-not-override → (skipped: no python3)"
   ok "(m4) IVG-139 fail-OPEN absent checkpoint → (skipped: no python3)"
   ok "(m5) IVG-139 shared-namespace guard → (skipped: no python3)"
+fi
+
+# ─── IVG-258 S-4 (T-11): compact-matcher fixtures ─────────────────────────────
+
+if command -v python3 >/dev/null 2>&1; then
+
+  # (c1) single-object case, envelope-shape, and initialUserMessage position
+  # (Candidate B — nested inside hookSpecificOutput, per T-01 probe (e)).
+  python3 "$RUN_STATE" --write --project-root "$TMPDIR_TEST" --task c1-task \
+    --session-id sess-c1 --phase implement --subphase code --step "c1 step" \
+    --next-action "c1 next" --resume-command "/run --resume c1-task" >/dev/null 2>&1
+  stdin_c1=$(make_stdin "compact" "sess-c1")
+  out_c1=$(printf '%s' "$stdin_c1" | sh "$HOOK" 2>/dev/null)
+  obj_count_c1=$(printf '%s' "$out_c1" | jq -s 'length' 2>/dev/null) || obj_count_c1="err"
+  if [ "$obj_count_c1" = "1" ]; then
+    ok "(c1) compact + matching record → exactly one JSON object"
+  else
+    fail "(c1) compact + matching record → object count wrong: $obj_count_c1"
+  fi
+  if printf '%s' "$out_c1" | jq -e '.hookSpecificOutput.hookEventName == "SessionStart"' >/dev/null 2>&1; then
+    ok "(c1-envelope) hookSpecificOutput.hookEventName == SessionStart"
+  else
+    fail "(c1-envelope) hookSpecificOutput.hookEventName wrong or missing"
+  fi
+  if printf '%s' "$out_c1" | jq -e '.hookSpecificOutput.additionalContext | length > 0' >/dev/null 2>&1; then
+    ok "(c1-envelope2) hookSpecificOutput.additionalContext non-empty"
+  else
+    fail "(c1-envelope2) hookSpecificOutput.additionalContext missing or empty"
+  fi
+  if printf '%s' "$out_c1" | jq -e '.hookSpecificOutput.initialUserMessage == "/run --resume c1-task"' >/dev/null 2>&1; then
+    ok "(c1-ium) initialUserMessage nested in hookSpecificOutput (Candidate B), round-trips byte-for-byte"
+  else
+    fail "(c1-ium) initialUserMessage missing, wrong value, or wrong position"
+  fi
+  rm -f "$MEMORY_DIR/run-state-c1-task.json" "$MEMORY_DIR/run-notes-c1-task.md"
+
+  # (c2) no STEP 2 sweep on the compact path — plant two stale sentinel families
+  # (older than the sweep window) and confirm both survive a compact invocation,
+  # with trash/ gaining nothing. Anchored on the sentinels' own presence, not on
+  # absence of output (stage-1 lesson).
+  printf 'stale prompt\n' > "$MEMORY_DIR/pending-prompt-c2-sentinel.txt"
+  printf 'stale defer\n' > "$MEMORY_DIR/checkpoint-defer-c2-sentinel.txt"
+  touch -t 202001010000 "$MEMORY_DIR/pending-prompt-c2-sentinel.txt"
+  touch -t 202001010000 "$MEMORY_DIR/checkpoint-defer-c2-sentinel.txt"
+  trash_before_c2=$(ls "$MEMORY_DIR/trash/"*/* 2>/dev/null | wc -l | awk '{print $1}')
+  stdin_c2=$(make_stdin "compact" "sess-c2-nomatch")
+  printf '%s' "$stdin_c2" | sh "$HOOK" >/dev/null 2>&1 || true
+  trash_after_c2=$(ls "$MEMORY_DIR/trash/"*/* 2>/dev/null | wc -l | awk '{print $1}')
+  if [ -f "$MEMORY_DIR/pending-prompt-c2-sentinel.txt" ] && [ -f "$MEMORY_DIR/checkpoint-defer-c2-sentinel.txt" ] && [ "$trash_after_c2" = "$trash_before_c2" ]; then
+    ok "(c2) compact path never runs STEP 2 sweep — stale sentinels from two families survive, trash/ unchanged"
+  else
+    fail "(c2) compact path swept a sentinel (trash $trash_before_c2->$trash_after_c2)"
+  fi
+  rm -f "$MEMORY_DIR/pending-prompt-c2-sentinel.txt" "$MEMORY_DIR/checkpoint-defer-c2-sentinel.txt"
+
+  # (c3) silent no-op — source=compact, no run-state record at all → zero bytes, exit 0
+  stdin_c3=$(make_stdin "compact" "sess-c3-none")
+  rc_c3=0
+  out_c3=$(printf '%s' "$stdin_c3" | sh "$HOOK" 2>/dev/null) || rc_c3=$?
+  if [ "$rc_c3" -eq 0 ] && [ -z "$out_c3" ]; then
+    ok "(c3) compact + no matching record → exit 0, zero bytes"
+  else
+    fail "(c3) compact + no matching record → rc=$rc_c3 out=$out_c3"
+  fi
+
+  # (c4) session_id mismatch — active record exists but under a different id →
+  # zero bytes, exit 0 (pins the D-06 exact-equality precondition as a behavior)
+  python3 "$RUN_STATE" --write --project-root "$TMPDIR_TEST" --task c4-task \
+    --session-id sess-c4-real --phase implement --next-action "c4 next" >/dev/null 2>&1
+  stdin_c4=$(make_stdin "compact" "sess-c4-different")
+  rc_c4=0
+  out_c4=$(printf '%s' "$stdin_c4" | sh "$HOOK" 2>/dev/null) || rc_c4=$?
+  if [ "$rc_c4" -eq 0 ] && [ -z "$out_c4" ]; then
+    ok "(c4) compact + session_id mismatch → exit 0, zero bytes"
+  else
+    fail "(c4) compact + session_id mismatch → rc=$rc_c4 out=$out_c4"
+  fi
+  rm -f "$MEMORY_DIR/run-state-c4-task.json" "$MEMORY_DIR/run-notes-c4-task.md"
+
+  # (c5) notes_path containment — four rejection shapes; additionalContext still
+  # carries the other five fields, but with no run-notes line
+  # (c5a) traversal via ..
+  python3 "$RUN_STATE" --write --project-root "$TMPDIR_TEST" --task c5a-task \
+    --session-id sess-c5a --phase implement --next-action "c5a next" >/dev/null 2>&1
+  python3 - "$MEMORY_DIR/run-state-c5a-task.json" "$MEMORY_DIR/run-notes-x/../../evil-c5a.md" <<'PYEOF'
+import json, sys
+p, v = sys.argv[1], sys.argv[2]
+d = json.load(open(p))
+d["notes_path"] = v
+json.dump(d, open(p, "w"), indent=2)
+PYEOF
+  out_c5a=$(printf '%s' "$(make_stdin "compact" "sess-c5a")" | sh "$HOOK" 2>/dev/null)
+  if printf '%s' "$out_c5a" | jq -e '.hookSpecificOutput.additionalContext | (contains("run-notes:") | not) and contains("next action: c5a next")' >/dev/null 2>&1; then
+    ok "(c5a) traversal notes_path (..) → run-notes line omitted, other fields present"
+  else
+    fail "(c5a) traversal notes_path not rejected: $out_c5a"
+  fi
+  rm -f "$MEMORY_DIR/run-state-c5a-task.json" "$MEMORY_DIR/run-notes-c5a-task.md"
+
+  # (c5b) outside MEMORY_DIR entirely
+  python3 "$RUN_STATE" --write --project-root "$TMPDIR_TEST" --task c5b-task \
+    --session-id sess-c5b --phase implement --next-action "c5b next" >/dev/null 2>&1
+  python3 - "$MEMORY_DIR/run-state-c5b-task.json" "$TMPDIR_TEST/outside-c5b.md" <<'PYEOF'
+import json, sys
+p, v = sys.argv[1], sys.argv[2]
+d = json.load(open(p))
+d["notes_path"] = v
+json.dump(d, open(p, "w"), indent=2)
+PYEOF
+  out_c5b=$(printf '%s' "$(make_stdin "compact" "sess-c5b")" | sh "$HOOK" 2>/dev/null)
+  if printf '%s' "$out_c5b" | jq -e '.hookSpecificOutput.additionalContext | (contains("run-notes:") | not) and contains("next action: c5b next")' >/dev/null 2>&1; then
+    ok "(c5b) out-of-MEMORY_DIR notes_path → run-notes line omitted, other fields present"
+  else
+    fail "(c5b) out-of-tree notes_path not rejected: $out_c5b"
+  fi
+  rm -f "$MEMORY_DIR/run-state-c5b-task.json" "$MEMORY_DIR/run-notes-c5b-task.md"
+
+  # (c5c) symlinked intermediate subdirectory (nested path, caught by the
+  # flatness check the same way stage-3's precompact.sh fixture is)
+  mkdir -p "$TMPDIR_TEST/c5c-target-dir"
+  printf 'victim\n' > "$TMPDIR_TEST/c5c-target-dir/victim.md"
+  ln -s "$TMPDIR_TEST/c5c-target-dir" "$MEMORY_DIR/run-notes-c5c-esc"
+  python3 "$RUN_STATE" --write --project-root "$TMPDIR_TEST" --task c5c-task \
+    --session-id sess-c5c --phase implement --next-action "c5c next" >/dev/null 2>&1
+  python3 - "$MEMORY_DIR/run-state-c5c-task.json" "$MEMORY_DIR/run-notes-c5c-esc/victim.md" <<'PYEOF'
+import json, sys
+p, v = sys.argv[1], sys.argv[2]
+d = json.load(open(p))
+d["notes_path"] = v
+json.dump(d, open(p, "w"), indent=2)
+PYEOF
+  out_c5c=$(printf '%s' "$(make_stdin "compact" "sess-c5c")" | sh "$HOOK" 2>/dev/null)
+  if printf '%s' "$out_c5c" | jq -e '.hookSpecificOutput.additionalContext | (contains("run-notes:") | not) and contains("next action: c5c next")' >/dev/null 2>&1; then
+    ok "(c5c) symlinked-intermediate-dir notes_path → run-notes line omitted, other fields present"
+  else
+    fail "(c5c) symlinked-intermediate-dir notes_path not rejected: $out_c5c"
+  fi
+  rm -f "$MEMORY_DIR/run-state-c5c-task.json" "$MEMORY_DIR/run-notes-c5c-task.md" "$MEMORY_DIR/run-notes-c5c-esc"
+  find "$TMPDIR_TEST/c5c-target-dir" -depth -exec rm -f {} \; 2>/dev/null
+  rmdir "$TMPDIR_TEST/c5c-target-dir" 2>/dev/null || true
+
+  # (c5d) notes_path itself is a symlink directly under MEMORY_DIR
+  printf 'victim2\n' > "$TMPDIR_TEST/c5d-victim.md"
+  ln -s "$TMPDIR_TEST/c5d-victim.md" "$MEMORY_DIR/run-notes-c5d-task.md"
+  python3 "$RUN_STATE" --write --project-root "$TMPDIR_TEST" --task c5d-task \
+    --session-id sess-c5d --phase implement --next-action "c5d next" >/dev/null 2>&1
+  out_c5d=$(printf '%s' "$(make_stdin "compact" "sess-c5d")" | sh "$HOOK" 2>/dev/null)
+  if printf '%s' "$out_c5d" | jq -e '.hookSpecificOutput.additionalContext | (contains("run-notes:") | not) and contains("next action: c5d next")' >/dev/null 2>&1; then
+    ok "(c5d) notes_path itself a symlink → run-notes line omitted, other fields present"
+  else
+    fail "(c5d) symlinked notes_path file not rejected: $out_c5d"
+  fi
+  rm -f "$MEMORY_DIR/run-state-c5d-task.json" "$MEMORY_DIR/run-notes-c5d-task.md" "$TMPDIR_TEST/c5d-victim.md"
+
+  # (c6) stage-boundary payload vs sibling mid-phase record
+  python3 "$RUN_STATE" --write --project-root "$TMPDIR_TEST" --task c6a-task \
+    --session-id sess-c6a --phase implement --subphase code --step "old step" \
+    --at-stage-boundary true --next-action "start review" >/dev/null 2>&1
+  out_c6a=$(printf '%s' "$(make_stdin "compact" "sess-c6a")" | sh "$HOOK" 2>/dev/null)
+  if printf '%s' "$out_c6a" | jq -e '.hookSpecificOutput.additionalContext | contains("phase (completed): implement") and contains("sub-phase (completed): code") and contains("stage complete") and (contains("step: old step") | not) and contains("next action: start review")' >/dev/null 2>&1; then
+    ok "(c6a) at_stage_boundary: true → D-11 boundary framing replaces the raw step line"
+  else
+    fail "(c6a) boundary framing missing or wrong: $out_c6a"
+  fi
+  rm -f "$MEMORY_DIR/run-state-c6a-task.json" "$MEMORY_DIR/run-notes-c6a-task.md"
+
+  python3 "$RUN_STATE" --write --project-root "$TMPDIR_TEST" --task c6b-task \
+    --session-id sess-c6b --phase implement --subphase code --step "mid step" \
+    --at-stage-boundary false --next-action "keep going" >/dev/null 2>&1
+  out_c6b=$(printf '%s' "$(make_stdin "compact" "sess-c6b")" | sh "$HOOK" 2>/dev/null)
+  if printf '%s' "$out_c6b" | jq -e '.hookSpecificOutput.additionalContext | contains("step: mid step") and (contains("stage complete") | not)' >/dev/null 2>&1; then
+    ok "(c6b) at_stage_boundary: false → raw step line echoed verbatim (sibling of c6a)"
+  else
+    fail "(c6b) mid-phase step line missing or wrongly replaced: $out_c6b"
+  fi
+  rm -f "$MEMORY_DIR/run-state-c6b-task.json" "$MEMORY_DIR/run-notes-c6b-task.md"
+
+else
+  ok "(c1)..(c6b) compact-matcher fixtures → (skipped: no python3)"
+fi
+
+# (c7) AC-7 fail-OPEN fixtures on the compact path
+
+# (c7a) malformed stdin
+rc_c7a=0
+out_c7a=$(printf 'not json' | sh "$HOOK" 2>/dev/null) || rc_c7a=$?
+if [ "$rc_c7a" -eq 0 ] && [ -z "$out_c7a" ]; then
+  ok "(c7a) malformed stdin on compact path → exit 0, empty stdout"
+else
+  fail "(c7a) malformed stdin → rc=$rc_c7a out=$out_c7a"
+fi
+
+# (c7b) missing session_id
+stdin_c7b='{"source":"compact","cwd":"'"$TMPDIR_TEST"'"}'
+rc_c7b=0
+out_c7b=$(printf '%s' "$stdin_c7b" | sh "$HOOK" 2>/dev/null) || rc_c7b=$?
+if [ "$rc_c7b" -eq 0 ] && [ -z "$out_c7b" ]; then
+  ok "(c7b) missing session_id on compact path → exit 0, empty stdout"
+else
+  fail "(c7b) missing session_id → rc=$rc_c7b out=$out_c7b"
+fi
+
+# (c7c) jq absent — same stub-PATH idiom as the precompact.sh fixture
+STUB_DIR_C7="$TMPDIR_TEST/stubpath-compact"
+mkdir -p "$STUB_DIR_C7"
+stub_missing_c7=""
+for _u in cat dirname date find grep sed awk ls mkdir mv wc basename head tr xargs rm; do
+  _up=$(command -v "$_u" 2>/dev/null) || _up=""
+  if [ -n "$_up" ]; then
+    ln -s "$_up" "$STUB_DIR_C7/$_u" 2>/dev/null || true
+  fi
+  [ -x "$STUB_DIR_C7/$_u" ] || stub_missing_c7="$stub_missing_c7 $_u"
+done
+if [ -z "$stub_missing_c7" ] && [ ! -e "$STUB_DIR_C7/jq" ]; then
+  ok "(c7c-plant) stub PATH resolves every coreutil the hook needs pre-jq, jq deliberately absent"
+else
+  fail "(c7c-plant) stub PATH setup wrong (missing:$stub_missing_c7)"
+fi
+stdin_c7c=$(make_stdin "compact" "sess-c7c-nojq")
+rc_c7c=0
+out_c7c=$(printf '%s' "$stdin_c7c" | PATH="$STUB_DIR_C7" /bin/sh "$HOOK" 2>/dev/null) || rc_c7c=$?
+if [ "$rc_c7c" -eq 0 ] && [ -z "$out_c7c" ]; then
+  ok "(c7c) jq absent on compact path → exit 0, empty stdout"
+else
+  fail "(c7c) jq absent → rc=$rc_c7c out=$out_c7c"
+fi
+
+# (c7d) unreadable MEMORY_DIR — mode 000, directory exists (distinct guard from
+# a missing directory: passes run_state_select's own [ -d ], then find fails
+# silently to Permission denied and yields zero candidates)
+if command -v python3 >/dev/null 2>&1 && [ "$(id -u)" != "0" ]; then
+  python3 "$RUN_STATE" --write --project-root "$TMPDIR_TEST" --task c7d-task \
+    --session-id sess-c7d --phase implement --next-action "c7d next" >/dev/null 2>&1
+  chmod 000 "$MEMORY_DIR"
+  rc_c7d=0
+  out_c7d=$(printf '%s' "$(make_stdin "compact" "sess-c7d")" | sh "$HOOK" 2>/dev/null) || rc_c7d=$?
+  chmod 755 "$MEMORY_DIR"
+  if [ "$rc_c7d" -eq 0 ] && [ -z "$out_c7d" ]; then
+    ok "(c7d) unreadable MEMORY_DIR (mode 000) on compact path → exit 0, empty stdout"
+  else
+    fail "(c7d) unreadable MEMORY_DIR → rc=$rc_c7d out=$out_c7d"
+  fi
+  rm -f "$MEMORY_DIR/run-state-c7d-task.json" "$MEMORY_DIR/run-notes-c7d-task.md"
+else
+  ok "(c7d) unreadable MEMORY_DIR → (skipped: no python3, or running as root)"
+fi
+
+# (c7e) no fail-OPEN fixture above needs /dev/tty access — sessionstart.sh
+# never opens /dev/tty anywhere in the file (static fact, verified once here
+# rather than per-fixture)
+if grep -q '/dev/tty' "$HOOK"; then
+  fail "(c7e) sessionstart.sh references /dev/tty — the fail-OPEN fixtures above assume it never does"
+else
+  ok "(c7e) sessionstart.sh contains no /dev/tty reference (static, covers all AC-7 fixtures)"
+fi
+
+# (c8) hostile-filesystem probe — run-state-*.json as a FIFO, and separately as
+# a symlink to /dev/zero. Neither matches run_state_select's `-type f` glob, so
+# the compact branch's own empty-result path is what actually fires; assert
+# exit 0 and no stdout either way, with no hang (stage-3 lesson).
+mkfifo "$MEMORY_DIR/run-state-c8-fifo.json" 2>/dev/null || true
+rc_c8a=0
+out_c8a=$(printf '%s' "$(make_stdin "compact" "sess-c8-fifo")" | sh "$HOOK" 2>/dev/null) || rc_c8a=$?
+if [ "$rc_c8a" -eq 0 ] && [ -z "$out_c8a" ]; then
+  ok "(c8a) run-state-*.json as a FIFO → exit 0, empty stdout, no hang"
+else
+  fail "(c8a) FIFO run-state file → rc=$rc_c8a out=$out_c8a"
+fi
+rm -f "$MEMORY_DIR/run-state-c8-fifo.json"
+
+ln -s /dev/zero "$MEMORY_DIR/run-state-c8-symlink.json" 2>/dev/null || true
+rc_c8b=0
+out_c8b=$(printf '%s' "$(make_stdin "compact" "sess-c8-symlink")" | sh "$HOOK" 2>/dev/null) || rc_c8b=$?
+if [ "$rc_c8b" -eq 0 ] && [ -z "$out_c8b" ]; then
+  ok "(c8b) run-state-*.json as a symlink to /dev/zero → exit 0, empty stdout, no hang"
+else
+  fail "(c8b) symlink-to-/dev/zero run-state file → rc=$rc_c8b out=$out_c8b"
+fi
+rm -f "$MEMORY_DIR/run-state-c8-symlink.json"
+
+# (c9) deployed-hook parity — the single-object case, re-run against the deployed
+# copy too. Ordered strictly after `bash quoin/install.sh` in T-14's sweep, since
+# the deployed hook only exists/reflects this stage's edits once that runs;
+# skips gracefully (not a failure) before then, matching the existing shebang
+# check's own `if [ -f "$DEPLOYED_HOOK" ]` idiom above.
+if [ -f "$DEPLOYED_HOOK" ] && command -v python3 >/dev/null 2>&1; then
+  python3 "$RUN_STATE" --write --project-root "$TMPDIR_TEST" --task c9-task \
+    --session-id sess-c9 --phase implement --next-action "c9 next" \
+    --resume-command "/run --resume c9-task" >/dev/null 2>&1
+  out_c9=$(printf '%s' "$(make_stdin "compact" "sess-c9")" | sh "$DEPLOYED_HOOK" 2>/dev/null)
+  obj_count_c9=$(printf '%s' "$out_c9" | jq -s 'length' 2>/dev/null) || obj_count_c9="err"
+  if [ "$obj_count_c9" = "1" ] && printf '%s' "$out_c9" | jq -e '.hookSpecificOutput.hookEventName == "SessionStart" and .hookSpecificOutput.initialUserMessage == "/run --resume c9-task"' >/dev/null 2>&1; then
+    ok "(c9) deployed hook: single-object compact case matches the source-tree behavior"
+  else
+    fail "(c9) deployed hook compact case diverged: count=$obj_count_c9 out=$out_c9"
+  fi
+  rm -f "$MEMORY_DIR/run-state-c9-task.json" "$MEMORY_DIR/run-notes-c9-task.md"
+else
+  ok "(c9) deployed hook compact parity → (skipped: deployed hook not present yet, or no python3 — expected before bash quoin/install.sh runs)"
 fi
 
 # ─── Summary ──────────────────────────────────────────────────────────────────
