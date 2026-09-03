@@ -286,11 +286,34 @@ def _do_write(args) -> int:
 
     existing = _load_record(path) if path.exists() else None
 
+    # A probe-fallback id ("unknown"...) is never stored by ANY write path:
+    # storing it at creation would permanently anchor the record to an id
+    # the hook's exact-equality match can never fire on.
+    offered_sid = args.session_id or ""
+    if offered_sid.startswith("unknown"):
+        offered_sid = ""
+
     if args.require_existing:
         if existing is None or existing.get("active") is not True:
             # Absent, unreadable, unparseable, schema-forward, or already
             # cleared (active: false) — do nothing at all (D-58).
             return 0
+
+        if args.adopt_session and args.max_age_days > 0:
+            # Adoption honors the same freshness window the resume reads
+            # use: every write refreshes updated_at and the file mtime, so
+            # adopting a stale record would revive an entry the staleness
+            # gate treats as absent. Refuse instead — without touching the
+            # file — and the resume proceeds on its other tiers, exactly
+            # as for an absent record.
+            try:
+                age_seconds = (
+                    datetime.now(tz=timezone.utc).timestamp() - path.stat().st_mtime
+                )
+            except OSError:
+                return 0
+            if age_seconds > args.max_age_days * 86400:
+                return 0
 
         def pick(field: str, cli_value, default: Any = "") -> Any:
             if cli_value is not None:
@@ -307,9 +330,6 @@ def _do_write(args) -> int:
         # re-anchoring, the hook's match would never fire again for the
         # whole resumed run.
         existing_sid = existing.get("session_id", "") or ""
-        offered_sid = args.session_id or ""
-        if offered_sid.startswith("unknown"):
-            offered_sid = ""
         if args.adopt_session and offered_sid:
             session_id = offered_sid
         elif existing_sid:
@@ -331,8 +351,13 @@ def _do_write(args) -> int:
             resume_command = existing.get("resume_command", f"/run --resume {args.task}")
         active = True
         wrote = True
+        progress_supplied = any(
+            v is not None
+            for v in (args.phase, args.phase_index, args.subphase, args.step,
+                      args.next_action, args.artifact)
+        )
     else:
-        session_id = args.session_id or ""
+        session_id = offered_sid
         phase = args.phase or ""
         phase_index = args.phase_index if args.phase_index is not None else 0
         subphase = args.subphase or ""
@@ -345,6 +370,7 @@ def _do_write(args) -> int:
         resume_command = args.resume_command if args.resume_command is not None else f"/run --resume {args.task}"
         active = True
         wrote = True
+        progress_supplied = True
 
     # Sanitize once, here, before either consumer of these values -- the
     # JSON record and the notes-file block -- is built. Previously only
@@ -363,7 +389,7 @@ def _do_write(args) -> int:
     # and is inherited across refreshes, so unbounded growth would push the
     # later fields the PreCompact hook reads (next_action, notes_path) past
     # the shell extractor's 64 KiB read ceiling. With every other string
-    # field capped at 4093 bytes, a 16 KiB artifacts line keeps the whole
+    # field capped at 4096 bytes, a 16 KiB artifacts line keeps the whole
     # record comfortably inside that ceiling by construction.
     _max_count = 64
     _max_bytes = 16384
@@ -409,7 +435,11 @@ def _do_write(args) -> int:
     content = _serialize_record(record)
     _atomic_write_record(memory_dir, args.task, path, content)
 
-    if wrote and not at_stage_boundary:
+    # A write that carries no progress fields (e.g. the resume-entry
+    # adoption, which only re-anchors session_id) appends no notes block:
+    # the notes log records progress, and an inherited-only block would add
+    # a spurious no-op entry on every resume.
+    if wrote and not at_stage_boundary and progress_supplied:
         max_bytes = int(os.environ.get("QUOIN_RUN_NOTES_MAX_BYTES", "262144"))
         block = _notes_block(updated_at, phase, subphase, step, next_action, list(artifacts))
         _append_notes(notes_path, block, max_bytes)

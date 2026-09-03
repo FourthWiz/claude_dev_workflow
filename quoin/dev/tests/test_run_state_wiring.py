@@ -418,3 +418,16 @@ def test_no_writer_call_uses_literal_tilde_claude():
         for line in text.splitlines():
             if "run_state.py" in line:
                 assert "~/.claude" not in line, f"{path}: literal tilde-claude in: {line}"
+
+
+def test_run_resume_adopt_follows_the_staleness_gated_reads():
+    run_text = _text(RUN_SKILL)
+    adopt_idx = run_text.index("run_state.py --write --require-existing --adopt-session")
+    read_idx = run_text.index("--fields schema,active,phase")
+    # The adopt write must sit BELOW the staleness-gated reads: it refreshes
+    # the record mtime, so running first would revive a record the reads'
+    # freshness window had already excluded.
+    assert read_idx < adopt_idx
+    # And it must pass the same validated freshness window the reads use.
+    tail = run_text[adopt_idx:adopt_idx + 400]
+    assert '--max-age-days "$_RUN_STATE_STALE_DAYS"' in tail

@@ -240,6 +240,51 @@ def test_adopt_session_is_a_noop_on_an_absent_record(tmp_path):
     assert not _record_path(tmp_path, "t9g").exists()
 
 
+def test_adopt_session_refuses_a_record_older_than_the_freshness_window(tmp_path):
+    _write(tmp_path, "t9j", session_id="sid-creator", step="first")
+    record = _record_path(tmp_path, "t9j")
+    stale = time.time() - 40 * 86400
+    os.utime(record, (stale, stale))
+    _write(tmp_path, "t9j", require_existing=True, adopt_session=True,
+           session_id="sid-resumed", step="second")
+    after = _load(tmp_path, "t9j")
+    assert after["session_id"] == "sid-creator"
+    assert after["step"] == "first"
+    # The refused adopt must not touch the file either: a refreshed mtime
+    # alone would already revive the record for every mtime-based reader.
+    assert abs(record.stat().st_mtime - stale) < 5
+
+
+def test_adopt_session_freshness_window_follows_the_stale_days_knob(tmp_path):
+    _write(tmp_path, "t9k", session_id="sid-creator", step="first")
+    record = _record_path(tmp_path, "t9k")
+    aged = time.time() - 3 * 86400
+    os.utime(record, (aged, aged))
+    _run(["--write", "--project-root", str(tmp_path), "--task", "t9k",
+          "--require-existing", "--adopt-session",
+          "--session-id", "sid-resumed"],
+         env={"QUOIN_RUN_STATE_STALE_DAYS": "7"})
+    assert _load(tmp_path, "t9k")["session_id"] == "sid-resumed"
+
+
+def test_pure_adopt_write_appends_no_notes_block(tmp_path):
+    _write(tmp_path, "t9m", session_id="sid-creator", step="first")
+    notes = _memory_dir(tmp_path) / "run-notes-t9m.md"
+    before = notes.read_text(encoding="utf-8")
+    _write(tmp_path, "t9m", require_existing=True, adopt_session=True,
+           session_id="sid-resumed")
+    assert _load(tmp_path, "t9m")["session_id"] == "sid-resumed"
+    assert notes.read_text(encoding="utf-8") == before
+    _write(tmp_path, "t9m", require_existing=True, step="second")
+    assert len(notes.read_text(encoding="utf-8")) > len(before)
+
+
+def test_creation_write_never_stores_an_unknown_session_id(tmp_path):
+    _write(tmp_path, "t9n", session_id="unknown-probe", step="first")
+    assert _load(tmp_path, "t9n")["session_id"] == ""
+
+
+
 def test_artifacts_list_is_bounded_by_count_newest_kept(tmp_path):
     arts = [f"a-{i}" for i in range(200)]
     _write(tmp_path, "t9h", artifact=arts)
