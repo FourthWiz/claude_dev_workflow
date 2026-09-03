@@ -231,9 +231,9 @@ def test_deploy_hooks_project_mode_settings_in_project(tmp_path, monkeypatch):
     assert settings_path.exists()
     settings = json.loads(settings_path.read_text())
     hooks = settings.get("hooks", {})
-    # All 6 stanzas registered in project settings
+    # All 8 stanzas registered in project settings
     assert len(hooks.get("UserPromptSubmit", [])) == 1
-    assert len(hooks.get("SessionStart", [])) == 2
+    assert len(hooks.get("SessionStart", [])) == 3
     assert len(hooks.get("SessionEnd", [])) == 1
     # Commands reference project hooks dir (not ~/)
     for stanzas_list in hooks.values():
