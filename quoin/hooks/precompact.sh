@@ -169,7 +169,11 @@ fi
 # compaction frequency; run fields are empty strings when no run is
 # active). The sink lives under telemetry/ so the depth-1 sentinel sweeps
 # never see it. Best-effort: a telemetry failure never changes the
-# decision or the exit code. Rotation is deliberately not handled here.
+# decision or the exit code. Rotation fires here, at the pair boundary,
+# immediately before this pre is appended — see D-01 in the stage plan:
+# every earlier event's pre/post are already complete pairs on disk at
+# that instant, so a rotation here always moves whole pairs, never a
+# split one.
 (
   _tel_dir="${MEMORY_DIR}/telemetry"
   _tel_sink="${_tel_dir}/compaction-events.jsonl"
@@ -209,6 +213,32 @@ fi
       exit 0
     fi
   fi
+  # Rotate at the pair boundary: every earlier event's pre and post are
+  # already on disk as complete pairs by the time this pre is about to be
+  # written, so the rename moves whole pairs (mirrors
+  # run_state.py::_append_notes's rotate-before-append shape — unlink the
+  # rotation target before the rename, never mv over a directory symlink).
+  _tel_max=${TELEMETRY_MAX_BYTES:-1048576}
+  case "$_tel_max" in ''|*[!0-9]*) _tel_max=1048576 ;; esac
+  if [ -f "$_tel_sink" ]; then
+    _tel_size=$(wc -c < "$_tel_sink" 2>/dev/null | awk '{print $1}') || _tel_size=0
+    case "$_tel_size" in ''|*[!0-9]*) _tel_size=0 ;; esac
+    if [ "$_tel_size" -gt "$_tel_max" ]; then
+      if [ -e "${_tel_sink}.1" ] || [ -L "${_tel_sink}.1" ]; then
+        if [ -L "${_tel_sink}.1" ]; then
+          rm -f "${_tel_sink}.1" 2>/dev/null
+        fi
+        if [ -e "${_tel_sink}.1" ] && [ ! -f "${_tel_sink}.1" ]; then
+          printf '[quoin-precompact] WARNING: telemetry rotation target refused (non-regular); append skipped\n' >&9
+          exit 0
+        fi
+      fi
+      if ! mv -f "$_tel_sink" "${_tel_sink}.1" 2>/dev/null; then
+        printf '[quoin-precompact] WARNING: telemetry rotation failed; append skipped\n' >&9
+        exit 0
+      fi
+    fi
+  fi
   # Probe the session id through the same jq encoder that builds the line,
   # so the sequence count matches the escaped form as it actually appears
   # in the sink — a raw id containing a quote or backslash never matches
@@ -219,9 +249,11 @@ fi
     # Bounded count: the sink is append-only and unrotated, so count within
     # the last 1 MiB only — an oversized sink cannot burn the hook's time
     # budget on a full rescan. event_seq is therefore monotonic per session
-    # only WITHIN that tail window: once a session's earlier rows scroll
-    # past it, the count restarts from 0. A consumer needing a unique key
-    # uses session_id+ts, never event_seq alone.
+    # only WITHIN that tail window and WITHIN the current rotation
+    # generation: once a session's earlier rows scroll past the tail
+    # window, OR the sink rotates (above), the count restarts from 0. A
+    # consumer needing a unique key uses (session_id, event_seq) paired
+    # within a single source file, never event_seq alone.
     _tel_seq=$(tail -c 1048576 "$_tel_sink" 2>/dev/null | grep -F "\"session_id\":$_tel_esc" 2>/dev/null | grep -cF '"half":"pre"' 2>/dev/null) || _tel_seq=0
     case "$_tel_seq" in ''|*[!0-9]*) _tel_seq=0 ;; esac
   fi
