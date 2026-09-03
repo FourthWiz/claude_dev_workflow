@@ -100,6 +100,8 @@ Directory tree and `forgotten/<date>.md` entry format:
 │   └── <date>.md      ← one file per day /sleep ran with forgets
 ├── trash/             ← recoverable delete archive (sentinel trash-moves land here)
 │   └── <YYYY-MM-DD>/  ←   dated subdirs, one per trash day
+├── telemetry/         ← compaction-event sink (precompact.sh appends one "pre" JSONL line per auto-compaction, on every row)
+│   └── compaction-events.jsonl  ← unswept and unrotated today; rotation arrives with the post-compaction half (IVG-258 stage 5)
 ├── run-state-<task>.json   ← task-keyed resume record (/run writes, /thorough_plan refines)
 ├── run-notes-<task>.md[.1] ← its append-only notes log, rotated at QUOIN_RUN_NOTES_MAX_BYTES
 └── lessons-learned.md ← long-term institutional memory

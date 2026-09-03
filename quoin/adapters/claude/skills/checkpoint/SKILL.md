@@ -320,7 +320,7 @@ if [ -z "$util_bps" ] || ! printf '%d' "$util_bps" >/dev/null 2>&1; then
   util_bps=0   # fail-safe: fall through to Step 1.5 (no crash)
 fi
 ```
-The panic path's own skeleton save (Step 1.45 items 1-6 below) is the independent backstop when both util-read and the normal skill save path are unavailable; precompact.sh still covers the pidfile and direct-conversation cases — there is no longer a prompt-hook forced save.
+The panic path's own skeleton save (Step 1.45 items 1-6 below) is the independent backstop when both util-read and the normal skill save path are unavailable; precompact.sh still covers the pidfile and active-run cases (a plain conversation writes nothing unless `QUOIN_PRECOMPACT_NORUN_CHECKPOINT=1`) — there is no longer a prompt-hook forced save.
 
 **If `util_bps >= PANIC_BPS`:** Skip ALL of: Step 1 deep gathering, mid-agent check, AskUserQuestion mode selection. Write a minimal skeleton checkpoint and pending-restore sentinel using only cheap operations:
 
