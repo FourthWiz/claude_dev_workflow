@@ -867,6 +867,58 @@ else
 fi
 rm -f "$MEM_DIR_TEST/run-state-bound.json"
 
+# probe bound: a candidate whose "active": true sits past the 64 KiB mark
+# must never be selected — the liveness probe reads a bounded head only.
+# Reverting the probe to an unbounded scan makes this candidate selectable
+# (schema/session_id sit at the top and would then match).
+python3 -c '
+import sys
+pad = "x" * 1024
+lines = ["{", "  \"schema\": 1,", "  \"session_id\": \"sid-probe-bound\","]
+for i in range(1024):
+    lines.append("  \"pad%d\": \"%s\"," % (i, pad))
+lines.append("  \"active\": true")
+lines.append("}")
+open(sys.argv[1], "w").write("\n".join(lines) + "\n")
+' "$MEM_DIR_TEST/run-state-probe-bound.json"
+PBOUND_START=$(python3 -c 'import time; print(int(time.time()*1000))' 2>/dev/null || printf '0')
+sel_pbound=$(run_state_select "$MEM_DIR_TEST" sid-probe-bound)
+PBOUND_END=$(python3 -c 'import time; print(int(time.time()*1000))' 2>/dev/null || printf '0')
+PBOUND_ELAPSED_MS=$((PBOUND_END - PBOUND_START))
+if [ -z "$sel_pbound" ] && [ "$PBOUND_ELAPSED_MS" -le 2000 ]; then
+  ok "(T-01-probe-bound) oversized candidate not selected in ${PBOUND_ELAPSED_MS}ms (probe bound holds)"
+else
+  fail "(T-01-probe-bound) probe bound broken (sel='$sel_pbound' elapsed=${PBOUND_ELAPSED_MS}ms)"
+fi
+rm -f "$MEM_DIR_TEST/run-state-probe-bound.json"
+
+# 64 KiB by-construction invariant: a maximal writer-produced record —
+# every string field at its cap, artifacts at their byte bound — must keep
+# the late fields (next_action, notes_path) inside the extractor's read
+# bound; a field-order or cap change eroding that headroom fails here.
+_inv_pad=$(python3 -c 'print("v" * 5000)')
+_inv_art=$(python3 -c 'print("a" * 4000)')
+python3 "$RUN_STATE" --write --project-root "$TMPDIR_TEST" --task inv-max --session-id sid-inv-max \
+  --phase "$_inv_pad" --subphase "$_inv_pad" --step "$_inv_pad" \
+  --next-action "END-$_inv_pad" --route "$_inv_pad" --profile "$_inv_pad" \
+  --resume-command "$_inv_pad" \
+  --artifact "$_inv_art" --artifact "$_inv_art" --artifact "$_inv_art" \
+  --artifact "$_inv_art" --artifact "$_inv_art" \
+  --at-stage-boundary true >/dev/null 2>&1
+kv_inv=$(run_state_fields "$MEM_DIR_TEST/run-state-inv-max.json" next_action notes_path)
+_inv_na=$(printf '%s\n' "$kv_inv" | sed -n 's/^next_action=//p')
+_inv_np=$(printf '%s\n' "$kv_inv" | sed -n 's/^notes_path=//p')
+case "$_inv_na" in
+  END-*) _inv_na_ok=1 ;;
+  *) _inv_na_ok=0 ;;
+esac
+if [ "$_inv_na_ok" -eq 1 ] && [ "$_inv_np" = "$MEM_DIR_TEST/run-notes-inv-max.md" ]; then
+  ok "(T-01-invariant) maximal record round-trips next_action/notes_path inside the read bound"
+else
+  fail "(T-01-invariant) maximal record broke the 64 KiB invariant (np='$_inv_np')"
+fi
+rm -f "$MEM_DIR_TEST/run-state-inv-max.json"
+
 # ─── T-05: three-row fixtures + recent-sessions per-row append ───────────────
 
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
@@ -1286,6 +1338,52 @@ else
 fi
 rm -f "$TEL_SINK" "$TMPDIR_TEST/fifo-tel-out.txt"
 mv "$TMPDIR_TEST/tel-sink-real2.jsonl" "$TEL_SINK"
+
+# hard link planted at the telemetry sink: passes the symlink and
+# regular-file predicates — the link-count refusal keeps the append from
+# landing in the link's other name.
+printf 'victim\n' > "$TMPDIR_TEST/tel-hl-victim.jsonl"
+mv "$TEL_SINK" "$TMPDIR_TEST/tel-sink-real3.jsonl"
+ln "$TMPDIR_TEST/tel-hl-victim.jsonl" "$TEL_SINK"
+stdin=$(make_stdin "auto" "sess-tel-hl")
+out_thl=$(printf '%s' "$stdin" | sh "$HOOK" 2>/dev/null)
+if [ "$(cat "$TMPDIR_TEST/tel-hl-victim.jsonl")" = "victim" ] && [ "$out_thl" = '{"decision": "allow"}' ]; then
+  ok "(T-04-hardlink) hard-linked telemetry sink → nothing appended, allow emitted"
+else
+  fail "(T-04-hardlink) hard-linked telemetry sink was appended through (out=$out_thl)"
+fi
+rm -f "$TEL_SINK" "$TMPDIR_TEST/tel-hl-victim.jsonl"
+mv "$TMPDIR_TEST/tel-sink-real3.jsonl" "$TEL_SINK"
+
+# FIFO planted where the telemetry DIRECTORY should be: mkdir -p fails on
+# a non-directory path and the real-directory predicate backstops it — the
+# hook must refuse promptly and still emit its allow decision.
+mv "$MEM_DIR_TEST/telemetry" "$TMPDIR_TEST/telemetry-real3"
+mkfifo "$MEM_DIR_TEST/telemetry"
+stdin=$(make_stdin "auto" "sess-tel-fifodir")
+: > "$TMPDIR_TEST/fifodir-tel-out.txt"
+( printf '%s' "$stdin" | sh "$HOOK" > "$TMPDIR_TEST/fifodir-tel-out.txt" 2>/dev/null ) &
+_fifo_dpid=$!
+_w=0
+while [ "$_w" -lt 50 ] && kill -0 "$_fifo_dpid" 2>/dev/null; do
+  sleep 0.1
+  _w=$((_w + 1))
+done
+if kill -0 "$_fifo_dpid" 2>/dev/null; then
+  kill "$_fifo_dpid" 2>/dev/null || true
+  wait "$_fifo_dpid" 2>/dev/null || true
+  fail "(T-04-fifodir) hook blocked on a FIFO telemetry dir (killed at 5s watchdog)"
+else
+  wait "$_fifo_dpid" 2>/dev/null || true
+  out_tfd=$(cat "$TMPDIR_TEST/fifodir-tel-out.txt")
+  if [ "$out_tfd" = '{"decision": "allow"}' ]; then
+    ok "(T-04-fifodir) FIFO telemetry dir → refused, allow emitted without hanging"
+  else
+    fail "(T-04-fifodir) unexpected output with FIFO telemetry dir (out=$out_tfd)"
+  fi
+fi
+rm -f "$MEM_DIR_TEST/telemetry" "$TMPDIR_TEST/fifodir-tel-out.txt"
+mv "$TMPDIR_TEST/telemetry-real3" "$MEM_DIR_TEST/telemetry"
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
 
 # ─── T-06: fail-OPEN fixtures ────────────────────────────────────────────────

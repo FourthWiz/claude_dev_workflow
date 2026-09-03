@@ -110,6 +110,7 @@ fi
   # lets * match /, so the prefix allow-list alone would pass a path that
   # escapes through .. segments — then require the writer's own
   # run-notes-<task>.md naming convention directly under MEMORY_DIR.
+  _rn_offered="$rs_notes_path"
   case "$rs_notes_path" in *..*) rs_notes_path="" ;; esac
   case "$rs_notes_path" in "$MEMORY_DIR"/run-notes-*.md) ;; *) rs_notes_path="" ;; esac
   # Flatness check: the prefix pattern above still lets * match /, so a
@@ -117,19 +118,42 @@ fi
   # inside MEMORY_DIR) would pass it and escape through the link; after
   # stripping the prefix, no separator may remain.
   case "${rs_notes_path#"$MEMORY_DIR"/}" in */*) rs_notes_path="" ;; esac
-  [ -n "$rs_notes_path" ] || exit 0
+  # Each refusal below warns on fd 9 (stderr, saved before this subshell's
+  # own 2>/dev/null): a silent refusal would let a planted object disable
+  # this sink permanently with no operator-visible signal.
+  if [ -z "$rs_notes_path" ]; then
+    [ -z "$_rn_offered" ] || printf '[quoin-precompact] WARNING: run-notes path refused (containment); notes append skipped\n' >&9
+    exit 0
+  fi
   # Best-effort symlink refusal: the record's Python writer refuses a
   # symlink AND opens with O_NOFOLLOW, closing the check-to-write race;
   # this shell check followed by >> reopens that window. Accepted for a
   # bounded hook append — this is NOT parity with the Python writer.
-  [ ! -L "$rs_notes_path" ] || exit 0
+  if [ -L "$rs_notes_path" ]; then
+    printf '[quoin-precompact] WARNING: run-notes path refused (symlink); notes append skipped\n' >&9
+    exit 0
+  fi
   # Non-regular files and hard links: a FIFO (or device/socket) at the
   # notes path would block the >> open itself and stall the hook until the
   # harness kills it — the hook must reach its allow line no matter what is
   # planted here. A hard link passes every check above (no dotdot, prefix
-  # match, flat, not a symlink), so refuse a link count above 1 too.
-  [ ! -e "$rs_notes_path" ] || [ -f "$rs_notes_path" ] || exit 0
-  [ -z "$(find "$rs_notes_path" -maxdepth 0 -links +1 2>/dev/null)" ] || exit 0
+  # match, flat, not a symlink), so refuse a link count above 1 too. The
+  # link probe asserts positively: it must SUCCEED and report a link count
+  # of 1 — a failed probe reads as "refuse", never as "no extra links".
+  if [ -e "$rs_notes_path" ]; then
+    if [ ! -f "$rs_notes_path" ]; then
+      printf '[quoin-precompact] WARNING: run-notes path refused (non-regular file); notes append skipped\n' >&9
+      exit 0
+    fi
+    if ! _rn_links=$(find "$rs_notes_path" -maxdepth 0 -links +1 2>/dev/null); then
+      printf '[quoin-precompact] WARNING: run-notes link probe failed; notes append skipped\n' >&9
+      exit 0
+    fi
+    if [ -n "$_rn_links" ]; then
+      printf '[quoin-precompact] WARNING: run-notes path refused (hard link); notes append skipped\n' >&9
+      exit 0
+    fi
+  fi
   _rn_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _rn_ts=$(date +%Y-%m-%dT%H:%M:%SZ)
   {
     printf '## %s — %s/%s\n' "$_rn_ts" "$rs_phase" "$rs_subphase"
@@ -138,7 +162,7 @@ fi
     printf -- '- source: precompact hook (compaction imminent)\n'
     printf '\n'
   } >> "$rs_notes_path" 2>/dev/null
-) 2>/dev/null || true
+) 9>&2 2>/dev/null || true
 
 # STEP 1e: Telemetry — the "pre" half of a compaction event, appended on
 # every row (a plain-conversation compaction is still a data point for
@@ -149,19 +173,42 @@ fi
 (
   _tel_dir="${MEMORY_DIR}/telemetry"
   _tel_sink="${_tel_dir}/compaction-events.jsonl"
-  mkdir -p "$_tel_dir" 2>/dev/null || exit 0
+  mkdir -p "$_tel_dir" 2>/dev/null || {
+    printf '[quoin-precompact] WARNING: cannot create telemetry dir; append skipped\n' >&9
+    exit 0
+  }
   # Refuse a symlinked dir or sink before appending: mkdir -p succeeds
   # through a symlinked directory, and >> would follow a planted link —
   # mirrors the notes-path symlink refusal above (same bounded
-  # check-then-write caveat).
-  [ ! -L "$_tel_dir" ] || exit 0
-  [ ! -L "$_tel_sink" ] || exit 0
+  # check-then-write caveat). Refusals warn on fd 9 (stderr, saved before
+  # this subshell's own 2>/dev/null) so a planted object cannot disable
+  # the sink silently.
+  if [ -L "$_tel_dir" ] || [ -L "$_tel_sink" ]; then
+    printf '[quoin-precompact] WARNING: telemetry sink refused (symlink); append skipped\n' >&9
+    exit 0
+  fi
   # Same non-regular-file discipline as the notes path: require a real
   # directory and a regular-or-absent sink, and refuse a hard-linked sink —
-  # a FIFO here would hang the append and with it the whole hook.
-  [ -d "$_tel_dir" ] || exit 0
-  [ ! -e "$_tel_sink" ] || [ -f "$_tel_sink" ] || exit 0
-  [ -z "$(find "$_tel_sink" -maxdepth 0 -links +1 2>/dev/null)" ] || exit 0
+  # a FIFO here would hang the append and with it the whole hook. The link
+  # probe asserts positively: it must SUCCEED and report a link count of 1.
+  if [ ! -d "$_tel_dir" ]; then
+    printf '[quoin-precompact] WARNING: telemetry dir refused (not a directory); append skipped\n' >&9
+    exit 0
+  fi
+  if [ -e "$_tel_sink" ]; then
+    if [ ! -f "$_tel_sink" ]; then
+      printf '[quoin-precompact] WARNING: telemetry sink refused (non-regular file); append skipped\n' >&9
+      exit 0
+    fi
+    if ! _tel_links=$(find "$_tel_sink" -maxdepth 0 -links +1 2>/dev/null); then
+      printf '[quoin-precompact] WARNING: telemetry link probe failed; append skipped\n' >&9
+      exit 0
+    fi
+    if [ -n "$_tel_links" ]; then
+      printf '[quoin-precompact] WARNING: telemetry sink refused (hard link); append skipped\n' >&9
+      exit 0
+    fi
+  fi
   # Probe the session id through the same jq encoder that builds the line,
   # so the sequence count matches the escaped form as it actually appears
   # in the sink — a raw id containing a quote or backslash never matches
@@ -170,8 +217,11 @@ fi
   _tel_seq=0
   if [ -f "$_tel_sink" ]; then
     # Bounded count: the sink is append-only and unrotated, so count within
-    # the last 1 MiB only — the sequence stays monotonic per session and an
-    # oversized sink cannot burn the hook's time budget on a full rescan.
+    # the last 1 MiB only — an oversized sink cannot burn the hook's time
+    # budget on a full rescan. event_seq is therefore monotonic per session
+    # only WITHIN that tail window: once a session's earlier rows scroll
+    # past it, the count restarts from 0. A consumer needing a unique key
+    # uses session_id+ts, never event_seq alone.
     _tel_seq=$(tail -c 1048576 "$_tel_sink" 2>/dev/null | grep -F "\"session_id\":$_tel_esc" 2>/dev/null | grep -cF '"half":"pre"' 2>/dev/null) || _tel_seq=0
     case "$_tel_seq" in ''|*[!0-9]*) _tel_seq=0 ;; esac
   fi
@@ -193,7 +243,7 @@ fi
       est_tokens_before: (if $etb == "" then null else ($etb|tonumber) end),
       task: $task, phase: $phase, subphase: $subphase, step: $step}' \
     >> "$_tel_sink" 2>/dev/null || exit 0
-) 2>/dev/null || true
+) 9>&2 2>/dev/null || true
 
 # Pre-initialize pidfile_info to "none" so STEP 4 branching is safe in the early-skip path.
 # The early-skip path (sentinel already exists) skips the else block entirely, so pidfile
