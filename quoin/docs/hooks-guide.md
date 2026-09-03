@@ -16,11 +16,11 @@ The hook splits the prompt on whitespace (after stripping ALL leading whitespace
 
 ## STDIN capture pattern
 
-All three event hooks open with `STDIN=$(cat)` to capture the JSON payload into a variable, then parse with `printf '%s' "$STDIN" | jq -r '<filter> // empty'`. The `// empty` jq filter handles missing fields by returning the empty string instead of `null`, supporting the fail-OPEN discipline.
+All six event hooks open with `STDIN=$(cat)` to capture the JSON payload into a variable, then parse with `printf '%s' "$STDIN" | jq -r '<filter> // empty'`. The `// empty` jq filter handles missing fields by returning the empty string instead of `null`, supporting the fail-OPEN discipline.
 
-## `bash install.sh --dry-run`
+## `--dry-run` (scoped to `router setup`, not `install`)
 
-Runs the settings.json merge against a temp copy and prints the would-be merged JSON to stdout WITHOUT writing the live file or creating a `.bak` backup. Use this to preview the hook stanzas before committing to a live deploy: `bash install.sh --dry-run | jq '.hooks'`.
+`--dry-run` is registered only on the `quoin router setup` subparser (`src/quoin/cli.py:966-970`) — printing what would change without writing any files. The `install` subparser has no such flag, and `quoin/install.sh` forwards its arguments straight to `python -m quoin` with no `--dry-run` handling of its own; `bash install.sh --dry-run` is an argparse error today, not a preview mode.
 
 ## jq soft-required dependency
 
@@ -28,11 +28,11 @@ Runtime hooks parse stdin JSON via `jq`. If `jq` is absent, hooks fail-OPEN sile
 
 ## R-09 mitigation (settings.json corruption)
 
-install.sh backs up `~/.claude/settings.json` to `settings.json.bak-<timestamp>` before any merge, validates the result with `jq empty`, and restores from `.bak` if validation fails.
+`installer.py::deploy_hooks` backs up `~/.claude/settings.json` to `settings.json.bak-<timestamp>` and starts fresh if the existing file fails to parse as JSON, so a corrupted settings file cannot abort the merge silently.
 
 ## WorktreeCreate hook (`worktreecreate.sh`, IVG-116)
 
-Registered as the seventh stanza (`WorktreeCreate`/`*`, timeout 10s). Fires when a source-mutating skill (`/implement`, `/rollback`, `/end_of_task`, `/pr`) dispatches an Agent with `isolation: "worktree"`. The hook reads the dispatch sidecar (`<project_root>/.workflow_artifacts/.dispatch-hint.json`), calls `git_root_for_dispatch.py --sidecar`, and when a single nested git repo resolves it decides a worktree path:
+Registered as the eighth stanza (`WorktreeCreate`/`*`, timeout 10s). Fires when a source-mutating skill (`/implement`, `/rollback`, `/end_of_task`, `/pr`) dispatches an Agent with `isolation: "worktree"`. The hook reads the dispatch sidecar (`<project_root>/.workflow_artifacts/.dispatch-hint.json`), calls `git_root_for_dispatch.py --sidecar`, and when a single nested git repo resolves it decides a worktree path:
 
 - **Self-generation (the IVG-116 fix):** when the harness omits `worktree_path`/`branch_name` on the hook's stdin (the pre-fix 100%-skip cause on Google-Drive-synced projects), the hook SELF-GENERATES `BRANCH_NAME="quoin/wt-<ts>-<pid>"` and a `WORKTREE_PATH` under `${TMPDIR:-/tmp}/quoin-worktrees` (outside the Drive-synced tree; project `.worktrees/` fallback), then runs `git worktree add` and prints the created path to stdout. The audit log (`worktree-hook-audit.log`) records `selfgen=1`.
 - **Timeout:** `git worktree add` is wrapped in `timeout "${QUOIN_SUBPROCESS_TIMEOUT:-30}s"` via a `git_wt()` helper; if the `timeout` binary is absent the command runs unwrapped (fail-OPEN).

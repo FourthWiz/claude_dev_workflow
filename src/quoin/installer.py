@@ -147,7 +147,7 @@ DEPLOYED_SCRIPTS = (
     "handoff_validate.py",  # IVG-248: inter-agent handoff envelope validator (wrapped portable-core — also in CORE_SCRIPTS)
 )
 
-# T-05: obsolete artifacts to remove from prior installs (mirrors install.sh lines 170-181)
+# T-05: obsolete artifacts to remove from prior installs
 OBSOLETE_SCRIPTS = ("summarize_for_human.py", "with_env.sh", "audit_corpus_coverage.py")
 OBSOLETE_TESTS = ("test_summarize_for_human.py", "test_with_env_sh.py")
 
@@ -676,12 +676,10 @@ def deploy_hooks(
     *,
     is_project_mode: bool = False,
 ) -> None:
-    """Copy hook scripts and merge 7 stanzas into dest_root/settings.json.
+    """Copy hook scripts and merge hook stanzas into dest_root/settings.json.
 
     In project mode, hooks are scoped to <project>/.claude/settings.json only.
     Home ~/.claude/settings.json is NOT modified.
-
-    Mirrors install.sh install_hooks() function.
     """
     hook_scripts = ("userpromptsubmit.sh", "precompact.sh", "postcompact.sh", "sessionstart.sh", "sessionend.sh", "_lib.sh", "worktreecreate.sh")
     src_hooks = source_dir / "hooks"
@@ -723,7 +721,13 @@ def deploy_hooks(
     hooks = settings.setdefault("hooks", {})
 
     # Helper: append a stanza, replacing any existing entry for the same
-    # (matcher, script-filename) pair — mirrors install.sh jq dedup semantics.
+    # (matcher, script-filename) pair — the dedup key is (matcher, script
+    # basename), so a stanza on a new matcher for an already-registered
+    # script is added rather than replacing an existing one. Tracks the
+    # number of stanzas registered so the printed count can never drift
+    # from the calls below (D-02).
+    _stanza_count = [0]
+
     def _append_stanza(event: str, matcher: str, command: str, timeout: int) -> None:
         stanza = {
             "matcher": matcher,
@@ -743,6 +747,7 @@ def deploy_hooks(
             )
         ]
         event_list.append(stanza)
+        _stanza_count[0] += 1
 
     hooks_dir = str(dest_root.resolve() / "hooks")
     _append_stanza("UserPromptSubmit", "*",       f"{hooks_dir}/userpromptsubmit.sh", 5)
@@ -750,6 +755,7 @@ def deploy_hooks(
     _append_stanza("PostCompact",      "auto",    f"{hooks_dir}/postcompact.sh",      5)
     _append_stanza("SessionStart",     "startup", f"{hooks_dir}/sessionstart.sh",     5)
     _append_stanza("SessionStart",     "resume",  f"{hooks_dir}/sessionstart.sh",     5)
+    _append_stanza("SessionStart",     "compact", f"{hooks_dir}/sessionstart.sh",     5)
     _append_stanza("SessionEnd",       "*",       f"{hooks_dir}/sessionend.sh",       5)
     _append_stanza("WorktreeCreate",   "*",       f"{hooks_dir}/worktreecreate.sh",   10)
 
@@ -776,7 +782,7 @@ def deploy_hooks(
     with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
         f.write("\n")
-    print(f"Merged 7 hook stanzas into {settings_path}")
+    print(f"Merged {_stanza_count[0]} hook stanzas into {settings_path}")
     if added:
         print(f"Added {added} rm -rf/rm -fr deny rule(s) to {settings_path}")
     print(f"Set {len(SKILL_OVERRIDES)} skill overrides in {settings_path}")

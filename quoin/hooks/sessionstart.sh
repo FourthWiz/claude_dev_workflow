@@ -1,7 +1,9 @@
 #!/bin/sh
 # sessionstart.sh — SessionStart hook for quoin workflow isolation
 # Deployed to ~/.claude/hooks/ by bash install.sh
-# Registered for BOTH matchers: startup and resume.
+# Registered for THREE matchers: startup, resume, and compact. Matcher-aware —
+# the compact branch is a dedicated early-exit; startup/resume share the
+# banner body below it, which the compact branch never reaches.
 #
 # S-2 responsibility: pending-restore banner emission.
 #   - Sweeps stale pending-prompt-*.txt and pending-restore-*.txt files
@@ -27,6 +29,91 @@ raw_cwd="$cwd"   # S-04: capture RAW launch dir BEFORE resolve_project_root rewr
 cwd=$(resolve_project_root "$cwd")
 
 MEMORY_DIR="${cwd}/.workflow_artifacts/memory"
+
+# === IVG-258 post-compaction re-entry ===
+# Early-exit branch: on a compaction-triggered session start (source=compact),
+# read this session's active run-state record (if any) and emit a one-shot
+# advisory plus a verbatim resume-command echo, then exit before the banner
+# body below runs. Ordering matters: MEMORY_DIR must already be set above
+# and this branch must run before the missing-EOD/discovery-staleness/sweep
+# steps, none of which apply to a compaction re-entry.
+if [ "$src" = "compact" ]; then
+  # No session_id: nothing to key the record lookup on. Mirrors precompact.sh's
+  # own guard against an empty id matching an equally-empty stored field.
+  [ -z "$session_id" ] && exit 0
+
+  run_state_file=$(run_state_select "$MEMORY_DIR" "$session_id" 2>/dev/null) || run_state_file=""
+  # No matching active record for THIS session: a plain conversation compacting
+  # stays quiet — no output at all, not even an empty object.
+  [ -z "$run_state_file" ] && exit 0
+
+  rs_task=""; rs_phase=""; rs_subphase=""; rs_step=""
+  rs_at_stage_boundary=""; rs_next_action=""; rs_notes_path=""; rs_resume_command=""
+  while IFS='=' read -r _rk _rv; do
+    case "$_rk" in
+      task) rs_task=$_rv ;;
+      phase) rs_phase=$_rv ;;
+      subphase) rs_subphase=$_rv ;;
+      step) rs_step=$_rv ;;
+      at_stage_boundary) rs_at_stage_boundary=$_rv ;;
+      next_action) rs_next_action=$_rv ;;
+      notes_path) rs_notes_path=$_rv ;;
+      resume_command) rs_resume_command=$_rv ;;
+    esac
+  done <<RSEOF
+$(run_state_fields "$run_state_file" task phase subphase step at_stage_boundary next_action notes_path resume_command)
+RSEOF
+
+  # notes_path containment (mirrors precompact.sh's traversal + prefix + flatness
+  # + symlink checks): reject on any of the four checks by clearing the value —
+  # the run-notes line is then dropped from the advisory entirely.
+  case "$rs_notes_path" in *..*) rs_notes_path="" ;; esac
+  case "$rs_notes_path" in "$MEMORY_DIR"/run-notes-*.md) ;; *) rs_notes_path="" ;; esac
+  case "${rs_notes_path#"$MEMORY_DIR"/}" in */*) rs_notes_path="" ;; esac
+  if [ -n "$rs_notes_path" ] && [ -L "$rs_notes_path" ]; then
+    rs_notes_path=""
+  fi
+
+  # D-11: at a stage boundary, `step` names the phase that JUST finished, not
+  # what comes next — the raw value would misdirect a reader relying on this
+  # advisory alone. Qualify phase/sub-phase as completed and replace the step
+  # line with a boundary framing; next_action stays the anchor for what's next.
+  if [ "$rs_at_stage_boundary" = "true" ]; then
+    _reentry_phase_line="phase (completed): ${rs_phase}"
+    _reentry_subphase_line="sub-phase (completed): ${rs_subphase}"
+    _reentry_step_line="step: stage complete (${rs_phase} / ${rs_subphase}); see next action below"
+  else
+    _reentry_phase_line="phase: ${rs_phase}"
+    _reentry_subphase_line="sub-phase: ${rs_subphase}"
+    _reentry_step_line="step: ${rs_step}"
+  fi
+
+  _reentry_ctx="[quoin-reentry] run/task: ${rs_task}
+${_reentry_phase_line}
+${_reentry_subphase_line}
+${_reentry_step_line}
+next action: ${rs_next_action}"
+  if [ -n "$rs_notes_path" ]; then
+    _reentry_ctx="${_reentry_ctx}
+run-notes: ${rs_notes_path}"
+  fi
+
+  # Envelope: jq -nc --arg only, never printf-interpolated (D-05) — session_id
+  # and every record field arrive from outside this hook's control. Wrapper
+  # matches the file's three existing SessionStart emit sites; initialUserMessage
+  # nests inside hookSpecificOutput (T-01 probe e, Candidate B) and is skipped
+  # when the record carries no resume command to echo — the field is passed
+  # through as-is, never built here.
+  if [ -n "$rs_resume_command" ]; then
+    jq -nc --arg ctx "$_reentry_ctx" --arg cmd "$rs_resume_command" \
+      '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $ctx, initialUserMessage: $cmd}}'
+  else
+    jq -nc --arg ctx "$_reentry_ctx" \
+      '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $ctx}}'
+  fi
+  exit 0
+fi
+# === end IVG-258 post-compaction re-entry ===
 
 # === S-4 missing-EOD banner ===
 # Check for session files with end_of_day_due: yes within last 36 hours.
@@ -230,8 +317,8 @@ if [ -n "$pending_restore" ]; then
 
     # === restore ground-truth backstop (IVG-139) ===
     # NOTE: intentionally NOT labeled "S-4"/"S-5" — this file already has an internal
-    # "=== S-4 missing-EOD banner ===" block (:30) and "=== S-5 discovery-staleness banner ==="
-    # block (:79) whose numbering is unrelated to architecture stage IDs; reusing either token
+    # "=== S-4 missing-EOD banner ===" block (:118) and "=== S-5 discovery-staleness banner ==="
+    # block (:190) whose numbering is unrelated to architecture stage IDs; reusing either token
     # here would make it mean three different things in one file (critic round-1 m-1).
     # Advisory-only: append a task-context-mismatch WARN to the pending-restore banner by
     # reusing verify_claims.py check_side_effects(skill=checkpoint) UNCHANGED. WARN-not-block.

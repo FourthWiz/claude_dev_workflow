@@ -1,14 +1,15 @@
 # Hooks deployed by quoin — full reference table
 
-`bash install.sh` deploys hook scripts to `__QUOIN_HOME__/hooks/` and registers seven (event, matcher) stanzas in `__QUOIN_HOME__/settings.json`:
+`bash install.sh` deploys hook scripts to `__QUOIN_HOME__/hooks/` and registers eight (event, matcher) stanzas in `__QUOIN_HOME__/settings.json`:
 
 | Event | Matcher | Script | Timeout | Contract |
 |-------|---------|--------|---------|----------|
 | UserPromptSubmit | `*` | `userpromptsubmit.sh` | 5s | Context utilization check; advisory only — never blocks a prompt |
 | PreCompact | `auto` | `precompact.sh` | 10s | ALWAYS allows auto-compaction; appends the STEP 1b `recent-sessions.md` record and a `telemetry/compaction-events.jsonl` pre-event on every row (a `.allow-compact` marker in cwd exits right after the recent-sessions append — telemetry and every later step are skipped); writes a deterministic checkpoint when a fresh active run-state record matches the session or skill pidfiles are present; a plain conversation (no run, no pidfiles) writes no checkpoint and no sentinel — the recent-sessions and telemetry appends still happen on every row; `QUOIN_PRECOMPACT_NORUN_CHECKPOINT=1` restores the checkpoint-plus-`pending-restore` sentinel for that case; `/continue_work` (fed by `recent-sessions.md`) is the recovery path when nothing is written |
 | PostCompact | `auto` | `postcompact.sh` | 5s | Writes `postcompact-reset-${session_id}.txt` sentinel; `userpromptsubmit.sh` STEP 0.5 consumes it to confirm compaction occurred and trash-moves the sentinel |
-| SessionStart | `startup` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) |
-| SessionStart | `resume` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) |
+| SessionStart | `startup` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) — this body runs only on `startup`/`resume`; a `compact` invocation takes the dedicated early-exit branch below instead |
+| SessionStart | `resume` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) — this body runs only on `startup`/`resume`; a `compact` invocation takes the dedicated early-exit branch below instead |
+| SessionStart | `compact` | `sessionstart.sh` | 5s | Dedicated early-exit branch (IVG-258 S-4), reached before the startup/resume banner body; on a fresh active run-state record matching the session, emits exactly one JSON object carrying `additionalContext` (always — an active run's task/phase/step, next action, and run-notes path) and `initialUserMessage` (echoing the record's `resume_command` verbatim, when present) — the dual re-entry channel; silent no-op (no stdout, exit 0) when no matching record is found, including a `session_id` mismatch |
 | SessionEnd | `*` | `sessionend.sh` | 5s | EOD nudge if `end_of_day_due: yes` |
 | WorktreeCreate | `*` | `worktreecreate.sh` | 10s | Nested-git worktree isolation for source-mutating skills. Reads the dispatch sidecar; when a single nested repo resolves and the harness omits path/branch, self-generates `quoin/wt-<ts>-<pid>` + a worktree under `${TMPDIR:-/tmp}/quoin-worktrees` (outside the Drive tree; project `.worktrees/` fallback) and runs `git worktree add` (bounded by `QUOIN_SUBPROCESS_TIMEOUT`), printing the path to stdout. Fail-OPEN (exits 0, no stdout on any skip/error); audit log records `selfgen=1`. Opt-out: `QUOIN_WORKTREE_SELFGEN=0`. |
 

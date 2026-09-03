@@ -506,7 +506,8 @@ def test_deploy_hooks_stanza_placement():
 
         assert len(hooks.get("UserPromptSubmit", [])) == 1
         assert len(hooks.get("PreCompact", [])) == 1
-        assert len(hooks.get("SessionStart", [])) == 2  # startup + resume
+        assert len(hooks.get("PostCompact", [])) == 1
+        assert len(hooks.get("SessionStart", [])) == 3  # startup + resume + compact
         assert len(hooks.get("SessionEnd", [])) == 1
         assert len(hooks.get("WorktreeCreate", [])) == 1  # IVG-116
 
@@ -558,7 +559,7 @@ def test_deploy_hooks_idempotent():
         # Running twice must not accumulate duplicates
         assert len(hooks.get("UserPromptSubmit", [])) == 1
         assert len(hooks.get("PreCompact", [])) == 1
-        assert len(hooks.get("SessionStart", [])) == 2
+        assert len(hooks.get("SessionStart", [])) == 3
         assert len(hooks.get("SessionEnd", [])) == 1
 
 

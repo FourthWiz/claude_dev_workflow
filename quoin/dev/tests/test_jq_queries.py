@@ -1,12 +1,21 @@
-"""T-23 — pytest CI wrapper for jq merge-logic verification.
+"""pytest CI wrapper for jq merge-logic verification.
 
-Verifies the four pinned jq queries used by install.sh's install_hooks() function
-against fixture JSON inputs. Three scenario families per tuple:
+Hook stanza registration itself lives in `installer.py::deploy_hooks`'s
+`_append_stanza` closure, not in jq — `install.sh` is a 212-line wrapper that
+`exec`s `python -m quoin install` and registers nothing with jq. These tests
+exist as an independent cross-check of `_append_stanza`'s dedup rule (same
+matcher + same script basename → replace, not duplicate), expressed as
+equivalent jq filters run against fixture JSON inputs. Three scenario
+families per tuple:
   - add: settings.json has no existing stanza → stanza is added
   - update: settings.json has stale quoin stanza at old path → stanza is replaced
   - idempotent: settings.json already has the canonical stanza → no duplicate added
 
-Each jq invocation mirrors the exact query strings used in install.sh lines 324–341.
+The four `(event, matcher)` fixtures below are illustrative of the merge rule
+only — they do not track the shipped stanza roster, which is pinned instead
+by `test_hook_stanza_count_parity.py` against `installer.py`'s actual
+`_append_stanza` call list (duplicating that roster in a second place is the
+drift class R-09 is about).
 
 Skip condition: jq not on PATH (all tests xfail gracefully).
 
@@ -46,10 +55,10 @@ def _run_jq(jq_filter: str, input_json: dict, **args: str) -> dict:
     return json.loads(result.stdout)
 
 
-# ── Pinned jq queries from install.sh ─────────────────────────────────────────
-# These must exactly match the queries in install.sh lines 324–341.
-# If install.sh is updated, these constants must be updated too (the test will
-# catch divergence via the assertion that the new expected behaviour is tested).
+# ── jq filters expressing installer.py's dedup rule ───────────────────────────
+# These are independent jq-equivalents of installer.py::deploy_hooks's
+# _append_stanza dedup rule (same matcher + same script basename → replace),
+# not a mirror of any install.sh query — install.sh registers nothing with jq.
 
 UPS_FILTER = (
     '.hooks.UserPromptSubmit = ([(.hooks.UserPromptSubmit // [])[] '
