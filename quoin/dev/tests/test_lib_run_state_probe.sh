@@ -329,6 +329,33 @@ fi
 assert_silent "(o2)"
 rm -f "$REC"
 
+# ─── (p) zero-padded knob strips completely, never leaving a zero residue ──
+# A strip that removes only a bounded number of leading zeros can leave a
+# zero-led residue behind (e.g. "08" out of a 21-zero pad) that $(( )) then
+# rejects as malformed octal — leaking a shell error to stderr — or
+# silently misreads (a residue "010" is octal 8, not 10). Pad lengths just
+# past any fixed strip bound are exactly the shapes case (n)'s huge pad
+# cannot see (its residue trips the length clamp instead), so pin the
+# stripped value directly and the probe's silence through it.
+
+P_VAL=$(_run_state_validate_stale_days "$(python3 -c "print('0'*21 + '8')")" 14)
+[ "$P_VAL" = "8" ] && ok "(p) 21-zero-padded 8 strips to 8" || fail "(p) 21-zero-padded 8 should strip to 8 (got '$P_VAL')"
+P_VAL=$(_run_state_validate_stale_days "$(python3 -c "print('0'*21 + '10')")" 14)
+[ "$P_VAL" = "10" ] && ok "(p) 21-zero-padded 10 strips to 10" || fail "(p) 21-zero-padded 10 should strip to 10 (got '$P_VAL')"
+P_VAL=$(_run_state_validate_stale_days "$(python3 -c "print('0'*30)")" 14)
+[ "$P_VAL" = "0" ] && ok "(p) all-zero knob strips to 0" || fail "(p) all-zero knob should strip to 0 (got '$P_VAL')"
+
+record "$REC" true 1 false
+set +e
+QUOIN_RUN_STATE_STALE_DAYS="$(python3 -c "print('0'*21 + '8')")" run_state_probe "$MEMDIR" >"$STDOUT_CAP" 2>"$STDERR_CAP"
+CP_RC=$?
+set -e
+CP_OUT=$(cat "$STDOUT_CAP")
+CP_ERR=$(cat "$STDERR_CAP")
+[ "$CP_RC" -eq 0 ] && ok "(p) 21-zero-padded knob still matches a fresh active record" || fail "(p) 21-zero-padded knob should leave the probe working (rc=$CP_RC)"
+assert_silent "(p)"
+rm -f "$REC"
+
 # ─── Summary ────────────────────────────────────────────────────────────────
 
 printf '\n'
