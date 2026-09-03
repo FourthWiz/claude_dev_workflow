@@ -293,6 +293,28 @@ else
 fi
 assert_silent "(n)"
 
+# A 100k-zero pad pins that the strip stays linear well past the 20k point
+# above: any strip whose cost grows with the square of the pad length passes
+# at 20k (under a second) yet stalls for tens of seconds here, so the same
+# ceiling that is generous for a linear strip catches the blowup outright.
+
+PADDED_KNOB=$(python3 -c "print('0' * 100000 + '8')")
+N_START=$(python3 -c 'import time; print(int(time.time()*1000))' 2>/dev/null || printf '0')
+set +e
+QUOIN_RUN_STATE_STALE_DAYS="$PADDED_KNOB" run_state_probe "$MEMDIR" >"$STDOUT_CAP" 2>"$STDERR_CAP"
+CP_RC=$?
+set -e
+N_END=$(python3 -c 'import time; print(int(time.time()*1000))' 2>/dev/null || printf '0')
+N_ELAPSED_MS=$((N_END - N_START))
+CP_OUT=$(cat "$STDOUT_CAP")
+CP_ERR=$(cat "$STDERR_CAP")
+if [ "$N_ELAPSED_MS" -le 2000 ] && { [ "$CP_RC" -eq 0 ] || [ "$CP_RC" -eq 1 ]; }; then
+  ok "(n) 100k-zero knob resolves in ${N_ELAPSED_MS}ms without erroring (ceiling 2000ms)"
+else
+  fail "(n) 100k-zero knob should resolve quickly without erroring (rc=$CP_RC elapsed=${N_ELAPSED_MS}ms)"
+fi
+assert_silent "(n)"
+
 # ─── (o) isolated hostile record ────────────────────────────────────────────
 # A coexisting good record can mask a hostile-record regression, since the
 # probe only needs ONE matching candidate to return 0 — these cases run

@@ -126,15 +126,20 @@ _run_state_validate_stale_days() {
         ''|*[!0-9]*) _rvsd_days="$_rvsd_default" ;;
         *) _rvsd_days="$_rvsd_raw" ;;
     esac
-    # Strip ALL leading zeros in one parameter expansion, so e.g. "010" is
-    # never later misread as octal by $(( )) and no zero-led residue can
-    # ever reach an arithmetic comparison. Removing the longest all-zero
-    # prefix costs O(1) shell work regardless of input length, where a
-    # per-character strip loop would turn an attacker-sized zero-padded
-    # knob into a multi-second stall on every call — and any fixed
-    # iteration budget would leave exactly the pad lengths just past it
-    # with zeros intact. An all-zero value strips to empty and reads as 0.
-    _rvsd_days="${_rvsd_days#"${_rvsd_days%%[!0]*}"}"
+    # Strip ALL leading zeros, so e.g. "010" is never later misread as
+    # octal by $(( )) and no zero-led residue can ever reach an arithmetic
+    # comparison — a per-character strip loop or any fixed iteration budget
+    # would leave exactly the pad lengths just past the budget with zeros
+    # intact. The strip runs only for zero-led multi-character values (the
+    # 0?* guard), so ordinary knobs pay no fork at all; when it does run,
+    # one sed pass does the whole strip in linear time — the pure-shell
+    # alternative, ${var#"${var%%[!0]*}"}, retries the shortest-prefix
+    # match at every length and goes quadratic, stalling for tens of
+    # seconds on a 100k-zero knob. An all-zero value strips to empty and
+    # reads as 0.
+    case "$_rvsd_days" in
+        0?*) _rvsd_days=$(printf '%s\n' "$_rvsd_days" | sed 's/^0*//') ;;
+    esac
     [ -n "$_rvsd_days" ] || _rvsd_days=0
     case "$_rvsd_days" in
         ?????*) _rvsd_days=36500 ;;
