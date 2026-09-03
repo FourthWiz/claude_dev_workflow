@@ -6,7 +6,7 @@
 |-------|---------|--------|---------|----------|
 | UserPromptSubmit | `*` | `userpromptsubmit.sh` | 5s | Context utilization check; advisory only — never blocks a prompt |
 | PreCompact | `auto` | `precompact.sh` | 10s | ALWAYS allows auto-compaction; appends the STEP 1b `recent-sessions.md` record and a `telemetry/compaction-events.jsonl` pre-event on every row (a `.allow-compact` marker in cwd exits right after the recent-sessions append — telemetry and every later step are skipped); writes a deterministic checkpoint when a fresh active run-state record matches the session or skill pidfiles are present; a plain conversation (no run, no pidfiles) writes no checkpoint and no sentinel — the recent-sessions and telemetry appends still happen on every row; `QUOIN_PRECOMPACT_NORUN_CHECKPOINT=1` restores the checkpoint-plus-`pending-restore` sentinel for that case; `/continue_work` (fed by `recent-sessions.md`) is the recovery path when nothing is written |
-| PostCompact | `auto` | `postcompact.sh` | 5s | Writes `postcompact-reset-${session_id}.txt` sentinel; `userpromptsubmit.sh` STEP 0.5 consumes it to confirm compaction occurred and trash-moves the sentinel |
+| PostCompact | `auto` | `postcompact.sh` | 5s | Writes `postcompact-reset-${session_id}.txt` sentinel; `userpromptsubmit.sh` STEP 0.5 consumes it to confirm compaction occurred and trash-moves the sentinel; as its last statement, appends the "post" half of a `telemetry/compaction-events.jsonl` compaction event (paired with the "pre" half `precompact.sh` wrote), never printing anything to stdout on any path; a `.allow-compact` marker in cwd suppresses this telemetry append ONLY — both sentinels above are still written, unlike the PreCompact row, where the same marker skips the whole hook |
 | SessionStart | `startup` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) — this body runs only on `startup`/`resume`; a `compact` invocation takes the dedicated early-exit branch below instead |
 | SessionStart | `resume` | `sessionstart.sh` | 5s | Pending-restore + missing-EOD banner (S-4) — this body runs only on `startup`/`resume`; a `compact` invocation takes the dedicated early-exit branch below instead |
 | SessionStart | `compact` | `sessionstart.sh` | 5s | Dedicated early-exit branch (IVG-258 S-4), reached before the startup/resume banner body; on a fresh active run-state record matching the session, emits exactly one JSON object carrying `additionalContext` (always — an active run's task/phase/step, next action, and run-notes path) and `initialUserMessage` (echoing the record's `resume_command` verbatim, when present) — the dual re-entry channel; silent no-op (no stdout, exit 0) when no matching record is found, including a `session_id` mismatch |
@@ -23,6 +23,7 @@ Hook-side tunable constants (defined in `_lib.sh:read_constants()` and exported 
 - `QUOIN_SOD_SENTINEL_WARN` (NEW IVG-95, default 3) — `start_of_day` Step 1b sentinel-health check threshold. Emits a one-line advisory banner if the count of stale sentinels in `memory/` exceeds this value. Read-only — `start_of_day` never mutates files.
 - `QUOIN_PRECOMPACT_NORUN_CHECKPOINT` (NEW IVG-258 S-3, default 0) — opt-in: when 1, `precompact.sh` restores the deterministic checkpoint-plus-`pending-restore` sentinel for a plain conversation (no active run-state record, no skill pidfiles); when 0, that row writes nothing.
 - `QUOIN_RUN_STATE_STALE_DAYS` (pre-existing, default 1) — freshness window for `run-state-*.json` records, already documented for `/run` Step 0c's `--max-age-days` reads; IVG-258 S-3 adds a hook-side read site in `precompact.sh`'s run-state selection (day-granular, deliberately over-inclusive).
+- `QUOIN_TELEMETRY_MAX_BYTES` (NEW IVG-258 stage 5, default 1048576 = 1 MiB) — compaction-telemetry sink rotation size in bytes. `precompact.sh` checks this at the pair boundary, immediately before appending the next "pre": once the live sink exceeds this size, it is renamed to a single `.1` generation before the new "pre" lands, so a rotation always moves whole pairs. See "Compaction telemetry sink" below for the full schema and the reader that joins both generations back into one stream.
 
 Skill-side picker knobs (read inline in `checkpoint/SKILL.md`, NOT hook constants — do NOT add to `_lib.sh`):
 - `QUOIN_RESTORE_SENTINEL_WINDOW` (default 7 days) — mtime filter for pending-restore sentinel enumeration.
@@ -38,3 +39,70 @@ Skill-side opt-out knobs (IVG-137, read inline in `end_of_day/SKILL.md` / `end_o
   remain `end_of_day_due: yes` and surface as ordinary backlog on the next `/end_of_day`).
 
 Verbose details: `quoin/docs/hooks-guide.md`.
+
+## Compaction telemetry sink
+
+`{project-root}/.workflow_artifacts/memory/telemetry/compaction-events.jsonl`
+(plus, once rotated, a single previous generation at the same path with a
+`.1` suffix — see `QUOIN_TELEMETRY_MAX_BYTES` above). One level below the
+`.workflow_artifacts/memory/` depth-1 sentinel sweeps, so it is never a sweep
+target. `precompact.sh` appends the "pre" half on every row it reaches
+(before the `.allow-compact` early-exit); `postcompact.sh` appends the
+"post" half as its last statement, after both of its own sentinel writes.
+
+**Line schema (`v: 1`, one JSON object per line, both halves):**
+
+| Field | Half | Meaning |
+|---|---|---|
+| `v` | both | Schema version. A reader treats `v > 1` as schema-forward and skips it rather than guessing at a version it does not know. |
+| `half` | both | `"pre"` or `"post"`. |
+| `session_id` | both | The correlation key's session component. |
+| `event_seq` | both | See "event_seq derivation" below. `null` on a `post` half means no eligible `pre` was found. |
+| `ts` | both | UTC timestamp, second granularity. |
+| `bytes_before` / `est_tokens_before` | `pre` | Transcript size and its `BPT`-derived token estimate at compaction start; `null` when the transcript path is unreadable. |
+| `bytes_after` / `est_tokens_after` | `post` | Same, at compaction end. |
+| `task` / `phase` / `subphase` / `step` | `pre` | The active run-state record's fields at compaction start, or empty strings when no run is active. A `post` never restates these — the run may have advanced between the two halves, so a duplicated copy could disagree with its own pair; the pair carries run identity once, on the `pre`. |
+| `trigger` | `post` | The compaction trigger string from the hook's own stdin payload. |
+| `compact_summary_len` | `post` | A **codepoint count** of the harness-supplied compaction summary — the only observable of summariser behavior this sink records. The summary text itself is never bound to a shell variable and never written. quoin does not pin which model produces the summary. |
+
+The `est_` prefix marks every token figure as a `BPT`-derived estimate, never
+an exact count.
+
+**`event_seq` derivation and its two reset boundaries.** `precompact.sh`
+derives its own "pre" sequence number by counting `"half":"pre"` lines for
+the session in the live sink's last 1 MiB tail window; `postcompact.sh`
+derives its "post" sequence number by taking the *highest* `event_seq` on a
+`"half":"pre"` line for the session in that same window, but only when it is
+strictly ahead of the highest `"half":"post"` line for the session in the
+same window — a `pre` no more recent than the session's last recorded `post`
+did not belong to the compaction now finishing, and adopting it would
+synthesise a false pair. Unmatched halves are tolerated, never synthesised:
+a `post` that finds no eligible `pre` writes `event_seq: null`. Two things
+reset the counter to 0 for a session: rotation (a fresh file has no prior
+"pre" lines to count), and the 1 MiB tail window itself once a session's
+earlier rows scroll past it. A third, subtler case: the `pre` half *counts*
+matching lines in the window while the `post` half takes their *max* — the
+two derivations agree only while the window stays inside
+`QUOIN_TELEMETRY_MAX_BYTES`, and can diverge into a same-file duplicate key
+once that knob is raised past the hard-coded 1 MiB tail window. Consequently,
+`(session_id, event_seq)` is unique **within a joined two-file stream, per
+the reader's file-scoped tie-break** described below — never on `event_seq`
+alone. `(session_id, ts)` narrows collisions further but is **not
+absolute**, since `ts` is only second-granular.
+
+**The reader.** `quoin/core/scripts/compaction_telemetry.py` (wrapper at
+`quoin/scripts/compaction_telemetry.py`) reads the rotated generation first,
+then the live file, into one chronological stream, each record tagged with
+its source file. Pairing is scoped to a single source file, grouped per
+`(file, session_id, event_seq)`: exactly one `pre` and one `post` sharing
+that key in that file match; either side occurring more than once diverts
+every record sharing that key in that file — `pre`s and `post`s alike — into
+an `ambiguous` bucket, counted as individual records rather than pairs, and
+none of them re-enters the matched/pre-only/post-only accounting; otherwise
+(one side present, the other absent) becomes pre-only or post-only. A `post`
+whose own `event_seq` is `null` is post-only unconditionally, with no key
+grouping involved. Invocation: `compaction_telemetry.py --project-root
+<path> [--format text|json] [--task NAME] [--session ID] [--since
+YYYY-MM-DD]`. Always exits 0 and never raises on a malformed sink — a blank
+line, non-JSON line, non-object line, an object with no `half`, or a
+schema-forward `v` is skipped and counted separately, never fatal.
