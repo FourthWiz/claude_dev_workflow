@@ -1565,7 +1565,7 @@ the threshold values themselves live in `hooks/_lib.sh`'s
     echo GUARD_UNAVAILABLE
   else
     _rs_root=$(resolve_project_root "$(pwd)")
-    if [ -z "$_rs_root" ] || [ ! -d "$_rs_root/.workflow_artifacts/memory" ]; then
+    if [ -z "$_rs_root" ] || [ ! -d "$_rs_root/.workflow_artifacts/memory" ] || [ ! -r "$_rs_root/.workflow_artifacts/memory" ]; then
       echo GUARD_UNAVAILABLE
     elif run_state_probe "$_rs_root/.workflow_artifacts/memory"; then
       echo PROBE_ACTIVE

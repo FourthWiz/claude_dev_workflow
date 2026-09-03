@@ -17,6 +17,8 @@
 # Case B2 — MAJ-1 round-4 unresolvable-root class, /run's self-checkpoint
 #           bullet, positive path only (T-06 clause (h) already text-checks
 #           the bare-{root} regression).
+# Case B3 — unreadable-memory-dir class, pinning both extracted blocks'
+#           guard sets so a future edit cannot silently drop either one.
 #
 # Requires: jq on PATH, python3 (stdlib-only run_state.py), sh (POSIX).
 #
@@ -232,6 +234,37 @@ if [ "$out_b2pos" = "PROBE_ACTIVE" ]; then
 else
   fail "Case B2: expected stdout exactly PROBE_ACTIVE, got: $out_b2pos"
 fi
+
+# ═══ Case B3 — unreadable-memory-dir class, both blocks' guard sets ════════
+# A present-but-unreadable memory dir must report GUARD_UNAVAILABLE, not
+# fall through to PROBE_INACTIVE (which would silently skip the save both
+# blocks exist to make). checkpoint/SKILL.md's block already carried this
+# `-r` check; run/SKILL.md's gained it in this pass — pin both here so a
+# future edit cannot drop either one without a loud test failure.
+
+MEMDIR_TEST="$TMPDIR_TEST/.workflow_artifacts/memory"
+chmod 000 "$MEMDIR_TEST"
+if [ -r "$MEMDIR_TEST" ]; then
+  # Running as a user for whom chmod 000 does not remove read access (e.g.
+  # root) — the guard cannot be meaningfully exercised here; skip rather
+  # than false-fail.
+  ok "Case B3: skipped — chmod 000 did not remove read access in this environment"
+else
+  out_b3a=$(REPO_ROOT="$REPO_ROOT" _PROJECT_ROOT="$TMPDIR_TEST" sh "$TMPDIR_TEST/step14_block.sh")
+  if [ "$out_b3a" = "GUARD_UNAVAILABLE" ]; then
+    ok "Case B3a: extracted checkpoint/SKILL.md block prints GUARD_UNAVAILABLE on an unreadable memory dir"
+  else
+    fail "Case B3a: expected stdout exactly GUARD_UNAVAILABLE on unreadable memory dir, got: $out_b3a"
+  fi
+
+  out_b3b=$(cd "$TMPDIR_TEST" && REPO_ROOT="$REPO_ROOT" sh "$TMPDIR_TEST/run_hook_coop_block.sh")
+  if [ "$out_b3b" = "GUARD_UNAVAILABLE" ]; then
+    ok "Case B3b: extracted run/SKILL.md block prints GUARD_UNAVAILABLE on an unreadable memory dir"
+  else
+    fail "Case B3b: expected stdout exactly GUARD_UNAVAILABLE on unreadable memory dir, got: $out_b3b"
+  fi
+fi
+chmod 755 "$MEMDIR_TEST"
 
 # ═══ Case C — PROBE_INACTIVE through both extracted blocks ═════════════════
 # PROBE_INACTIVE is the sole save-skipping outcome, and it was previously
