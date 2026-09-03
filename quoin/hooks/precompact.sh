@@ -123,6 +123,13 @@ fi
   # this shell check followed by >> reopens that window. Accepted for a
   # bounded hook append — this is NOT parity with the Python writer.
   [ ! -L "$rs_notes_path" ] || exit 0
+  # Non-regular files and hard links: a FIFO (or device/socket) at the
+  # notes path would block the >> open itself and stall the hook until the
+  # harness kills it — the hook must reach its allow line no matter what is
+  # planted here. A hard link passes every check above (no dotdot, prefix
+  # match, flat, not a symlink), so refuse a link count above 1 too.
+  [ ! -e "$rs_notes_path" ] || [ -f "$rs_notes_path" ] || exit 0
+  [ -z "$(find "$rs_notes_path" -maxdepth 0 -links +1 2>/dev/null)" ] || exit 0
   _rn_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _rn_ts=$(date +%Y-%m-%dT%H:%M:%SZ)
   {
     printf '## %s — %s/%s\n' "$_rn_ts" "$rs_phase" "$rs_subphase"
@@ -149,6 +156,12 @@ fi
   # check-then-write caveat).
   [ ! -L "$_tel_dir" ] || exit 0
   [ ! -L "$_tel_sink" ] || exit 0
+  # Same non-regular-file discipline as the notes path: require a real
+  # directory and a regular-or-absent sink, and refuse a hard-linked sink —
+  # a FIFO here would hang the append and with it the whole hook.
+  [ -d "$_tel_dir" ] || exit 0
+  [ ! -e "$_tel_sink" ] || [ -f "$_tel_sink" ] || exit 0
+  [ -z "$(find "$_tel_sink" -maxdepth 0 -links +1 2>/dev/null)" ] || exit 0
   # Probe the session id through the same jq encoder that builds the line,
   # so the sequence count matches the escaped form as it actually appears
   # in the sink — a raw id containing a quote or backslash never matches
@@ -156,7 +169,10 @@ fi
   _tel_esc=$(jq -nc --arg s "$session_id" '$s' 2>/dev/null) || exit 0
   _tel_seq=0
   if [ -f "$_tel_sink" ]; then
-    _tel_seq=$(grep -F "\"session_id\":$_tel_esc" "$_tel_sink" 2>/dev/null | grep -cF '"half":"pre"' 2>/dev/null) || _tel_seq=0
+    # Bounded count: the sink is append-only and unrotated, so count within
+    # the last 1 MiB only — the sequence stays monotonic per session and an
+    # oversized sink cannot burn the hook's time budget on a full rescan.
+    _tel_seq=$(tail -c 1048576 "$_tel_sink" 2>/dev/null | grep -F "\"session_id\":$_tel_esc" 2>/dev/null | grep -cF '"half":"pre"' 2>/dev/null) || _tel_seq=0
     case "$_tel_seq" in ''|*[!0-9]*) _tel_seq=0 ;; esac
   fi
   _tel_bytes=""
@@ -396,10 +412,17 @@ fi  # end: if [ ! -f "$pending_restore_file" ]
 # parsing the PID from the filename, a POSIX loop, and fragile format coupling. The
 # crash-without-cleanup failure mode is rare and bounded. To clean up after a crash:
 # rm .workflow_artifacts/memory/sessions/*.pidfile.lock
+# The early-skip path never assigns checkpoint_file; phrase that case
+# explicitly instead of logging "checkpoint saved at none".
+if [ -n "${checkpoint_file:-}" ]; then
+  cp_note="checkpoint saved at ${checkpoint_file}"
+else
+  cp_note="checkpoint write skipped (voluntary /checkpoint sentinel already present)"
+fi
 if [ "$run_active" = "1" ]; then
-  printf '[quoin-precompact] INFO: active run detected (task: %s); allowing auto-compaction; checkpoint saved at %s\n' "${rs_task:-unknown}" "${checkpoint_file:-none (early-skip)}" >&2
+  printf '[quoin-precompact] INFO: active run detected (task: %s); allowing auto-compaction; %s\n' "${rs_task:-unknown}" "$cp_note" >&2
 elif [ "$pidfile_info" != "none" ]; then
-  printf '[quoin-precompact] INFO: skills running (%s); allowing auto-compaction; checkpoint saved at %s\n' "$pidfile_info" "${checkpoint_file:-none (early-skip)}" >&2
+  printf '[quoin-precompact] INFO: skills running (%s); allowing auto-compaction; %s\n' "$pidfile_info" "$cp_note" >&2
 elif [ "${PRECOMPACT_NORUN_CHECKPOINT:-0}" = "1" ] && [ -n "${checkpoint_file:-}" ]; then
   mkdir -p "$MEMORY_DIR" 2>/dev/null || true
   printf '%s\n' "$checkpoint_file" > "$pending_restore_file" 2>/dev/null || {

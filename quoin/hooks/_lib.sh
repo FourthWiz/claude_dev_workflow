@@ -343,6 +343,9 @@ run_state_fields() {
     [ -n "$_rsf_file" ] || return 0
     [ -f "$_rsf_file" ] || return 0
     [ -s "$_rsf_file" ] || return 0
+    # (head -c is BSD/GNU-common but not POSIX-mandated; a head lacking -c
+    # emits nothing here, so the pipeline degrades toward empty output —
+    # the fail-OPEN direction for every consumer of this extractor.)
     head -c 65536 "$_rsf_file" 2>/dev/null | awk -v keys="$*" '
     BEGIN {
         n = split(keys, order, " ")
@@ -408,7 +411,10 @@ run_state_select() {
         [ -f "$_rss_cand" ] || continue
         # Byte-exact match for the writer's serialized bool line; a
         # hand-rolled record without the space would not match, by design.
-        grep -q '"active": true' "$_rss_cand" 2>/dev/null || continue
+        # Bounded liveness probe — same 64 KiB ceiling as run_state_fields,
+        # so an oversized candidate cannot slurp into the time budget before
+        # the bounded extractor even runs.
+        head -c 65536 "$_rss_cand" 2>/dev/null | grep -q '"active": true' || continue
         # One extractor pass per candidate covers both gate fields.
         _rss_kv=$(run_state_fields "$_rss_cand" schema session_id)
         [ -n "$_rss_kv" ] || continue

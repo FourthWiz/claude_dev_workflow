@@ -834,16 +834,38 @@ while [ "$_i" -le 50 ]; do
   python3 "$RUN_STATE" --write --project-root "$TMPDIR_TEST" --task "sel-scale-$_i" --session-id "sid-scale-$_i" --at-stage-boundary true >/dev/null 2>&1
   _i=$((_i + 1))
 done
-SCALE_START=$(date +%s 2>/dev/null || printf '0')
+SCALE_START=$(python3 -c 'import time; print(int(time.time()*1000))' 2>/dev/null || printf '0')
 sel_scale=$(run_state_select "$MEM_DIR_TEST" sid-scale-nomatch)
-SCALE_END=$(date +%s 2>/dev/null || printf '0')
-SCALE_ELAPSED=$((SCALE_END - SCALE_START))
-if [ -z "$sel_scale" ] && [ "$SCALE_ELAPSED" -le 5 ]; then
-  ok "(T-01-scale) 50-record full scan returned empty in ${SCALE_ELAPSED}s (ceiling 5s)"
+SCALE_END=$(python3 -c 'import time; print(int(time.time()*1000))' 2>/dev/null || printf '0')
+SCALE_ELAPSED_MS=$((SCALE_END - SCALE_START))
+if [ -z "$sel_scale" ] && [ "$SCALE_ELAPSED_MS" -le 2000 ]; then
+  ok "(T-01-scale) 50-record full scan returned empty in ${SCALE_ELAPSED_MS}ms (ceiling 2000ms)"
 else
-  fail "(T-01-scale) 50-record scan misbehaved (sel='$sel_scale' elapsed=${SCALE_ELAPSED}s)"
+  fail "(T-01-scale) 50-record scan misbehaved (sel='$sel_scale' elapsed=${SCALE_ELAPSED_MS}ms)"
 fi
 rm -f "$MEM_DIR_TEST"/run-state-sel-scale-*.json
+
+# read bound: a key planted past the 64 KiB mark must never come back —
+# guards the bounded read in run_state_fields (reverting it to an
+# unbounded read fails this fixture)
+python3 -c '
+import sys
+pad = "x" * 1024
+lines = ["{", "  \"schema\": 1,", "  \"session_id\": \"sid-bound-test\","]
+for i in range(70):
+    lines.append("  \"pad%d\": \"%s\"," % (i, pad))
+lines.append("  \"next_action\": \"HOSTILE-PAST-BOUND\",")
+lines.append("  \"active\": true")
+lines.append("}")
+open(sys.argv[1], "w").write("\n".join(lines) + "\n")
+' "$MEM_DIR_TEST/run-state-bound.json"
+kv_bound=$(run_state_fields "$MEM_DIR_TEST/run-state-bound.json" next_action)
+if [ "$kv_bound" = "next_action=" ]; then
+  ok "(T-01-bound) key past the 64 KiB mark is not returned (read bound holds)"
+else
+  fail "(T-01-bound) extractor returned data past the read bound: $kv_bound"
+fi
+rm -f "$MEM_DIR_TEST/run-state-bound.json"
 
 # ─── T-05: three-row fixtures + recent-sessions per-row append ───────────────
 
@@ -1058,6 +1080,55 @@ else
   fail "(T-03-escdir) symlinked-dir path was written through"
 fi
 rm -f "$MEM_DIR_TEST/run-state-notes-esc.json" "$MEM_DIR_TEST/run-notes-esc"
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
+
+# FIFO planted at the notes path: a non-regular file would block the >>
+# open itself and stall the hook to its harness timeout — the guard must
+# refuse it and the hook must still emit its allow decision promptly.
+python3 "$RUN_STATE" --write --project-root "$TMPDIR_TEST" --task notes-fifo --session-id sess-notes-fifo --phase implement --subphase code --step "fifo step" --next-action "fifo next" >/dev/null 2>&1
+rm -f "$MEM_DIR_TEST/run-notes-notes-fifo.md"
+mkfifo "$MEM_DIR_TEST/run-notes-notes-fifo.md"
+stdin=$(make_stdin "auto" "sess-notes-fifo")
+: > "$TMPDIR_TEST/fifo-notes-out.txt"
+( printf '%s' "$stdin" | sh "$HOOK" > "$TMPDIR_TEST/fifo-notes-out.txt" 2>/dev/null ) &
+_fifo_npid=$!
+_w=0
+while [ "$_w" -lt 50 ] && kill -0 "$_fifo_npid" 2>/dev/null; do
+  sleep 0.1
+  _w=$((_w + 1))
+done
+if kill -0 "$_fifo_npid" 2>/dev/null; then
+  kill "$_fifo_npid" 2>/dev/null || true
+  wait "$_fifo_npid" 2>/dev/null || true
+  fail "(T-03-fifo) hook blocked on a FIFO notes path (killed at 5s watchdog)"
+else
+  wait "$_fifo_npid" 2>/dev/null || true
+  out_nf=$(cat "$TMPDIR_TEST/fifo-notes-out.txt")
+  if [ "$out_nf" = '{"decision": "allow"}' ]; then
+    ok "(T-03-fifo) FIFO notes path → refused, allow emitted without hanging"
+  else
+    fail "(T-03-fifo) unexpected output with FIFO notes path (out=$out_nf)"
+  fi
+fi
+rm -f "$MEM_DIR_TEST/run-state-notes-fifo.json" "$MEM_DIR_TEST/run-notes-notes-fifo.md" "$TMPDIR_TEST/fifo-notes-out.txt"
+rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
+
+# hard link planted at the notes path: passes every earlier predicate
+# (no dotdot, prefix match, flat, not a symlink, regular file) — the
+# link-count refusal is what keeps the append from landing in the
+# link's other name outside memory/.
+python3 "$RUN_STATE" --write --project-root "$TMPDIR_TEST" --task notes-hl --session-id sess-notes-hl --phase implement --subphase code --step "hl step" --next-action "hl next" >/dev/null 2>&1
+rm -f "$MEM_DIR_TEST/run-notes-notes-hl.md"
+printf 'victim\n' > "$TMPDIR_TEST/hl-victim.md"
+ln "$TMPDIR_TEST/hl-victim.md" "$MEM_DIR_TEST/run-notes-notes-hl.md"
+stdin=$(make_stdin "auto" "sess-notes-hl")
+out_hl=$(printf '%s' "$stdin" | sh "$HOOK" 2>/dev/null)
+if [ "$(cat "$TMPDIR_TEST/hl-victim.md")" = "victim" ] && [ "$out_hl" = '{"decision": "allow"}' ]; then
+  ok "(T-03-hardlink) hard-linked notes path → nothing appended, allow emitted"
+else
+  fail "(T-03-hardlink) hard-linked notes path was appended through (out=$out_hl)"
+fi
+rm -f "$MEM_DIR_TEST/run-state-notes-hl.json" "$MEM_DIR_TEST/run-notes-notes-hl.md" "$TMPDIR_TEST/hl-victim.md"
 rm -rf "$ESC_OUTSIDE"
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
 
@@ -1185,6 +1256,36 @@ else
 fi
 rm -f "$TEL_SINK" "$TMPDIR_TEST/tel-victim.jsonl"
 mv "$TMPDIR_TEST/tel-sink-real.jsonl" "$TEL_SINK"
+
+# FIFO planted at the telemetry sink: a non-regular file would block the
+# append's open and hang the hook to its harness timeout, suppressing the
+# checkpoint on every row — the guard must refuse it outright.
+mv "$TEL_SINK" "$TMPDIR_TEST/tel-sink-real2.jsonl"
+mkfifo "$TEL_SINK"
+stdin=$(make_stdin "auto" "sess-tel-fifo")
+: > "$TMPDIR_TEST/fifo-tel-out.txt"
+( printf '%s' "$stdin" | sh "$HOOK" > "$TMPDIR_TEST/fifo-tel-out.txt" 2>/dev/null ) &
+_fifo_tpid=$!
+_w=0
+while [ "$_w" -lt 50 ] && kill -0 "$_fifo_tpid" 2>/dev/null; do
+  sleep 0.1
+  _w=$((_w + 1))
+done
+if kill -0 "$_fifo_tpid" 2>/dev/null; then
+  kill "$_fifo_tpid" 2>/dev/null || true
+  wait "$_fifo_tpid" 2>/dev/null || true
+  fail "(T-04-fifo) hook blocked on a FIFO telemetry sink (killed at 5s watchdog)"
+else
+  wait "$_fifo_tpid" 2>/dev/null || true
+  out_tf=$(cat "$TMPDIR_TEST/fifo-tel-out.txt")
+  if [ "$out_tf" = '{"decision": "allow"}' ]; then
+    ok "(T-04-fifo) FIFO telemetry sink → refused, allow emitted without hanging"
+  else
+    fail "(T-04-fifo) unexpected output with FIFO telemetry sink (out=$out_tf)"
+  fi
+fi
+rm -f "$TEL_SINK" "$TMPDIR_TEST/fifo-tel-out.txt"
+mv "$TMPDIR_TEST/tel-sink-real2.jsonl" "$TEL_SINK"
 rm -f "$TMPDIR_TEST/.workflow_artifacts/memory/checkpoints/"*.md 2>/dev/null || true
 
 # ─── T-06: fail-OPEN fixtures ────────────────────────────────────────────────
