@@ -217,8 +217,15 @@ def test_thorough_plan_round_boundary_calls_writer():
 def test_thorough_plan_writer_is_require_existing():
     tp_text = _text(THOROUGH_PLAN_SKILL)
     assert tp_text.count("run_state.py --write --require-existing") == 1
+    # The round-boundary refresh must never adopt: it runs in a planning
+    # subagent whose id must not displace the record's creator id.
+    assert "--adopt-session" not in tp_text
     run_text = _text(RUN_SKILL)
-    assert "--require-existing" not in run_text
+    # /run's ONLY require-existing write is the Resume entry re-anchor, and
+    # it must carry --adopt-session on the same call; every other /run
+    # write site stays a plain --write.
+    assert run_text.count("--require-existing") == 1
+    assert run_text.count("run_state.py --write --require-existing --adopt-session") == 1
 
 
 def test_thorough_plan_writer_call_follows_the_ivg98_checkpoint():

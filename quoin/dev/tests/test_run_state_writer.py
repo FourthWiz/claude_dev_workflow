@@ -74,7 +74,7 @@ def _write(root, task, **kwargs):
     args = ["--write", "--project-root", str(root), "--task", task]
     for key, value in kwargs.items():
         flag = "--" + key.replace("_", "-")
-        if key == "require_existing":
+        if key in ("require_existing", "adopt_session"):
             if value:
                 args += [flag]
             continue
@@ -208,6 +208,54 @@ def test_require_existing_write_never_stores_an_unknown_session_id(tmp_path):
     assert _load(tmp_path, "t9c")["session_id"] == ""
     _write(tmp_path, "t9c", require_existing=True, session_id="sid-real", step="third")
     assert _load(tmp_path, "t9c")["session_id"] == "sid-real"
+
+
+def test_adopt_session_write_re_anchors_the_session_id(tmp_path):
+    _write(tmp_path, "t9d", session_id="sid-creator", step="first")
+    _write(tmp_path, "t9d", require_existing=True, adopt_session=True,
+           session_id="sid-resumed", step="second")
+    after = _load(tmp_path, "t9d")
+    assert after["session_id"] == "sid-resumed"
+    assert after["step"] == "second"
+
+
+def test_adopt_session_refuses_unknown_or_absent_session_id(tmp_path):
+    _write(tmp_path, "t9e", session_id="sid-creator", step="first")
+    _write(tmp_path, "t9e", require_existing=True, adopt_session=True,
+           session_id="unknown-probe", step="second")
+    assert _load(tmp_path, "t9e")["session_id"] == "sid-creator"
+    _write(tmp_path, "t9e", require_existing=True, adopt_session=True, step="third")
+    assert _load(tmp_path, "t9e")["session_id"] == "sid-creator"
+
+
+def test_adopt_session_without_flag_still_preserves_the_creator_id(tmp_path):
+    _write(tmp_path, "t9f", session_id="sid-creator", step="first")
+    _write(tmp_path, "t9f", require_existing=True, session_id="sid-other", step="second")
+    assert _load(tmp_path, "t9f")["session_id"] == "sid-creator"
+
+
+def test_adopt_session_is_a_noop_on_an_absent_record(tmp_path):
+    _write(tmp_path, "t9g", require_existing=True, adopt_session=True,
+           session_id="sid-resumed")
+    assert not _record_path(tmp_path, "t9g").exists()
+
+
+def test_artifacts_list_is_bounded_by_count_newest_kept(tmp_path):
+    arts = [f"a-{i}" for i in range(200)]
+    _write(tmp_path, "t9h", artifact=arts)
+    rec = _load(tmp_path, "t9h")
+    assert len(rec["artifacts"]) == 64
+    assert rec["artifacts"][-1] == "a-199"
+    assert rec["artifacts"][0] == "a-136"
+
+
+def test_artifacts_list_is_bounded_by_bytes_newest_kept(tmp_path):
+    arts = [("x" * 4000) + f"-{i}" for i in range(8)]
+    _write(tmp_path, "t9i", artifact=arts)
+    rec = _load(tmp_path, "t9i")
+    assert rec["artifacts"][-1].endswith("-7")
+    line = ", ".join(rec["artifacts"])
+    assert len(line.encode("utf-8")) <= 16384 + 4096
 
 
 def test_require_existing_write_does_not_reactivate_a_cleared_record(tmp_path):

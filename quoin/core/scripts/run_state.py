@@ -301,14 +301,21 @@ def _do_write(args) -> int:
         # match to the record's creator. A refresh usually runs in a
         # different session (e.g. a planning subagent), so it must never
         # migrate the id: once set it survives every refresh, and a probe
-        # fallback id ("unknown"...) is never stored.
+        # fallback id ("unknown"...) is never stored. The one sanctioned
+        # migration is --adopt-session, used from the /run Resume entry
+        # point: after a resume the creator's session is dead, and without
+        # re-anchoring, the hook's match would never fire again for the
+        # whole resumed run.
         existing_sid = existing.get("session_id", "") or ""
-        if existing_sid:
+        offered_sid = args.session_id or ""
+        if offered_sid.startswith("unknown"):
+            offered_sid = ""
+        if args.adopt_session and offered_sid:
+            session_id = offered_sid
+        elif existing_sid:
             session_id = existing_sid
         else:
-            session_id = args.session_id or ""
-            if session_id.startswith("unknown"):
-                session_id = ""
+            session_id = offered_sid
         phase = pick("phase", args.phase)
         phase_index = pick("phase_index", args.phase_index, 0)
         subphase = pick("subphase", args.subphase)
@@ -351,6 +358,26 @@ def _do_write(args) -> int:
     step = _sanitize(step)
     next_action = _sanitize(next_action)
     artifacts = [_sanitize(a) for a in artifacts]
+
+    # Bound the artifacts list, newest kept: it serializes as a single line
+    # and is inherited across refreshes, so unbounded growth would push the
+    # later fields the PreCompact hook reads (next_action, notes_path) past
+    # the shell extractor's 64 KiB read ceiling. With every other string
+    # field capped at 4093 bytes, a 16 KiB artifacts line keeps the whole
+    # record comfortably inside that ceiling by construction.
+    _max_count = 64
+    _max_bytes = 16384
+    _kept: list = []
+    _total = 0
+    for _a in reversed(artifacts):
+        if len(_kept) >= _max_count:
+            break
+        _cost = len(_a.encode("utf-8")) + 4
+        if _kept and _total + _cost > _max_bytes:
+            break
+        _kept.append(_a)
+        _total += _cost
+    artifacts = list(reversed(_kept))
 
     # Sanitize BEFORE stripping `--autonomous`, not after: `_AUTONOMOUS_TOKEN_RE`'s
     # `\S` lookbehind/lookahead does not match a C0 control byte, so an
@@ -476,6 +503,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--next-action", default=None, dest="next_action")
     parser.add_argument("--resume-command", default=None, dest="resume_command")
     parser.add_argument("--require-existing", action="store_true", dest="require_existing")
+    parser.add_argument("--adopt-session", action="store_true", dest="adopt_session")
 
     # --read options
     parser.add_argument("--fields", default="")

@@ -1324,6 +1324,22 @@ esac
 Use `"$_RUN_STATE_STALE_DAYS"` (quoted) in place of the raw `${QUOIN_RUN_STATE_STALE_DAYS:-1}`
 expansion at both call sites below.
 
+**Step 0d — re-anchor the run-state record to THIS session before any phase work.**
+The record's stored `session_id` is the creator's — a dead session after any resume or
+autonomous supervisor relaunch — and the PreCompact hook matches by exact equality, so
+without this write the run-aware row would never fire again for the whole resumed run.
+Adoption is gated behind an explicit flag so ordinary refresh writes keep preserving the
+creator id:
+```bash
+python3 __QUOIN_HOME__/scripts/run_state.py --write --require-existing --adopt-session \
+  --project-root "$PROJECT_ROOT" --task "{task}" \
+  --session-id "$CLAUDE_CODE_SESSION_ID" || true
+```
+Require-existing semantics keep every other field exactly as stored; an absent, cleared,
+or schema-forward record makes this a no-op and Resume proceeds normally on the
+sentinel/session-state tiers below. An `unknown*` probe-fallback session id is refused by
+the writer, leaving the stored id untouched.
+
 **Step 1 (T-09) — determine the next phase from completion sentinels, never from
 session-state prose alone, when the sentinel contract is present.** Read
 `.workflow_artifacts/memory/autonomous-progress-{task}/` (the T-05/T-10 write-site
