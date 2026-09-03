@@ -1,13 +1,13 @@
 """Regression guard: source quoin/CLAUDE.md must stay below the Claude Code 40k
 warning threshold. Deploy overhead model (measured claude-md-trim 2026-06-25):
-  deploy overhead = substitution(+5/placeholder × 20 sites = +100)
+  deploy overhead = substitution(+5/placeholder × 21 sites = +105)
                   + marker frame(+56)
                   + variable user pre-marker block (budget 700 — current measured
                     474 chars for Python venv + open-model routing blocks; ~226
                     headroom; 700 chosen as deliberate over-budget for user-owned
                     variable content)
 SOURCE_CEILING = 38951 chosen so that:
-  SOURCE_CEILING + sub_delta(100) + frame(56) + PRE_MARKER_BUDGET(700) = 39807 < 40000
+  SOURCE_CEILING + sub_delta(105) + frame(56) + PRE_MARKER_BUDGET(700) = 39812 < 40000
   giving a 193-char hard margin even on worst-case pre-marker growth.
 (IVG-119: bumped 38500 → 38951 by the exact +451 delta of the single-root-invariant
 convention text; the deploy-projection guard below remains the real 40k safety net.)"""
@@ -23,7 +23,7 @@ SOURCE_CEILING = 38951
 # Deployed-projection constants (environment-independent: fixed home-path stand-in,
 # not os.path.expanduser — keeps the projection a true upper-bound guard regardless
 # of which machine runs the test).
-HOME_STANDIN = "/Users/ivgo/.claude"   # 19 chars; sub delta = (19 - 14) * 20 = +100
+HOME_STANDIN = "/Users/ivgo/.claude"   # 19 chars; sub delta = (19 - 14) * 21 = +105
 MARKER_FRAME = 56      # measured: opening + closing install-sh marker lines
 PRE_MARKER_BUDGET = 700  # deliberately over-budgets user-owned variable pre-marker
                           # block (current measured: 474 chars; ~226 slack intentional)
