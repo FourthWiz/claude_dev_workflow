@@ -94,6 +94,63 @@ compute_utilization() {
         'BEGIN{ printf "%d\n", (b / bpt / lim) * 10000 }'
 }
 
+# run_state_probe MEMORY_DIR [SESSION_ID] — return 0 iff MEMORY_DIR holds at
+# least one fresh, active run-state-*.json record (optionally scoped to
+# SESSION_ID). Single-mode: there is no separate at_stage_boundary distinction
+# (D-26) — the probe answers exactly one question, "is there a fresh active
+# run-state record, optionally belonging to SESSION_ID?"
+#
+# Returns 1 on absence, an unreadable/missing MEMORY_DIR, or any error. Emits
+# nothing on stdout or stderr, ever — callers rely on the exit code alone.
+run_state_probe() {
+    _rsp_dir="$1"
+    _rsp_sid="${2:-}"
+    [ -n "$_rsp_dir" ] || return 1
+    [ -d "$_rsp_dir" ] || return 1
+
+    # Numeric-validate the staleness knob before it reaches $(( )) or find —
+    # same guard as quoin/dev/spikes/run_state_read.sh (D-21: resolved locally
+    # inside this function, not read_constants()/exported).
+    _rsp_days="${QUOIN_RUN_STATE_STALE_DAYS:-1}"
+    case "$_rsp_days" in
+        ''|*[!0-9]*) _rsp_days=1 ;;
+    esac
+    while true; do
+        case "$_rsp_days" in
+            0?*) _rsp_days="${_rsp_days#0}" ;;
+            *) break ;;
+        esac
+    done
+
+    # Split find's output on newlines only (not the default IFS) so a
+    # MEMORY_DIR whose path contains spaces (e.g. under "My Drive") is not
+    # word-split; captured as positional params (not a piped subshell) so
+    # `return` below actually exits this function on the first eligible
+    # candidate, rather than only the subshell a pipe would create.
+    _rsp_old_ifs="$IFS"
+    IFS="
+"
+    set -- $(find "$_rsp_dir" -maxdepth 1 -name 'run-state-*.json' -mtime -$((_rsp_days + 1)) 2>/dev/null)
+    IFS="$_rsp_old_ifs"
+
+    for _rsp_candidate in "$@"; do
+        [ -f "$_rsp_candidate" ] || continue
+        grep -q '"active": true' "$_rsp_candidate" 2>/dev/null || continue
+        _rsp_schema=$(sed -n '/"schema"/{p;q;}' "$_rsp_candidate" 2>/dev/null | tr -dc '0-9')
+        [ -n "$_rsp_schema" ] || continue
+        [ "$_rsp_schema" -le 1 ] 2>/dev/null || continue
+        # SESSION_ID is intentionally uncalled by every consumer as of this
+        # stage (D-27) — T-03, T-05, and T-07 all probe project-scoped. Kept
+        # for forward compatibility (covered by T-02 cases (j)/(k)); do not
+        # delete this branch as dead code.
+        if [ -n "$_rsp_sid" ]; then
+            grep -qF "\"session_id\": \"$_rsp_sid\"" "$_rsp_candidate" 2>/dev/null || continue
+        fi
+        return 0
+    done
+    return 1
+}
+
 # _pollution_cache_path <path> — echo the cache file path for a transcript.
 # Hash chain: shasum -a 256 -> sha256sum -> cksum, first available tool wins.
 # On macOS TMPDIR ends in a trailing slash; the resulting "//" in the path
