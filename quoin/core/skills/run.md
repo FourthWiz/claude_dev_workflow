@@ -237,6 +237,15 @@ back one level whenever the next-more-specific answer is absent or stale.
 An entry whose age exceeds an adapter-defined freshness window is treated
 as absent, never as a decision.
 
+The record also carries the id of the session that created it — an anchor a
+runtime's compaction-time machinery may use to recognize the record's owner.
+Because that creator session is dead after any resume, the one sanctioned
+migration of this field is a resume-entry adoption write that re-anchors the
+record to the resuming session; it runs only after the resume's
+freshness-gated reads of the record, and it is refused outright for a record
+the freshness window already treats as absent, so adoption can never revive
+a stale entry. Ordinary refresh writes preserve the stored id unchanged.
+
 A reader determines what to resume from `next_action`, never from `phase`
 — `phase` names the last-completed phase (or, in the sub-phase case, the
 phase currently in flight), never the resume target, so keying resume
