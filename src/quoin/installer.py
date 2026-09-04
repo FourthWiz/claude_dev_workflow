@@ -683,7 +683,14 @@ def deploy_hooks(
     In project mode, hooks are scoped to <project>/.claude/settings.json only.
     Home ~/.claude/settings.json is NOT modified.
     """
-    hook_scripts = ("userpromptsubmit.sh", "precompact.sh", "postcompact.sh", "sessionstart.sh", "sessionend.sh", "_lib.sh", "worktreecreate.sh")
+    # _lib.sh copies FIRST: userpromptsubmit.sh calls
+    # run_state_probe unguarded (no `command -v` check, unlike the SKILL.md
+    # arms), so during an install window — or after an install aborted
+    # mid-copy — a userpromptsubmit.sh that already has the new call but
+    # sources a not-yet-updated _lib.sh would emit "command not found" on
+    # stderr and report no active run while one is live. Copying _lib.sh
+    # first closes that window; it never depends on the other hook scripts.
+    hook_scripts = ("_lib.sh", "userpromptsubmit.sh", "precompact.sh", "postcompact.sh", "sessionstart.sh", "sessionend.sh", "worktreecreate.sh")
     src_hooks = source_dir / "hooks"
     dst_hooks = dest_root / "hooks"
     dst_hooks.mkdir(parents=True, exist_ok=True)

@@ -94,6 +94,165 @@ compute_utilization() {
         'BEGIN{ printf "%d\n", (b / bpt / lim) * 10000 }'
 }
 
+# _run_state_validate_stale_days <raw> <default> — echo a validated,
+# leading-zero-stripped, length-clamped day count for <raw>, falling back to
+# <default> when <raw> is empty or non-numeric. Shared by run_state_probe
+# and run_state_select so neither reinvents the same validation — but each
+# caller resolves its OWN raw candidate from its own knob precedence FIRST,
+# deliberately NOT shared here: read_constants() pre-resolves and EXPORTS
+# RUN_STATE_STALE_DAYS (default 1, tuned for run_state_select's tight,
+# over-inclusive pre-filter — see that function's own docstring) before
+# either function runs, in any hook that calls read_constants
+# (userpromptsubmit.sh does). If run_state_probe consulted that same
+# exported variable it would silently re-inherit select's tight 1-day
+# default and defeat the wider window this probe needs — a real interaction
+# hit while building this function, not a hypothetical: run_state_probe's
+# own default must stay reachable only via the raw
+# QUOIN_RUN_STATE_STALE_DAYS knob, never via RUN_STATE_STALE_DAYS.
+#
+# Numeric-validates before the result ever reaches $(( )) or a find
+# predicate (an unvalidated value is an arithmetic-eval injection sink under
+# a bash /bin/sh), strips leading zeros so a value like "010" cannot be
+# misread as octal, then clamps any 5-or-more-digit result to 36500 (100y)
+# by length alone, without ever numerically comparing the raw value — a huge
+# all-digit knob must not reach an arithmetic comparison, let alone $(( )),
+# unclamped; combined with run-state-*.json having no sweep family, an
+# unclamped knob would turn the probe into a full historical scan on every
+# prompt.
+_run_state_validate_stale_days() {
+    _rvsd_raw="$1"
+    _rvsd_default="$2"
+    case "$_rvsd_raw" in
+        ''|*[!0-9]*) _rvsd_days="$_rvsd_default" ;;
+        *) _rvsd_days="$_rvsd_raw" ;;
+    esac
+    # Strip ALL leading zeros, so e.g. "010" is never later misread as
+    # octal by $(( )) and no zero-led residue can ever reach an arithmetic
+    # comparison — a per-character strip loop or any fixed iteration budget
+    # would leave exactly the pad lengths just past the budget with zeros
+    # intact. The strip runs only for zero-led multi-character values (the
+    # 0?* guard), so ordinary knobs pay no fork at all; when it does run,
+    # one sed pass does the whole strip in linear time — the pure-shell
+    # alternative, ${var#"${var%%[!0]*}"}, retries the shortest-prefix
+    # match at every length and goes quadratic, stalling for tens of
+    # seconds on a 100k-zero knob. An all-zero value strips to empty and
+    # reads as 0. The stderr redirect keeps run_state_probe's never-emit
+    # contract when the sed itself fails (unresolvable on PATH, or an env
+    # too large to exec); the empty-result fallback below already absorbs
+    # the failed substitution.
+    case "$_rvsd_days" in
+        0?*) _rvsd_days=$(printf '%s\n' "$_rvsd_days" | sed 's/^0*//' 2>/dev/null) ;;
+    esac
+    [ -n "$_rvsd_days" ] || _rvsd_days=0
+    case "$_rvsd_days" in
+        ?????*) _rvsd_days=36500 ;;
+    esac
+    printf '%s\n' "$_rvsd_days"
+}
+
+# run_state_probe MEMORY_DIR [SESSION_ID] — return 0 iff MEMORY_DIR holds at
+# least one fresh, active run-state-*.json record (optionally scoped to
+# SESSION_ID). Single-mode: there is no separate at_stage_boundary distinction
+# (D-26) — the probe answers exactly one question, "is there a fresh active
+# run-state record, optionally belonging to SESSION_ID?"
+#
+# Unlike run_state_select's mtime prefilter — deliberately over-inclusive
+# because a downstream run_state.py --max-age-days gate makes the real
+# staleness call — this probe has no downstream gate, so its mtime window IS
+# the final word on "active or not". Default 14 (vs. select's 1) so a
+# boundary record from a long-running phase, or one paused over a weekend,
+# does not read as inactive just because `/run` only refreshes the record
+# at phase boundaries and nothing touches its mtime mid-phase. Still bounded
+# (run-state-*.json is in no sweep family) and overridable via
+# QUOIN_RUN_STATE_STALE_DAYS only — NOT RUN_STATE_STALE_DAYS; see below. A
+# phase or pause that outlives even the widened window is a residual,
+# documented risk — see run/SKILL.md's self-checkpoint bullet.
+#
+# Returns 1 on absence, an unreadable/missing MEMORY_DIR, or any error. Emits
+# nothing on stdout or stderr, ever — callers rely on the exit code alone.
+run_state_probe() {
+    _rsp_dir="$1"
+    _rsp_sid="${2:-}"
+    [ -n "$_rsp_dir" ] || return 1
+    [ -d "$_rsp_dir" ] || return 1
+
+    # QUOIN_RUN_STATE_STALE_DAYS only — deliberately NOT RUN_STATE_STALE_DAYS
+    # (read_constants' exported, select-tuned var); see
+    # _run_state_validate_stale_days's docstring for why.
+    _rsp_days=$(_run_state_validate_stale_days "${QUOIN_RUN_STATE_STALE_DAYS:-}" 14)
+
+    # Split find's output on newlines only (not the default IFS) so a
+    # MEMORY_DIR whose path contains spaces (e.g. under "My Drive") is not
+    # word-split; captured as positional params (not a piped subshell) so
+    # `return` below actually exits this function on the first eligible
+    # candidate, rather than only the subshell a pipe would create. Pathname
+    # expansion is separately suppressed around the capture: IFS-splitting
+    # alone does not stop a glob metacharacter in a candidate's filename
+    # from re-expanding against cwd; `set -f` is restored to its prior
+    # state afterward, not unconditionally unset.
+    _rsp_old_ifs="$IFS"
+    IFS="
+"
+    case "$-" in
+        *f*) _rsp_noglob_was_set=1 ;;
+        *) _rsp_noglob_was_set=0 ;;
+    esac
+    set -f
+    set -- $(find "$_rsp_dir" -maxdepth 1 -type f -name 'run-state-*.json' -mtime -$((_rsp_days + 1)) 2>/dev/null)
+    [ "$_rsp_noglob_was_set" -eq 1 ] || set +f
+    IFS="$_rsp_old_ifs"
+
+    for _rsp_candidate in "$@"; do
+        [ -f "$_rsp_candidate" ] || continue
+        # One run_state_fields pass per candidate — the same 64 KiB-capped,
+        # line-anchored extractor run_state_select uses, aligning the two
+        # probes on both the read cap and the match shape: the old
+        # byte-coupled '"active": true' grep was a false NEGATIVE against a
+        # compact single-line record, and the old sed|tr -dc schema scan
+        # concatenated every digit on a matched line — a single-line record
+        # would have extracted garbage. run_state_fields's line-anchored key
+        # match has neither failure mode, and collapses three forks
+        # (grep/sed/tr) into one.
+        _rsp_kv=$(run_state_fields "$_rsp_candidate" active schema session_id)
+        [ -n "$_rsp_kv" ] || continue
+        _rsp_active_line="" _rsp_schema_line="" _rsp_sid_line=""
+        {
+            IFS= read -r _rsp_active_line
+            IFS= read -r _rsp_schema_line
+            IFS= read -r _rsp_sid_line
+        } <<RSPEOF
+$_rsp_kv
+RSPEOF
+        [ "$_rsp_active_line" = "active=true" ] || continue
+        _rsp_schema="${_rsp_schema_line#schema=}"
+        case "$_rsp_schema" in
+            ''|*[!0-9]*) continue ;;
+            # See run_state_select's twin guard: reject 4+ digit schemas
+            # before the arithmetic test below, not after — an overlong
+            # all-digit value must never reach the shell's integer
+            # comparison, which errors on stderr past the platform's
+            # integer width.
+            ????*) continue ;;
+        esac
+        [ "$_rsp_schema" -le 1 ] 2>/dev/null || continue
+        # SESSION_ID is intentionally uncalled by every consumer as of this
+        # stage (D-27) — T-03, T-05, and T-07 all probe project-scoped. Kept
+        # for forward compatibility (covered by T-02 cases (j)/(k)); do not
+        # delete this branch as dead code. Plain string equality against the
+        # extracted field, matching run_state_select's own idiom: grep -F
+        # treats a newline-bearing pattern as a pattern LIST — any one line
+        # of a multi-line session id could fragment-match an unrelated line
+        # in the record, and a session id arriving from hook stdin JSON can
+        # legally contain '\n'.
+        if [ -n "$_rsp_sid" ]; then
+            _rsp_sid_val="${_rsp_sid_line#session_id=}"
+            [ "$_rsp_sid_val" = "$_rsp_sid" ] || continue
+        fi
+        return 0
+    done
+    return 1
+}
+
 # _pollution_cache_path <path> — echo the cache file path for a transcript.
 # Hash chain: shasum -a 256 -> sha256sum -> cksum, first available tool wins.
 # On macOS TMPDIR ends in a trailing slash; the resulting "//" in the path
@@ -348,7 +507,14 @@ run_state_fields() {
     # (head -c is BSD/GNU-common but not POSIX-mandated; a head lacking -c
     # emits nothing here, so the pipeline degrades toward empty output —
     # the fail-OPEN direction for every consumer of this extractor.)
-    head -c 65536 "$_rsf_file" 2>/dev/null | awk -v keys="$*" '
+    # LC_ALL=C: a truncated-mid-multibyte-character or binary record can
+    # make a locale-aware awk's character reader fail on the byte cut
+    # above, leaking stderr and flipping the verdict by locale (a plain
+    # byte-oriented C-locale awk never trips on this). Trailing
+    # 2>/dev/null is a second, independent backstop for any other awk
+    # error on a hostile record — this extractor never emits on either
+    # stream.
+    head -c 65536 "$_rsf_file" 2>/dev/null | LC_ALL=C awk -v keys="$*" '
     BEGIN {
         n = split(keys, order, " ")
     }
@@ -371,7 +537,7 @@ run_state_fields() {
             printf "%s=%s\n", k, (k in val ? val[k] : "")
         }
     }
-    '
+    ' 2>/dev/null
 }
 
 # run_state_select <memory_dir> <session_id> — echo the path of the freshest
@@ -388,21 +554,17 @@ run_state_select() {
     _rss_sid="$2"
     [ -n "$_rss_dir" ] || return 0
     [ -d "$_rss_dir" ] || return 0
-    # Numeric-validate the staleness knob before it reaches arithmetic
-    # expansion or a find predicate (an unvalidated value is an
-    # arithmetic-eval injection sink under a bash /bin/sh), then strip
-    # leading zeros so a value like "010" cannot be misread as octal.
+    # Validation shared with run_state_probe via
+    # _run_state_validate_stale_days; the raw-value precedence itself is
+    # NOT shared — see that function's docstring for why. This function
+    # keeps read_constants' RUN_STATE_STALE_DAYS at top
+    # precedence, unchanged from its original behavior: this function's own
+    # default (1) stays deliberately over-inclusive-but-tight, since a
+    # downstream run_state.py --max-age-days gate makes the real staleness
+    # call for select's callers, so a short pre-filter here is a
+    # performance bound, not the final word.
     _rss_raw="${RUN_STATE_STALE_DAYS:-${QUOIN_RUN_STATE_STALE_DAYS:-1}}"
-    case "$_rss_raw" in
-        ''|*[!0-9]*) _rss_days=1 ;;
-        *) _rss_days="$_rss_raw" ;;
-    esac
-    while true; do
-        case "$_rss_days" in
-            0?*) _rss_days="${_rss_days#0}" ;;
-            *) break ;;
-        esac
-    done
+    _rss_days=$(_run_state_validate_stale_days "$_rss_raw" 1)
     # NOTE: -exec ls -t {} + can split into several ls invocations on a very
     # large directory, yielding per-batch rather than global mtime order —
     # harmless at realistic record counts (same latent trait as the
@@ -431,8 +593,11 @@ RSSEOF
         _rss_schema="${_rss_schema_line#schema=}"
         case "$_rss_schema" in
             ''|*[!0-9]*) continue ;;
+            # See run_state_probe's twin guard: reject 4+ digit schemas
+            # before the arithmetic test below, not after.
+            ????*) continue ;;
         esac
-        [ "$_rss_schema" -le 1 ] || continue
+        [ "$_rss_schema" -le 1 ] 2>/dev/null || continue
         # Plain string equality against the record's stored (sanitized)
         # session_id — no grep, no pattern semantics, no metacharacter
         # hazard. A raw id containing a quote or backslash cannot equal
