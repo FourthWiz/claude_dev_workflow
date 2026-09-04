@@ -688,6 +688,45 @@ _DOCS_TO_TESTS: tuple[tuple[str, str], ...] = (
         "quoin/dev/spikes/run_state_read.sh",
         "quoin/dev/tests/test_run_state_writer.py",
     ),
+    # IVG-258 stage 5 (T-07): no row existed for anything under quoin/hooks/,
+    # so a hooks-only diff selected none of the tests that pin it at a
+    # Standard gate.
+    (
+        "quoin/hooks/postcompact.sh",
+        "quoin/dev/tests/test_compaction_telemetry.py",
+    ),
+    (
+        "quoin/hooks/precompact.sh",
+        "quoin/dev/tests/test_compaction_telemetry.py",
+    ),
+    (
+        "quoin/hooks/_lib.sh",
+        "quoin/dev/tests/test_compaction_telemetry.py",
+    ),
+    # round-1 critic MIN-4: T-01 (stage 5) edits _lib.sh and these two generic
+    # hooks-hygiene guards had no row today.
+    (
+        "quoin/hooks/_lib.sh",
+        "quoin/dev/tests/test_autonomous_hooks_untouched.py",
+    ),
+    (
+        "quoin/hooks/_lib.sh",
+        "quoin/dev/tests/test_lib_thresholds_unchanged.py",
+    ),
+    (
+        "quoin/memory/hooks-table.md",
+        "quoin/dev/tests/test_hook_stanza_count_parity.py",
+    ),
+    (
+        "quoin/memory/hooks-table.md",
+        "quoin/dev/tests/test_compaction_telemetry.py",
+    ),
+    # round-1 critic MIN-4: T-08 (stage 5) edits lifecycle-guide.md and this
+    # guard had no row today.
+    (
+        "quoin/memory/lifecycle-guide.md",
+        "quoin/dev/tests/test_lifecycle_guide_same_session_docs.py",
+    ),
 )
 
 # SKILL.md coverage residual gap (review-1.md MAJOR 2, documented-acceptance branch):
