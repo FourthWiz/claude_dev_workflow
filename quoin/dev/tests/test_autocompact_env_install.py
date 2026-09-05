@@ -44,17 +44,32 @@ class TestAutocompactEnvInstall:
             f"Expected no 'env' key on a default install, got {settings.get('env')!r}"
         )
 
-    def test_stub_merge_env_that_writes_unconditionally_is_caught(self, tmp_path):
-        """Proves case (a) discriminates: a stub that writes unconditionally fails it."""
-        settings = {}
+    def test_merge_env_itself_writes_nothing_for_two_none_args(self, tmp_path):
+        """Directly exercises the real `quoin.installer._merge_env` (not a stub).
 
-        def _stub_merge_env_unconditional(settings, *, pct, window):
-            env = settings.setdefault("env", {})
-            env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = "75"
-            return 1
+        review-1.md MIN-2: the previous version of this test defined and called a
+        local stub that never touched `quoin.installer`, so it would have kept
+        passing even if the real `_merge_env` were deleted — it discriminated
+        against nothing. Routing a broken `_merge_env` through `deploy_hooks`'s
+        default-install path can't discriminate either: `deploy_hooks` only calls
+        `_merge_env` at all when `pct is not None or window is not None`
+        (installer.py's own outer guard), so a default install (both None) never
+        reaches `_merge_env` regardless of its correctness — the outer guard, not
+        `_merge_env`, is what protects case (a) end-to-end. What `_merge_env`
+        itself is responsible for is its own documented contract ("Writes ONLY
+        the keys whose value is not None") — this test calls the real function
+        directly with pct=None, window=None and asserts that contract holds,
+        independent of the outer guard. A regression here (e.g. `_merge_env`
+        writing unconditionally) would be caught by this test even if the outer
+        guard were ever loosened.
+        """
+        from quoin.installer import _merge_env  # noqa: PLC0415
 
-        _stub_merge_env_unconditional(settings, pct=None, window=None)
-        assert "env" in settings  # the stub fails the (a) assertion — proven to discriminate
+        settings: dict = {}
+        changed = _merge_env(settings, pct=None, window=None)
+        assert changed == 0
+        assert "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in settings.get("env", {})
+        assert "CLAUDE_CODE_AUTO_COMPACT_WINDOW" not in settings.get("env", {})
 
     # (b) opt-in with both values writes exactly the two keys, as strings (D-05)
     def test_opt_in_both_values_written_as_strings(self, tmp_path):

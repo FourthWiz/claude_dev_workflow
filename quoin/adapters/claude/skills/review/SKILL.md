@@ -33,7 +33,7 @@ Use a trap when the skill body involves bash-driven subagents:
 trap 'pidfile_release review' EXIT
 ```
 
-Purpose: lets `precompact.sh` hook know a `/review` session is active (for escalation from "block with warning" to "block with confidence").
+Purpose: lets `precompact.sh` hook know a `/review` session is active. `precompact.sh` never blocks — it always allows auto-compaction (`precompact.sh:5-6`, `:14`); pidfile presence instead selects row 2 of its three-row truth table (`precompact.sh:323`, `:506-507`): a deterministic checkpoint is written, with no `pending-restore` sentinel, so the workflow continues uninterrupted.
 
 ## §0' Pollution dispatch (execute after §0 / §0c if present — before skill body)
 

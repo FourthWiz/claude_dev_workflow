@@ -23,9 +23,14 @@ def _validate_autocompact_args(args: argparse.Namespace) -> tuple[int | None, in
     """Validate the three --autocompact-* install flags.
 
     Returns (pct, window, clear). Raises ValueError on a bad combination
-    or an out-of-range value — the argparse call site converts that into
-    parser.error(...). Kept independent of argparse so it can be unit
-    tested directly (T-05).
+    or an out-of-range value. The primary call site is `main()`, right
+    after `parse_args`, before any `deploy_*` call runs — it converts a
+    raised ValueError into `install_p.error(...)`, so a bad value never
+    leaves a partial install on disk. `_cmd_claude_install` also calls
+    this (converting via `_abort`) as a defense-in-depth fallback for
+    callers that construct args and invoke it directly, bypassing
+    `main()` (as several tests do). Kept independent of argparse so it
+    can be unit tested directly (T-05).
     """
     pct: int | None = getattr(args, "autocompact_pct", None)
     window: int | None = getattr(args, "autocompact_window", None)
@@ -1175,6 +1180,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.command is None:
             # bare 'quoin' with no subcommand → install with no args
             args = install_p.parse_args([])
+        # Validate the --autocompact-* combination here, before any deploy_*
+        # call runs, so a bad value never leaves a partial install on disk
+        # (review-1.md MIN-1: the previous call site, inside
+        # _cmd_claude_install, ran after every deploy_* except deploy_hooks).
+        try:
+            _validate_autocompact_args(args)
+        except ValueError as exc:
+            install_p.error(str(exc))
         return _cmd_install(args)
     elif args.command == "dashboard":
         return _cmd_dashboard(args)
