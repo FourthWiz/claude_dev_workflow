@@ -34,6 +34,14 @@ Skill-side picker knobs (read inline in `checkpoint/SKILL.md`, NOT hook constant
 - `QUOIN_RESTORE_STALE_DAYS` (default 1 day) — maximum age for a checkpoint to be silently auto-picked; candidates older than this trigger a loud warning and prefer B3 synthesis. **NOT a hook constant** — read inline at the picker site in `checkpoint/SKILL.md` as `${QUOIN_RESTORE_STALE_DAYS:-1}`; no hook reads it; do NOT add to `_lib.sh`.
 - `QUOIN_PICKER_DEDUP_WINDOW` (default 7 days) — window for deduplicating voluntary vs precompact checkpoint pairs.
 
+Skill-side sweep knobs (read inline in `cleanup/SKILL.md`, NOT hook constants — do NOT add to `_lib.sh`):
+- `QUOIN_CLEANUP_RUNSTATE_WINDOW` (default 30 days) — age threshold for `/cleanup`'s run-state sentinel sweep.
+
+Script-side knobs (read inline by a `core/scripts/` script, neither a hook constant nor skill-side — do NOT add to `_lib.sh`):
+- `QUOIN_RUN_NOTES_MAX_BYTES` (default 262144 = 256 KiB) — rotation cap for `run-notes-<task>.md`, read inline at `run_state.py`.
+
+**Opt-in platform-threshold delegation.** `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` and `CLAUDE_CODE_AUTO_COMPACT_WINDOW` are **not** `QUOIN_*` knobs — they are read natively by Claude Code, not by any quoin hook — and are never written by default. See `quoin/docs/hooks-guide.md` for the full opt-in contract.
+
 Skill-side opt-out knobs (IVG-137, read inline in `end_of_day/SKILL.md` / `end_of_task/SKILL.md`, NOT hook constants — do NOT add to `_lib.sh`):
 - `QUOIN_DISABLE_EOD_RECONCILE=1` — skips `/end_of_day --recover-orphans`'s Step 0a covered-but-due
   auto-flip pre-pass (falls through to today's Step 0 orphan-only behavior).
@@ -49,9 +57,13 @@ Verbose details: `quoin/docs/hooks-guide.md`.
 (plus, once rotated, a single previous generation at the same path with a
 `.1` suffix — see `QUOIN_TELEMETRY_MAX_BYTES` above). One level below the
 `.workflow_artifacts/memory/` depth-1 sentinel sweeps, so it is never a sweep
-target. `precompact.sh` appends the "pre" half on every row it reaches
-(before the `.allow-compact` early-exit); `postcompact.sh` appends the
-"post" half as its last statement, after both of its own sentinel writes.
+target. `precompact.sh` appends the "pre" half on every row it reaches,
+**except** the `.allow-compact`-marker row: that row exits right after the
+STEP 1b `recent-sessions.md` append, before the telemetry code is ever
+reached, so the marker suppresses telemetry for that row (matching the
+PreCompact table row above — not a second, contradicting behaviour).
+`postcompact.sh` appends the "post" half as its last statement, after both
+of its own sentinel writes.
 
 **Line schema (`v: 1`, one JSON object per line, both halves):**
 

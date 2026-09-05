@@ -19,6 +19,54 @@ def _abort(msg: str, code: int = 2) -> None:
 from quoin.__about__ import __version__
 
 
+def _validate_autocompact_args(args: argparse.Namespace) -> tuple[int | None, int | None, bool]:
+    """Validate the three --autocompact-* install flags.
+
+    Returns (pct, window, clear). Raises ValueError on a bad combination
+    or an out-of-range value. The primary call site is `main()`, right
+    after `parse_args`, before any `deploy_*` call runs — it converts a
+    raised ValueError into `install_p.error(...)`, so a bad value never
+    leaves a partial install on disk. `_cmd_claude_install` also calls
+    this (converting via `_abort`) as a defense-in-depth fallback for
+    callers that construct args and invoke it directly, bypassing
+    `main()` (as several tests do). Kept independent of argparse so it
+    can be unit tested directly (T-05).
+    """
+    pct: int | None = getattr(args, "autocompact_pct", None)
+    window: int | None = getattr(args, "autocompact_window", None)
+    clear: bool = getattr(args, "clear_autocompact_env", False)
+
+    if clear and (pct is not None or window is not None):
+        raise ValueError(
+            "--clear-autocompact-env cannot be combined with "
+            "--autocompact-pct or --autocompact-window"
+        )
+    if pct is not None and not (1 <= pct <= 100):
+        raise ValueError(f"--autocompact-pct must be 1..100, got {pct}")
+    if window is not None and not (100000 <= window <= 1000000):
+        raise ValueError(
+            "--autocompact-window must be a plain integer token count in "
+            f"100000..1000000 (no suffix such as 'k'), got {window!r}"
+        )
+    return pct, window, clear
+
+
+def _autocompact_window_type(raw: str) -> int:
+    """argparse type= for --autocompact-window: a plain integer, no suffix.
+
+    Rejects a suffixed form such as '500k' up front with a message naming
+    quoin's own requirement — it does not claim what the platform does
+    with a suffixed value (undocumented; D-07).
+    """
+    stripped = raw.strip()
+    if not (stripped.isdigit() or (stripped.startswith("-") and stripped[1:].isdigit())):
+        raise argparse.ArgumentTypeError(
+            "must be a plain integer token count in 100000..1000000 "
+            f"(no suffix such as 'k'), got {raw!r}"
+        )
+    return int(stripped)
+
+
 def _resolve_source_dir(explicit: Optional[str]) -> pathlib.Path:
     """Resolve the quoin data source directory (proc:T-03).
 
@@ -301,7 +349,18 @@ def _cmd_claude_install(args: argparse.Namespace) -> int:
     installer.cleanup_obsolete_scripts(dest_root)
 
     # Hooks
-    installer.deploy_hooks(source_dir, dest_root, is_project_mode=is_project_mode)
+    try:
+        autocompact_pct, autocompact_window, clear_autocompact_env = _validate_autocompact_args(args)
+    except ValueError as exc:
+        _abort(f"quoin: {exc}")
+    installer.deploy_hooks(
+        source_dir,
+        dest_root,
+        is_project_mode=is_project_mode,
+        autocompact_pct=autocompact_pct,
+        autocompact_window=autocompact_window,
+        clear_autocompact_env=clear_autocompact_env,
+    )
 
     # agentdesk tool — user-mode only (user-level ~/.config/agentdesk/ location)
     if not is_project_mode:
@@ -785,6 +844,8 @@ def main(argv: list[str] | None = None) -> int:
               quoin install --dev
               quoin install --scope project
               quoin install --runtime codex --project-root .
+              quoin install --autocompact-pct 75
+              quoin install --clear-autocompact-env
         """),
     )
     install_p.add_argument(
@@ -848,6 +909,38 @@ def main(argv: list[str] | None = None) -> int:
             "For --scope project: proceed even if home ~/.claude/settings.json already "
             "has quoin hook stanzas. By default, project-mode install fails fast when "
             "home hooks are detected to prevent double-fire side effects."
+        ),
+    )
+    install_p.add_argument(
+        "--autocompact-pct",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Opt-in: write CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=N (1..100) to settings.json's "
+            "env block, delegating the auto-compaction trigger to the platform. Off by "
+            "default (no env key is written unless this or --autocompact-window is passed)."
+        ),
+    )
+    install_p.add_argument(
+        "--autocompact-window",
+        type=_autocompact_window_type,
+        default=None,
+        metavar="TOKENS",
+        help=(
+            "Opt-in: write CLAUDE_CODE_AUTO_COMPACT_WINDOW=TOKENS (100000..1000000, a "
+            "plain integer, no suffix) to settings.json's env block. Independent of "
+            "--autocompact-pct — supplying either flag alone is a valid opt-in."
+        ),
+    )
+    install_p.add_argument(
+        "--clear-autocompact-env",
+        action="store_true",
+        default=False,
+        help=(
+            "Remove quoin's two autocompact env keys from settings.json's env block, "
+            "leaving every other env key untouched. Mutually exclusive with "
+            "--autocompact-pct and --autocompact-window."
         ),
     )
 
@@ -1087,6 +1180,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.command is None:
             # bare 'quoin' with no subcommand → install with no args
             args = install_p.parse_args([])
+        # Validate the --autocompact-* combination here, before any deploy_*
+        # call runs, so a bad value never leaves a partial install on disk
+        # (review-1.md MIN-1: the previous call site, inside
+        # _cmd_claude_install, ran after every deploy_* except deploy_hooks).
+        try:
+            _validate_autocompact_args(args)
+        except ValueError as exc:
+            install_p.error(str(exc))
         return _cmd_install(args)
     elif args.command == "dashboard":
         return _cmd_dashboard(args)

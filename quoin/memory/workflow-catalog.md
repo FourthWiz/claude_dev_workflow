@@ -331,9 +331,11 @@ The 10 Opus-leaf skills named above carry a `## §0″ Minimum-tier guard` block
 
 ### Hooks deployed by quoin
 
-`bash install.sh` deploys hook scripts to `__QUOIN_HOME__/hooks/` and registers 8 (event, matcher) stanzas in `__QUOIN_HOME__/settings.json`: UserPromptSubmit/`*`, PreCompact/`auto`, PostCompact/`auto`, SessionStart/`startup`, SessionStart/`resume`, SessionStart/`compact`, SessionEnd/`*`, WorktreeCreate/`*`. `userpromptsubmit.sh` enforces context-utilization advisory/block and idle-session detection; `precompact.sh`/`postcompact.sh`/`sessionstart.sh`/`sessionend.sh` manage compaction sentinels and S-4 banners, writing to `recent-sessions.md` (`<cwd>/.workflow_artifacts/memory/recent-sessions.md`, read by `/continue_work`).
+`bash install.sh` deploys hook scripts to `__QUOIN_HOME__/hooks/` and registers 8 (event, matcher) stanzas in `__QUOIN_HOME__/settings.json`: UserPromptSubmit/`*`, PreCompact/`auto`, PostCompact/`auto`, SessionStart/`startup`, SessionStart/`resume`, SessionStart/`compact`, SessionEnd/`*`, WorktreeCreate/`*`. `userpromptsubmit.sh` enforces context-utilization advisory-only and idle-session detection; `precompact.sh`/`postcompact.sh`/`sessionstart.sh`/`sessionend.sh` manage compaction sentinels and S-4 banners, writing to `recent-sessions.md` (`<cwd>/.workflow_artifacts/memory/recent-sessions.md`, read by `/continue_work`).
 
-All hooks fail-OPEN (exit 0 on error); jq is soft-required. Tunable constants (`QUOIN_BYTES_PER_TOKEN`, `QUOIN_EFFECTIVE_CONTEXT_LIMIT`, `QUOIN_STOP_BPS`, `QUOIN_BLOCK_BPS`, `QUOIN_COMPACT_FIRST_BPS`, etc.) use integer basis-points arithmetic. Full details: `__QUOIN_HOME__/memory/hooks-table.md`, `quoin/docs/hooks-guide.md`.
+The task-keyed run-state record, PreCompact's always-allow table, the compact re-entry branch, and the telemetry sink form compaction continuity: `__QUOIN_HOME__/memory/hooks-table.md`. The opt-in `env` block (off by default, user scope, installer flags only) is the only place quoin sets a non-`QUOIN_*` var: `quoin/docs/hooks-guide.md`.
+
+All hooks fail-OPEN (exit 0 on error); jq is soft-required. Tunable constants (`QUOIN_BYTES_PER_TOKEN`, `QUOIN_EFFECTIVE_CONTEXT_LIMIT`, `QUOIN_STOP_BPS`, `QUOIN_BLOCK_BPS`, `QUOIN_COMPACT_FIRST_BPS`, etc. — plus five more from IVG-258 stage 7) use integer basis-points arithmetic. Full details, including every knob's name and default: `__QUOIN_HOME__/memory/hooks-table.md`, `quoin/docs/hooks-guide.md`.
 
 ### Lifecycle skills (checkpoint / end_of_day / sleep / cleanup)
 
@@ -361,6 +363,6 @@ The workflow uses several distinct memory layers, each with a different lifecycl
 | `daily/<date>.md` | rendered daily briefing | `/end_of_day` |
 | `weekly/<iso-week>.md` | rendered weekly review | `/weekly_review` |
 | `forgotten/<date>.md` | soft-forget archive | `/sleep` |
-| `run-state-<task>.json` + `run-notes-<task>.md`[`.1`] | task-keyed resume record (`phase`/`next_action`/`step`; also the session-id anchor the compaction hook matches on — adopted to the resuming session only at `/run` Resume entry, after its freshness-gated reads, never by refresh writes) + its append-only notes log | `/run` (sole creator) + `/thorough_plan` (refines only) |
+| `run-state-<task>.json` + `run-notes-<task>.md`[`.1`] | task-keyed resume record (`phase`/`next_action`/`step`) + its append-only notes log — session-id anchoring and adoption timing: `__QUOIN_HOME__/memory/lifecycle-guide.md` | `/run` (sole creator) + `/thorough_plan` (refines only) |
 
 **Hard boundary:** `/sleep` writes ONLY to `lessons-learned.md` and `forgotten/<date>.md`. Enforced by `test_sleep_write_boundary.py`. `trash/` directory is outside `/sleep --purge` scope (gap-seven narrowed: 8 live `*.txt` sentinel families under `memory/` are now covered via `/sleep --purge --sentinels`; `trash/<date>/` remains the residual gap). Directory tree + `forgotten/<date>.md` entry-format + `> Source:` restore anchor: `__QUOIN_HOME__/memory/lifecycle-guide.md`.

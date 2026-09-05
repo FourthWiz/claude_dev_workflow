@@ -128,7 +128,7 @@ def test_classification_table_matches_plan_table():
     keep_bytes = sum(len(sections[h].encode("utf-8")) for h in EXPECTED_KEEP_HEADINGS)
     drop_bytes = sum(len(sections[h].encode("utf-8")) for h in EXPECTED_DROP_HEADINGS)
     assert keep_bytes == 7371, keep_bytes
-    assert drop_bytes == 31540, drop_bytes
+    assert drop_bytes == 31868, drop_bytes  # moved by IVG-258 S-7's CLAUDE.md hooks-section edit
 
 
 def test_classification_table_is_bijective_with_source_headings():

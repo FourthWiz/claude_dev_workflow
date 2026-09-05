@@ -149,6 +149,39 @@ def test_install_default_and_bare_quoin_remain_claude(monkeypatch):
     assert runtimes == ["claude", "claude"]
 
 
+def test_bad_autocompact_pct_aborts_before_dispatch(monkeypatch, capsys):
+    """review-1.md MIN-1: an out-of-range --autocompact-pct must be rejected in
+    main(), right after parse_args, before _cmd_claude_install (and therefore
+    every deploy_* call) ever runs — no partial install on a typo'd value."""
+    from quoin import cli  # noqa: PLC0415
+
+    dispatched = []
+    monkeypatch.setattr(cli, "_cmd_claude_install", lambda args: dispatched.append(args) or 0)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["install", "--autocompact-pct", "500"])
+    assert exc.value.code == 2
+    assert dispatched == []
+    err = capsys.readouterr().err
+    assert "1..100" in err
+
+
+def test_bad_autocompact_combo_aborts_before_dispatch(monkeypatch, capsys):
+    """Same as above for the mutual-exclusion case (--clear-autocompact-env
+    combined with --autocompact-pct)."""
+    from quoin import cli  # noqa: PLC0415
+
+    dispatched = []
+    monkeypatch.setattr(cli, "_cmd_claude_install", lambda args: dispatched.append(args) or 0)
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["install", "--clear-autocompact-env", "--autocompact-pct", "50"])
+    assert exc.value.code == 2
+    assert dispatched == []
+    err = capsys.readouterr().err
+    assert "--clear-autocompact-env" in err
+
+
 # ── run subcommand dispatch (T-08) ───────────────────────────────────────────
 
 def test_run_subcommand_dispatches_to_supervisor(monkeypatch, tmp_path):

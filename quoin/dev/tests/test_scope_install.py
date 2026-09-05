@@ -1071,3 +1071,74 @@ def test_doctor_reports_memory_files_in_project_scope(tmp_path, capsys):
         assert fname in out, f"{fname} missing from doctor project-scope output"
     # Every entry reported present (deploy_memory ran successfully above).
     assert "✗" not in out.split("Memory files")[1].split("Scripts")[0]
+
+
+def test_install_sh_forwards_autocompact_flags(tmp_path):
+    """Flag-plumbing cell (shell level) for the three autocompact install.sh
+    flags (IVG-258 stage 7, T-06), mirroring test_install_sh_forwards_claude_md_variant
+    exactly: both '--autocompact-window 500000' and '--autocompact-window=500000'
+    forms reach INSTALL_ARGS as two argv elements, a missing value exits 2,
+    '--clear-autocompact-env' forwards as a single boolean token, and a default
+    `bash install.sh` argv contains none of the three flags."""
+    import subprocess
+
+    install_sh = QUOIN_SRC / "install.sh"
+    stub_env_overrides = _write_python_stub(tmp_path)
+    env = {**os.environ, **stub_env_overrides}
+
+    # Separate-token form
+    result = subprocess.run(
+        ["bash", str(install_sh), "--scope", "project", "--autocompact-window", "500000"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+    assert "--autocompact-window 500000" in result.stdout, result.stdout + result.stderr
+
+    # =-joined form
+    result2 = subprocess.run(
+        ["bash", str(install_sh), "--scope", "project", "--autocompact-window=500000"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+    assert "--autocompact-window 500000" in result2.stdout, result2.stdout + result2.stderr
+
+    # Missing-value form exits 2 (fails during arg parsing, before any Python probe)
+    result3 = subprocess.run(
+        ["bash", str(install_sh), "--autocompact-window"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+    assert result3.returncode == 2
+    assert "--autocompact-window requires a value" in result3.stderr
+
+    # --clear-autocompact-env forwards as a single boolean token
+    result4 = subprocess.run(
+        ["bash", str(install_sh), "--scope", "project", "--clear-autocompact-env"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+    assert "--clear-autocompact-env" in result4.stdout, result4.stdout + result4.stderr
+
+    # Default argv contains none of the three flags
+    result5 = subprocess.run(
+        ["bash", str(install_sh), "--scope", "project"],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+    for flag in ("--autocompact-pct", "--autocompact-window", "--clear-autocompact-env"):
+        assert flag not in result5.stdout, result5.stdout + result5.stderr

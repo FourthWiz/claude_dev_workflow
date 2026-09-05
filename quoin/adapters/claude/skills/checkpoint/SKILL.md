@@ -209,7 +209,7 @@ Use a trap when the skill body involves bash-driven subagents:
 trap 'pidfile_release checkpoint' EXIT
 ```
 
-Purpose: lets `precompact.sh` hook know a `/checkpoint` session is active (for escalation from "block with warning" to "block with confidence").
+Purpose: lets `precompact.sh` hook know a `/checkpoint` session is active. `precompact.sh` never blocks — it always allows auto-compaction (`precompact.sh:5-6`, `:14`); pidfile presence instead selects row 2 of its three-row truth table (`precompact.sh:323`, `:506-507`): a deterministic checkpoint is written, with no `pending-restore` sentinel, so the workflow continues uninterrupted.
 
 ## Save mode (default — no `--restore` argument)
 
@@ -390,7 +390,7 @@ On skip: emit one-line `[checkpoint] cleanup skipped (<reason>)` and proceed to 
 1. Resolve `MEMORY_DIR = ${_PROJECT_ROOT}/.workflow_artifacts/memory`. If absent, skip.
 2. Source `. __QUOIN_HOME__/hooks/_lib.sh` (fail-OPEN: skip if missing).
 3. Acquire current UUID (same Step 1.1 procedure — reuse value if already computed). UUID unavailable → skip sentinel sweep (fail-safe: skip sentinels, proceed to checkpoint sweep).
-4. Sentinel sweep: for each of the 8 families (see `/cleanup` SKILL.md for the hardcoded allow-list), find under MEMORY_DIR `-maxdepth 1 -name '<family-glob>' -mtime +${QUOIN_CLEANUP_SENTINEL_WINDOW:-1} -print0`. For each: SKIP if suffix matches `-<current_uuid>.txt` (UUID check BEFORE age check). Empty-SID orphans (e.g. `pending-restore-.txt`, suffix `-.txt`) can never match a real UUID suffix and are always trash-eligible once older than the window. Else `trash_move "<path>" "$MEMORY_DIR"`.
+4. Sentinel sweep: for each of the 9 families (see `/cleanup` SKILL.md for the hardcoded allow-list), find under MEMORY_DIR `-maxdepth 1 -name '<family-glob>' -mtime +${QUOIN_CLEANUP_SENTINEL_WINDOW:-1} -print0`. For each: SKIP if suffix matches `-<current_uuid>.txt` (UUID check BEFORE age check). Empty-SID orphans (e.g. `pending-restore-.txt`, suffix `-.txt`) can never match a real UUID suffix and are always trash-eligible once older than the window. Else `trash_move "<path>" "$MEMORY_DIR"`.
 5. Checkpoint sweep: `find "${MEMORY_DIR}/checkpoints" -maxdepth 1 -name '*.md' ! -name '*.tmp' -mtime +${QUOIN_CLEANUP_CKPT_WINDOW:-30} -print0`. For each: `trash_move`.
 6. Emit: `[checkpoint] cleanup: trashed <S> sentinel(s) -> ${_PROJECT_ROOT}/.workflow_artifacts/memory/, <C> checkpoint(s) -> ${_PROJECT_ROOT}/.workflow_artifacts/memory/checkpoints/ (recover: mv ${_PROJECT_ROOT}/.workflow_artifacts/memory/trash/<date>/<file> <original-dir>)`. Or `[checkpoint] cleanup: nothing stale to clean` if zero. Do NOT say "recoverable via /sleep --restore" — `/sleep --restore` only reads `forgotten/` text entries, not `trash/` files.
 7. No ledger row here (the outer `/checkpoint` Step 4 records the session).
@@ -1006,7 +1006,7 @@ After bullet 0-5 resolve (and the process did not STOP or fall through), `cp_pat
 
 Rationale: if the checkpoint was saved in the CURRENT session, restoring here loads prior
 work context into an already-used session window, defeating the purpose of checkpointing.
-The primary scenario is a user who compacted (or was blocked) and then immediately ran
+The primary scenario is a user who compacted and then immediately ran
 /checkpoint --restore in the SAME session instead of opening a fresh one.
 
 **Post-compact no-warning (intentional):** When `compact-happened-*` exists, the compact

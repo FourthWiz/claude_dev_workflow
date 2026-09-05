@@ -672,11 +672,74 @@ def _merge_skill_overrides(settings: dict) -> int:
     return changed
 
 
+_QUOIN_ENV_KEYS = ("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE", "CLAUDE_CODE_AUTO_COMPACT_WINDOW")
+
+
+def _merge_env(settings: dict, *, pct: int | None, window: int | None) -> int | None:
+    """Merge the auto-compaction delegation vars into settings['env'].
+
+    Writes ONLY the keys whose value is not None (D-02: the two are
+    independent). Returns the count of keys added or changed. Never
+    removes a key here.
+
+    If settings['env'] already exists and is not a dict (e.g. a
+    hand-edited `"env": null` or `"env": "FOO=bar"`), returns None as a
+    sentinel instead of raising or overwriting the existing value — the
+    caller turns that into a stderr warning naming the key and leaves
+    the file untouched.
+    """
+    if pct is not None and not (1 <= pct <= 100):
+        raise ValueError(f"autocompact pct must be 1..100, got {pct}")
+    if window is not None and not (100000 <= window <= 1000000):
+        raise ValueError(f"autocompact window must be 100000..1000000, got {window}")
+
+    if "env" in settings and not isinstance(settings["env"], dict):
+        return None
+
+    env = settings.setdefault("env", {})
+    changed = 0
+    if pct is not None:
+        value = str(pct)
+        if env.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") != value:
+            env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = value
+            changed += 1
+    if window is not None:
+        value = str(window)
+        if env.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") != value:
+            env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = value
+            changed += 1
+    return changed
+
+
+def _clear_env(settings: dict) -> int:
+    """Remove ONLY the two keys quoin manages from settings['env'].
+
+    Leaves every other env key untouched; deletes the 'env' dict itself
+    only when it becomes empty (so a default install never leaves an
+    empty {} behind for the no-env-by-default assertion in T-05). A
+    non-dict 'env' (or a missing one) is treated as nothing to clear.
+    """
+    if "env" not in settings or not isinstance(settings["env"], dict):
+        return 0
+    existing = settings["env"]
+    removed = 0
+    for key in _QUOIN_ENV_KEYS:
+        if key in existing:
+            del existing[key]
+            removed += 1
+    if not existing:
+        del settings["env"]
+    return removed
+
+
 def deploy_hooks(
     source_dir: pathlib.Path,
     dest_root: pathlib.Path,
     *,
     is_project_mode: bool = False,
+    autocompact_pct: int | None = None,
+    autocompact_window: int | None = None,
+    clear_autocompact_env: bool = False,
 ) -> None:
     """Copy hook scripts and merge hook stanzas into dest_root/settings.json.
 
@@ -705,7 +768,7 @@ def deploy_hooks(
         _copy_with_substitution(src, dst, dest_root)
         print(f"Copied hook {fname} to {dest_root}/hooks/")
 
-    # Merge 7 hook stanzas into settings.json using Python json module
+    # Merge 8 hook stanzas into settings.json using Python json module
     # settings.json lives inside dest_root (~/.claude/settings.json)
     settings_path = dest_root / "settings.json"
 
@@ -786,6 +849,28 @@ def deploy_hooks(
 
     # Merge skillOverrides (idempotent — only canonical keys, user keys preserved).
     _merge_skill_overrides(settings)
+
+    # Opt-in platform-threshold delegation (off by default — D-02, R-08).
+    if clear_autocompact_env:
+        removed = _clear_env(settings)
+        if removed:
+            print(f"Cleared {removed} autocompact env var(s) from {settings_path}")
+    elif autocompact_pct is not None or autocompact_window is not None:
+        env_changed = _merge_env(settings, pct=autocompact_pct, window=autocompact_window)
+        if env_changed is None:
+            print(
+                f"quoin: {settings_path}['env'] already exists and is not an object; "
+                "leaving it untouched (autocompact env vars NOT written)",
+                file=sys.stderr,
+            )
+        elif env_changed:
+            parts = []
+            if autocompact_pct is not None:
+                parts.append(f"CLAUDE_AUTOCOMPACT_PCT_OVERRIDE={autocompact_pct}")
+            if autocompact_window is not None:
+                parts.append(f"CLAUDE_CODE_AUTO_COMPACT_WINDOW={autocompact_window}")
+            print(f"Set {', '.join(parts)} in {settings_path}['env']")
+    # else: default path — the env key is never created, never read, never removed
 
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     with open(settings_path, "w") as f:
