@@ -3,7 +3,8 @@
 #
 # Usage: bash install.sh [--dev] [--upgrade] [--use-pip] [--force-merge]
 #                        [--scope user|project[:DIR]] [--claude-md-variant full|slim]
-#                        [--allow-hook-merge] [-h]
+#                        [--allow-hook-merge] [--autocompact-pct N]
+#                        [--autocompact-window TOKENS] [--clear-autocompact-env] [-h]
 #
 # Tier 1 (fast, no network): installed version matches local → exec quoin install
 # Tier 2 (offline stdlib):   quoin not installed → PYTHONPATH=src/ exec python -m quoin
@@ -26,6 +27,9 @@ FORCE_MERGE_FLAG=""
 SCOPE_FLAG=""
 CLAUDE_MD_VARIANT_FLAG=""
 ALLOW_HOOK_MERGE_FLAG=""
+AUTOCOMPACT_PCT_FLAG=""
+AUTOCOMPACT_WINDOW_FLAG=""
+CLEAR_AUTOCOMPACT_ENV_FLAG=""
 USE_PIP=0
 PIP_UPGRADE_FLAG=""
 
@@ -43,6 +47,41 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
     --use-pip)      USE_PIP=1 ;;
     --force-merge)  FORCE_MERGE_FLAG="--force-merge" ;;
     --allow-hook-merge) ALLOW_HOOK_MERGE_FLAG="--allow-hook-merge" ;;
+    --clear-autocompact-env) CLEAR_AUTOCOMPACT_ENV_FLAG="--clear-autocompact-env" ;;
+    --autocompact-pct=*)
+      if [[ -n "${arg#--autocompact-pct=}" ]]; then
+        AUTOCOMPACT_PCT_FLAG="--autocompact-pct ${arg#--autocompact-pct=}"
+      else
+        echo "quoin: --autocompact-pct requires a value (1..100)" >&2
+        exit 2
+      fi
+      ;;
+    --autocompact-pct)
+      i=$(( i + 1 ))
+      if [[ $i -lt ${#ARGS[@]} ]]; then
+        AUTOCOMPACT_PCT_FLAG="--autocompact-pct ${ARGS[$i]}"
+      else
+        echo "quoin: --autocompact-pct requires a value (1..100)" >&2
+        exit 2
+      fi
+      ;;
+    --autocompact-window=*)
+      if [[ -n "${arg#--autocompact-window=}" ]]; then
+        AUTOCOMPACT_WINDOW_FLAG="--autocompact-window ${arg#--autocompact-window=}"
+      else
+        echo "quoin: --autocompact-window requires a value (100000..1000000)" >&2
+        exit 2
+      fi
+      ;;
+    --autocompact-window)
+      i=$(( i + 1 ))
+      if [[ $i -lt ${#ARGS[@]} ]]; then
+        AUTOCOMPACT_WINDOW_FLAG="--autocompact-window ${ARGS[$i]}"
+      else
+        echo "quoin: --autocompact-window requires a value (100000..1000000)" >&2
+        exit 2
+      fi
+      ;;
     --scope=*)
       if [[ -n "${arg#--scope=}" ]]; then
         SCOPE_FLAG="--scope ${arg#--scope=}"
@@ -80,7 +119,8 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
     -h|--help)
       echo "Usage: bash install.sh [--dev] [--upgrade] [--use-pip] [--force-merge]"
       echo "                       [--scope user|project[:DIR]] [--claude-md-variant full|slim]"
-      echo "                       [--allow-hook-merge]"
+      echo "                       [--allow-hook-merge] [--autocompact-pct N]"
+      echo "                       [--autocompact-window TOKENS] [--clear-autocompact-env]"
       echo "  --dev                Install dev dependencies (pyyaml, pytest)"
       echo "  --upgrade            Re-install via pip before deploying (alias: --use-pip)"
       echo "  --use-pip            Same as --upgrade"
@@ -98,6 +138,16 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
       echo "                       requires --scope project."
       echo "  --allow-hook-merge   Proceed even if home ~/.claude/settings.json has quoin"
       echo "                       hook stanzas (default: fail-fast to avoid double-fire)"
+      echo "  --autocompact-pct N  Opt-in: write CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=N (1..100) to"
+      echo "                       settings.json's env block, delegating the auto-compaction"
+      echo "                       trigger to the platform. Off by default."
+      echo "  --autocompact-window TOKENS"
+      echo "                       Opt-in: write CLAUDE_CODE_AUTO_COMPACT_WINDOW=TOKENS"
+      echo "                       (100000..1000000, plain integer, no suffix) to settings.json's"
+      echo "                       env block. Independent of --autocompact-pct."
+      echo "  --clear-autocompact-env"
+      echo "                       Remove quoin's two autocompact env keys from settings.json's"
+      echo "                       env block. Mutually exclusive with the two flags above."
       exit 0
       ;;
     *)  REST+=("$arg") ;;
@@ -168,6 +218,15 @@ if [[ -n "$CLAUDE_MD_VARIANT_FLAG" ]]; then
   INSTALL_ARGS+=("$_variant_key" "$_variant_val")
 fi
 [[ -n "$ALLOW_HOOK_MERGE_FLAG" ]] && INSTALL_ARGS+=("$ALLOW_HOOK_MERGE_FLAG")
+if [[ -n "$AUTOCOMPACT_PCT_FLAG" ]]; then
+  read -r _pct_key _pct_val <<< "$AUTOCOMPACT_PCT_FLAG"
+  INSTALL_ARGS+=("$_pct_key" "$_pct_val")
+fi
+if [[ -n "$AUTOCOMPACT_WINDOW_FLAG" ]]; then
+  read -r _window_key _window_val <<< "$AUTOCOMPACT_WINDOW_FLAG"
+  INSTALL_ARGS+=("$_window_key" "$_window_val")
+fi
+[[ -n "$CLEAR_AUTOCOMPACT_ENV_FLAG" ]] && INSTALL_ARGS+=("$CLEAR_AUTOCOMPACT_ENV_FLAG")
 
 # ── Get versions ──────────────────────────────────────────────────────────────
 LOCAL_VERSION="$(PYTHONPATH="$PROJECT_ROOT/src" "$PYTHON" -c \
